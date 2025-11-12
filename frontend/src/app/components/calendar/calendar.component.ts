@@ -386,6 +386,28 @@ export class CalendarComponent implements OnInit {
     return hours * 60 + minutes;
   }
 
+  // Scurisce un colore hex di una percentuale
+  private darkenColor(hex: string, percent: number): string {
+    // Rimuovi il # se presente
+    hex = hex.replace('#', '');
+
+    // Converti in RGB
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    // Scurisci
+    const newR = Math.max(0, Math.floor(r * (100 - percent) / 100));
+    const newG = Math.max(0, Math.floor(g * (100 - percent) / 100));
+    const newB = Math.max(0, Math.floor(b * (100 - percent) / 100));
+
+    // Converti di nuovo in hex
+    return '#' +
+      newR.toString(16).padStart(2, '0') +
+      newG.toString(16).padStart(2, '0') +
+      newB.toString(16).padStart(2, '0');
+  }
+
   isSlotAvailable(userId: number, dateStr: string, timeSlot: string): boolean {
     const availList = this.availabilities[userId]?.[dateStr] || [];
 
@@ -938,6 +960,7 @@ export class CalendarComponent implements OnInit {
       // Se c'è un appuntamento, colora lo sfondo
       if (appointment) {
         const isFirstSlot = this.isFirstSlot(appointment, timeSlot);
+        const isLastSlot = this.isLastSlot(appointment, timeSlot);
 
         if (isFirstSlot) {
           const fillPercentage = this.getSlotFillPercentage(appointment, timeSlot);
@@ -949,10 +972,19 @@ export class CalendarComponent implements OnInit {
             baseStyle.backgroundColor = color;
             baseStyle.opacity = 0.7;
           }
+          // Bordo superiore più spesso per evidenziare l'inizio
+          baseStyle.borderTop = `4px solid ${color}`;
         } else {
           // Non è il primo slot, applica colore pieno
           baseStyle.backgroundColor = color;
           baseStyle.opacity = 0.7;
+        }
+
+        // Bordo inferiore più spesso per evidenziare la fine
+        if (isLastSlot) {
+          // Usa una tonalità più scura del colore del medico
+          const darkerColor = this.darkenColor(color, 30);
+          baseStyle.borderBottom = `3px solid ${darkerColor}`;
         }
       }
     }
