@@ -292,10 +292,10 @@
           <div class="text-xs text-gray-600 space-y-1">
             <div>🕐 {{ apt.startTime }} - {{ apt.endTime }}</div>
             <div *ngIf="apt.patient">
-              👤 {{ apt.patient?.name }} {{ apt.patient?.surname }}
+              👤 {{ apt.patient.name }} {{ apt.patient.surname }}
             </div>
-            <div *ngIf="apt.patient?.phone">
-              📞 {{ apt.patient?.phone }}
+            <div *ngIf="apt.patient && apt.patient.phone">
+              📞 {{ apt.patient.phone }}
             </div>
             <div *ngIf="apt.notes" class="mt-2 pt-2 border-t border-gray-200">
               📝 {{ apt.notes }}
