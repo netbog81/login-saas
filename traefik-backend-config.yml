@@ -1,7 +1,7 @@
-# Configurazione Traefik per il Backend (api.agenda.curandis.cloud)
+# Configurazione Traefik per il Backend (apiagenda.curandis.cloud)
 #
 # IMPORTANTE: NON serve /api come path, perché il frontend è configurato
-# per chiamare direttamente https://api.agenda.curandis.cloud
+# per chiamare direttamente https://apiagenda.curandis.cloud
 #
 # Il backend NestJS espone le API su http://192.168.88.24:3000
 
@@ -22,7 +22,7 @@
 #       - web
 #     labels:
 #       - "traefik.enable=true"
-#       - "traefik.http.routers.backend-api.rule=Host(`api.agenda.curandis.cloud`)"
+#       - "traefik.http.routers.backend-api.rule=Host(`apiagenda.curandis.cloud`)"
 #       - "traefik.http.routers.backend-api.entrypoints=websecure"
 #       - "traefik.http.routers.backend-api.tls.certresolver=letsencrypt"
 #       - "traefik.http.services.backend-api.loadbalancer.server.port=3000"
@@ -40,7 +40,7 @@
 http:
   routers:
     backend-api:
-      rule: "Host(`api.agenda.curandis.cloud`)"
+      rule: "Host(`apiagenda.curandis.cloud`)"
       entryPoints:
         - websecure
       service: backend-api-service
@@ -57,8 +57,8 @@ http:
 # VERIFICA CONFIGURAZIONE
 # ============================================================
 
-# 1. Verifica che il DNS punti a 192.168.88.24:
-#    nslookup api.agenda.curandis.cloud
+# 1. Verifica che il DNS punti all'IP del server Traefik:
+#    nslookup apiagenda.curandis.cloud
 #
 # 2. Verifica che il backend sia raggiungibile localmente:
 #    curl http://192.168.88.24:3000
@@ -67,19 +67,19 @@ http:
 #    docker logs traefik 2>&1 | grep backend-api
 #
 # 4. Testa la chiamata HTTPS:
-#    curl https://api.agenda.curandis.cloud
+#    curl https://apiagenda.curandis.cloud
 #
 # 5. Testa dal frontend:
 #    - Apri https://agenda.curandis.cloud
 #    - Apri DevTools (F12) → Network
-#    - Verifica che le chiamate vadano a https://api.agenda.curandis.cloud
+#    - Verifica che le chiamate vadano a https://apiagenda.curandis.cloud
 
 # ============================================================
 # NOTE IMPORTANTI
 # ============================================================
 
 # ✅ NON serve /api come path prefix o postfix
-#    Il frontend chiama direttamente: https://api.agenda.curandis.cloud
+#    Il frontend chiama direttamente: https://apiagenda.curandis.cloud
 #
 # ✅ Il backend deve ascoltare su porta 3000
 #    Nel file backend/src/main.ts: await app.listen(3000)
@@ -88,7 +88,7 @@ http:
 #    Già fatto in backend/src/main.ts
 #
 # ✅ Certificato Let's Encrypt generato automaticamente da Traefik
-#    Per il dominio api.agenda.curandis.cloud
+#    Per il dominio apiagenda.curandis.cloud
 
 # ============================================================
 # TROUBLESHOOTING
