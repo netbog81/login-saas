@@ -168,10 +168,10 @@
                       <div *ngIf="zoomLevel > 1" class="flex-1 min-w-0">
                         <div class="flex items-center gap-1 group/item">
                           <span class="truncate flex-1">
-                            {{ tempAppointment?.appointment.id === appointment.id ? '(Nuovo) ' : '' }}
-                            {{ appointment.title }}
+                            {{ (tempAppointment && appointment && tempAppointment.appointment.id === appointment.id) ? '(Nuovo) ' : '' }}
+                            {{ appointment?.title }}
                           </span>
-                          <div *ngIf="!tempAppointment || tempAppointment.appointment.id !== appointment.id"
+                          <div *ngIf="appointment && (!tempAppointment || (tempAppointment.appointment && tempAppointment.appointment.id !== appointment.id))"
                                class="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                             <button
                               (click)="openEditModal(userId, appointment.id, formatDateISO(currentDate), appointment); $event.stopPropagation()"

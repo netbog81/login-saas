@@ -632,7 +632,7 @@ export class CalendarComponent implements OnInit {
     return currentIndex >= minIndex && currentIndex <= maxIndex;
   }
 
-  getCellStyle(userId: number, timeSlot: string): any {
+  getCellStyle(userId: number | null, timeSlot: string): any {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
     return {
       height: `${baseHeight}px`,
