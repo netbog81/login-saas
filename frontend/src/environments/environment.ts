@@ -15,8 +15,8 @@ function getApiUrl(): string {
   }
 
   // 3. Dominio personalizzato (es: agenda.curandis.cloud via Traefik)
-  // OPZIONE B: Usa subdomain api.* (richiede DNS record per api.agenda.curandis.cloud)
-  const apiDomain = hostname.replace(/^([^.]+)\./, 'api.');
+  // Aggiunge api. all'inizio (richiede DNS record per api.agenda.curandis.cloud)
+  const apiDomain = `api.${hostname}`;
   return `${protocol}//${apiDomain}`;
 }
 
