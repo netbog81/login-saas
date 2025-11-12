@@ -1,0 +1,107 @@
+# Esempio configurazione Traefik per esporre frontend e backend
+# con certificato SSL automatico
+
+# Questo esempio presume che tu stia usando Traefik v2+ con Docker
+
+version: '3.8'
+
+services:
+  # Frontend Angular
+  frontend:
+    image: node:18
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: npm run start:lan
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      # Frontend su agenda.curandis.cloud
+      - "traefik.http.routers.calendar-frontend.rule=Host(`agenda.curandis.cloud`)"
+      - "traefik.http.routers.calendar-frontend.entrypoints=websecure"
+      - "traefik.http.routers.calendar-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.calendar-frontend.loadbalancer.server.port=4200"
+
+  # Backend NestJS
+  backend:
+    image: node:18
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    command: npm run start:dev
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      # Backend su agenda.curandis.cloud/api
+      - "traefik.http.routers.calendar-backend.rule=Host(`agenda.curandis.cloud`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.calendar-backend.entrypoints=websecure"
+      - "traefik.http.routers.calendar-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.calendar-backend.loadbalancer.server.port=3000"
+      # Middleware per rimuovere /api dal path prima di inoltrare al backend
+      - "traefik.http.middlewares.calendar-backend-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.routers.calendar-backend.middlewares=calendar-backend-stripprefix"
+
+networks:
+  web:
+    external: true
+
+# =============================================================================
+# ALTERNATIVA: Usa subdomain api.curandis.cloud invece di /api path
+# =============================================================================
+#
+# Se preferisci usare api.curandis.cloud invece di agenda.curandis.cloud/api:
+#
+# 1. Crea un record DNS A per api.curandis.cloud che punta allo stesso IP
+#
+# 2. Modifica i label del backend:
+#   - "traefik.http.routers.calendar-backend.rule=Host(`api.curandis.cloud`)"
+#
+# 3. Modifica environment.ts e environment.prod.ts per usare OPZIONE B:
+#    Commenta la riga con return `${protocol}//${hostname}/api`;
+#    Decommenta le righe dell'OPZIONE B
+#
+# =============================================================================
+
+# NOTA: Se la tua configurazione Traefik è già esistente e usa file statici
+# invece di Docker labels, ecco l'equivalente per file dynamico:
+
+# File: /etc/traefik/dynamic/calendar.yml
+# ---
+# http:
+#   routers:
+#     calendar-frontend:
+#       rule: "Host(`agenda.curandis.cloud`)"
+#       entryPoints:
+#         - websecure
+#       service: calendar-frontend
+#       tls:
+#         certResolver: letsencrypt
+#
+#     calendar-backend:
+#       rule: "Host(`agenda.curandis.cloud`) && PathPrefix(`/api`)"
+#       entryPoints:
+#         - websecure
+#       service: calendar-backend
+#       middlewares:
+#         - calendar-backend-stripprefix
+#       tls:
+#         certResolver: letsencrypt
+#
+#   services:
+#     calendar-frontend:
+#       loadBalancer:
+#         servers:
+#           - url: "http://192.168.88.24:4200"
+#
+#     calendar-backend:
+#       loadBalancer:
+#         servers:
+#           - url: "http://192.168.88.24:3000"
+#
+#   middlewares:
+#     calendar-backend-stripprefix:
+#       stripPrefix:
+#         prefixes:
+#           - "/api"

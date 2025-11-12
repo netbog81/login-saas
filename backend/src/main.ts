@@ -6,13 +6,16 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Abilita CORS per permettere richieste dal frontend Angular
-  // Sostituisci <YOUR_VM_IP> con l'IP effettivo della tua VM
   app.enableCors({
     origin: [
+      // Localhost
       'http://localhost:4200',
       'http://localhost:4201',
-      'http://*:4200', // Permette qualsiasi host sulla porta 4200
-      /^http:\/\/.*:4200$/ // Regex per qualsiasi IP sulla porta 4200
+      // LAN
+      /^http:\/\/.*:4200$/, // Regex per qualsiasi IP/host sulla porta 4200
+      // Domini personalizzati (Traefik con HTTPS)
+      'https://agenda.curandis.cloud',
+      /^https:\/\/.*\.curandis\.cloud$/, // Tutti i subdomain di curandis.cloud
     ],
     credentials: true,
   });
