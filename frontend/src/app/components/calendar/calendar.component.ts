@@ -202,10 +202,7 @@ export class CalendarComponent implements OnInit {
     const dayAppointments = userAppointments[dateStr] || [];
 
     return dayAppointments.find(apt => {
-      const startIndex = this.timeSlotList.indexOf(apt.startTime);
-      const endIndex = this.timeSlotList.indexOf(apt.endTime);
-      const slotIndex = this.timeSlotList.indexOf(timeSlot);
-      return slotIndex >= startIndex && slotIndex < endIndex;
+      return this.timeOverlaps(timeSlot, apt.startTime, apt.endTime);
     }) || null;
   }
 
@@ -362,20 +359,31 @@ export class CalendarComponent implements OnInit {
         this.tempAppointment.userId === userId &&
         this.tempAppointment.dateStr === dateStr) {
       const tempApt = this.tempAppointment.appointment;
-      const startIndex = this.timeSlotList.indexOf(tempApt.startTime);
-      const endIndex = this.timeSlotList.indexOf(tempApt.endTime);
-      const slotIndex = this.timeSlotList.indexOf(timeSlot);
-      if (slotIndex >= startIndex && slotIndex < endIndex) {
+      if (this.timeOverlaps(timeSlot, tempApt.startTime, tempApt.endTime)) {
         return tempApt;
       }
     }
 
     return dayAppointments.find(apt => {
-      const startIndex = this.timeSlotList.indexOf(apt.startTime);
-      const endIndex = this.timeSlotList.indexOf(apt.endTime);
-      const slotIndex = this.timeSlotList.indexOf(timeSlot);
-      return slotIndex >= startIndex && slotIndex < endIndex;
+      return this.timeOverlaps(timeSlot, apt.startTime, apt.endTime);
     }) || null;
+  }
+
+  // Verifica se uno slot è coperto da un range temporale
+  private timeOverlaps(slot: string, startTime: string, endTime: string): boolean {
+    const slotMinutes = this.timeToMinutes(slot);
+    const startMinutes = this.timeToMinutes(startTime);
+    const endMinutes = this.timeToMinutes(endTime);
+    const slotEndMinutes = slotMinutes + this.slotDuration;
+
+    // Lo slot è coperto se c'è overlap tra [slotMinutes, slotEndMinutes) e [startMinutes, endMinutes)
+    return slotMinutes < endMinutes && slotEndMinutes > startMinutes;
+  }
+
+  // Converte "HH:MM" in minuti dal mezzanotte
+  private timeToMinutes(time: string): number {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
   }
 
   isSlotAvailable(userId: number, dateStr: string, timeSlot: string): boolean {
@@ -412,9 +420,10 @@ export class CalendarComponent implements OnInit {
       const endIndex = this.timeSlotList.indexOf(existingAppointment.endTime) - 1;
       const isFirstCell = slotIndex === startIndex;
       const isLastCell = slotIndex === endIndex && endIndex > startIndex;
+      const isSingleCell = endIndex === startIndex;
 
-      if (isFirstCell) {
-        // FEATURE 1: Drag per spostare l'intero appuntamento (solo verso l'alto)
+      if (isFirstCell && !isSingleCell) {
+        // FEATURE 1: Drag per spostare l'intero appuntamento
         this.dragState = {
           isDragging: true,
           startSlot: timeSlot,
@@ -434,6 +443,20 @@ export class CalendarComponent implements OnInit {
           endSlot: timeSlot,
           currentUser: userId,
           dragType: 'resize',
+          appointmentId: existingAppointment.id,
+          originalStartTime: existingAppointment.startTime,
+          originalEndTime: existingAppointment.endTime
+        };
+        event.preventDefault();
+      } else if (isSingleCell && isFirstCell) {
+        // Per appuntamenti di una cella, permettiamo sia move che resize
+        // Iniziamo con 'move' e decidiamo in base al movimento
+        this.dragState = {
+          isDragging: true,
+          startSlot: timeSlot,
+          endSlot: timeSlot,
+          currentUser: userId,
+          dragType: 'move', // Inizia come move, può diventare resize
           appointmentId: existingAppointment.id,
           originalStartTime: existingAppointment.startTime,
           originalEndTime: existingAppointment.endTime
@@ -478,6 +501,7 @@ export class CalendarComponent implements OnInit {
     const dateStr = this.formatDateISO(this.currentDate);
     const currentIndex = this.timeSlotList.indexOf(timeSlot);
     const startIndex = this.timeSlotList.indexOf(this.dragState.startSlot!);
+    const originalStartIndex = this.timeSlotList.indexOf(this.dragState.originalStartTime!);
 
     // Verifica se possiamo estendere fino a questo slot
     if (this.dragState.dragType === 'create') {
@@ -495,9 +519,22 @@ export class CalendarComponent implements OnInit {
         }
       }
     } else if (this.dragState.dragType === 'move') {
+      // Per appuntamenti singola cella, se ci muoviamo verso il basso, cambia a resize
+      const appointment = this.findAppointmentById(this.dragState.appointmentId!);
+      if (appointment) {
+        const originalEndIndex = this.timeSlotList.indexOf(appointment.endTime) - 1;
+        const isSingleCell = originalStartIndex === originalEndIndex;
+
+        if (isSingleCell && currentIndex > originalStartIndex) {
+          // Cambio a resize per appuntamenti singola cella quando ci muoviamo verso il basso
+          this.dragState.dragType = 'resize';
+          this.dragState.startSlot = this.dragState.originalStartTime!;
+          this.dragState.endSlot = timeSlot;
+          return;
+        }
+      }
+
       // Per move: aggiorna la posizione di inizio, mantenendo la durata originale
-      // Impostiamo sia startSlot che endSlot alla nuova posizione
-      // In handleMouseUp(), useremo minIndex come nuova posizione di inizio
       this.dragState.startSlot = timeSlot;
       this.dragState.endSlot = timeSlot;
     } else {
@@ -507,14 +544,21 @@ export class CalendarComponent implements OnInit {
   }
 
   canExtendToSlot(userId: number, dateStr: string, startSlot: string, endSlot: string): boolean {
-    const startIndex = this.timeSlotList.indexOf(startSlot);
-    const endIndex = this.timeSlotList.indexOf(endSlot);
-    const minIndex = Math.min(startIndex, endIndex);
-    const maxIndex = Math.max(startIndex, endIndex);
+    // Calcola il range temporale in minuti
+    const startMinutes = this.timeToMinutes(startSlot);
+    const endMinutes = this.timeToMinutes(endSlot);
+    const minMinutes = Math.min(startMinutes, endMinutes);
+    const maxMinutes = Math.max(startMinutes, endMinutes) + this.slotDuration; // +slotDuration perché endSlot è inclusivo
 
     // Verifica tutti gli slot nel range
-    for (let i = minIndex; i <= maxIndex; i++) {
-      const slot = this.timeSlotList[i];
+    for (const slot of this.timeSlotList) {
+      const slotMinutes = this.timeToMinutes(slot);
+      const slotEndMinutes = slotMinutes + this.slotDuration;
+
+      // Solo controlla gli slot che si sovrappongono al range
+      if (slotMinutes >= maxMinutes || slotEndMinutes <= minMinutes) {
+        continue;
+      }
 
       // Verifica disponibilità
       if (!this.isSlotAvailable(userId, dateStr, slot)) {
@@ -553,12 +597,21 @@ export class CalendarComponent implements OnInit {
       // FEATURE 1: Conferma spostamento appuntamento
       const appointment = this.findAppointmentById(appointmentId);
       if (appointment) {
+        // Verifica se c'è stato un movimento reale
+        if (this.dragState.originalStartTime === newStartTime) {
+          // Nessun movimento, ignora
+          this.resetDragState();
+          return;
+        }
+
         const duration = this.getAppointmentDuration(appointment);
-        const newEndIndex = minIndex + duration - 1;
+        const newEndIndex = minIndex + duration;
         const calculatedEndTime = this.timeSlotList[Math.min(newEndIndex, this.timeSlotList.length - 1)];
 
-        // Verifica se può essere spostato
-        const canMove = this.canExtendToSlot(currentUser, dateStr, newStartTime, this.timeSlotList[newEndIndex - 1]);
+        // Verifica se può essere spostato (controlla fino all'ultima cella inclusa)
+        const lastSlotIndex = newEndIndex - 1;
+        const canMove = lastSlotIndex < this.timeSlotList.length &&
+                       this.canExtendToSlot(currentUser, dateStr, newStartTime, this.timeSlotList[lastSlotIndex]);
 
         if (canMove) {
           this.moveConfirmation = {
@@ -851,14 +904,28 @@ export class CalendarComponent implements OnInit {
   }
 
   isFirstSlot(appointment: Appointment, timeSlot: string): boolean {
-    return appointment.startTime === timeSlot;
+    // È il primo slot se l'appuntamento inizia in questo slot
+    const slotMinutes = this.timeToMinutes(timeSlot);
+    const startMinutes = this.timeToMinutes(appointment.startTime);
+    const slotEndMinutes = slotMinutes + this.slotDuration;
+
+    return startMinutes >= slotMinutes && startMinutes < slotEndMinutes;
   }
 
   isLastSlot(appointment: Appointment, timeSlot: string): boolean {
-    const endIndex = this.timeSlotList.indexOf(appointment.endTime) - 1;
+    // È l'ultimo slot se l'appuntamento finisce in questo slot o prima del prossimo slot
+    const slotMinutes = this.timeToMinutes(timeSlot);
+    const endMinutes = this.timeToMinutes(appointment.endTime);
+    const slotEndMinutes = slotMinutes + this.slotDuration;
+
+    // Trova lo slot successivo
     const slotIndex = this.timeSlotList.indexOf(timeSlot);
-    const startIndex = this.timeSlotList.indexOf(appointment.startTime);
-    return slotIndex === endIndex && endIndex > startIndex;
+    if (slotIndex === -1 || slotIndex >= this.timeSlotList.length - 1) {
+      return endMinutes <= slotEndMinutes;
+    }
+
+    const nextSlotMinutes = this.timeToMinutes(this.timeSlotList[slotIndex + 1]);
+    return endMinutes > slotMinutes && endMinutes <= nextSlotMinutes;
   }
 
   openEditModal(userId: number, appointmentId: number, dateStr: string, appointment?: Appointment): void {
@@ -1028,6 +1095,12 @@ export class CalendarComponent implements OnInit {
     return parts.length > 0 ? parts[parts.length - 1] : '';
   }
 
+  // Determina se mostrare l'orario per questo indice (ogni mezz'ora)
+  shouldShowTimeLabel(index: number): boolean {
+    const slotsPerHalfHour = 30 / this.slotDuration; // es: 30/5 = 6, 30/15 = 2, 30/30 = 1
+    return index % slotsPerHalfHour === 0;
+  }
+
   // === METODI VISTA SETTIMANALE ===
 
   getWeeklyCellClass(date: Date, userId: number, timeSlot: string): string {
@@ -1107,8 +1180,9 @@ export class CalendarComponent implements OnInit {
       const endIndex = this.timeSlotList.indexOf(existingAppointment.endTime) - 1;
       const isFirstCell = slotIndex === startIndex;
       const isLastCell = slotIndex === endIndex && endIndex > startIndex;
+      const isSingleCell = endIndex === startIndex;
 
-      if (isFirstCell) {
+      if (isFirstCell && !isSingleCell) {
         this.dragState = {
           isDragging: true,
           startSlot: timeSlot,
@@ -1127,6 +1201,19 @@ export class CalendarComponent implements OnInit {
           endSlot: timeSlot,
           currentUser: userId,
           dragType: 'resize',
+          appointmentId: existingAppointment.id,
+          originalStartTime: existingAppointment.startTime,
+          originalEndTime: existingAppointment.endTime
+        };
+        event.preventDefault();
+      } else if (isSingleCell && isFirstCell) {
+        // Per appuntamenti di una cella, permettiamo sia move che resize
+        this.dragState = {
+          isDragging: true,
+          startSlot: timeSlot,
+          endSlot: timeSlot,
+          currentUser: userId,
+          dragType: 'move', // Inizia come move, può diventare resize
           appointmentId: existingAppointment.id,
           originalStartTime: existingAppointment.startTime,
           originalEndTime: existingAppointment.endTime
@@ -1173,6 +1260,7 @@ export class CalendarComponent implements OnInit {
     const dateStr = this.formatDateISO(date);
     const currentIndex = this.timeSlotList.indexOf(timeSlot);
     const startIndex = this.timeSlotList.indexOf(this.dragState.startSlot!);
+    const originalStartIndex = this.timeSlotList.indexOf(this.dragState.originalStartTime!);
 
     if (this.dragState.dragType === 'create') {
       const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
@@ -1187,6 +1275,21 @@ export class CalendarComponent implements OnInit {
         }
       }
     } else if (this.dragState.dragType === 'move') {
+      // Per appuntamenti singola cella, se ci muoviamo verso il basso, cambia a resize
+      const appointment = this.findAppointmentById(this.dragState.appointmentId!);
+      if (appointment) {
+        const originalEndIndex = this.timeSlotList.indexOf(appointment.endTime) - 1;
+        const isSingleCell = originalStartIndex === originalEndIndex;
+
+        if (isSingleCell && currentIndex > originalStartIndex) {
+          // Cambio a resize per appuntamenti singola cella quando ci muoviamo verso il basso
+          this.dragState.dragType = 'resize';
+          this.dragState.startSlot = this.dragState.originalStartTime!;
+          this.dragState.endSlot = timeSlot;
+          return;
+        }
+      }
+
       this.dragState.startSlot = timeSlot;
       this.dragState.endSlot = timeSlot;
     }
@@ -1216,11 +1319,21 @@ export class CalendarComponent implements OnInit {
     if (dragType === 'move' && appointmentId) {
       const appointment = this.findAppointmentById(appointmentId);
       if (appointment) {
+        // Verifica se c'è stato un movimento reale
+        if (this.dragState.originalStartTime === newStartTime && appointment.date === dateStr) {
+          // Nessun movimento, ignora
+          this.resetWeeklyDrag();
+          return;
+        }
+
         const duration = this.getAppointmentDuration(appointment);
-        const newEndIndex = minIndex + duration - 1;
+        const newEndIndex = minIndex + duration;
         const calculatedEndTime = this.timeSlotList[Math.min(newEndIndex, this.timeSlotList.length - 1)];
 
-        const canMove = this.canExtendToSlot(currentUser, dateStr, newStartTime, this.timeSlotList[newEndIndex - 1]);
+        // Verifica se può essere spostato (controlla fino all'ultima cella inclusa)
+        const lastSlotIndex = newEndIndex - 1;
+        const canMove = lastSlotIndex < this.timeSlotList.length &&
+                       this.canExtendToSlot(currentUser, dateStr, newStartTime, this.timeSlotList[lastSlotIndex]);
 
         if (canMove) {
           this.moveConfirmation = {

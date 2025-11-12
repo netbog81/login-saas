@@ -206,11 +206,11 @@
               *ngFor="let time of timeSlotList; let index = index"
               class="border-b border-gray-100 flex items-center justify-center text-xs text-gray-600"
               [ngClass]="{
-                'bg-gray-100 font-medium': index % 12 === 0,
-                'bg-gray-50': index % 12 !== 0
+                'bg-gray-100 font-medium': index % (60 / slotDuration) === 0,
+                'bg-gray-50': index % (60 / slotDuration) !== 0
               }"
               [ngStyle]="getCellStyle(null, time)">
-              {{ index % 12 === 0 ? time : '' }}
+              {{ shouldShowTimeLabel(index) ? time : '' }}
             </div>
           </div>
 
@@ -305,11 +305,11 @@
               *ngFor="let time of timeSlotList; let index = index"
               class="border-b border-gray-100 flex items-center justify-center text-xs text-gray-600"
               [ngClass]="{
-                'bg-gray-100 font-medium': index % 12 === 0,
-                'bg-gray-50': index % 12 !== 0
+                'bg-gray-100 font-medium': index % (60 / slotDuration) === 0,
+                'bg-gray-50': index % (60 / slotDuration) !== 0
               }"
               [ngStyle]="getCellStyle(null, time)">
-              {{ index % 12 === 0 ? time : '' }}
+              {{ shouldShowTimeLabel(index) ? time : '' }}
             </div>
           </div>
 
