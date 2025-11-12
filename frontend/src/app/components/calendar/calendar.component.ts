@@ -778,7 +778,12 @@ export class CalendarComponent implements OnInit {
 
     this.apiService.updateAppointment(appointmentId, updateData).subscribe({
       next: () => {
-        this.loadAppointmentsAndAvailabilities();
+        // Carica i dati appropriati in base alla vista
+        if (this.viewMode === 'weekly') {
+          this.loadWeekData();
+        } else {
+          this.loadAppointmentsAndAvailabilities();
+        }
       },
       error: (err) => console.error('Error updating appointment:', err)
     });
@@ -1166,7 +1171,12 @@ export class CalendarComponent implements OnInit {
           this.tempAppointment = null;
           this.showEditModal = false;
           this.resetEditingDetails();
-          this.loadAppointmentsAndAvailabilities();
+          // Carica i dati appropriati in base alla vista
+          if (this.viewMode === 'weekly') {
+            this.loadWeekData();
+          } else {
+            this.loadAppointmentsAndAvailabilities();
+          }
         },
         error: (err) => console.error('Error creating appointment:', err)
       });
@@ -1176,7 +1186,12 @@ export class CalendarComponent implements OnInit {
         next: () => {
           this.showEditModal = false;
           this.resetEditingDetails();
-          this.loadAppointmentsAndAvailabilities();
+          // Carica i dati appropriati in base alla vista
+          if (this.viewMode === 'weekly') {
+            this.loadWeekData();
+          } else {
+            this.loadAppointmentsAndAvailabilities();
+          }
         },
         error: (err) => console.error('Error updating appointment:', err)
       });
@@ -1189,7 +1204,12 @@ export class CalendarComponent implements OnInit {
         this.showEditModal = false;
         this.showDeleteConfirm = null;
         this.resetEditingDetails();
-        this.loadAppointmentsAndAvailabilities();
+        // Carica i dati appropriati in base alla vista
+        if (this.viewMode === 'weekly') {
+          this.loadWeekData();
+        } else {
+          this.loadAppointmentsAndAvailabilities();
+        }
       },
       error: (err) => console.error('Error deleting appointment:', err)
     });
