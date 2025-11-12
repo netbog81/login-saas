@@ -1,0 +1,107 @@
+# Configurazione Traefik per il Backend (api.agenda.curandis.cloud)
+#
+# IMPORTANTE: NON serve /api come path, perché il frontend è configurato
+# per chiamare direttamente https://api.agenda.curandis.cloud
+#
+# Il backend NestJS espone le API su http://192.168.88.24:3000
+
+# ============================================================
+# OPZIONE 1: Se usi Docker Labels (docker-compose.yml)
+# ============================================================
+
+# Aggiungi queste labels al servizio backend nel tuo docker-compose.yml:
+#
+# services:
+#   backend:
+#     image: node:18
+#     working_dir: /app
+#     volumes:
+#       - ./backend:/app
+#     command: npm start
+#     networks:
+#       - web
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.backend-api.rule=Host(`api.agenda.curandis.cloud`)"
+#       - "traefik.http.routers.backend-api.entrypoints=websecure"
+#       - "traefik.http.routers.backend-api.tls.certresolver=letsencrypt"
+#       - "traefik.http.services.backend-api.loadbalancer.server.port=3000"
+#
+# networks:
+#   web:
+#     external: true
+
+# ============================================================
+# OPZIONE 2: Se usi file di configurazione statico
+# ============================================================
+
+# Crea un file in /etc/traefik/conf.d/backend-api.yml con:
+
+http:
+  routers:
+    backend-api:
+      rule: "Host(`api.agenda.curandis.cloud`)"
+      entryPoints:
+        - websecure
+      service: backend-api-service
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    backend-api-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.88.24:3000"
+
+# ============================================================
+# VERIFICA CONFIGURAZIONE
+# ============================================================
+
+# 1. Verifica che il DNS punti a 192.168.88.24:
+#    nslookup api.agenda.curandis.cloud
+#
+# 2. Verifica che il backend sia raggiungibile localmente:
+#    curl http://192.168.88.24:3000
+#
+# 3. Verifica che Traefik carichi la configurazione:
+#    docker logs traefik 2>&1 | grep backend-api
+#
+# 4. Testa la chiamata HTTPS:
+#    curl https://api.agenda.curandis.cloud
+#
+# 5. Testa dal frontend:
+#    - Apri https://agenda.curandis.cloud
+#    - Apri DevTools (F12) → Network
+#    - Verifica che le chiamate vadano a https://api.agenda.curandis.cloud
+
+# ============================================================
+# NOTE IMPORTANTI
+# ============================================================
+
+# ✅ NON serve /api come path prefix o postfix
+#    Il frontend chiama direttamente: https://api.agenda.curandis.cloud
+#
+# ✅ Il backend deve ascoltare su porta 3000
+#    Nel file backend/src/main.ts: await app.listen(3000)
+#
+# ✅ CORS configurato per accettare agenda.curandis.cloud
+#    Già fatto in backend/src/main.ts
+#
+# ✅ Certificato Let's Encrypt generato automaticamente da Traefik
+#    Per il dominio api.agenda.curandis.cloud
+
+# ============================================================
+# TROUBLESHOOTING
+# ============================================================
+
+# Problema: "502 Bad Gateway"
+# Soluzione: Verifica che il backend sia in esecuzione su 192.168.88.24:3000
+#
+# Problema: "404 Not Found"
+# Soluzione: Verifica che il router Traefik sia configurato correttamente
+#
+# Problema: "CORS error"
+# Soluzione: Già risolto in backend/src/main.ts (accetta agenda.curandis.cloud)
+#
+# Problema: "Certificate error"
+# Soluzione: Aspetta che Let's Encrypt generi il certificato (max 2 minuti)
