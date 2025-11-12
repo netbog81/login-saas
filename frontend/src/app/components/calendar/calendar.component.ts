@@ -349,8 +349,8 @@ export class CalendarComponent implements OnInit {
     return date.toISOString().split('T')[0];
   }
 
-  getAppointmentForSlot(userId: number, timeSlot: string): Appointment | null {
-    const dateStr = this.formatDateISO(this.currentDate);
+  getAppointmentForSlot(userId: number, timeSlot: string, date?: Date): Appointment | null {
+    const dateStr = date ? this.formatDateISO(date) : this.formatDateISO(this.currentDate);
     const userAppointments = this.appointments[userId] || {};
     const dayAppointments = userAppointments[dateStr] || [];
 
@@ -995,7 +995,7 @@ export class CalendarComponent implements OnInit {
       }
 
       // Caso normale: un solo appuntamento
-      const appointment = this.getAppointmentForSlot(userId, timeSlot);
+      const appointment = this.getAppointmentForSlot(userId, timeSlot, date);
       if (appointment) {
         const isFirstSlot = this.isFirstSlot(appointment, timeSlot);
         const isLastSlot = this.isLastSlot(appointment, timeSlot);
