@@ -5,12 +5,13 @@ import { User } from '../models/user.model';
 import { Patient } from '../models/patient.model';
 import { Appointment } from '../models/appointment.model';
 import { Availability } from '../models/availability.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
-  private baseUrl = 'http://localhost:3000';
+  private baseUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) {}
 
