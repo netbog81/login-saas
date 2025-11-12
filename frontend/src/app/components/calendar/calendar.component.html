@@ -84,21 +84,29 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
           <button
-            (click)="navigateDay(-1)"
+            (click)="viewMode === 'daily' ? navigateDay(-1) : navigateWeek(-1)"
             class="p-2 rounded-full hover:bg-gray-100 transition-colors">
             ◀
           </button>
           <h3 class="text-lg font-semibold text-gray-800">
-            {{ formatDate(currentDate) }}
+            <span *ngIf="viewMode === 'daily'">{{ formatDate(currentDate) }}</span>
+            <span *ngIf="viewMode === 'weekly'">{{ getWeekRangeText() }}</span>
           </h3>
           <button
-            (click)="navigateDay(1)"
+            (click)="viewMode === 'daily' ? navigateDay(1) : navigateWeek(1)"
             class="p-2 rounded-full hover:bg-gray-100 transition-colors">
             ▶
           </button>
         </div>
-        <div class="flex items-center gap-2 text-sm text-gray-600">
-          🕐 {{ availabilityMode ? 'Modalità modifica disponibilità' : 'Vista giornaliera' }}
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2 text-sm text-gray-600">
+            🕐 {{ availabilityMode ? 'Modalità modifica disponibilità' : (viewMode === 'daily' ? 'Vista giornaliera' : 'Vista settimanale') }}
+          </div>
+          <button
+            (click)="toggleViewMode()"
+            class="px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md transition-colors text-sm font-medium">
+            {{ viewMode === 'daily' ? '📅 Vista Settimanale' : '📆 Vista Giornaliera' }}
+          </button>
         </div>
       </div>
     </div>
@@ -112,8 +120,9 @@
         </div>
       </div>
 
+      <!-- VISTA GIORNALIERA -->
       <div
-        *ngIf="selectedUsers.length > 0"
+        *ngIf="selectedUsers.length > 0 && viewMode === 'daily'"
         class="h-full overflow-auto"
         (mouseleave)="dragState.isDragging && handleMouseUp()"
         (mouseup)="handleMouseUp()">
@@ -206,6 +215,93 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- VISTA SETTIMANALE -->
+      <div
+        *ngIf="selectedUsers.length > 0 && viewMode === 'weekly'"
+        class="h-full overflow-auto">
+        <div class="flex min-w-fit">
+          <!-- Colonna orari -->
+          <div class="w-16 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
+            <div class="bg-gray-100 border-b border-gray-200 sticky top-0 z-20 h-16">
+              <div class="text-xs font-medium text-gray-600 text-center pt-2">Orario</div>
+            </div>
+            <div
+              *ngFor="let time of timeSlotList; let index = index"
+              class="border-b border-gray-100 flex items-center justify-center text-xs text-gray-600"
+              [ngClass]="{
+                'bg-gray-100 font-medium': index % 12 === 0,
+                'bg-gray-50': index % 12 !== 0
+              }"
+              [ngStyle]="getCellStyle(null, time)">
+              {{ index % 12 === 0 ? time : '' }}
+            </div>
+          </div>
+
+          <!-- Colonne giorni settimana -->
+          <div *ngFor="let day of weekDays" class="flex flex-col border-r border-gray-200">
+            <!-- Header giorno -->
+            <div class="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm h-16">
+              <div class="text-center py-1">
+                <div class="text-xs font-medium text-gray-500">{{ getDayName(day) }}</div>
+                <div class="text-lg font-semibold text-gray-800">{{ getDayNumber(day) }}</div>
+              </div>
+            </div>
+
+            <!-- Colonne operatori per questo giorno -->
+            <div class="flex">
+              <div
+                *ngFor="let userId of selectedUsers"
+                [ngClass]="{
+                  'w-12': selectedUsers.length > 3,
+                  'w-20': selectedUsers.length <= 3
+                }"
+                class="border-r border-gray-100">
+                <!-- Celle tempo -->
+                <div class="select-none">
+                  <div
+                    *ngFor="let timeSlot of timeSlotList"
+                    class="border-b border-gray-100 cursor-pointer transition-colors relative"
+                    [ngStyle]="getWeeklyCellStyle(day, userId, timeSlot)"
+                    [ngClass]="getWeeklyCellClass(day, userId, timeSlot)"
+                    (mouseenter)="handleWeeklyHover(day, userId, timeSlot, true)"
+                    (mouseleave)="handleWeeklyHover(day, userId, timeSlot, false)">
+
+                    <!-- Solo colore, dettagli al hover -->
+                    <div class="w-full h-full"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tooltip hover appuntamento (vista settimanale) -->
+      <div
+        *ngIf="viewMode === 'weekly' && hoveredAppointment"
+        class="fixed z-50 bg-white shadow-xl rounded-lg p-4 max-w-xs border-2 border-blue-500"
+        [ngStyle]="{
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)'
+        }">
+        <ng-container *ngIf="getHoveredAppointmentDetails() as apt">
+          <div class="text-sm font-semibold text-gray-800 mb-2">{{ apt.title }}</div>
+          <div class="text-xs text-gray-600 space-y-1">
+            <div>🕐 {{ apt.startTime }} - {{ apt.endTime }}</div>
+            <div *ngIf="apt.patient">
+              👤 {{ apt.patient.name }} {{ apt.patient.surname }}
+            </div>
+            <div *ngIf="apt.patient?.phone">
+              📞 {{ apt.patient.phone }}
+            </div>
+            <div *ngIf="apt.notes" class="mt-2 pt-2 border-t border-gray-200">
+              📝 {{ apt.notes }}
+            </div>
+          </div>
+        </ng-container>
       </div>
     </div>
   </div>

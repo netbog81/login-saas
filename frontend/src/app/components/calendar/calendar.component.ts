@@ -49,6 +49,12 @@ export class CalendarComponent implements OnInit {
   appointments: { [userId: number]: { [date: string]: Appointment[] } } = {};
   availabilities: { [userId: number]: { [date: string]: Availability[] } } = {};
 
+  // Vista settimanale
+  viewMode: 'daily' | 'weekly' = 'daily';
+  weekDays: Date[] = [];
+  hoveredAppointment: { userId: number; appointmentId: number; date: string } | null = null;
+  hoverTimeout: any = null;
+
   dragState: DragState = {
     isDragging: false,
     startSlot: null,
@@ -107,6 +113,129 @@ export class CalendarComponent implements OnInit {
     this.generateTimeSlots();
     this.loadUsers();
     this.loadPatients();
+    this.calculateWeekDays();
+  }
+
+  // === VISTA SETTIMANALE ===
+
+  toggleViewMode(): void {
+    this.viewMode = this.viewMode === 'daily' ? 'weekly' : 'daily';
+    if (this.viewMode === 'weekly') {
+      this.calculateWeekDays();
+      this.loadWeekData();
+    } else {
+      this.loadAppointmentsAndAvailabilities();
+    }
+  }
+
+  calculateWeekDays(): void {
+    const current = new Date(this.currentDate);
+    const day = current.getDay();
+    const diff = current.getDate() - day + (day === 0 ? -6 : 1); // Lunedì
+    const monday = new Date(current.setDate(diff));
+
+    this.weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      this.weekDays.push(date);
+    }
+  }
+
+  navigateWeek(direction: number): void {
+    this.currentDate.setDate(this.currentDate.getDate() + (direction * 7));
+    this.currentDate = new Date(this.currentDate);
+    this.calculateWeekDays();
+    this.loadWeekData();
+  }
+
+  loadWeekData(): void {
+    if (this.weekDays.length === 0) return;
+
+    const startDate = this.formatDateISO(this.weekDays[0]);
+    const endDate = this.formatDateISO(this.weekDays[6]);
+
+    // Load appointments per range
+    this.apiService.getAppointmentsByDateRange(startDate, endDate).subscribe({
+      next: (appointments) => {
+        this.appointments = {};
+        appointments.forEach(apt => {
+          if (!this.appointments[apt.userId]) {
+            this.appointments[apt.userId] = {};
+          }
+          if (!this.appointments[apt.userId][apt.date]) {
+            this.appointments[apt.userId][apt.date] = [];
+          }
+          this.appointments[apt.userId][apt.date].push(apt);
+        });
+      },
+      error: (err) => console.error('Error loading week appointments:', err)
+    });
+
+    // Load availabilities per range
+    this.apiService.getAvailabilitiesByDateRange(startDate, endDate).subscribe({
+      next: (availabilities) => {
+        this.availabilities = {};
+        availabilities.forEach(avail => {
+          if (!this.availabilities[avail.userId]) {
+            this.availabilities[avail.userId] = {};
+          }
+          if (!this.availabilities[avail.userId][avail.date]) {
+            this.availabilities[avail.userId][avail.date] = [];
+          }
+          this.availabilities[avail.userId][avail.date].push(avail);
+        });
+      },
+      error: (err) => console.error('Error loading week availabilities:', err)
+    });
+  }
+
+  getAppointmentForDateUserSlot(date: Date, userId: number, timeSlot: string): Appointment | null {
+    const dateStr = this.formatDateISO(date);
+    const userAppointments = this.appointments[userId] || {};
+    const dayAppointments = userAppointments[dateStr] || [];
+
+    return dayAppointments.find(apt => {
+      const startIndex = this.timeSlotList.indexOf(apt.startTime);
+      const endIndex = this.timeSlotList.indexOf(apt.endTime);
+      const slotIndex = this.timeSlotList.indexOf(timeSlot);
+      return slotIndex >= startIndex && slotIndex < endIndex;
+    }) || null;
+  }
+
+  isSlotAvailableForDate(date: Date, userId: number, timeSlot: string): boolean {
+    const dateStr = this.formatDateISO(date);
+    return this.isSlotAvailable(userId, dateStr, timeSlot);
+  }
+
+  // Hover con delay di 1 secondo
+  handleAppointmentHover(userId: number, appointmentId: number, date: string, enter: boolean): void {
+    if (enter) {
+      this.hoverTimeout = setTimeout(() => {
+        this.hoveredAppointment = { userId, appointmentId, date };
+      }, 1000);
+    } else {
+      if (this.hoverTimeout) {
+        clearTimeout(this.hoverTimeout);
+        this.hoverTimeout = null;
+      }
+      this.hoveredAppointment = null;
+    }
+  }
+
+  getWeekRangeText(): string {
+    if (this.weekDays.length === 0) return '';
+    const start = this.weekDays[0].toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+    const end = this.weekDays[6].toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${start} - ${end}`;
+  }
+
+  getDayName(date: Date): string {
+    return date.toLocaleDateString('it-IT', { weekday: 'short' });
+  }
+
+  getDayNumber(date: Date): number {
+    return date.getDate();
   }
 
   generateTimeSlots(): void {
@@ -386,7 +515,10 @@ export class CalendarComponent implements OnInit {
     if (!this.dragState.isDragging) return;
 
     const { startSlot, endSlot, currentUser, dragType, appointmentId } = this.dragState;
-    if (!startSlot || !endSlot || !currentUser) return;
+    if (!startSlot || !endSlot || !currentUser) {
+      this.resetDragState();
+      return;
+    }
 
     const startIndex = this.timeSlotList.indexOf(startSlot);
     const endIndex = this.timeSlotList.indexOf(endSlot);
@@ -448,9 +580,11 @@ export class CalendarComponent implements OnInit {
 
       this.openEditModal(currentUser, newAppointment.id, dateStr, newAppointment);
     } else if (this.availabilityMode) {
-      // Modifica disponibilità
-      const available = confirm('Rendere questo intervallo disponibile per appuntamenti?');
-      this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, available);
+      // Modifica disponibilità - Mostra conferma SOLO dopo aver completato il drag
+      setTimeout(() => {
+        const available = confirm(`Vuoi rendere l'intervallo ${newStartTime} - ${newEndTime} disponibile per appuntamenti?`);
+        this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, available);
+      }, 100);
     }
 
     this.resetDragState();
@@ -541,9 +675,23 @@ export class CalendarComponent implements OnInit {
 
     this.apiService.createAvailability(availability).subscribe({
       next: () => {
+        console.log('✅ Disponibilità salvata:', availability);
+        // Aggiorna localmente prima di ricaricare
+        if (!this.availabilities[userId]) {
+          this.availabilities[userId] = {};
+        }
+        if (!this.availabilities[userId][date]) {
+          this.availabilities[userId][date] = [];
+        }
+        this.availabilities[userId][date].push(availability as Availability);
+
+        // Ricarica da backend
         this.loadAppointmentsAndAvailabilities();
       },
-      error: (err) => console.error('Error creating availability:', err)
+      error: (err) => {
+        console.error('❌ Errore nel salvare disponibilità:', err);
+        alert('Errore nel salvare la disponibilità. Controlla che il backend sia attivo.');
+      }
     });
   }
 
@@ -809,5 +957,67 @@ export class CalendarComponent implements OnInit {
 
   getUserById(id: number): User | undefined {
     return this.users.find(u => u.id === id);
+  }
+
+  // === METODI VISTA SETTIMANALE ===
+
+  getWeeklyCellClass(date: Date, userId: number, timeSlot: string): string {
+    const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
+    const dateStr = this.formatDateISO(date);
+    const isAvailable = this.isSlotAvailable(userId, dateStr, timeSlot);
+
+    if (appointment) {
+      // Slot occupato da appuntamento - usa colore utente
+      return 'bg-green-300 hover:bg-green-400';
+    } else if (!isAvailable) {
+      // Slot non disponibile
+      return 'bg-gray-300';
+    } else {
+      // Slot libero
+      return 'bg-blue-50 hover:bg-blue-100';
+    }
+  }
+
+  getWeeklyCellStyle(date: Date, userId: number, timeSlot: string): any {
+    const baseStyle = this.getCellStyle(userId, timeSlot);
+    const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
+
+    if (appointment) {
+      const user = this.getUserById(userId);
+      if (user) {
+        // Usa il colore dell'utente per gli appuntamenti
+        return {
+          ...baseStyle,
+          backgroundColor: user.color,
+          opacity: 0.7
+        };
+      }
+    }
+
+    return baseStyle;
+  }
+
+  handleWeeklyHover(date: Date, userId: number, timeSlot: string, enter: boolean): void {
+    const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
+
+    if (appointment && enter) {
+      const dateStr = this.formatDateISO(date);
+      this.handleAppointmentHover(userId, appointment.id, dateStr, true);
+    } else if (!enter) {
+      this.handleAppointmentHover(0, 0, '', false);
+    }
+  }
+
+  getHoveredAppointmentDetails(): Appointment | null {
+    if (!this.hoveredAppointment) return null;
+
+    const { userId, appointmentId, date } = this.hoveredAppointment;
+    const userAppointments = this.appointments[userId];
+    if (!userAppointments) return null;
+
+    const dayAppointments = userAppointments[date];
+    if (!dayAppointments) return null;
+
+    return dayAppointments.find(apt => apt.id === appointmentId) || null;
   }
 }
