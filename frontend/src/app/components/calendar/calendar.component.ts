@@ -370,8 +370,8 @@ export class CalendarComponent implements OnInit {
   }
 
   // Rileva se una cella contiene sia fine che inizio di appuntamenti diversi
-  getAppointmentsInSlot(userId: number, timeSlot: string): {ending: Appointment | null, starting: Appointment | null} {
-    const dateStr = this.formatDateISO(this.currentDate);
+  getAppointmentsInSlot(userId: number, timeSlot: string, date?: Date): {ending: Appointment | null, starting: Appointment | null} {
+    const dateStr = date ? this.formatDateISO(date) : this.formatDateISO(this.currentDate);
     const userAppointments = this.appointments[userId] || {};
     const dayAppointments = userAppointments[dateStr] || [];
 
@@ -963,7 +963,7 @@ export class CalendarComponent implements OnInit {
     return slotMinutes >= minMinutes && slotMinutes <= maxMinutes;
   }
 
-  getCellStyle(userId: number | null, timeSlot: string): any {
+  getCellStyle(userId: number | null, timeSlot: string, date?: Date): any {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
     const baseStyle: any = {
       height: `${baseHeight}px`,
@@ -975,7 +975,7 @@ export class CalendarComponent implements OnInit {
       const color = user?.color || '#86efac';
 
       // Controlla se ci sono due appuntamenti nella stessa cella
-      const {ending, starting} = this.getAppointmentsInSlot(userId, timeSlot);
+      const {ending, starting} = this.getAppointmentsInSlot(userId, timeSlot, date);
 
       // Aggiungi bordo sinistro colorato per tutte le celle del medico
       baseStyle.borderLeft = `4px solid ${color}`;
@@ -1292,7 +1292,7 @@ export class CalendarComponent implements OnInit {
   }
 
   getWeeklyCellStyle(date: Date, userId: number, timeSlot: string): any {
-    const baseStyle = this.getCellStyle(userId, timeSlot);
+    const baseStyle = this.getCellStyle(userId, timeSlot, date);
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
     const user = this.getUserById(userId);
 
