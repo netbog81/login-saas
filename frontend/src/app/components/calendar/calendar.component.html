@@ -1,0 +1,479 @@
+<div class="flex h-screen bg-gray-50">
+  <!-- Sidebar -->
+  <div class="w-80 bg-white shadow-lg border-r border-gray-200">
+    <div class="p-6 border-b border-gray-200">
+      <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+        📅 Calendario Poliambulatorio
+      </h2>
+
+      <!-- Modalità disponibilità -->
+      <div class="mb-6">
+        <button
+          (click)="availabilityMode = !availabilityMode"
+          class="w-full px-4 py-2 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+          [ngClass]="{
+            'bg-orange-100 text-orange-700 border border-orange-300': availabilityMode,
+            'bg-gray-100 text-gray-700 hover:bg-gray-200': !availabilityMode
+          }">
+          ⚙️ {{ availabilityMode ? 'Esci da modifica disponibilità' : 'Modifica disponibilità' }}
+        </button>
+        <p *ngIf="availabilityMode" class="mt-2 text-xs text-orange-600">
+          Clicca e trascina per modificare le disponibilità degli operatori
+        </p>
+      </div>
+
+      <!-- Controlli zoom -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          Zoom ({{ (zoomLevel * 100) | number:'1.0-0' }}%)
+        </label>
+        <div class="flex items-center gap-2">
+          <button
+            (click)="zoomLevel = Math.max(0.5, zoomLevel - 0.25)"
+            class="p-2 rounded-md bg-gray-100 hover:bg-gray-200 transition-colors">
+            −
+          </button>
+          <div class="flex-1 bg-gray-200 rounded-full h-2">
+            <div
+              class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              [style.width.%]="((zoomLevel - 0.5) / 2.5) * 100">
+            </div>
+          </div>
+          <button
+            (click)="zoomLevel = Math.min(3, zoomLevel + 0.25)"
+            class="p-2 rounded-md bg-gray-100 hover:bg-gray-200 transition-colors">
+            +
+          </button>
+        </div>
+      </div>
+
+      <!-- Selezione operatori -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-3">
+          Operatori ({{ selectedUsers.length }} selezionati)
+        </label>
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+          <div
+            *ngFor="let user of users"
+            class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+            (click)="toggleUser(user.id)">
+            <input
+              type="checkbox"
+              [checked]="selectedUsers.includes(user.id)"
+              (click)="$event.stopPropagation()"
+              (change)="toggleUser(user.id)"
+              class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
+            <div
+              class="w-4 h-4 rounded-full"
+              [style.backgroundColor]="user.color">
+            </div>
+            <div class="flex-1">
+              <span class="text-sm text-gray-700">{{ user.name }}</span>
+              <span class="text-xs text-gray-500 block">{{ user.type }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Area principale calendario -->
+  <div class="flex-1 flex flex-col">
+    <!-- Header con navigazione -->
+    <div class="bg-white shadow-sm border-b border-gray-200 p-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <button
+            (click)="navigateDay(-1)"
+            class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            ◀
+          </button>
+          <h3 class="text-lg font-semibold text-gray-800">
+            {{ formatDate(currentDate) }}
+          </h3>
+          <button
+            (click)="navigateDay(1)"
+            class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            ▶
+          </button>
+        </div>
+        <div class="flex items-center gap-2 text-sm text-gray-600">
+          🕐 {{ availabilityMode ? 'Modalità modifica disponibilità' : 'Vista giornaliera' }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Contenuto calendario -->
+    <div class="flex-1 overflow-hidden">
+      <div *ngIf="selectedUsers.length === 0" class="flex items-center justify-center h-full">
+        <div class="text-center">
+          <div class="text-6xl mb-4">👥</div>
+          <p class="text-gray-500 text-lg">Seleziona almeno un operatore per visualizzare il calendario</p>
+        </div>
+      </div>
+
+      <div
+        *ngIf="selectedUsers.length > 0"
+        class="h-full overflow-auto"
+        (mouseleave)="dragState.isDragging && handleMouseUp()"
+        (mouseup)="handleMouseUp()">
+        <div class="flex min-w-fit">
+          <!-- Colonna orari -->
+          <div class="w-20 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
+            <div class="bg-gray-100 border-b border-gray-200 flex items-center justify-center sticky top-0 z-20 h-12">
+              <span class="text-xs font-medium text-gray-600">Orario</span>
+            </div>
+            <div
+              *ngFor="let time of timeSlotList; let index = index"
+              class="border-b border-gray-100 flex items-center justify-center text-xs text-gray-600"
+              [ngClass]="{
+                'bg-gray-100 font-medium': index % 12 === 0,
+                'bg-gray-50': index % 12 !== 0
+              }"
+              [ngStyle]="getCellStyle(null, time)">
+              {{ index % 12 === 0 ? time : '' }}
+            </div>
+          </div>
+
+          <!-- Colonne operatori -->
+          <div
+            *ngFor="let userId of selectedUsers"
+            class="min-w-48 border-r border-gray-200 group">
+            <div class="sticky top-0 z-10 bg-white border-b border-gray-200 flex items-center justify-center shadow-sm h-12">
+              <div class="flex items-center gap-2">
+                <div
+                  class="w-3 h-3 rounded-full"
+                  [style.backgroundColor]="getUserById(userId)?.color">
+                </div>
+                <span class="text-sm font-medium text-gray-700 truncate">
+                  {{ getUserById(userId)?.name }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Celle tempo -->
+            <div class="select-none">
+              <div
+                *ngFor="let timeSlot of timeSlotList"
+                [ngClass]="getCellClass(userId, timeSlot)"
+                [ngStyle]="getCellStyle(userId, timeSlot)"
+                (mousedown)="handleMouseDown(userId, timeSlot, $event)"
+                (mouseenter)="handleMouseEnter(userId, timeSlot)">
+
+                <ng-container *ngIf="getAppointmentForSlot(userId, timeSlot) as appointment">
+                  <div class="flex flex-col justify-start w-full h-full">
+                    <div *ngIf="isFirstSlot(appointment, timeSlot)"
+                         class="flex items-center gap-1 text-xs font-medium text-green-800 cursor-move">
+                      <span>{{ appointment.startTime }}</span>
+                      <div *ngIf="zoomLevel > 1" class="flex-1 min-w-0">
+                        <div class="flex items-center gap-1 group/item">
+                          <span class="truncate flex-1">
+                            {{ tempAppointment?.appointment.id === appointment.id ? '(Nuovo) ' : '' }}
+                            {{ appointment.title }}
+                          </span>
+                          <div *ngIf="!tempAppointment || tempAppointment.appointment.id !== appointment.id"
+                               class="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                            <button
+                              (click)="openEditModal(userId, appointment.id, formatDateISO(currentDate), appointment); $event.stopPropagation()"
+                              class="p-0.5 hover:bg-green-200 rounded"
+                              title="Modifica appuntamento">
+                              ✏️
+                            </button>
+                            <button
+                              (click)="showDeleteConfirm = { userId, appointmentId: appointment.id, dateStr: formatDateISO(currentDate), appointmentTitle: appointment.title }; $event.stopPropagation()"
+                              class="p-0.5 hover:bg-red-200 rounded text-red-600"
+                              title="Elimina appuntamento">
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Indicatore per ultima cella (resize handle) -->
+                    <div *ngIf="isLastSlot(appointment, timeSlot) && !tempAppointment"
+                         class="absolute bottom-0 left-0 right-0 h-1 bg-green-600 cursor-ns-resize"
+                         title="Trascina per modificare la durata">
+                    </div>
+                  </div>
+                </ng-container>
+
+                <!-- Indicatore slot non disponibile -->
+                <div *ngIf="!isSlotAvailable(userId, formatDateISO(currentDate), timeSlot) && !availabilityMode"
+                     class="absolute top-0 right-0 w-0 h-0 border-t-8 border-t-red-500 border-l-8 border-l-transparent">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal conferma spostamento -->
+  <div *ngIf="moveConfirmation" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">
+        Conferma spostamento appuntamento
+      </h3>
+      <p class="text-gray-600 mb-2">
+        Appuntamento: <strong>{{ moveConfirmation.appointment.title }}</strong>
+      </p>
+      <p class="text-gray-600 mb-2">
+        Da: <strong>{{ moveConfirmation.oldStartTime }} - {{ moveConfirmation.oldEndTime }}</strong>
+      </p>
+      <p class="text-gray-600 mb-6">
+        A: <strong>{{ moveConfirmation.newStartTime }} - {{ moveConfirmation.newEndTime }}</strong>
+      </p>
+      <div class="flex justify-end gap-3">
+        <button
+          (click)="cancelMove()"
+          class="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+          Annulla
+        </button>
+        <button
+          (click)="confirmMove()"
+          class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors">
+          Conferma
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal conferma eliminazione -->
+  <div *ngIf="showDeleteConfirm" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">
+        Conferma eliminazione
+      </h3>
+      <p class="text-gray-600 mb-6">
+        Sei sicuro di voler eliminare l'appuntamento "{{ showDeleteConfirm.appointmentTitle || 'Senza titolo' }}"?
+      </p>
+      <div class="flex justify-end gap-3">
+        <button
+          (click)="showDeleteConfirm = null"
+          class="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+          Annulla
+        </button>
+        <button
+          (click)="deleteAppointment(showDeleteConfirm.userId, showDeleteConfirm.appointmentId, showDeleteConfirm.dateStr)"
+          class="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-md transition-colors">
+          Elimina
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal editing appuntamento -->
+  <div *ngIf="showEditModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md mx-4 w-full max-h-[90vh] overflow-y-auto">
+      <div class="p-4 bg-gray-50 rounded-t-lg flex items-center justify-between sticky top-0">
+        <h3 class="text-lg font-semibold text-gray-800">
+          Gestione Appuntamento
+        </h3>
+        <button
+          (click)="closeEditModal()"
+          class="p-1 hover:bg-gray-200 rounded">
+          ✕
+        </button>
+      </div>
+
+      <div class="p-6">
+        <!-- Ricerca paziente -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Paziente
+          </label>
+          <div class="relative">
+            <button
+              (click)="showPatientSearch = !showPatientSearch"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-left flex items-center justify-between hover:bg-gray-50">
+              <span>
+                {{ editingDetails.clientName && editingDetails.clientSurname
+                   ? editingDetails.clientName + ' ' + editingDetails.clientSurname
+                   : 'Cerca paziente...' }}
+              </span>
+              🔍
+            </button>
+
+            <div *ngIf="showPatientSearch" class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
+              <input
+                type="text"
+                [(ngModel)]="patientSearch"
+                (ngModelChange)="searchPatients($event)"
+                placeholder="Cerca per nome o cognome..."
+                class="w-full px-3 py-2 border-b border-gray-200"
+                autofocus>
+              <div class="max-h-48 overflow-y-auto">
+                <button
+                  *ngFor="let patient of filteredPatients"
+                  (click)="selectPatient(patient)"
+                  class="w-full px-3 py-2 text-left hover:bg-gray-100">
+                  {{ patient.name }} {{ patient.surname }} - {{ patient.phone }}
+                </button>
+              </div>
+              <button
+                (click)="showPatientSearch = false"
+                class="w-full px-3 py-2 text-left hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200">
+                ➕ Aggiungi nuovo paziente
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dettagli paziente -->
+        <div *ngIf="editingDetails.clientName || editingDetails.clientSurname" class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+            <input
+              type="text"
+              [(ngModel)]="editingDetails.clientName"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Cognome</label>
+            <input
+              type="text"
+              [(ngModel)]="editingDetails.clientSurname"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md">
+          </div>
+        </div>
+
+        <!-- Telefono -->
+        <div *ngIf="editingDetails.clientName || editingDetails.clientSurname" class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Telefono</label>
+          <input
+            type="tel"
+            [(ngModel)]="editingDetails.clientPhone"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md">
+        </div>
+
+        <!-- Titolo appuntamento -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Tipo di visita/prestazione
+          </label>
+          <input
+            type="text"
+            [(ngModel)]="editingDetails.title"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md"
+            placeholder="Es. Visita specialistica">
+        </div>
+
+        <!-- Data -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
+          <input
+            type="date"
+            [(ngModel)]="editingDetails.date"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md">
+        </div>
+
+        <!-- Orari -->
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Ora inizio</label>
+            <select
+              [(ngModel)]="editingDetails.startTime"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md">
+              <option *ngFor="let slot of timeSlotList" [value]="slot">{{ slot }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Ora fine</label>
+            <select
+              [(ngModel)]="editingDetails.endTime"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md">
+              <option *ngFor="let slot of timeSlotList" [value]="slot">{{ slot }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Note -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Note</label>
+          <textarea
+            [(ngModel)]="editingDetails.notes"
+            rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md"
+            placeholder="Note aggiuntive..."></textarea>
+        </div>
+
+        <!-- Opzioni ripetizione -->
+        <div class="mb-4">
+          <button
+            (click)="showRepeatOptions = !showRepeatOptions"
+            class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800">
+            🔄 {{ showRepeatOptions ? 'Nascondi opzioni ripetizione' : 'Aggiungi ripetizione' }}
+          </button>
+
+          <div *ngIf="showRepeatOptions" class="mt-3 p-4 bg-gray-50 rounded-md space-y-3">
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                [(ngModel)]="editingDetails.repeat.enabled"
+                class="w-4 h-4">
+              <label class="text-sm font-medium text-gray-700">
+                Ripeti appuntamento
+              </label>
+            </div>
+
+            <div *ngIf="editingDetails.repeat.enabled">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Tipo di ripetizione</label>
+              <select
+                [(ngModel)]="editingDetails.repeat.type"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                <option value="daily">Giornaliera</option>
+                <option value="weekly">Settimanale</option>
+                <option value="monthly">Mensile</option>
+                <option value="custom">Personalizzata</option>
+              </select>
+            </div>
+
+            <div *ngIf="editingDetails.repeat.enabled">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Ripeti ogni</label>
+              <div class="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  [(ngModel)]="editingDetails.repeat.interval"
+                  class="w-20 px-3 py-2 border border-gray-300 rounded-md">
+                <span class="text-sm text-gray-600">
+                  {{ editingDetails.repeat.type === 'daily' ? 'giorni' : '' }}
+                  {{ editingDetails.repeat.type === 'weekly' ? 'settimane' : '' }}
+                  {{ editingDetails.repeat.type === 'monthly' ? 'mesi' : '' }}
+                  {{ editingDetails.repeat.type === 'custom' ? 'volte' : '' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pulsanti azione -->
+        <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+          <button
+            *ngIf="editingAppointment && !tempAppointment"
+            (click)="showDeleteConfirm = {
+              userId: editingAppointment.userId,
+              appointmentId: editingAppointment.appointmentId,
+              dateStr: editingAppointment.dateStr,
+              appointmentTitle: editingDetails.title
+            }; showEditModal = false"
+            class="px-4 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors">
+            Elimina
+          </button>
+          <button
+            (click)="closeEditModal()"
+            class="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+            Annulla
+          </button>
+          <button
+            (click)="saveAppointmentDetails()"
+            class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors">
+            Salva
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

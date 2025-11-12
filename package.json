@@ -1,0 +1,24 @@
+{
+  "name": "login-saas-calendar",
+  "version": "1.0.0",
+  "description": "Sistema calendario multiutente per poliambulatorio con Angular e NestJS",
+  "scripts": {
+    "frontend": "cd frontend && npm start",
+    "backend": "cd backend && npm run start:dev",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build": "npm run build:backend && npm run build:frontend"
+  },
+  "keywords": [
+    "calendar",
+    "medical",
+    "angular",
+    "nestjs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
