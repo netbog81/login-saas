@@ -638,10 +638,28 @@ export class CalendarComponent implements OnInit {
 
       this.openEditModal(currentUser, newAppointment.id, dateStr, newAppointment);
     } else if (this.availabilityMode) {
-      // Modifica disponibilità - Mostra conferma SOLO dopo aver completato il drag
+      // Modifica disponibilità - Toggle automatico basato sullo stato attuale
       setTimeout(() => {
-        const available = confirm(`Vuoi rendere l'intervallo ${newStartTime} - ${newEndTime} disponibile per appuntamenti?`);
-        this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, available);
+        // Verifica se l'intervallo è attualmente disponibile
+        const isCurrentlyAvailable = this.isSlotAvailable(currentUser, dateStr, newStartTime);
+
+        // Verifica se ci sono appuntamenti nell'intervallo
+        const hasAppointments = this.hasAppointmentsInRange(currentUser, dateStr, newStartTime, newEndTime);
+
+        if (hasAppointments && isCurrentlyAvailable) {
+          alert(`⚠️ Attenzione: ci sono appuntamenti nell'intervallo ${newStartTime} - ${newEndTime}. Elimina prima gli appuntamenti per rendere l'intervallo non disponibile.`);
+          this.resetDragState();
+          return;
+        }
+
+        // Toggle: se è disponibile, lo rendo indisponibile e viceversa
+        const newAvailability = !isCurrentlyAvailable;
+        const action = newAvailability ? 'disponibile' : 'non disponibile';
+        const confirmMessage = `Rendere l'intervallo ${newStartTime} - ${newEndTime} ${action}?`;
+
+        if (confirm(confirmMessage)) {
+          this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, newAvailability);
+        }
       }, 100);
     }
 
@@ -715,6 +733,22 @@ export class CalendarComponent implements OnInit {
         this.loadAppointmentsAndAvailabilities();
       },
       error: (err) => console.error('Error updating appointment:', err)
+    });
+  }
+
+  hasAppointmentsInRange(userId: number, dateStr: string, startTime: string, endTime: string): boolean {
+    const userAppointments = this.appointments[userId] || {};
+    const dayAppointments = userAppointments[dateStr] || [];
+
+    const startMinutes = this.timeToMinutes(startTime);
+    const endMinutes = this.timeToMinutes(endTime);
+
+    return dayAppointments.some(apt => {
+      const aptStartMinutes = this.timeToMinutes(apt.startTime);
+      const aptEndMinutes = this.timeToMinutes(apt.endTime);
+
+      // Controlla se c'è sovrapposizione
+      return aptStartMinutes < endMinutes && aptEndMinutes > startMinutes;
     });
   }
 
@@ -800,14 +834,29 @@ export class CalendarComponent implements OnInit {
       } else if (this.dragState.dragType === 'resize') {
         className += ' bg-green-300';
       } else if (this.availabilityMode) {
-        className += ' bg-blue-200';
+        // In modalità disponibilità, mostra anteprima del toggle
+        if (isAvailable) {
+          className += ' bg-red-200'; // Diventerà indisponibile
+        } else {
+          className += ' bg-green-200'; // Diventerà disponibile
+        }
       } else {
         className += ' bg-red-200';
       }
-    } else if (!isAvailable && !this.availabilityMode) {
-      className += ' bg-gray-100';
+    } else if (!isAvailable) {
+      // Cella non disponibile
+      if (this.availabilityMode) {
+        className += ' bg-red-50'; // Più evidente in modalità disponibilità
+      } else {
+        className += ' bg-gray-100';
+      }
     } else {
-      className += ' bg-white hover:bg-gray-50';
+      // Cella disponibile
+      if (this.availabilityMode) {
+        className += ' bg-green-50 hover:bg-green-100'; // Più evidente in modalità disponibilità
+      } else {
+        className += ' bg-white hover:bg-gray-50';
+      }
     }
 
     return className;
@@ -1361,9 +1410,28 @@ export class CalendarComponent implements OnInit {
 
       this.openEditModal(currentUser, newAppointment.id, dateStr, newAppointment);
     } else if (this.availabilityMode) {
+      // Modifica disponibilità - Toggle automatico basato sullo stato attuale
       setTimeout(() => {
-        const available = confirm(`Vuoi rendere l'intervallo ${newStartTime} - ${newEndTime} disponibile per appuntamenti?`);
-        this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, available);
+        // Verifica se l'intervallo è attualmente disponibile
+        const isCurrentlyAvailable = this.isSlotAvailable(currentUser, dateStr, newStartTime);
+
+        // Verifica se ci sono appuntamenti nell'intervallo
+        const hasAppointments = this.hasAppointmentsInRange(currentUser, dateStr, newStartTime, newEndTime);
+
+        if (hasAppointments && isCurrentlyAvailable) {
+          alert(`⚠️ Attenzione: ci sono appuntamenti nell'intervallo ${newStartTime} - ${newEndTime}. Elimina prima gli appuntamenti per rendere l'intervallo non disponibile.`);
+          this.resetWeeklyDrag();
+          return;
+        }
+
+        // Toggle: se è disponibile, lo rendo indisponibile e viceversa
+        const newAvailability = !isCurrentlyAvailable;
+        const action = newAvailability ? 'disponibile' : 'non disponibile';
+        const confirmMessage = `Rendere l'intervallo ${newStartTime} - ${newEndTime} ${action}?`;
+
+        if (confirm(confirmMessage)) {
+          this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, newAvailability);
+        }
       }, 100);
     }
 
