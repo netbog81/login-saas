@@ -369,6 +369,27 @@ export class CalendarComponent implements OnInit {
     }) || null;
   }
 
+  // Rileva se una cella contiene sia fine che inizio di appuntamenti diversi
+  getAppointmentsInSlot(userId: number, timeSlot: string): {ending: Appointment | null, starting: Appointment | null} {
+    const dateStr = this.formatDateISO(this.currentDate);
+    const userAppointments = this.appointments[userId] || {};
+    const dayAppointments = userAppointments[dateStr] || [];
+
+    let ending: Appointment | null = null;
+    let starting: Appointment | null = null;
+
+    for (const apt of dayAppointments) {
+      if (this.isLastSlot(apt, timeSlot)) {
+        ending = apt;
+      }
+      if (this.isFirstSlot(apt, timeSlot)) {
+        starting = apt;
+      }
+    }
+
+    return { ending, starting };
+  }
+
   // Verifica se uno slot è coperto da un range temporale
   private timeOverlaps(slot: string, startTime: string, endTime: string): boolean {
     const slotMinutes = this.timeToMinutes(slot);
@@ -952,12 +973,31 @@ export class CalendarComponent implements OnInit {
     if (userId !== null) {
       const user = this.getUserById(userId);
       const color = user?.color || '#86efac';
-      const appointment = this.getAppointmentForSlot(userId, timeSlot);
+
+      // Controlla se ci sono due appuntamenti nella stessa cella
+      const {ending, starting} = this.getAppointmentsInSlot(userId, timeSlot);
 
       // Aggiungi bordo sinistro colorato per tutte le celle del medico
       baseStyle.borderLeft = `4px solid ${color}`;
 
-      // Se c'è un appuntamento, colora lo sfondo
+      // Caso speciale: cella con fine di un appuntamento E inizio di un altro
+      if (ending && starting && ending.id !== starting.id) {
+        // Crea gradiente speciale: 40% primo appuntamento, 20% gap, 40% secondo appuntamento
+        const darkerEndColor = this.darkenColor(color, 30);
+        baseStyle.background = `linear-gradient(to bottom,
+          ${color} 0%, ${color} 40%,
+          ${darkerEndColor} 40%, ${darkerEndColor} 42%,
+          transparent 42%, transparent 58%,
+          ${color} 58%, ${color} 60%,
+          ${color} 60%, ${color} 100%)`;
+        baseStyle.opacity = 0.7;
+        baseStyle.borderTop = `4px solid ${darkerEndColor}`;
+        baseStyle.borderBottom = `4px solid ${color}`;
+        return baseStyle;
+      }
+
+      // Caso normale: un solo appuntamento
+      const appointment = this.getAppointmentForSlot(userId, timeSlot);
       if (appointment) {
         const isFirstSlot = this.isFirstSlot(appointment, timeSlot);
         const isLastSlot = this.isLastSlot(appointment, timeSlot);
