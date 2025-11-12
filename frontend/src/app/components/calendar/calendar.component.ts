@@ -505,10 +505,15 @@ export class CalendarComponent implements OnInit {
 
     // Verifica se possiamo estendere fino a questo slot
     if (this.dragState.dragType === 'create') {
-      // Per creazione: verifica disponibilità
-      const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
-      if (canExtend) {
+      if (this.availabilityMode) {
+        // In modalità disponibilità, permetti sempre l'estensione
         this.dragState.endSlot = timeSlot;
+      } else {
+        // Per creazione appuntamento: verifica disponibilità
+        const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
+        if (canExtend) {
+          this.dragState.endSlot = timeSlot;
+        }
       }
     } else if (this.dragState.dragType === 'resize') {
       // Per resize: limita alla durata minima e verifica disponibilità
@@ -752,6 +757,35 @@ export class CalendarComponent implements OnInit {
     });
   }
 
+  checkAppointmentOverlap(
+    userId: number,
+    date: string,
+    startTime: string,
+    endTime: string,
+    excludeAppointmentId: number
+  ): Appointment | null {
+    const userAppointments = this.appointments[userId] || {};
+    const dayAppointments = userAppointments[date] || [];
+
+    const startMinutes = this.timeToMinutes(startTime);
+    const endMinutes = this.timeToMinutes(endTime);
+
+    for (const apt of dayAppointments) {
+      // Salta l'appuntamento corrente se stiamo modificando
+      if (apt.id === excludeAppointmentId) continue;
+
+      const aptStartMinutes = this.timeToMinutes(apt.startTime);
+      const aptEndMinutes = this.timeToMinutes(apt.endTime);
+
+      // Controlla se c'è sovrapposizione
+      if (aptStartMinutes < endMinutes && aptEndMinutes > startMinutes) {
+        return apt;
+      }
+    }
+
+    return null;
+  }
+
   createAvailability(
     userId: number,
     date: string,
@@ -770,17 +804,12 @@ export class CalendarComponent implements OnInit {
     this.apiService.createAvailability(availability).subscribe({
       next: () => {
         console.log('✅ Disponibilità salvata:', availability);
-        // Aggiorna localmente prima di ricaricare
-        if (!this.availabilities[userId]) {
-          this.availabilities[userId] = {};
+        // Ricarica da backend per avere dati aggiornati
+        if (this.viewMode === 'weekly') {
+          this.loadWeekData();
+        } else {
+          this.loadAppointmentsAndAvailabilities();
         }
-        if (!this.availabilities[userId][date]) {
-          this.availabilities[userId][date] = [];
-        }
-        this.availabilities[userId][date].push(availability as Availability);
-
-        // Ricarica da backend
-        this.loadAppointmentsAndAvailabilities();
       },
       error: (err) => {
         console.error('❌ Errore nel salvare disponibilità:', err);
@@ -1014,6 +1043,26 @@ export class CalendarComponent implements OnInit {
       repeat: this.editingDetails.repeat
     };
 
+    // Verifica disponibilità dello slot
+    if (!this.isSlotAvailable(userId, this.editingDetails.date, this.editingDetails.startTime)) {
+      alert('⚠️ Lo slot selezionato non è disponibile per questo operatore.');
+      return;
+    }
+
+    // Verifica sovrapposizioni con altri appuntamenti
+    const overlappingAppointment = this.checkAppointmentOverlap(
+      userId,
+      this.editingDetails.date,
+      this.editingDetails.startTime,
+      this.editingDetails.endTime,
+      appointmentId
+    );
+
+    if (overlappingAppointment) {
+      alert(`⚠️ Questo appuntamento si sovrappone con "${overlappingAppointment.title}" (${overlappingAppointment.startTime} - ${overlappingAppointment.endTime})`);
+      return;
+    }
+
     // Crea o aggiorna paziente se specificato
     if (this.editingDetails.clientName && this.editingDetails.clientSurname) {
       const patientData: Partial<Patient> = {
@@ -1146,10 +1195,10 @@ export class CalendarComponent implements OnInit {
     return parts.length > 0 ? parts[parts.length - 1] : '';
   }
 
-  // Determina se mostrare l'orario per questo indice (ogni mezz'ora)
+  // Determina se mostrare l'orario per questo indice
+  // Mostra ogni slot nella vista corrispondente (ogni 5 per vista 5min, ogni 15 per vista 15min, ogni 30 per vista 30min)
   shouldShowTimeLabel(index: number): boolean {
-    const slotsPerHalfHour = 30 / this.slotDuration; // es: 30/5 = 6, 30/15 = 2, 30/30 = 1
-    return index % slotsPerHalfHour === 0;
+    return true; // Mostra sempre l'orario per ogni slot
   }
 
   // === METODI VISTA SETTIMANALE ===
@@ -1315,9 +1364,14 @@ export class CalendarComponent implements OnInit {
     const originalStartIndex = this.timeSlotList.indexOf(this.dragState.originalStartTime!);
 
     if (this.dragState.dragType === 'create') {
-      const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
-      if (canExtend) {
+      if (this.availabilityMode) {
+        // In modalità disponibilità, permetti sempre l'estensione
         this.dragState.endSlot = timeSlot;
+      } else {
+        const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
+        if (canExtend) {
+          this.dragState.endSlot = timeSlot;
+        }
       }
     } else if (this.dragState.dragType === 'resize') {
       if (currentIndex >= startIndex) {
