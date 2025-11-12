@@ -6,6 +6,15 @@
         📅 Calendario Poliambulatorio
       </h2>
 
+      <!-- Vista calendario -->
+      <div class="mb-6">
+        <button
+          (click)="toggleViewMode()"
+          class="w-full px-4 py-2 rounded-md font-medium transition-colors flex items-center justify-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200">
+          {{ viewMode === 'daily' ? '📅 Vista Settimanale' : '📆 Vista Giornaliera' }}
+        </button>
+      </div>
+
       <!-- Modalità disponibilità -->
       <div class="mb-6">
         <button
@@ -43,6 +52,42 @@
             (click)="zoomLevel = Math.min(3, zoomLevel + 0.25)"
             class="p-2 rounded-md bg-gray-100 hover:bg-gray-200 transition-colors">
             +
+          </button>
+        </div>
+      </div>
+
+      <!-- Durata slot -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          Durata slot: {{ slotDuration }} minuti
+        </label>
+        <div class="flex gap-2">
+          <button
+            (click)="changeSlotDuration(5)"
+            class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            [ngClass]="{
+              'bg-blue-600 text-white': slotDuration === 5,
+              'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 5
+            }">
+            5'
+          </button>
+          <button
+            (click)="changeSlotDuration(15)"
+            class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            [ngClass]="{
+              'bg-blue-600 text-white': slotDuration === 15,
+              'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 15
+            }">
+            15'
+          </button>
+          <button
+            (click)="changeSlotDuration(30)"
+            class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            [ngClass]="{
+              'bg-blue-600 text-white': slotDuration === 30,
+              'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 30
+            }">
+            30'
           </button>
         </div>
       </div>
@@ -102,11 +147,36 @@
           <div class="flex items-center gap-2 text-sm text-gray-600">
             🕐 {{ availabilityMode ? 'Modalità modifica disponibilità' : (viewMode === 'daily' ? 'Vista giornaliera' : 'Vista settimanale') }}
           </div>
-          <button
-            (click)="toggleViewMode()"
-            class="px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md transition-colors text-sm font-medium">
-            {{ viewMode === 'daily' ? '📅 Vista Settimanale' : '📆 Vista Giornaliera' }}
-          </button>
+          <!-- Durata slot (header) -->
+          <div class="flex items-center gap-1 border border-gray-300 rounded-md overflow-hidden">
+            <button
+              (click)="changeSlotDuration(5)"
+              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              [ngClass]="{
+                'bg-blue-600 text-white': slotDuration === 5,
+                'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 5
+              }">
+              5min
+            </button>
+            <button
+              (click)="changeSlotDuration(15)"
+              class="px-3 py-1.5 text-xs font-medium transition-colors border-l border-r border-gray-300"
+              [ngClass]="{
+                'bg-blue-600 text-white': slotDuration === 15,
+                'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 15
+              }">
+              15min
+            </button>
+            <button
+              (click)="changeSlotDuration(30)"
+              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              [ngClass]="{
+                'bg-blue-600 text-white': slotDuration === 30,
+                'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 30
+              }">
+              30min
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -167,7 +237,9 @@
                 [ngClass]="getCellClass(userId, timeSlot)"
                 [ngStyle]="getCellStyle(userId, timeSlot)"
                 (mousedown)="handleMouseDown(userId, timeSlot, $event)"
-                (mouseenter)="handleMouseEnter(userId, timeSlot)">
+                (mouseenter)="handleMouseEnter(userId, timeSlot); getAppointmentForSlot(userId, timeSlot) && handleAppointmentHover(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), true)"
+                (mouseleave)="getAppointmentForSlot(userId, timeSlot) && handleAppointmentHover(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), false)"
+                (dblclick)="getAppointmentForSlot(userId, timeSlot) && openEditModal(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), getAppointmentForSlot(userId, timeSlot)!)">
 
                 <ng-container *ngIf="getAppointmentForSlot(userId, timeSlot) as appointment">
                   <div class="flex flex-col justify-start w-full h-full">
@@ -220,7 +292,9 @@
       <!-- VISTA SETTIMANALE -->
       <div
         *ngIf="selectedUsers.length > 0 && viewMode === 'weekly'"
-        class="h-full overflow-auto">
+        class="h-full overflow-auto"
+        (mouseleave)="dragState.isDragging && resetWeeklyDrag()"
+        (mouseup)="weeklyDragDate && handleWeeklyMouseUp(weeklyDragDate)">
         <div class="flex min-w-fit">
           <!-- Colonna orari -->
           <div class="w-16 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
@@ -242,10 +316,30 @@
           <!-- Colonne giorni settimana -->
           <div *ngFor="let day of weekDays" class="flex flex-col border-r border-gray-200">
             <!-- Header giorno -->
-            <div class="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm h-16">
-              <div class="text-center py-1">
+            <div class="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
+              <div class="text-center py-1 border-b border-gray-100">
                 <div class="text-xs font-medium text-gray-500">{{ getDayName(day) }}</div>
                 <div class="text-lg font-semibold text-gray-800">{{ getDayNumber(day) }}</div>
+              </div>
+
+              <!-- Header operatori -->
+              <div class="flex border-t border-gray-200">
+                <div
+                  *ngFor="let userId of selectedUsers"
+                  [ngClass]="{
+                    'w-12': selectedUsers.length > 3,
+                    'w-20': selectedUsers.length <= 3
+                  }"
+                  class="border-r border-gray-100 bg-gray-50">
+                  <div class="text-center py-1">
+                    <div class="text-xs font-semibold text-gray-700 truncate px-1">
+                      {{ getUserById(userId)?.name.split(' ').pop() }}
+                    </div>
+                    <div class="text-[0.6rem] text-gray-500 truncate px-1">
+                      {{ getUserById(userId)?.type }}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -265,8 +359,10 @@
                     class="border-b border-gray-100 cursor-pointer transition-colors relative"
                     [ngStyle]="getWeeklyCellStyle(day, userId, timeSlot)"
                     [ngClass]="getWeeklyCellClass(day, userId, timeSlot)"
-                    (mouseenter)="handleWeeklyHover(day, userId, timeSlot, true)"
-                    (mouseleave)="handleWeeklyHover(day, userId, timeSlot, false)">
+                    (mousedown)="handleWeeklyMouseDown(day, userId, timeSlot, $event)"
+                    (mouseenter)="handleWeeklyHover(day, userId, timeSlot, true); handleWeeklyMouseEnter(day, userId, timeSlot)"
+                    (mouseleave)="handleWeeklyHover(day, userId, timeSlot, false)"
+                    (dblclick)="handleWeeklyDoubleClick(day, userId, timeSlot)">
 
                     <!-- Solo colore, dettagli al hover -->
                     <div class="w-full h-full"></div>
@@ -278,14 +374,16 @@
         </div>
       </div>
 
-      <!-- Tooltip hover appuntamento (vista settimanale) -->
+      <!-- Tooltip hover appuntamento (entrambe le viste) -->
       <div
-        *ngIf="viewMode === 'weekly' && hoveredAppointment"
+        *ngIf="hoveredAppointment"
         class="fixed z-50 bg-white shadow-xl rounded-lg p-4 max-w-xs border-2 border-blue-500"
         [ngStyle]="{
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)'
+          left: viewMode === 'weekly' ? '50%' : 'auto',
+          top: viewMode === 'weekly' ? '50%' : 'auto',
+          right: viewMode === 'daily' ? '20px' : 'auto',
+          bottom: viewMode === 'daily' ? '20px' : 'auto',
+          transform: viewMode === 'weekly' ? 'translate(-50%, -50%)' : 'none'
         }">
         <ng-container *ngIf="getHoveredAppointmentDetails() as apt">
           <div class="text-sm font-semibold text-gray-800 mb-2">{{ apt.title }}</div>

@@ -55,6 +55,9 @@ export class CalendarComponent implements OnInit {
   hoveredAppointment: { userId: number; appointmentId: number; date: string } | null = null;
   hoverTimeout: any = null;
 
+  // Durata slot variabile
+  slotDuration: 5 | 15 | 30 = 5; // minuti
+
   dragState: DragState = {
     isDragging: false,
     startSlot: null,
@@ -63,6 +66,9 @@ export class CalendarComponent implements OnInit {
     dragType: null,
     appointmentId: null
   };
+
+  // Data corrente per drag nella vista settimanale
+  weeklyDragDate: Date | null = null;
 
   availabilityMode = false;
   zoomLevel = 1;
@@ -241,10 +247,20 @@ export class CalendarComponent implements OnInit {
   generateTimeSlots(): void {
     this.timeSlotList = [];
     for (let hour = 0; hour < 24; hour++) {
-      for (let minute = 0; minute < 60; minute += 5) {
+      for (let minute = 0; minute < 60; minute += this.slotDuration) {
         const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
         this.timeSlotList.push(timeString);
       }
+    }
+  }
+
+  changeSlotDuration(duration: 5 | 15 | 30): void {
+    this.slotDuration = duration;
+    this.generateTimeSlots();
+    if (this.viewMode === 'weekly') {
+      this.loadWeekData();
+    } else {
+      this.loadAppointmentsAndAvailabilities();
     }
   }
 
@@ -398,7 +414,7 @@ export class CalendarComponent implements OnInit {
       const isLastCell = slotIndex === endIndex && endIndex > startIndex;
 
       if (isFirstCell) {
-        // FEATURE 1: Drag per spostare l'intero appuntamento
+        // FEATURE 1: Drag per spostare l'intero appuntamento (solo verso l'alto)
         this.dragState = {
           isDragging: true,
           startSlot: timeSlot,
@@ -425,7 +441,7 @@ export class CalendarComponent implements OnInit {
         event.preventDefault();
       }
     } else if (!existingAppointment && this.availabilityMode) {
-      // Modalità disponibilità
+      // Modalità disponibilità - IMPORTANTE: non mostrare alert qui
       this.dragState = {
         isDragging: true,
         startSlot: timeSlot,
@@ -434,6 +450,7 @@ export class CalendarComponent implements OnInit {
         dragType: 'create',
         appointmentId: null
       };
+      event.preventDefault();
     } else if (!existingAppointment && !this.availabilityMode) {
       // Creare nuovo appuntamento
       if (!this.isSlotAvailable(userId, dateStr, timeSlot)) {
@@ -478,7 +495,10 @@ export class CalendarComponent implements OnInit {
         }
       }
     } else if (this.dragState.dragType === 'move') {
-      // Per move: calcola nuovo range mantenendo la durata
+      // Per move: aggiorna la posizione di inizio, mantenendo la durata originale
+      // Impostiamo sia startSlot che endSlot alla nuova posizione
+      // In handleMouseUp(), useremo minIndex come nuova posizione di inizio
+      this.dragState.startSlot = timeSlot;
       this.dragState.endSlot = timeSlot;
     } else {
       // Disponibilità mode
@@ -782,10 +802,52 @@ export class CalendarComponent implements OnInit {
 
   getCellStyle(userId: number | null, timeSlot: string): any {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
-    return {
+    const baseStyle = {
       height: `${baseHeight}px`,
       minHeight: `${baseHeight}px`
     };
+
+    // Aggiungi gradiente per celle parzialmente occupate
+    if (userId !== null) {
+      const appointment = this.getAppointmentForSlot(userId, timeSlot);
+      if (appointment && this.isFirstSlot(appointment, timeSlot)) {
+        const fillPercentage = this.getSlotFillPercentage(appointment, timeSlot);
+        if (fillPercentage < 100) {
+          // Applica gradiente per occupazione parziale
+          const user = this.getUserById(userId);
+          const color = user?.color || '#86efac'; // verde chiaro di default
+          return {
+            ...baseStyle,
+            background: `linear-gradient(to bottom, ${color} 0%, ${color} ${fillPercentage}%, transparent ${fillPercentage}%, transparent 100%)`
+          };
+        }
+      }
+    }
+
+    return baseStyle;
+  }
+
+  // Calcola la percentuale di riempimento di uno slot
+  getSlotFillPercentage(appointment: Appointment, timeSlot: string): number {
+    const slotIndex = this.timeSlotList.indexOf(timeSlot);
+    const startIndex = this.timeSlotList.indexOf(appointment.startTime);
+    const endIndex = this.timeSlotList.indexOf(appointment.endTime);
+
+    // Calcola la durata dell'appuntamento in numero di slot da 5 minuti
+    const appointmentSlotsIn5Min = endIndex - startIndex;
+    const appointmentMinutes = appointmentSlotsIn5Min * 5;
+
+    // Se l'appuntamento occupa più slot di quello corrente, ritorna 100%
+    if (appointmentSlotsIn5Min > 1 && slotIndex < endIndex - 1) {
+      return 100;
+    }
+
+    // Se l'appuntamento dura meno dello slot corrente, calcola la percentuale
+    if (appointmentMinutes < this.slotDuration) {
+      return (appointmentMinutes / this.slotDuration) * 100;
+    }
+
+    return 100;
   }
 
   isFirstSlot(appointment: Appointment, timeSlot: string): boolean {
@@ -981,17 +1043,21 @@ export class CalendarComponent implements OnInit {
   getWeeklyCellStyle(date: Date, userId: number, timeSlot: string): any {
     const baseStyle = this.getCellStyle(userId, timeSlot);
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
+    const user = this.getUserById(userId);
 
-    if (appointment) {
-      const user = this.getUserById(userId);
-      if (user) {
-        // Usa il colore dell'utente per gli appuntamenti
-        return {
-          ...baseStyle,
-          backgroundColor: user.color,
-          opacity: 0.7
-        };
-      }
+    if (appointment && user) {
+      // Slot occupato: colora l'intera cella
+      return {
+        ...baseStyle,
+        backgroundColor: user.color,
+        opacity: 0.7
+      };
+    } else if (!appointment && user) {
+      // Slot libero: mostra solo bordo sinistro colorato
+      return {
+        ...baseStyle,
+        borderLeft: `4px solid ${user.color}`
+      };
     }
 
     return baseStyle;
@@ -1019,5 +1085,193 @@ export class CalendarComponent implements OnInit {
     if (!dayAppointments) return null;
 
     return dayAppointments.find(apt => apt.id === appointmentId) || null;
+  }
+
+  // === WEEKLY VIEW CRUD OPERATIONS ===
+
+  handleWeeklyMouseDown(date: Date, userId: number, timeSlot: string, event: MouseEvent): void {
+    this.weeklyDragDate = date;
+    const dateStr = this.formatDateISO(date);
+    const existingAppointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
+    const slotIndex = this.timeSlotList.indexOf(timeSlot);
+
+    if (existingAppointment && !this.tempAppointment) {
+      const startIndex = this.timeSlotList.indexOf(existingAppointment.startTime);
+      const endIndex = this.timeSlotList.indexOf(existingAppointment.endTime) - 1;
+      const isFirstCell = slotIndex === startIndex;
+      const isLastCell = slotIndex === endIndex && endIndex > startIndex;
+
+      if (isFirstCell) {
+        this.dragState = {
+          isDragging: true,
+          startSlot: timeSlot,
+          endSlot: timeSlot,
+          currentUser: userId,
+          dragType: 'move',
+          appointmentId: existingAppointment.id,
+          originalStartTime: existingAppointment.startTime,
+          originalEndTime: existingAppointment.endTime
+        };
+        event.preventDefault();
+      } else if (isLastCell) {
+        this.dragState = {
+          isDragging: true,
+          startSlot: existingAppointment.startTime,
+          endSlot: timeSlot,
+          currentUser: userId,
+          dragType: 'resize',
+          appointmentId: existingAppointment.id,
+          originalStartTime: existingAppointment.startTime,
+          originalEndTime: existingAppointment.endTime
+        };
+        event.preventDefault();
+      }
+    } else if (!existingAppointment && this.availabilityMode) {
+      this.dragState = {
+        isDragging: true,
+        startSlot: timeSlot,
+        endSlot: timeSlot,
+        currentUser: userId,
+        dragType: 'create',
+        appointmentId: null
+      };
+      event.preventDefault();
+    } else if (!existingAppointment && !this.availabilityMode) {
+      if (!this.isSlotAvailable(userId, dateStr, timeSlot)) {
+        alert('Questo slot non è disponibile per appuntamenti');
+        return;
+      }
+
+      this.dragState = {
+        isDragging: true,
+        startSlot: timeSlot,
+        endSlot: timeSlot,
+        currentUser: userId,
+        dragType: 'create',
+        appointmentId: null
+      };
+    }
+  }
+
+  handleWeeklyMouseEnter(date: Date, userId: number, timeSlot: string): void {
+    if (!this.dragState.isDragging || this.dragState.currentUser !== userId) {
+      return;
+    }
+
+    // Solo aggiorna se siamo nello stesso giorno
+    if (this.weeklyDragDate && this.formatDateISO(date) !== this.formatDateISO(this.weeklyDragDate)) {
+      return;
+    }
+
+    const dateStr = this.formatDateISO(date);
+    const currentIndex = this.timeSlotList.indexOf(timeSlot);
+    const startIndex = this.timeSlotList.indexOf(this.dragState.startSlot!);
+
+    if (this.dragState.dragType === 'create') {
+      const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
+      if (canExtend) {
+        this.dragState.endSlot = timeSlot;
+      }
+    } else if (this.dragState.dragType === 'resize') {
+      if (currentIndex >= startIndex) {
+        const canExtend = this.canExtendToSlot(userId, dateStr, this.dragState.startSlot!, timeSlot);
+        if (canExtend) {
+          this.dragState.endSlot = timeSlot;
+        }
+      }
+    } else if (this.dragState.dragType === 'move') {
+      this.dragState.startSlot = timeSlot;
+      this.dragState.endSlot = timeSlot;
+    }
+  }
+
+  handleWeeklyMouseUp(date: Date): void {
+    if (!this.dragState.isDragging || !this.weeklyDragDate) {
+      this.resetWeeklyDrag();
+      return;
+    }
+
+    const { startSlot, endSlot, currentUser, dragType, appointmentId } = this.dragState;
+    if (!startSlot || !endSlot || !currentUser) {
+      this.resetWeeklyDrag();
+      return;
+    }
+
+    const startIndex = this.timeSlotList.indexOf(startSlot);
+    const endIndex = this.timeSlotList.indexOf(endSlot);
+    const minIndex = Math.min(startIndex, endIndex);
+    const maxIndex = Math.max(startIndex, endIndex);
+
+    const newStartTime = this.timeSlotList[minIndex];
+    const newEndTime = this.timeSlotList[Math.min(maxIndex + 1, this.timeSlotList.length - 1)];
+    const dateStr = this.formatDateISO(this.weeklyDragDate);
+
+    if (dragType === 'move' && appointmentId) {
+      const appointment = this.findAppointmentById(appointmentId);
+      if (appointment) {
+        const duration = this.getAppointmentDuration(appointment);
+        const newEndIndex = minIndex + duration - 1;
+        const calculatedEndTime = this.timeSlotList[Math.min(newEndIndex, this.timeSlotList.length - 1)];
+
+        const canMove = this.canExtendToSlot(currentUser, dateStr, newStartTime, this.timeSlotList[newEndIndex - 1]);
+
+        if (canMove) {
+          this.moveConfirmation = {
+            appointment,
+            userId: currentUser,
+            oldDate: appointment.date,
+            newDate: dateStr,
+            oldStartTime: this.dragState.originalStartTime!,
+            newStartTime,
+            oldEndTime: this.dragState.originalEndTime!,
+            newEndTime: calculatedEndTime
+          };
+        } else {
+          alert('Non è possibile spostare l\'appuntamento in questa posizione');
+        }
+      }
+    } else if (dragType === 'resize' && appointmentId) {
+      const appointment = this.findAppointmentById(appointmentId);
+      if (appointment) {
+        this.updateAppointmentTime(appointmentId, currentUser, dateStr, appointment.startTime, newEndTime);
+      }
+    } else if (dragType === 'create' && !this.availabilityMode) {
+      const newAppointment: Appointment = {
+        id: Date.now(),
+        startTime: newStartTime,
+        endTime: newEndTime,
+        title: 'Nuovo appuntamento',
+        date: dateStr,
+        userId: currentUser
+      } as Appointment;
+
+      this.tempAppointment = {
+        userId: currentUser,
+        appointment: newAppointment,
+        dateStr
+      };
+
+      this.openEditModal(currentUser, newAppointment.id, dateStr, newAppointment);
+    } else if (this.availabilityMode) {
+      setTimeout(() => {
+        const available = confirm(`Vuoi rendere l'intervallo ${newStartTime} - ${newEndTime} disponibile per appuntamenti?`);
+        this.createAvailability(currentUser, dateStr, newStartTime, newEndTime, available);
+      }, 100);
+    }
+
+    this.resetWeeklyDrag();
+  }
+
+  resetWeeklyDrag(): void {
+    this.resetDragState();
+    this.weeklyDragDate = null;
+  }
+
+  handleWeeklyDoubleClick(date: Date, userId: number, timeSlot: string): void {
+    const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
+    if (appointment) {
+      const dateStr = this.formatDateISO(date);
+      this.openEditModal(userId, appointment.id, dateStr, appointment);
+    }
   }
 }
