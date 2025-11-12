@@ -519,21 +519,6 @@ export class CalendarComponent implements OnInit {
         }
       }
     } else if (this.dragState.dragType === 'move') {
-      // Per appuntamenti singola cella, se ci muoviamo verso il basso, cambia a resize
-      const appointment = this.findAppointmentById(this.dragState.appointmentId!);
-      if (appointment) {
-        const originalEndIndex = this.timeSlotList.indexOf(appointment.endTime) - 1;
-        const isSingleCell = originalStartIndex === originalEndIndex;
-
-        if (isSingleCell && currentIndex > originalStartIndex) {
-          // Cambio a resize per appuntamenti singola cella quando ci muoviamo verso il basso
-          this.dragState.dragType = 'resize';
-          this.dragState.startSlot = this.dragState.originalStartTime!;
-          this.dragState.endSlot = timeSlot;
-          return;
-        }
-      }
-
       // Per move: aggiorna la posizione di inizio, mantenendo la durata originale
       this.dragState.startSlot = timeSlot;
       this.dragState.endSlot = timeSlot;
@@ -787,26 +772,28 @@ export class CalendarComponent implements OnInit {
     const isInDragRange = this.isSlotInDragRange(userId, timeSlot);
 
     if (appointment && !isTempAppointment) {
-      className += ' bg-green-100 border-green-200 hover:bg-green-150';
+      // Il colore dello sfondo è gestito da getCellStyle()
+      className += ' border-gray-200';
 
       // FEATURE 3: Visual feedback per resize
       if (this.dragState.isDragging &&
           this.dragState.dragType === 'resize' &&
           this.dragState.appointmentId === appointment.id) {
 
-        const originalEndIndex = this.timeSlotList.indexOf(this.dragState.originalEndTime!) - 1;
-        const currentEndIndex = this.timeSlotList.indexOf(this.dragState.endSlot!);
+        const originalEndMinutes = this.timeToMinutes(this.dragState.originalEndTime!);
+        const currentEndMinutes = this.timeToMinutes(this.dragState.endSlot!);
+        const slotMinutes = this.timeToMinutes(timeSlot);
 
-        if (currentEndIndex < originalEndIndex && slotIndex > currentEndIndex) {
+        if (currentEndMinutes < originalEndMinutes && slotMinutes >= currentEndMinutes) {
           // Riduzione: tonalità più chiara
           className += ' opacity-50';
-        } else if (currentEndIndex > originalEndIndex && slotIndex > originalEndIndex && slotIndex <= currentEndIndex) {
-          // Allungamento: stesso colore
-          className += ' ring-2 ring-green-400';
+        } else if (currentEndMinutes > originalEndMinutes && slotMinutes >= originalEndMinutes && slotMinutes < currentEndMinutes + this.slotDuration) {
+          // Allungamento: ring per evidenziare
+          className += ' ring-2 ring-blue-400';
         }
       }
     } else if (appointment && isTempAppointment) {
-      className += ' bg-yellow-100 border-yellow-200 hover:bg-yellow-150';
+      className += ' bg-yellow-100 border-yellow-200';
     } else if (isInDragRange) {
       if (this.dragState.dragType === 'move') {
         className += ' bg-blue-300 ring-2 ring-blue-500';
@@ -857,24 +844,37 @@ export class CalendarComponent implements OnInit {
 
   getCellStyle(userId: number | null, timeSlot: string): any {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
-    const baseStyle = {
+    const baseStyle: any = {
       height: `${baseHeight}px`,
       minHeight: `${baseHeight}px`
     };
 
-    // Aggiungi gradiente per celle parzialmente occupate
     if (userId !== null) {
+      const user = this.getUserById(userId);
+      const color = user?.color || '#86efac';
       const appointment = this.getAppointmentForSlot(userId, timeSlot);
-      if (appointment && this.isFirstSlot(appointment, timeSlot)) {
-        const fillPercentage = this.getSlotFillPercentage(appointment, timeSlot);
-        if (fillPercentage < 100) {
-          // Applica gradiente per occupazione parziale
-          const user = this.getUserById(userId);
-          const color = user?.color || '#86efac'; // verde chiaro di default
-          return {
-            ...baseStyle,
-            background: `linear-gradient(to bottom, ${color} 0%, ${color} ${fillPercentage}%, transparent ${fillPercentage}%, transparent 100%)`
-          };
+
+      // Aggiungi bordo sinistro colorato per tutte le celle del medico
+      baseStyle.borderLeft = `4px solid ${color}`;
+
+      // Se c'è un appuntamento, colora lo sfondo
+      if (appointment) {
+        const isFirstSlot = this.isFirstSlot(appointment, timeSlot);
+
+        if (isFirstSlot) {
+          const fillPercentage = this.getSlotFillPercentage(appointment, timeSlot);
+          if (fillPercentage < 100) {
+            // Applica gradiente per occupazione parziale
+            baseStyle.background = `linear-gradient(to bottom, ${color} 0%, ${color} ${fillPercentage}%, transparent ${fillPercentage}%, transparent 100%)`;
+          } else {
+            // Occupazione completa
+            baseStyle.backgroundColor = color;
+            baseStyle.opacity = 0.7;
+          }
+        } else {
+          // Non è il primo slot, applica colore pieno
+          baseStyle.backgroundColor = color;
+          baseStyle.opacity = 0.7;
         }
       }
     }
@@ -1110,15 +1110,16 @@ export class CalendarComponent implements OnInit {
     const dateStr = this.formatDateISO(date);
     const isAvailable = this.isSlotAvailable(userId, dateStr, timeSlot);
 
+    // Il colore di sfondo è gestito da getWeeklyCellStyle()
     if (appointment) {
-      // Slot occupato da appuntamento - usa colore utente
-      return 'bg-green-300 hover:bg-green-400';
+      // Slot occupato da appuntamento
+      return 'border-gray-200';
     } else if (!isAvailable) {
       // Slot non disponibile
       return 'bg-gray-300';
     } else {
       // Slot libero
-      return 'bg-blue-50 hover:bg-blue-100';
+      return '';
     }
   }
 
@@ -1277,21 +1278,6 @@ export class CalendarComponent implements OnInit {
         }
       }
     } else if (this.dragState.dragType === 'move') {
-      // Per appuntamenti singola cella, se ci muoviamo verso il basso, cambia a resize
-      const appointment = this.findAppointmentById(this.dragState.appointmentId!);
-      if (appointment) {
-        const originalEndIndex = this.timeSlotList.indexOf(appointment.endTime) - 1;
-        const isSingleCell = originalStartIndex === originalEndIndex;
-
-        if (isSingleCell && currentIndex > originalStartIndex) {
-          // Cambio a resize per appuntamenti singola cella quando ci muoviamo verso il basso
-          this.dragState.dragType = 'resize';
-          this.dragState.startSlot = this.dragState.originalStartTime!;
-          this.dragState.endSlot = timeSlot;
-          return;
-        }
-      }
-
       this.dragState.startSlot = timeSlot;
       this.dragState.endSlot = timeSlot;
     }
