@@ -271,11 +271,7 @@
                       </div>
                     </div>
 
-                    <!-- Indicatore per ultima cella (resize handle) -->
-                    <div *ngIf="isLastSlot(appointment, timeSlot) && !tempAppointment"
-                         class="absolute bottom-0 left-0 right-0 h-1 bg-green-600 cursor-ns-resize"
-                         title="Trascina per modificare la durata">
-                    </div>
+                    <!-- Indicatore ultima cella rimosso: bordo gestito da getCellStyle() -->
                   </div>
                 </ng-container>
 

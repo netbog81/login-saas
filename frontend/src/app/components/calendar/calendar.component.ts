@@ -982,17 +982,15 @@ export class CalendarComponent implements OnInit {
 
       // Caso speciale: cella con fine di un appuntamento E inizio di un altro
       if (ending && starting && ending.id !== starting.id) {
-        // Crea gradiente speciale: 40% primo appuntamento, 20% gap, 40% secondo appuntamento
+        // Crea gradiente orizzontale: 30% fine primo, 10% gap, 60% inizio secondo
         const darkerEndColor = this.darkenColor(color, 30);
-        baseStyle.background = `linear-gradient(to bottom,
-          ${color} 0%, ${color} 40%,
-          ${darkerEndColor} 40%, ${darkerEndColor} 42%,
-          transparent 42%, transparent 58%,
-          ${color} 58%, ${color} 60%,
-          ${color} 60%, ${color} 100%)`;
+        baseStyle.background = `linear-gradient(to right,
+          ${darkerEndColor} 0%, ${darkerEndColor} 30%,
+          transparent 30%, transparent 40%,
+          ${color} 40%, ${color} 100%)`;
         baseStyle.opacity = 0.7;
-        baseStyle.borderTop = `4px solid ${darkerEndColor}`;
-        baseStyle.borderBottom = `4px solid ${color}`;
+        baseStyle.borderTop = `2px solid ${darkerEndColor}`;
+        baseStyle.borderBottom = `2px solid ${color}`;
         return baseStyle;
       }
 
