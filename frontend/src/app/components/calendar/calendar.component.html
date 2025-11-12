@@ -333,7 +333,7 @@
                   class="border-r border-gray-100 bg-gray-50">
                   <div class="text-center py-1">
                     <div class="text-xs font-semibold text-gray-700 truncate px-1">
-                      {{ getUserById(userId)?.name?.split(' ').pop() || '' }}
+                      {{ getUserSurname(userId) }}
                     </div>
                     <div class="text-[0.6rem] text-gray-500 truncate px-1">
                       {{ getUserById(userId)?.type }}

@@ -1021,6 +1021,13 @@ export class CalendarComponent implements OnInit {
     return this.users.find(u => u.id === id);
   }
 
+  getUserSurname(userId: number): string {
+    const user = this.getUserById(userId);
+    if (!user || !user.name) return '';
+    const parts = user.name.split(' ');
+    return parts.length > 0 ? parts[parts.length - 1] : '';
+  }
+
   // === METODI VISTA SETTIMANALE ===
 
   getWeeklyCellClass(date: Date, userId: number, timeSlot: string): string {
