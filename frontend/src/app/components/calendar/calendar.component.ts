@@ -675,9 +675,11 @@ export class CalendarComponent implements OnInit {
   }
 
   getAppointmentDuration(appointment: Appointment): number {
-    const startIndex = this.timeSlotList.indexOf(appointment.startTime);
-    const endIndex = this.timeSlotList.indexOf(appointment.endTime);
-    return endIndex - startIndex;
+    // Ritorna la durata in numero di slot attuali
+    const startMinutes = this.timeToMinutes(appointment.startTime);
+    const endMinutes = this.timeToMinutes(appointment.endTime);
+    const durationMinutes = endMinutes - startMinutes;
+    return Math.ceil(durationMinutes / this.slotDuration);
   }
 
   findAppointmentById(id: number): Appointment | null {
@@ -833,24 +835,24 @@ export class CalendarComponent implements OnInit {
       return false;
     }
 
-    const startIndex = this.timeSlotList.indexOf(this.dragState.startSlot);
-    const endIndex = this.timeSlotList.indexOf(this.dragState.endSlot);
-    const currentIndex = this.timeSlotList.indexOf(timeSlot);
+    const slotMinutes = this.timeToMinutes(timeSlot);
+    const startMinutes = this.timeToMinutes(this.dragState.startSlot);
+    const endMinutes = this.timeToMinutes(this.dragState.endSlot);
 
-    const minIndex = Math.min(startIndex, endIndex);
-    const maxIndex = Math.max(startIndex, endIndex);
+    const minMinutes = Math.min(startMinutes, endMinutes);
+    const maxMinutes = Math.max(startMinutes, endMinutes);
 
     if (this.dragState.dragType === 'move' && this.dragState.originalStartTime && this.dragState.originalEndTime) {
       // Per il move, mostra il nuovo range basato sulla durata originale
-      const duration = this.getAppointmentDuration({
-        startTime: this.dragState.originalStartTime,
-        endTime: this.dragState.originalEndTime
-      } as Appointment);
+      const originalStartMinutes = this.timeToMinutes(this.dragState.originalStartTime);
+      const originalEndMinutes = this.timeToMinutes(this.dragState.originalEndTime);
+      const durationMinutes = originalEndMinutes - originalStartMinutes;
 
-      return currentIndex >= minIndex && currentIndex < minIndex + duration;
+      const newEndMinutes = minMinutes + durationMinutes;
+      return slotMinutes >= minMinutes && slotMinutes < newEndMinutes;
     }
 
-    return currentIndex >= minIndex && currentIndex <= maxIndex;
+    return slotMinutes >= minMinutes && slotMinutes <= maxMinutes;
   }
 
   getCellStyle(userId: number | null, timeSlot: string): any {
