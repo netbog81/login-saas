@@ -568,14 +568,21 @@ export class CalendarComponent implements OnInit {
         };
         event.preventDefault();
       } else if (isSingleCell && isFirstCell) {
-        // Per appuntamenti di una cella, permettiamo sia move che resize
-        // Iniziamo con 'move' e decidiamo in base al movimento
+        // Per appuntamenti di una cella, distinguiamo tra move e resize
+        // in base alla posizione del click nella cella
+        const target = event.target as HTMLElement;
+        const cellHeight = target.offsetHeight;
+        const clickY = event.offsetY;
+
+        // Se il click è negli ultimi 25% della cella, è un resize
+        const isResizeZone = clickY > (cellHeight * 0.75);
+
         this.dragState = {
           isDragging: true,
-          startSlot: timeSlot,
+          startSlot: isResizeZone ? existingAppointment.startTime : timeSlot,
           endSlot: timeSlot,
           currentUser: userId,
-          dragType: 'move', // Inizia come move, può diventare resize
+          dragType: isResizeZone ? 'resize' : 'move',
           appointmentId: existingAppointment.id,
           originalStartTime: existingAppointment.startTime,
           originalEndTime: existingAppointment.endTime
@@ -1577,13 +1584,20 @@ export class CalendarComponent implements OnInit {
         };
         event.preventDefault();
       } else if (isSingleCell && isFirstCell) {
-        // Per appuntamenti di una cella, permettiamo sia move che resize
+        // Per appuntamenti di una cella, distinguiamo tra move e resize
+        const target = event.target as HTMLElement;
+        const cellHeight = target.offsetHeight;
+        const clickY = event.offsetY;
+
+        // Se il click è negli ultimi 25% della cella, è un resize
+        const isResizeZone = clickY > (cellHeight * 0.75);
+
         this.dragState = {
           isDragging: true,
-          startSlot: timeSlot,
+          startSlot: isResizeZone ? existingAppointment.startTime : timeSlot,
           endSlot: timeSlot,
           currentUser: userId,
-          dragType: 'move', // Inizia come move, può diventare resize
+          dragType: isResizeZone ? 'resize' : 'move',
           appointmentId: existingAppointment.id,
           originalStartTime: existingAppointment.startTime,
           originalEndTime: existingAppointment.endTime
@@ -1785,24 +1799,34 @@ export class CalendarComponent implements OnInit {
   getWeeklyColumnWidth(): number {
     if (typeof window === 'undefined') return 200;
 
-    // Calcola larghezza disponibile (schermo - sidebar - scrollbar - margini)
-    const sidebarWidth = this.sidebarCollapsed ? 64 : 320; // w-16 : w-80
-    const availableWidth = window.innerWidth - sidebarWidth - 80; // 80px per colonna orari + margini
+    // Calcola larghezza disponibile (schermo - sidebar - colonna orari - margini)
+    const sidebarWidth = this.sidebarCollapsed ? 64 : Math.max(200, 320); // min 200px quando aperta
+    const timeColumnWidth = 64; // w-16
+    const margins = 32; // margini e scrollbar
+    const availableWidth = window.innerWidth - sidebarWidth - timeColumnWidth - margins;
 
-    // Calcola larghezza per giorno
+    // Calcola numero totale di colonne (giorni * utenti)
     const numDays = this.weekDays.length;
-    if (numDays === 0) return 200;
-
-    const widthPerDay = availableWidth / numDays;
-
-    // Calcola larghezza per colonna utente
     const numUsers = this.selectedUsers.length;
-    if (numUsers === 0) return 200;
 
-    const columnWidth = widthPerDay / numUsers;
+    if (numDays === 0 || numUsers === 0) return 200;
 
-    // Larghezza minima 80px, massima 400px
-    return Math.max(80, Math.min(400, columnWidth));
+    const totalColumns = numDays * numUsers;
+
+    // Calcola larghezza per colonna
+    let columnWidth = availableWidth / totalColumns;
+
+    // Larghezza minima: 100px per garantire usabilità
+    // Larghezza massima: 300px per non sprecare spazio
+    columnWidth = Math.max(100, Math.min(300, columnWidth));
+
+    // Se la larghezza totale necessaria è maggiore dello schermo, usa la larghezza minima
+    const totalNeededWidth = totalColumns * columnWidth;
+    if (totalNeededWidth > availableWidth) {
+      columnWidth = 100; // usa larghezza minima e permetti scroll
+    }
+
+    return Math.floor(columnWidth);
   }
 
   // Ottiene lo stile inline per la larghezza della colonna
@@ -1811,7 +1835,7 @@ export class CalendarComponent implements OnInit {
     return {
       width: `${width}px`,
       minWidth: `${width}px`,
-      maxWidth: `${width}px`
+      flexShrink: 0
     };
   }
 

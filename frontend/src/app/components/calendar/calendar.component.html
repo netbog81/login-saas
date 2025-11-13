@@ -3,7 +3,7 @@
   <div
     class="bg-white dark:bg-gray-800 shadow-lg border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out relative flex flex-col"
     [ngClass]="{
-      'w-80': !sidebarCollapsed,
+      'w-80 min-w-[200px]': !sidebarCollapsed,
       'w-16': sidebarCollapsed
     }">
     <!-- Toggle sidebar button -->
@@ -53,22 +53,22 @@
           Visualizza giorni
         </label>
         <div class="space-y-2">
-          <label class="flex items-center justify-between cursor-pointer group">
+          <label class="flex items-center justify-between cursor-pointer group" (click)="toggleWeekendDay('saturday')">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Sabato</span>
             <input
               type="checkbox"
-              [(ngModel)]="showSaturday"
-              (ngModelChange)="onWeekendDayToggle()"
+              [checked]="showSaturday"
+              (click)="$event.stopPropagation()"
               class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
                      after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
                      checked:after:translate-x-5">
           </label>
-          <label class="flex items-center justify-between cursor-pointer group">
+          <label class="flex items-center justify-between cursor-pointer group" (click)="toggleWeekendDay('sunday')">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Domenica</span>
             <input
               type="checkbox"
-              [(ngModel)]="showSunday"
-              (ngModelChange)="onWeekendDayToggle()"
+              [checked]="showSunday"
+              (click)="$event.stopPropagation()"
               class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
                      after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
                      checked:after:translate-x-5">
@@ -424,10 +424,10 @@
       <!-- VISTA SETTIMANALE -->
       <div
         *ngIf="selectedUsers.length > 0 && viewMode === 'weekly'"
-        class="h-full overflow-auto"
+        class="h-full overflow-x-auto overflow-y-auto"
         (mouseleave)="dragState.isDragging && resetWeeklyDrag()"
         (mouseup)="weeklyDragDate && handleWeeklyMouseUp(weeklyDragDate)">
-        <div class="flex min-w-fit">
+        <div class="flex" style="width: max-content;">
           <!-- Colonna orari -->
           <div class="w-16 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
             <div class="bg-gray-100 border-b border-gray-200 sticky top-0 z-20 h-16">
