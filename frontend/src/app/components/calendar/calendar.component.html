@@ -31,20 +31,18 @@
 
       <!-- Tema chiaro/scuro -->
       <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-600">
-        <label class="flex items-center justify-between cursor-pointer group">
+        <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-200 flex items-center gap-2">
             <span *ngIf="!darkMode">☀️</span>
             <span *ngIf="darkMode">🌙</span>
             {{ darkMode ? 'Tema Scuro' : 'Tema Chiaro' }}
           </span>
-          <input
-            type="checkbox"
+          <mat-slide-toggle
             [(ngModel)]="darkMode"
-            (ngModelChange)="toggleDarkMode()"
-            class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
-                   after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
-                   checked:after:translate-x-5">
-        </label>
+            (change)="toggleDarkMode()"
+            color="primary">
+          </mat-slide-toggle>
+        </div>
       </div>
 
       <!-- Toggle Sabato/Domenica (solo vista settimanale) -->
@@ -52,27 +50,23 @@
         <label class="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-3">
           Visualizza giorni
         </label>
-        <div class="space-y-2">
-          <label class="flex items-center justify-between cursor-pointer group" (click)="toggleWeekendDay('saturday')">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Sabato</span>
-            <input
-              type="checkbox"
-              [checked]="showSaturday"
-              (click)="$event.stopPropagation()"
-              class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
-                     after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
-                     checked:after:translate-x-5">
-          </label>
-          <label class="flex items-center justify-between cursor-pointer group" (click)="toggleWeekendDay('sunday')">
+            <mat-slide-toggle
+              [(ngModel)]="showSaturday"
+              (change)="onWeekendDayChange()"
+              color="primary">
+            </mat-slide-toggle>
+          </div>
+          <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Domenica</span>
-            <input
-              type="checkbox"
-              [checked]="showSunday"
-              (click)="$event.stopPropagation()"
-              class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
-                     after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
-                     checked:after:translate-x-5">
-          </label>
+            <mat-slide-toggle
+              [(ngModel)]="showSunday"
+              (change)="onWeekendDayChange()"
+              color="primary">
+            </mat-slide-toggle>
+          </div>
         </div>
       </div>
 

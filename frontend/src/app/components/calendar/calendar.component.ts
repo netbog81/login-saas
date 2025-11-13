@@ -205,9 +205,11 @@ export class CalendarComponent implements OnInit {
     this.loadWeekData();
   }
 
-  // Nuovo metodo per gestire il cambio dei toggle
-  onWeekendDayToggle(): void {
+  // Metodo per gestire il cambio dei toggle sabato/domenica
+  onWeekendDayChange(): void {
+    console.log('Toggle changed - Sabato:', this.showSaturday, 'Domenica:', this.showSunday);
     this.calculateWeekDays();
+    console.log('Week days after recalculation:', this.weekDays.length);
     this.loadWeekData();
   }
 
@@ -1791,8 +1793,8 @@ export class CalendarComponent implements OnInit {
   // Determina se mostrare i dettagli nella vista settimanale
   shouldShowWeeklyDetails(): boolean {
     const columnWidth = this.getWeeklyColumnWidth();
-    // Mostra dettagli se larghezza colonna >= 130px
-    return columnWidth >= 130;
+    // Mostra dettagli se larghezza colonna >= 100px (abbassata da 130px per adattarsi alle nuove dimensioni)
+    return columnWidth >= 100;
   }
 
   // Calcola la larghezza della colonna nella vista settimanale (responsive)
@@ -1816,14 +1818,17 @@ export class CalendarComponent implements OnInit {
     // Calcola larghezza per colonna
     let columnWidth = availableWidth / totalColumns;
 
-    // Larghezza minima: 100px per garantire usabilità
+    // Larghezza minima: 45px per garantire usabilità minima
     // Larghezza massima: 300px per non sprecare spazio
-    columnWidth = Math.max(100, Math.min(300, columnWidth));
+    const MIN_WIDTH = 45;
+    const MAX_WIDTH = 300;
+
+    columnWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, columnWidth));
 
     // Se la larghezza totale necessaria è maggiore dello schermo, usa la larghezza minima
     const totalNeededWidth = totalColumns * columnWidth;
     if (totalNeededWidth > availableWidth) {
-      columnWidth = 100; // usa larghezza minima e permetti scroll
+      columnWidth = MIN_WIDTH; // usa larghezza minima e permetti scroll
     }
 
     return Math.floor(columnWidth);
