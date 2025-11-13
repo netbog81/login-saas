@@ -69,6 +69,9 @@ export class CalendarComponent implements OnInit {
   // Sidebar collapsibile
   sidebarCollapsed = false;
 
+  // Tema chiaro/scuro
+  darkMode = false;
+
   dragState: DragState = {
     isDragging: false,
     startSlot: null,
@@ -131,6 +134,26 @@ export class CalendarComponent implements OnInit {
     this.loadUsers();
     this.loadPatients();
     this.calculateWeekDays();
+    this.loadThemePreference();
+  }
+
+  loadThemePreference(): void {
+    const savedTheme = localStorage.getItem('calendar-theme');
+    if (savedTheme === 'dark') {
+      this.darkMode = true;
+      document.documentElement.classList.add('dark');
+    }
+  }
+
+  toggleDarkMode(): void {
+    this.darkMode = !this.darkMode;
+    if (this.darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('calendar-theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('calendar-theme', 'light');
+    }
   }
 
   // === VISTA SETTIMANALE ===
@@ -178,6 +201,12 @@ export class CalendarComponent implements OnInit {
     } else {
       this.showSunday = !this.showSunday;
     }
+    this.calculateWeekDays();
+    this.loadWeekData();
+  }
+
+  // Nuovo metodo per gestire il cambio dei toggle
+  onWeekendDayToggle(): void {
     this.calculateWeekDays();
     this.loadWeekData();
   }
@@ -1747,17 +1776,43 @@ export class CalendarComponent implements OnInit {
 
   // Determina se mostrare i dettagli nella vista settimanale
   shouldShowWeeklyDetails(): boolean {
+    const columnWidth = this.getWeeklyColumnWidth();
     // Mostra dettagli se larghezza colonna >= 130px
-    // w-80 (320px) per 1 utente, w-56 (224px) per 2 utenti
-    return this.selectedUsers.length <= 2;
+    return columnWidth >= 130;
   }
 
-  // Calcola la larghezza della colonna nella vista settimanale
+  // Calcola la larghezza della colonna nella vista settimanale (responsive)
   getWeeklyColumnWidth(): number {
-    if (this.selectedUsers.length === 1) return 320; // w-80
-    if (this.selectedUsers.length === 2) return 224; // w-56
-    if (this.selectedUsers.length === 3) return 128; // w-32
-    return 80; // w-20 per > 3
+    if (typeof window === 'undefined') return 200;
+
+    // Calcola larghezza disponibile (schermo - sidebar - scrollbar - margini)
+    const sidebarWidth = this.sidebarCollapsed ? 64 : 320; // w-16 : w-80
+    const availableWidth = window.innerWidth - sidebarWidth - 80; // 80px per colonna orari + margini
+
+    // Calcola larghezza per giorno
+    const numDays = this.weekDays.length;
+    if (numDays === 0) return 200;
+
+    const widthPerDay = availableWidth / numDays;
+
+    // Calcola larghezza per colonna utente
+    const numUsers = this.selectedUsers.length;
+    if (numUsers === 0) return 200;
+
+    const columnWidth = widthPerDay / numUsers;
+
+    // Larghezza minima 80px, massima 400px
+    return Math.max(80, Math.min(400, columnWidth));
+  }
+
+  // Ottiene lo stile inline per la larghezza della colonna
+  getWeeklyColumnStyle(): any {
+    const width = this.getWeeklyColumnWidth();
+    return {
+      width: `${width}px`,
+      minWidth: `${width}px`,
+      maxWidth: `${width}px`
+    };
   }
 
   // TrackBy functions per ottimizzare performance

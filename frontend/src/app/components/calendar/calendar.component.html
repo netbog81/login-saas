@@ -1,7 +1,7 @@
-<div class="flex h-screen bg-gray-50">
+<div class="flex h-screen bg-gray-50 dark:bg-gray-900">
   <!-- Sidebar -->
   <div
-    class="bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out relative flex flex-col"
+    class="bg-white dark:bg-gray-800 shadow-lg border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out relative flex flex-col"
     [ngClass]="{
       'w-80': !sidebarCollapsed,
       'w-16': sidebarCollapsed
@@ -9,14 +9,14 @@
     <!-- Toggle sidebar button -->
     <button
       (click)="toggleSidebar()"
-      class="absolute top-4 -right-3 z-50 p-2 rounded-full bg-white border-2 border-gray-300 hover:bg-gray-100 transition-colors shadow-md"
+      class="absolute top-4 -right-3 z-50 p-2 rounded-full bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors shadow-md"
       [title]="sidebarCollapsed ? 'Espandi sidebar' : 'Comprimi sidebar'">
       <span *ngIf="!sidebarCollapsed">◀</span>
       <span *ngIf="sidebarCollapsed">▶</span>
     </button>
 
-    <div class="p-6 border-b border-gray-200 flex-shrink-0" [class.hidden]="sidebarCollapsed">
-      <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+    <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0" [class.hidden]="sidebarCollapsed">
+      <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
         📅 Calendario Poliambulatorio
       </h2>
 
@@ -24,36 +24,54 @@
       <div class="mb-4">
         <button
           (click)="toggleViewMode()"
-          class="w-full px-4 py-2 rounded-md font-medium transition-all duration-200 flex items-center justify-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200">
+          class="w-full px-4 py-2 rounded-md font-medium transition-all duration-200 flex items-center justify-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800">
           {{ viewMode === 'daily' ? '📅 Vista Settimanale' : '📆 Vista Giornaliera' }}
         </button>
       </div>
 
+      <!-- Tema chiaro/scuro -->
+      <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-600">
+        <label class="flex items-center justify-between cursor-pointer group">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-200 flex items-center gap-2">
+            <span *ngIf="!darkMode">☀️</span>
+            <span *ngIf="darkMode">🌙</span>
+            {{ darkMode ? 'Tema Scuro' : 'Tema Chiaro' }}
+          </span>
+          <input
+            type="checkbox"
+            [(ngModel)]="darkMode"
+            (ngModelChange)="toggleDarkMode()"
+            class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
+                   after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
+                   checked:after:translate-x-5">
+        </label>
+      </div>
+
       <!-- Toggle Sabato/Domenica (solo vista settimanale) -->
-      <div *ngIf="viewMode === 'weekly'" class="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
-        <label class="block text-xs font-medium text-gray-700 mb-2">
+      <div *ngIf="viewMode === 'weekly'" class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-600">
+        <label class="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-3">
           Visualizza giorni
         </label>
-        <div class="flex items-center gap-4">
-          <label class="flex items-center gap-2 cursor-pointer group">
+        <div class="space-y-2">
+          <label class="flex items-center justify-between cursor-pointer group">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Sabato</span>
             <input
               type="checkbox"
               [(ngModel)]="showSaturday"
-              (change)="toggleWeekendDay('saturday')"
-              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
-            <span class="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
-              Sabato
-            </span>
+              (ngModelChange)="onWeekendDayToggle()"
+              class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
+                     after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
+                     checked:after:translate-x-5">
           </label>
-          <label class="flex items-center gap-2 cursor-pointer group">
+          <label class="flex items-center justify-between cursor-pointer group">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Domenica</span>
             <input
               type="checkbox"
               [(ngModel)]="showSunday"
-              (change)="toggleWeekendDay('sunday')"
-              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
-            <span class="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
-              Domenica
-            </span>
+              (ngModelChange)="onWeekendDayToggle()"
+              class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full peer appearance-none cursor-pointer transition-all duration-300 checked:bg-blue-600 relative
+                     after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all after:duration-300
+                     checked:after:translate-x-5">
           </label>
         </div>
       </div>
@@ -219,26 +237,26 @@
   <!-- Area principale calendario -->
   <div class="flex-1 flex flex-col">
     <!-- Header con navigazione -->
-    <div class="bg-white shadow-sm border-b border-gray-200 p-4">
+    <div class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 p-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
           <button
             (click)="viewMode === 'daily' ? navigateDay(-1) : navigateWeek(-1)"
-            class="p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0">
+            class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
             ◀
           </button>
-          <h3 class="text-lg font-semibold text-gray-800 min-w-[280px] text-center">
+          <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 min-w-[280px] text-center">
             <span *ngIf="viewMode === 'daily'">{{ formatDate(currentDate) }}</span>
             <span *ngIf="viewMode === 'weekly'">{{ getWeekRangeText() }}</span>
           </h3>
           <button
             (click)="viewMode === 'daily' ? navigateDay(1) : navigateWeek(1)"
-            class="p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0">
+            class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
             ▶
           </button>
         </div>
         <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2 text-sm text-gray-600">
+          <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
             🕐 {{ availabilityMode ? 'Modalità modifica disponibilità' : (viewMode === 'daily' ? 'Vista giornaliera' : 'Vista settimanale') }}
           </div>
           <!-- Durata slot (header) -->
@@ -354,7 +372,7 @@
                 (dblclick)="getAppointmentForSlot(userId, timeSlot) && openEditModal(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), getAppointmentForSlot(userId, timeSlot)!)">
 
                 <ng-container *ngIf="getAppointmentForSlot(userId, timeSlot) as appointment">
-                  <div class="flex flex-col justify-start w-full h-full">
+                  <div class="flex flex-col justify-between w-full h-full">
                     <div *ngIf="isFirstSlot(appointment, timeSlot)"
                          class="flex items-center gap-1 text-xs font-semibold cursor-move"
                          style="color: #1a5b1a; text-shadow: 0 0 2px rgba(255,255,255,0.8);">
@@ -384,7 +402,12 @@
                       </div>
                     </div>
 
-                    <!-- Indicatore ultima cella rimosso: bordo gestito da getCellStyle() -->
+                    <!-- Barra di resize nell'ultima cella -->
+                    <div *ngIf="isLastSlot(appointment, timeSlot)"
+                         class="w-full h-1 bg-transparent hover:bg-blue-500 cursor-ns-resize transition-all duration-200 resize-handle"
+                         (mousedown)="$event.stopPropagation()"
+                         title="Trascina per ridimensionare">
+                    </div>
                   </div>
                 </ng-container>
 
@@ -435,12 +458,7 @@
               <div class="flex border-t border-gray-200">
                 <div
                   *ngFor="let userId of selectedUsers; trackBy: trackByUserId"
-                  [ngClass]="{
-                    'w-80': selectedUsers.length === 1,
-                    'w-56': selectedUsers.length === 2,
-                    'w-32': selectedUsers.length === 3,
-                    'w-20': selectedUsers.length > 3
-                  }"
+                  [ngStyle]="getWeeklyColumnStyle()"
                   class="border-r border-gray-100 bg-gray-50">
                   <div class="text-center py-1">
                     <div class="text-xs font-semibold text-gray-700 truncate px-1">
@@ -457,13 +475,8 @@
             <!-- Colonne operatori per questo giorno -->
             <div class="flex">
               <div
-                *ngFor="let userId of selectedUsers"
-                [ngClass]="{
-                  'w-80': selectedUsers.length === 1,
-                  'w-56': selectedUsers.length === 2,
-                  'w-32': selectedUsers.length === 3,
-                  'w-20': selectedUsers.length > 3
-                }"
+                *ngFor="let userId of selectedUsers; trackBy: trackByUserId"
+                [ngStyle]="getWeeklyColumnStyle()"
                 class="border-r border-gray-100">
                 <!-- Celle tempo -->
                 <div class="select-none">
