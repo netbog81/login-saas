@@ -1,8 +1,15 @@
 // Rileva automaticamente l'URL del backend
 // Gestisce localhost, LAN e domini personalizzati (Traefik)
 function getApiUrl(): string {
+  const w = window as any;
   const hostname = window.location.hostname;
   const protocol = window.location.protocol; // http: o https:
+
+  // Override manuale (puoi impostarlo da index.html con window.__API_URL__)
+  if (w && typeof w.__API_URL__ === 'string' && w.__API_URL__) {
+    console.log('✅ Using forced API URL from window.__API_URL__:', w.__API_URL__);
+    return w.__API_URL__;
+  }
 
   console.log('🔍 Frontend hostname detected:', hostname);
   console.log('🔍 Frontend protocol:', protocol);
@@ -23,7 +30,11 @@ function getApiUrl(): string {
 
   // 3. Dominio personalizzato (es: agenda.curandis.cloud via Traefik)
   // Trasforma agenda.curandis.cloud → apiagenda.curandis.cloud
-  const apiDomain = hostname.replace(/^([^.]+)\./, 'api$1.');
+  // Protezione: se l'app fosse servita per errore su un dominio già prefissato con "api",
+  // evita duplicazioni tipo apiapiagenda.curandis.cloud
+  const apiDomain = /^api/.test(hostname)
+    ? hostname
+    : hostname.replace(/^([^.]+)\./, 'api$1.');
   const apiUrl = `${protocol}//${apiDomain}`;
   console.log('✅ Using domain backend:', apiUrl);
   console.log('⚠️  Assicurati che DNS e Traefik siano configurati per:', apiDomain);
