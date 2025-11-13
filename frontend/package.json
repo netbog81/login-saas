@@ -5,6 +5,7 @@
     "ng": "ng",
     "start": "ng serve",
     "start:lan": "ng serve --host 0.0.0.0 --disable-host-check",
+    "start:lan:nohmr": "ng serve --host 0.0.0.0 --disable-host-check --live-reload=false",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
