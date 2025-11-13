@@ -52,6 +52,8 @@ export class CalendarComponent implements OnInit {
   // Vista settimanale
   viewMode: 'daily' | 'weekly' = 'daily';
   weekDays: Date[] = [];
+  showSaturday = true;  // Toggle per mostrare/nascondere sabato
+  showSunday = true;    // Toggle per mostrare/nascondere domenica
   hoveredAppointment: { userId: number; appointmentId: number; date: string } | null = null;
   hoverTimeout: any = null;
 
@@ -144,6 +146,12 @@ export class CalendarComponent implements OnInit {
     for (let i = 0; i < 7; i++) {
       const date = new Date(monday);
       date.setDate(monday.getDate() + i);
+
+      const dayOfWeek = date.getDay();
+      // Filtra sabato (6) e domenica (0) in base ai toggle
+      if (dayOfWeek === 6 && !this.showSaturday) continue;
+      if (dayOfWeek === 0 && !this.showSunday) continue;
+
       this.weekDays.push(date);
     }
   }
@@ -155,11 +163,21 @@ export class CalendarComponent implements OnInit {
     this.loadWeekData();
   }
 
+  toggleWeekendDay(day: 'saturday' | 'sunday'): void {
+    if (day === 'saturday') {
+      this.showSaturday = !this.showSaturday;
+    } else {
+      this.showSunday = !this.showSunday;
+    }
+    this.calculateWeekDays();
+    this.loadWeekData();
+  }
+
   loadWeekData(): void {
     if (this.weekDays.length === 0) return;
 
     const startDate = this.formatDateISO(this.weekDays[0]);
-    const endDate = this.formatDateISO(this.weekDays[6]);
+    const endDate = this.formatDateISO(this.weekDays[this.weekDays.length - 1]);
 
     // Load appointments per range
     this.apiService.getAppointmentsByDateRange(startDate, endDate).subscribe({

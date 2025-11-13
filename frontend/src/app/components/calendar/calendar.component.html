@@ -177,6 +177,30 @@
               30min
             </button>
           </div>
+
+          <!-- Toggle Sabato/Domenica (solo vista settimanale) -->
+          <div *ngIf="viewMode === 'weekly'" class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 cursor-pointer group">
+              <input
+                type="checkbox"
+                [(ngModel)]="showSaturday"
+                (change)="toggleWeekendDay('saturday')"
+                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
+              <span class="text-xs font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
+                Sab
+              </span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer group">
+              <input
+                type="checkbox"
+                [(ngModel)]="showSunday"
+                (change)="toggleWeekendDay('sunday')"
+                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
+              <span class="text-xs font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
+                Dom
+              </span>
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -323,8 +347,10 @@
                 <div
                   *ngFor="let userId of selectedUsers"
                   [ngClass]="{
-                    'w-12': selectedUsers.length > 3,
-                    'w-20': selectedUsers.length <= 3
+                    'w-80': selectedUsers.length === 1,
+                    'w-56': selectedUsers.length === 2,
+                    'w-32': selectedUsers.length === 3,
+                    'w-20': selectedUsers.length > 3
                   }"
                   class="border-r border-gray-100 bg-gray-50">
                   <div class="text-center py-1">
@@ -344,8 +370,10 @@
               <div
                 *ngFor="let userId of selectedUsers"
                 [ngClass]="{
-                  'w-12': selectedUsers.length > 3,
-                  'w-20': selectedUsers.length <= 3
+                  'w-80': selectedUsers.length === 1,
+                  'w-56': selectedUsers.length === 2,
+                  'w-32': selectedUsers.length === 3,
+                  'w-20': selectedUsers.length > 3
                 }"
                 class="border-r border-gray-100">
                 <!-- Celle tempo -->
