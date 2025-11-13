@@ -39,8 +39,9 @@ interface MoveConfirmation {
   styleUrls: ['./calendar.component.scss']
 })
 export class CalendarComponent implements OnInit {
-  // Espone Math al template
+  // Espone Math e window al template
   Math = Math;
+  window = window;
 
   users: User[] = [];
   selectedUsers: number[] = [];
@@ -54,7 +55,7 @@ export class CalendarComponent implements OnInit {
   weekDays: Date[] = [];
   showSaturday = true;  // Toggle per mostrare/nascondere sabato
   showSunday = true;    // Toggle per mostrare/nascondere domenica
-  hoveredAppointment: { userId: number; appointmentId: number; date: string } | null = null;
+  hoveredAppointment: { userId: number; appointmentId: number; date: string; x: number; y: number } | null = null;
   hoverTimeout: any = null;
 
   // Durata slot variabile
@@ -238,10 +239,12 @@ export class CalendarComponent implements OnInit {
   }
 
   // Hover con delay di 1 secondo
-  handleAppointmentHover(userId: number, appointmentId: number, date: string, enter: boolean): void {
+  handleAppointmentHover(userId: number, appointmentId: number, date: string, enter: boolean, event?: MouseEvent): void {
     if (enter) {
       this.hoverTimeout = setTimeout(() => {
-        this.hoveredAppointment = { userId, appointmentId, date };
+        const x = event?.clientX || 0;
+        const y = event?.clientY || 0;
+        this.hoveredAppointment = { userId, appointmentId, date, x, y };
       }, 1000);
     } else {
       if (this.hoverTimeout) {
@@ -1096,7 +1099,7 @@ export class CalendarComponent implements OnInit {
         } else {
           // Non è il primo slot, applica colore pieno
           baseStyle.backgroundColor = color;
-          baseStyle.opacity = 0.7;
+          baseStyle.opacity = 0.85;
         }
 
         // Bordo inferiore più spesso per evidenziare la fine
@@ -1481,12 +1484,12 @@ export class CalendarComponent implements OnInit {
     return baseStyle;
   }
 
-  handleWeeklyHover(date: Date, userId: number, timeSlot: string, enter: boolean): void {
+  handleWeeklyHover(date: Date, userId: number, timeSlot: string, enter: boolean, event?: MouseEvent): void {
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
 
     if (appointment && enter) {
       const dateStr = this.formatDateISO(date);
-      this.handleAppointmentHover(userId, appointment.id, dateStr, true);
+      this.handleAppointmentHover(userId, appointment.id, dateStr, true, event);
     } else if (!enter) {
       this.handleAppointmentHover(0, 0, '', false);
     }
@@ -1740,5 +1743,33 @@ export class CalendarComponent implements OnInit {
       const dateStr = this.formatDateISO(date);
       this.openEditModal(userId, appointment.id, dateStr, appointment);
     }
+  }
+
+  // Determina se mostrare i dettagli nella vista settimanale
+  shouldShowWeeklyDetails(): boolean {
+    // Mostra dettagli se larghezza colonna >= 130px
+    // w-80 (320px) per 1 utente, w-56 (224px) per 2 utenti
+    return this.selectedUsers.length <= 2;
+  }
+
+  // Calcola la larghezza della colonna nella vista settimanale
+  getWeeklyColumnWidth(): number {
+    if (this.selectedUsers.length === 1) return 320; // w-80
+    if (this.selectedUsers.length === 2) return 224; // w-56
+    if (this.selectedUsers.length === 3) return 128; // w-32
+    return 80; // w-20 per > 3
+  }
+
+  // TrackBy functions per ottimizzare performance
+  trackByUserId(index: number, item: any): number {
+    return item.id || item;
+  }
+
+  trackByIndex(index: number): number {
+    return index;
+  }
+
+  trackByDate(index: number, date: Date): string {
+    return date.toISOString();
   }
 }

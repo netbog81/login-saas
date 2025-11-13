@@ -42,6 +42,22 @@
   animation: pulse-border 1s ease-in-out infinite;
 }
 
+// Animazione fade-in per tooltip
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
 // Stili per il modale
 .max-h-\[90vh\] {
   max-height: 90vh;
@@ -56,42 +72,57 @@ input, select, textarea {
   }
 }
 
-// Scrollbar personalizzata per le liste
-.overflow-y-auto::-webkit-scrollbar {
-  width: 6px;
+// Scrollbar personalizzata per le liste e aree scrollabili
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-auto::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.overflow-y-auto::-webkit-scrollbar-track {
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-auto::-webkit-scrollbar-track {
   background: #f1f1f1;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
-.overflow-y-auto::-webkit-scrollbar-thumb {
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-auto::-webkit-scrollbar-thumb {
   background: #888;
-  border-radius: 3px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
 
   &:hover {
     background: #555;
   }
 }
 
-// Transizioni smooth
+// Scrollbar corner per scroll bidimensionale
+.overflow-auto::-webkit-scrollbar-corner {
+  background: #f1f1f1;
+}
+
+// Transizioni smooth e fluide
 .transition-colors {
   transition-property: color, background-color, border-color;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+  transition-duration: 200ms;
 }
 
 .transition-all {
   transition-property: all;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+  transition-duration: 200ms;
 }
 
 .transition-opacity {
   transition-property: opacity;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+  transition-duration: 200ms;
+}
+
+// Transizioni per gli hover più fluide
+*:hover {
+  transition: all 0.2s ease-in-out;
 }
 
 // Utilità per il sticky positioning
