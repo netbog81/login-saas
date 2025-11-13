@@ -146,7 +146,7 @@ export class CalendarComponent implements OnInit {
   }
 
   toggleDarkMode(): void {
-    this.darkMode = !this.darkMode;
+    // Non invertire this.darkMode perché è già stato aggiornato da [(ngModel)]
     if (this.darkMode) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('calendar-theme', 'dark');
@@ -174,7 +174,7 @@ export class CalendarComponent implements OnInit {
     const diff = current.getDate() - day + (day === 0 ? -6 : 1); // Lunedì
     const monday = new Date(current.setDate(diff));
 
-    this.weekDays = [];
+    const newWeekDays: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(monday);
       date.setDate(monday.getDate() + i);
@@ -184,8 +184,10 @@ export class CalendarComponent implements OnInit {
       if (dayOfWeek === 6 && !this.showSaturday) continue;
       if (dayOfWeek === 0 && !this.showSunday) continue;
 
-      this.weekDays.push(date);
+      newWeekDays.push(date);
     }
+    // Crea un nuovo array per triggerare change detection
+    this.weekDays = [...newWeekDays];
   }
 
   navigateWeek(direction: number): void {
@@ -571,13 +573,14 @@ export class CalendarComponent implements OnInit {
         event.preventDefault();
       } else if (isSingleCell && isFirstCell) {
         // Per appuntamenti di una cella, distinguiamo tra move e resize
-        // in base alla posizione del click nella cella
-        const target = event.target as HTMLElement;
-        const cellHeight = target.offsetHeight;
-        const clickY = event.offsetY;
+        // in base alla posizione del click nella cella (usa coordinate assolute)
+        const target = event.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        const clickY = event.clientY - rect.top;
+        const cellHeight = rect.height;
 
-        // Se il click è negli ultimi 25% della cella, è un resize
-        const isResizeZone = clickY > (cellHeight * 0.75);
+        // Se il click è negli ultimi 30% della cella, è un resize
+        const isResizeZone = clickY > (cellHeight * 0.7);
 
         this.dragState = {
           isDragging: true,
@@ -1587,12 +1590,14 @@ export class CalendarComponent implements OnInit {
         event.preventDefault();
       } else if (isSingleCell && isFirstCell) {
         // Per appuntamenti di una cella, distinguiamo tra move e resize
-        const target = event.target as HTMLElement;
-        const cellHeight = target.offsetHeight;
-        const clickY = event.offsetY;
+        // in base alla posizione del click nella cella (usa coordinate assolute)
+        const target = event.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        const clickY = event.clientY - rect.top;
+        const cellHeight = rect.height;
 
-        // Se il click è negli ultimi 25% della cella, è un resize
-        const isResizeZone = clickY > (cellHeight * 0.75);
+        // Se il click è negli ultimi 30% della cella, è un resize
+        const isResizeZone = clickY > (cellHeight * 0.7);
 
         this.dragState = {
           isDragging: true,
