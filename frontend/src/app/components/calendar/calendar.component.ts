@@ -58,7 +58,15 @@ export class CalendarComponent implements OnInit {
   hoverTimeout: any = null;
 
   // Durata slot variabile
-  slotDuration: 5 | 15 | 30 = 5; // minuti
+  slotDuration: 5 | 10 | 15 | 20 | 30 = 5; // minuti
+
+  // Filtro orario di lavoro
+  showWorkingHoursOnly = false;
+  workingHoursStart = '08:00';
+  workingHoursEnd = '20:00';
+
+  // Sidebar collapsibile
+  sidebarCollapsed = false;
 
   dragState: DragState = {
     isDragging: false,
@@ -269,7 +277,7 @@ export class CalendarComponent implements OnInit {
     }
   }
 
-  changeSlotDuration(duration: 5 | 15 | 30): void {
+  changeSlotDuration(duration: 5 | 10 | 15 | 20 | 30): void {
     this.slotDuration = duration;
     this.generateTimeSlots();
     if (this.viewMode === 'weekly') {
@@ -277,6 +285,24 @@ export class CalendarComponent implements OnInit {
     } else {
       this.loadAppointmentsAndAvailabilities();
     }
+  }
+
+  toggleSidebar(): void {
+    this.sidebarCollapsed = !this.sidebarCollapsed;
+  }
+
+  get filteredTimeSlots(): string[] {
+    if (!this.showWorkingHoursOnly) {
+      return this.timeSlotList;
+    }
+
+    const startMinutes = this.timeToMinutes(this.workingHoursStart);
+    const endMinutes = this.timeToMinutes(this.workingHoursEnd);
+
+    return this.timeSlotList.filter(slot => {
+      const slotMinutes = this.timeToMinutes(slot);
+      return slotMinutes >= startMinutes && slotMinutes < endMinutes;
+    });
   }
 
   loadUsers(): void {
@@ -986,6 +1012,38 @@ export class CalendarComponent implements OnInit {
     return slotMinutes >= minMinutes && slotMinutes <= maxMinutes;
   }
 
+  isSlotInWeeklyDragRange(date: Date, userId: number, timeSlot: string): boolean {
+    if (!this.dragState.isDragging || this.dragState.currentUser !== userId) {
+      return false;
+    }
+
+    if (!this.weeklyDragDate || this.formatDateISO(date) !== this.formatDateISO(this.weeklyDragDate)) {
+      return false;
+    }
+
+    if (!this.dragState.startSlot || !this.dragState.endSlot) {
+      return false;
+    }
+
+    const slotMinutes = this.timeToMinutes(timeSlot);
+    const startMinutes = this.timeToMinutes(this.dragState.startSlot);
+    const endMinutes = this.timeToMinutes(this.dragState.endSlot);
+
+    const minMinutes = Math.min(startMinutes, endMinutes);
+    const maxMinutes = Math.max(startMinutes, endMinutes);
+
+    if (this.dragState.dragType === 'move' && this.dragState.originalStartTime && this.dragState.originalEndTime) {
+      const originalStartMinutes = this.timeToMinutes(this.dragState.originalStartTime);
+      const originalEndMinutes = this.timeToMinutes(this.dragState.originalEndTime);
+      const durationMinutes = originalEndMinutes - originalStartMinutes;
+
+      const newEndMinutes = minMinutes + durationMinutes;
+      return slotMinutes >= minMinutes && slotMinutes < newEndMinutes;
+    }
+
+    return slotMinutes >= minMinutes && slotMinutes <= maxMinutes;
+  }
+
   getCellStyle(userId: number | null, timeSlot: string, date?: Date): any {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
     const baseStyle: any = {
@@ -1164,18 +1222,42 @@ export class CalendarComponent implements OnInit {
         phone: this.editingDetails.clientPhone
       };
 
-      // Per semplicità, qui creiamo sempre un nuovo paziente
-      // In produzione, dovresti cercare prima se esiste
-      this.apiService.createPatient(patientData).subscribe({
-        next: (patient) => {
-          appointmentData.patientId = patient.id;
-          this.saveOrUpdateAppointment(appointmentId, appointmentData);
-        },
-        error: (err) => {
-          console.error('Error creating patient:', err);
-          this.saveOrUpdateAppointment(appointmentId, appointmentData);
+      // Cerca prima se il paziente esiste già
+      const existingPatient = this.patients.find(p =>
+        p.name.toLowerCase() === this.editingDetails.clientName.toLowerCase() &&
+        p.surname.toLowerCase() === this.editingDetails.clientSurname.toLowerCase()
+      );
+
+      if (existingPatient) {
+        // Usa il paziente esistente
+        appointmentData.patientId = existingPatient.id;
+
+        // Aggiorna il telefono se diverso
+        if (this.editingDetails.clientPhone && this.editingDetails.clientPhone !== existingPatient.phone) {
+          this.apiService.updatePatient(existingPatient.id, { phone: this.editingDetails.clientPhone }).subscribe({
+            next: () => {
+              console.log('Patient phone updated');
+              this.loadPatients(); // Ricarica la lista pazienti
+            },
+            error: (err) => console.error('Error updating patient:', err)
+          });
         }
-      });
+
+        this.saveOrUpdateAppointment(appointmentId, appointmentData);
+      } else {
+        // Crea un nuovo paziente solo se non esiste
+        this.apiService.createPatient(patientData).subscribe({
+          next: (patient) => {
+            appointmentData.patientId = patient.id;
+            this.loadPatients(); // Ricarica la lista pazienti dopo la creazione
+            this.saveOrUpdateAppointment(appointmentId, appointmentData);
+          },
+          error: (err) => {
+            console.error('Error creating patient:', err);
+            this.saveOrUpdateAppointment(appointmentId, appointmentData);
+          }
+        });
+      }
     } else {
       this.saveOrUpdateAppointment(appointmentId, appointmentData);
     }
@@ -1315,17 +1397,64 @@ export class CalendarComponent implements OnInit {
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
     const dateStr = this.formatDateISO(date);
     const isAvailable = this.isSlotAvailable(userId, dateStr, timeSlot);
+    const isTempAppointment = this.tempAppointment &&
+      this.tempAppointment.userId === userId &&
+      appointment &&
+      appointment.id === this.tempAppointment.appointment.id;
+    const isInDragRange = this.isSlotInWeeklyDragRange(date, userId, timeSlot);
 
     // Il colore di sfondo è gestito da getWeeklyCellStyle()
-    if (appointment) {
+    if (appointment && !isTempAppointment) {
       // Slot occupato da appuntamento
-      return 'border-gray-200';
+      let className = 'border-gray-200';
+
+      // Visual feedback per resize
+      if (this.dragState.isDragging &&
+          this.dragState.dragType === 'resize' &&
+          this.dragState.appointmentId === appointment.id) {
+
+        const originalEndMinutes = this.timeToMinutes(this.dragState.originalEndTime!);
+        const currentEndMinutes = this.timeToMinutes(this.dragState.endSlot!);
+        const slotMinutes = this.timeToMinutes(timeSlot);
+
+        if (currentEndMinutes < originalEndMinutes && slotMinutes >= currentEndMinutes) {
+          className += ' opacity-50';
+        } else if (currentEndMinutes > originalEndMinutes && slotMinutes >= originalEndMinutes && slotMinutes < currentEndMinutes + this.slotDuration) {
+          className += ' ring-2 ring-blue-400';
+        }
+      }
+
+      return className;
+    } else if (appointment && isTempAppointment) {
+      return 'bg-yellow-100 border-yellow-200';
+    } else if (isInDragRange) {
+      if (this.dragState.dragType === 'move') {
+        return 'bg-blue-300 ring-2 ring-blue-500';
+      } else if (this.dragState.dragType === 'resize') {
+        return 'bg-green-300';
+      } else if (this.availabilityMode) {
+        if (isAvailable) {
+          return 'bg-red-200';
+        } else {
+          return 'bg-green-200';
+        }
+      } else {
+        return 'bg-red-200';
+      }
     } else if (!isAvailable) {
       // Slot non disponibile
-      return 'bg-gray-300';
+      if (this.availabilityMode) {
+        return 'bg-red-50';
+      } else {
+        return 'bg-gray-300';
+      }
     } else {
       // Slot libero
-      return '';
+      if (this.availabilityMode) {
+        return 'bg-green-50 hover:bg-green-100';
+      } else {
+        return 'hover:bg-gray-50';
+      }
     }
   }
 

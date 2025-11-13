@@ -1,7 +1,21 @@
 <div class="flex h-screen bg-gray-50">
   <!-- Sidebar -->
-  <div class="w-80 bg-white shadow-lg border-r border-gray-200">
-    <div class="p-6 border-b border-gray-200">
+  <div
+    class="bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out relative"
+    [ngClass]="{
+      'w-80': !sidebarCollapsed,
+      'w-16': sidebarCollapsed
+    }">
+    <!-- Toggle sidebar button -->
+    <button
+      (click)="toggleSidebar()"
+      class="absolute top-4 right-2 z-50 p-2 rounded-full hover:bg-gray-100 transition-colors"
+      [title]="sidebarCollapsed ? 'Espandi sidebar' : 'Comprimi sidebar'">
+      <span *ngIf="!sidebarCollapsed">◀</span>
+      <span *ngIf="sidebarCollapsed">▶</span>
+    </button>
+
+    <div class="p-6 border-b border-gray-200" [class.hidden]="sidebarCollapsed">
       <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
         📅 Calendario Poliambulatorio
       </h2>
@@ -61,10 +75,10 @@
         <label class="block text-sm font-medium text-gray-700 mb-2">
           Durata slot: {{ slotDuration }} minuti
         </label>
-        <div class="flex gap-2">
+        <div class="grid grid-cols-5 gap-1">
           <button
             (click)="changeSlotDuration(5)"
-            class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            class="px-2 py-2 rounded-md text-xs font-medium transition-colors"
             [ngClass]="{
               'bg-blue-600 text-white': slotDuration === 5,
               'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 5
@@ -72,8 +86,17 @@
             5'
           </button>
           <button
+            (click)="changeSlotDuration(10)"
+            class="px-2 py-2 rounded-md text-xs font-medium transition-colors"
+            [ngClass]="{
+              'bg-blue-600 text-white': slotDuration === 10,
+              'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 10
+            }">
+            10'
+          </button>
+          <button
             (click)="changeSlotDuration(15)"
-            class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            class="px-2 py-2 rounded-md text-xs font-medium transition-colors"
             [ngClass]="{
               'bg-blue-600 text-white': slotDuration === 15,
               'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 15
@@ -81,14 +104,52 @@
             15'
           </button>
           <button
+            (click)="changeSlotDuration(20)"
+            class="px-2 py-2 rounded-md text-xs font-medium transition-colors"
+            [ngClass]="{
+              'bg-blue-600 text-white': slotDuration === 20,
+              'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 20
+            }">
+            20'
+          </button>
+          <button
             (click)="changeSlotDuration(30)"
-            class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            class="px-2 py-2 rounded-md text-xs font-medium transition-colors"
             [ngClass]="{
               'bg-blue-600 text-white': slotDuration === 30,
               'bg-gray-100 text-gray-700 hover:bg-gray-200': slotDuration !== 30
             }">
             30'
           </button>
+        </div>
+      </div>
+
+      <!-- Orario di lavoro -->
+      <div class="mb-6">
+        <label class="flex items-center justify-between mb-3 cursor-pointer group">
+          <span class="text-sm font-medium text-gray-700">Orario di lavoro</span>
+          <input
+            type="checkbox"
+            [(ngModel)]="showWorkingHoursOnly"
+            class="w-11 h-6 bg-gray-200 rounded-full peer appearance-none cursor-pointer transition-colors checked:bg-blue-600 relative
+                   after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
+                   checked:after:translate-x-5">
+        </label>
+        <div *ngIf="showWorkingHoursOnly" class="space-y-2">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-600 w-12">Dalle</label>
+            <input
+              type="time"
+              [(ngModel)]="workingHoursStart"
+              class="flex-1 px-2 py-1 border border-gray-300 rounded-md text-sm">
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-600 w-12">Alle</label>
+            <input
+              type="time"
+              [(ngModel)]="workingHoursEnd"
+              class="flex-1 px-2 py-1 border border-gray-300 rounded-md text-sm">
+          </div>
         </div>
       </div>
 
@@ -130,16 +191,16 @@
         <div class="flex items-center gap-4">
           <button
             (click)="viewMode === 'daily' ? navigateDay(-1) : navigateWeek(-1)"
-            class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            class="p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0">
             ◀
           </button>
-          <h3 class="text-lg font-semibold text-gray-800">
+          <h3 class="text-lg font-semibold text-gray-800 min-w-[280px] text-center">
             <span *ngIf="viewMode === 'daily'">{{ formatDate(currentDate) }}</span>
             <span *ngIf="viewMode === 'weekly'">{{ getWeekRangeText() }}</span>
           </h3>
           <button
             (click)="viewMode === 'daily' ? navigateDay(1) : navigateWeek(1)"
-            class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            class="p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0">
             ▶
           </button>
         </div>
@@ -148,33 +209,51 @@
             🕐 {{ availabilityMode ? 'Modalità modifica disponibilità' : (viewMode === 'daily' ? 'Vista giornaliera' : 'Vista settimanale') }}
           </div>
           <!-- Durata slot (header) -->
-          <div class="flex items-center gap-1 border border-gray-300 rounded-md overflow-hidden">
+          <div class="flex items-center gap-0.5 border border-gray-300 rounded-md overflow-hidden">
             <button
               (click)="changeSlotDuration(5)"
-              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              class="px-2 py-1.5 text-xs font-medium transition-colors"
               [ngClass]="{
                 'bg-blue-600 text-white': slotDuration === 5,
                 'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 5
               }">
-              5min
+              5'
+            </button>
+            <button
+              (click)="changeSlotDuration(10)"
+              class="px-2 py-1.5 text-xs font-medium transition-colors border-l border-gray-300"
+              [ngClass]="{
+                'bg-blue-600 text-white': slotDuration === 10,
+                'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 10
+              }">
+              10'
             </button>
             <button
               (click)="changeSlotDuration(15)"
-              class="px-3 py-1.5 text-xs font-medium transition-colors border-l border-r border-gray-300"
+              class="px-2 py-1.5 text-xs font-medium transition-colors border-l border-gray-300"
               [ngClass]="{
                 'bg-blue-600 text-white': slotDuration === 15,
                 'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 15
               }">
-              15min
+              15'
+            </button>
+            <button
+              (click)="changeSlotDuration(20)"
+              class="px-2 py-1.5 text-xs font-medium transition-colors border-l border-gray-300"
+              [ngClass]="{
+                'bg-blue-600 text-white': slotDuration === 20,
+                'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 20
+              }">
+              20'
             </button>
             <button
               (click)="changeSlotDuration(30)"
-              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              class="px-2 py-1.5 text-xs font-medium transition-colors border-l border-gray-300"
               [ngClass]="{
                 'bg-blue-600 text-white': slotDuration === 30,
                 'bg-white text-gray-700 hover:bg-gray-50': slotDuration !== 30
               }">
-              30min
+              30'
             </button>
           </div>
 
@@ -227,7 +306,7 @@
               <span class="text-xs font-medium text-gray-600">Orario</span>
             </div>
             <div
-              *ngFor="let time of timeSlotList; let index = index"
+              *ngFor="let time of filteredTimeSlots; let index = index"
               class="border-b border-gray-100 flex items-start justify-center text-xs text-gray-600 pt-0.5"
               [ngClass]="{
                 'bg-gray-100 font-medium': index % (60 / slotDuration) === 0,
@@ -257,7 +336,7 @@
             <!-- Celle tempo -->
             <div class="select-none">
               <div
-                *ngFor="let timeSlot of timeSlotList"
+                *ngFor="let timeSlot of filteredTimeSlots"
                 [ngClass]="getCellClass(userId, timeSlot)"
                 [ngStyle]="getCellStyle(userId, timeSlot)"
                 (mousedown)="handleMouseDown(userId, timeSlot, $event)"
@@ -322,7 +401,7 @@
               <div class="text-xs font-medium text-gray-600 text-center pt-2">Orario</div>
             </div>
             <div
-              *ngFor="let time of timeSlotList; let index = index"
+              *ngFor="let time of filteredTimeSlots; let index = index"
               class="border-b border-gray-100 flex items-start justify-center text-xs text-gray-600 pt-0.5"
               [ngClass]="{
                 'bg-gray-100 font-medium': index % (60 / slotDuration) === 0,
@@ -379,7 +458,7 @@
                 <!-- Celle tempo -->
                 <div class="select-none">
                   <div
-                    *ngFor="let timeSlot of timeSlotList"
+                    *ngFor="let timeSlot of filteredTimeSlots"
                     class="border-b border-gray-100 cursor-pointer transition-colors relative"
                     [ngStyle]="getWeeklyCellStyle(day, userId, timeSlot)"
                     [ngClass]="getWeeklyCellClass(day, userId, timeSlot)"
