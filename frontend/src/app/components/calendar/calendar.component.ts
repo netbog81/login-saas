@@ -148,13 +148,16 @@ export class CalendarComponent implements OnInit {
   }
 
   toggleDarkMode(): void {
+    console.log('🌙 toggleDarkMode called, darkMode =', this.darkMode);
     // Non invertire this.darkMode perché è già stato aggiornato da [(ngModel)]
     if (this.darkMode) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('calendar-theme', 'dark');
+      console.log('✅ Dark mode ATTIVATO');
     } else {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('calendar-theme', 'light');
+      console.log('✅ Light mode ATTIVATO');
     }
   }
 
@@ -211,10 +214,13 @@ export class CalendarComponent implements OnInit {
 
   // Metodo per gestire il cambio dei toggle sabato/domenica
   onWeekendDayChange(): void {
-    console.log('Toggle changed - Sabato:', this.showSaturday, 'Domenica:', this.showSunday);
+    console.log('📅 onWeekendDayChange chiamato!');
+    console.log('   Sabato:', this.showSaturday, '| Domenica:', this.showSunday);
     this.calculateWeekDays();
-    console.log('Week days after recalculation:', this.weekDays.length);
+    console.log('   Giorni nella settimana dopo ricalcolo:', this.weekDays.length);
+    console.log('   Giorni:', this.weekDays.map(d => d.toLocaleDateString('it-IT', { weekday: 'short' })));
     this.loadWeekData();
+    console.log('✅ Dati settimana ricaricati');
   }
 
   // Aggiorna la larghezza viewport per ricalcolare le colonne in modo responsive
@@ -322,13 +328,18 @@ export class CalendarComponent implements OnInit {
   }
 
   changeSlotDuration(duration: 5 | 10 | 15 | 20 | 30): void {
+    console.log('⏱️  changeSlotDuration chiamato! Nuova durata:', duration, 'minuti');
     this.slotDuration = duration;
     this.generateTimeSlots();
+    console.log('   Time slots generati:', this.timeSlotList.length);
     if (this.viewMode === 'weekly') {
+      console.log('   Ricaricando dati vista settimanale...');
       this.loadWeekData();
     } else {
+      console.log('   Ricaricando dati vista giornaliera...');
       this.loadAppointmentsAndAvailabilities();
     }
+    console.log('✅ Durata slot aggiornata');
   }
 
   toggleSidebar(): void {
