@@ -1,0 +1,49 @@
+<div class="calendar-event"
+     cdkDrag
+     [cdkDragBoundary]="'.calendar-grid'"
+     [cdkDragDisabled]="isResizing"
+     (cdkDragStarted)="onDragStarted($event)"
+     (cdkDragEnded)="onDragEnded($event)"
+     (click)="onClick($event)"
+     (dblclick)="onDblClick($event)"
+     [style.backgroundColor]="backgroundColor"
+     [class.dragging]="isDragging"
+     [class.resizing]="isResizing">
+
+  <!-- Event content -->
+  <div class="event-content">
+    <!-- Header with time -->
+    <div class="event-header">
+      <span class="event-time">{{ displayTime }}</span>
+    </div>
+
+    <!-- Title/Patient name -->
+    <div class="event-title">
+      {{ displayTitle }}
+    </div>
+
+    <!-- Notes preview (if available) -->
+    <div class="event-notes" *ngIf="appointment.notes && height > 80">
+      {{ appointment.notes }}
+    </div>
+  </div>
+
+  <!-- Resize handle -->
+  <div class="resize-handle"
+       (mousedown)="onResizeStart($event)">
+    <div class="resize-handle-bar"></div>
+  </div>
+
+  <!-- Drag preview (shown while dragging) -->
+  <div class="drag-preview" *cdkDragPreview>
+    <div class="preview-content" [style.backgroundColor]="backgroundColor">
+      <div class="preview-time">{{ displayTime }}</div>
+      <div class="preview-title">{{ displayTitle }}</div>
+    </div>
+  </div>
+
+  <!-- Placeholder (shown in original position while dragging) -->
+  <div class="drag-placeholder" *cdkDragPlaceholder>
+    <div class="placeholder-content"></div>
+  </div>
+</div>

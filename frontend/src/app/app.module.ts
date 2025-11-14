@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
 
 import { AppComponent } from './app.component';
 import { CalendarComponent } from './components/calendar/calendar.component';
+import { CalendarContainerComponent } from './components/calendar-cdk/calendar-container/calendar-container.component';
 import { ApiService } from './services/api.service';
 
 @NgModule({
@@ -17,7 +18,8 @@ import { ApiService } from './services/api.service';
     BrowserModule,
     CommonModule,
     HttpClientModule,
-    FormsModule
+    FormsModule,
+    CalendarContainerComponent // Import standalone component
   ],
   providers: [ApiService],
   bootstrap: [AppComponent]

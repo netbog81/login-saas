@@ -1,0 +1,50 @@
+<div class="calendar-header">
+  <!-- Navigation controls -->
+  <div class="header-left">
+    <button class="btn-today"
+            (click)="onTodayClick()"
+            [disabled]="isToday">
+      Oggi
+    </button>
+
+    <div class="navigation-buttons">
+      <button class="btn-nav"
+              (click)="onPreviousClick()"
+              title="Precedente">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+
+      <button class="btn-nav"
+              (click)="onNextClick()"
+              title="Successivo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Date display -->
+  <div class="header-center">
+    <h2 class="current-date">{{ displayTitle }}</h2>
+  </div>
+
+  <!-- View type toggle -->
+  <div class="header-right">
+    <div class="view-toggle">
+      <button class="btn-view"
+              [class.active]="viewType === 'daily'"
+              (click)="onViewTypeChange('daily')">
+        Giorno
+      </button>
+
+      <button class="btn-view"
+              [class.active]="viewType === 'weekly'"
+              (click)="onViewTypeChange('weekly')">
+        Settimana
+      </button>
+    </div>
+  </div>
+</div>

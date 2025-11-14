@@ -1,0 +1,157 @@
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background-color: #ffffff;
+  border-bottom: 2px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.header-left,
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.btn-today {
+  padding: 8px 16px;
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background-color: #f9fafb;
+    border-color: #9ca3af;
+  }
+
+  &:active:not(:disabled) {
+    background-color: #f3f4f6;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.navigation-buttons {
+  display: flex;
+  gap: 4px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.btn-nav {
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: none;
+  border-right: 1px solid #d1d5db;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+  color: #374151;
+
+  &:last-child {
+    border-right: none;
+  }
+
+  &:hover {
+    background-color: #f9fafb;
+  }
+
+  &:active {
+    background-color: #f3f4f6;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+.current-date {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+  text-align: center;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.btn-view {
+  padding: 8px 16px;
+  background-color: #ffffff;
+  border: none;
+  border-right: 1px solid #d1d5db;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s ease;
+
+  &:last-child {
+    border-right: none;
+  }
+
+  &:hover:not(.active) {
+    background-color: #f9fafb;
+    color: #374151;
+  }
+
+  &.active {
+    background-color: #3b82f6;
+    color: #ffffff;
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .calendar-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-left,
+  .header-right {
+    flex: 0 0 auto;
+  }
+
+  .header-center {
+    flex: 1 0 100%;
+    order: -1;
+    margin-bottom: 8px;
+  }
+
+  .current-date {
+    font-size: 18px;
+  }
+
+  .btn-today,
+  .btn-view {
+    font-size: 13px;
+    padding: 6px 12px;
+  }
+}

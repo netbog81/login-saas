@@ -1,0 +1,69 @@
+<div class="calendar-grid-container">
+  <!-- Time column (fixed on left) -->
+  <div class="time-column">
+    <div class="time-column-header"></div>
+    <div class="time-slots">
+      <div *ngFor="let slot of timeSlots"
+           class="time-slot"
+           [style.height.px]="slotHeight">
+        <span class="time-label">{{ slot.time }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main grid with users/dates -->
+  <div class="grid-content">
+    <!-- Headers for users/dates -->
+    <div class="grid-header">
+      <div *ngFor="let user of users"
+           class="user-header"
+           [style.backgroundColor]="user.color"
+           [style.opacity]="0.1">
+        <span class="user-name">{{ user.name }}</span>
+      </div>
+    </div>
+
+    <!-- Grid body with cells and events -->
+    <div class="grid-body" [style.height.px]="gridHeight">
+      <!-- Columns for each user -->
+      <div *ngFor="let user of users"
+           class="user-column">
+
+        <!-- Cells grid -->
+        <div class="cells-container">
+          <app-calendar-cell
+            *ngFor="let slot of timeSlots"
+            [timeSlot]="slot"
+            [date]="date"
+            [user]="user"
+            [isAvailable]="isCellAvailable(user.id, date, slot.time)"
+            [isOccupied]="isCellOccupied(user.id, date, slot.time)"
+            (cellMouseDown)="onCellMouseDown($event)"
+            (cellMouseEnter)="onCellMouseEnter($event)"
+            (cellMouseUp)="onCellMouseUp($event)"
+            (cellDblClick)="onCellDblClick($event)">
+          </app-calendar-cell>
+        </div>
+
+        <!-- Events layer (absolute positioned) -->
+        <div class="events-container">
+          <app-calendar-event
+            *ngFor="let eventPos of getEventsForUser(user.id)"
+            [appointment]="eventPos.appointment"
+            [user]="user"
+            [top]="eventPos.top"
+            [height]="eventPos.height"
+            [width]="eventPos.width"
+            [left]="eventPos.left"
+            [slotDuration]="slotDuration"
+            (eventClick)="onEventClick($event)"
+            (eventDblClick)="onEventDblClick($event)"
+            (eventDragStart)="onEventDragStart($event)"
+            (eventDragEnd)="onEventDragEnd($event)"
+            (eventResize)="onEventResize($event)">
+          </app-calendar-event>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

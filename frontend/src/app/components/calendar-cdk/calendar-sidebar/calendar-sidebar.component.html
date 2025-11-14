@@ -1,0 +1,70 @@
+<div class="calendar-sidebar" [class.collapsed]="collapsed">
+  <!-- Collapse toggle button -->
+  <button class="collapse-toggle"
+          (click)="onToggleCollapse()"
+          [title]="collapsed ? 'Espandi' : 'Comprimi'">
+    <svg *ngIf="!collapsed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"></polyline>
+    </svg>
+    <svg *ngIf="collapsed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </button>
+
+  <!-- Sidebar content (hidden when collapsed) -->
+  <div class="sidebar-content" *ngIf="!collapsed">
+    <!-- Header -->
+    <div class="sidebar-header">
+      <h3 class="sidebar-title">Operatori</h3>
+
+      <!-- Select all toggle -->
+      <button class="btn-select-all"
+              (click)="onSelectAll()"
+              [class.all-selected]="allSelected"
+              [class.some-selected]="someSelected">
+        <svg *ngIf="allSelected" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <svg *ngIf="someSelected && !allSelected" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        <span>{{ allSelected ? 'Deseleziona tutti' : 'Seleziona tutti' }}</span>
+      </button>
+    </div>
+
+    <!-- User list -->
+    <div class="user-list">
+      <div *ngFor="let user of allUsers"
+           class="user-item"
+           [class.selected]="isUserSelected(user)"
+           [class.inactive]="!user.active"
+           (click)="onUserToggle(user)">
+
+        <!-- Color indicator -->
+        <div class="user-color"
+             [style.backgroundColor]="user.color">
+        </div>
+
+        <!-- User info -->
+        <div class="user-info">
+          <span class="user-name">{{ user.name }}</span>
+          <span class="user-type">{{ user.type }}</span>
+        </div>
+
+        <!-- Checkbox -->
+        <div class="user-checkbox">
+          <input type="checkbox"
+                 [checked]="isUserSelected(user)"
+                 [disabled]="!user.active"
+                 (click)="$event.stopPropagation()"
+                 (change)="onUserToggle(user)">
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div *ngIf="allUsers.length === 0" class="empty-state">
+        <p>Nessun operatore disponibile</p>
+      </div>
+    </div>
+  </div>
+</div>

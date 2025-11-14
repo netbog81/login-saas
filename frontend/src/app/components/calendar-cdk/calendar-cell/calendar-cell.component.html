@@ -1,0 +1,16 @@
+<div class="calendar-cell"
+     [class.available]="isAvailable"
+     [class.occupied]="isOccupied"
+     [class.drag-target]="isDragTarget"
+     [class.non-working]="!isWorkingHour">
+
+  <!-- Time label (only shown in first column or when specified) -->
+  <div class="time-label" *ngIf="showTimeLabel">
+    {{ timeSlot.time }}
+  </div>
+
+  <!-- Visual indicator for availability -->
+  <div class="cell-content" *ngIf="!isOccupied">
+    <div class="availability-indicator" *ngIf="!isAvailable"></div>
+  </div>
+</div>

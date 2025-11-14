@@ -1,0 +1,70 @@
+import { Component, Input, Output, EventEmitter, HostBinding, HostListener } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { TimeSlot } from '../services/calendar-state.service';
+import { User } from '../../../models/user.model';
+
+export interface CellEvent {
+  userId: number;
+  date: string;
+  timeSlot: TimeSlot;
+  type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
+}
+
+@Component({
+  selector: 'app-calendar-cell',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './calendar-cell.component.html',
+  styleUrls: ['./calendar-cell.component.scss']
+})
+export class CalendarCellComponent {
+  @Input() timeSlot!: TimeSlot;
+  @Input() date!: string;
+  @Input() user!: User;
+  @Input() isAvailable: boolean = true;
+  @Input() isOccupied: boolean = false;
+  @Input() isDragTarget: boolean = false;
+  @Input() isWorkingHour: boolean = true;
+  @Input() showTimeLabel: boolean = false;
+
+  @Output() cellMouseDown = new EventEmitter<CellEvent>();
+  @Output() cellMouseEnter = new EventEmitter<CellEvent>();
+  @Output() cellMouseUp = new EventEmitter<CellEvent>();
+  @Output() cellDblClick = new EventEmitter<CellEvent>();
+
+  @HostBinding('class.available') get availableClass() { return this.isAvailable; }
+  @HostBinding('class.occupied') get occupiedClass() { return this.isOccupied; }
+  @HostBinding('class.drag-target') get dragTargetClass() { return this.isDragTarget; }
+  @HostBinding('class.non-working') get nonWorkingClass() { return !this.isWorkingHour; }
+
+  @HostListener('mousedown', ['$event'])
+  onMouseDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.cellMouseDown.emit(this.createCellEvent('mousedown'));
+  }
+
+  @HostListener('mouseenter', ['$event'])
+  onMouseEnter(event: MouseEvent): void {
+    this.cellMouseEnter.emit(this.createCellEvent('mouseenter'));
+  }
+
+  @HostListener('mouseup', ['$event'])
+  onMouseUp(event: MouseEvent): void {
+    this.cellMouseUp.emit(this.createCellEvent('mouseup'));
+  }
+
+  @HostListener('dblclick', ['$event'])
+  onDblClick(event: MouseEvent): void {
+    event.preventDefault();
+    this.cellDblClick.emit(this.createCellEvent('dblclick'));
+  }
+
+  private createCellEvent(type: CellEvent['type']): CellEvent {
+    return {
+      userId: this.user.id,
+      date: this.date,
+      timeSlot: this.timeSlot,
+      type
+    };
+  }
+}

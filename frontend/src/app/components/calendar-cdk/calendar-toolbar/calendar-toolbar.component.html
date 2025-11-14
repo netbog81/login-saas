@@ -1,0 +1,55 @@
+<div class="calendar-toolbar">
+  <!-- Slot duration control -->
+  <div class="toolbar-group">
+    <label class="toolbar-label">Durata slot:</label>
+    <div class="btn-group">
+      <button *ngFor="let duration of slotDurations"
+              class="btn-option"
+              [class.active]="config.slotDuration === duration"
+              (click)="onSlotDurationChange(duration)">
+        {{ duration }} min
+      </button>
+    </div>
+  </div>
+
+  <!-- Zoom control -->
+  <div class="toolbar-group">
+    <label class="toolbar-label">Zoom:</label>
+    <div class="btn-group">
+      <button *ngFor="let level of zoomLevels"
+              class="btn-option"
+              [class.active]="config.zoom === level.value"
+              (click)="onZoomChange(level.value)">
+        {{ level.label }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <div class="toolbar-divider"></div>
+
+  <!-- Working hours toggle -->
+  <div class="toolbar-group">
+    <label class="toolbar-checkbox">
+      <input type="checkbox"
+             [checked]="config.showWorkingHoursOnly"
+             (change)="onWorkingHoursToggle()">
+      <span>Solo orario lavorativo</span>
+    </label>
+  </div>
+
+  <!-- Weekend toggle (only in weekly view) -->
+  <div class="toolbar-group" *ngIf="config.viewType === 'weekly'">
+    <label class="toolbar-checkbox">
+      <input type="checkbox"
+             [checked]="config.showWeekend"
+             (change)="onWeekendToggle()">
+      <span>Mostra weekend</span>
+    </label>
+  </div>
+
+  <!-- Info display -->
+  <div class="toolbar-info">
+    <span class="info-text">Altezza cella: {{ slotHeightPx }}px</span>
+  </div>
+</div>
