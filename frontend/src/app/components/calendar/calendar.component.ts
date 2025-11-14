@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { ApiService } from '../../services/api.service';
 import { User } from '../../models/user.model';
 import { Patient } from '../../models/patient.model';
@@ -42,6 +42,8 @@ export class CalendarComponent implements OnInit {
   // Espone Math e window al template
   Math = Math;
   window = window;
+  // Larghezza viewport per triggerare ricalcoli responsive
+  viewportWidth: number = (typeof window !== 'undefined') ? window.innerWidth : 1024;
 
   users: User[] = [];
   selectedUsers: number[] = [];
@@ -215,6 +217,12 @@ export class CalendarComponent implements OnInit {
     this.loadWeekData();
   }
 
+  // Aggiorna la larghezza viewport per ricalcolare le colonne in modo responsive
+  @HostListener('window:resize')
+  onResize() {
+    this.viewportWidth = (typeof window !== 'undefined') ? window.innerWidth : this.viewportWidth;
+  }
+
   loadWeekData(): void {
     if (this.weekDays.length === 0) return;
 
@@ -291,7 +299,7 @@ export class CalendarComponent implements OnInit {
   getWeekRangeText(): string {
     if (this.weekDays.length === 0) return '';
     const start = this.weekDays[0].toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
-    const end = this.weekDays[6].toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+    const end = this.weekDays[this.weekDays.length - 1].toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
     return `${start} - ${end}`;
   }
 
@@ -1810,7 +1818,7 @@ export class CalendarComponent implements OnInit {
     const sidebarWidth = this.sidebarCollapsed ? 64 : Math.max(200, 320); // min 200px quando aperta
     const timeColumnWidth = 64; // w-16
     const margins = 32; // margini e scrollbar
-    const availableWidth = window.innerWidth - sidebarWidth - timeColumnWidth - margins;
+    const availableWidth = this.viewportWidth - sidebarWidth - timeColumnWidth - margins;
 
     // Calcola numero totale di colonne (giorni * utenti)
     const numDays = this.weekDays.length;
@@ -1824,9 +1832,9 @@ export class CalendarComponent implements OnInit {
     let columnWidth = availableWidth / totalColumns;
 
     // Larghezza minima: 45px per garantire usabilità minima
-    // Larghezza massima: 300px per non sprecare spazio
-    const MIN_WIDTH = 45;
-    const MAX_WIDTH = 300;
+  // Larghezza massima: 500px per sfruttare meglio lo spazio quando ci sono poche colonne
+  const MIN_WIDTH = 45;
+  const MAX_WIDTH = 500;
 
     columnWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, columnWidth));
 
