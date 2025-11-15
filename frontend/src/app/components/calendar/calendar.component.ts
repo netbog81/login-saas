@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { ApiService } from '../../services/api.service';
 import { User } from '../../models/user.model';
 import { Patient } from '../../models/patient.model';
@@ -38,9 +38,15 @@ interface MoveConfirmation {
   templateUrl: './calendar.component.html',
   styleUrls: ['./calendar.component.scss']
 })
-export class CalendarComponent implements OnInit {
+export class CalendarComponent implements OnInit, AfterViewInit {
   // Espone Math al template
   Math = Math;
+
+  // Riferimenti per sincronizzazione scroll
+  @ViewChild('dailyTimeColumn') dailyTimeColumn?: ElementRef<HTMLDivElement>;
+  @ViewChild('dailyGridContainer') dailyGridContainer?: ElementRef<HTMLDivElement>;
+  @ViewChild('weeklyTimeColumn') weeklyTimeColumn?: ElementRef<HTMLDivElement>;
+  @ViewChild('weeklyGridContainer') weeklyGridContainer?: ElementRef<HTMLDivElement>;
 
   users: User[] = [];
   selectedUsers: number[] = [];
@@ -56,6 +62,14 @@ export class CalendarComponent implements OnInit {
   showSunday = true;    // Toggle per mostrare/nascondere domenica
   hoveredAppointment: { userId: number; appointmentId: number; date: string } | null = null;
   hoverTimeout: any = null;
+
+  // Box appuntamento cliccato
+  clickedAppointment: {
+    userId: number;
+    appointmentId: number;
+    date: string;
+    position: { x: number; y: number };
+  } | null = null;
 
   // Durata slot variabile
   slotDuration: 5 | 10 | 15 | 20 | 30 = 5; // minuti
@@ -130,6 +144,31 @@ export class CalendarComponent implements OnInit {
     this.loadUsers();
     this.loadPatients();
     this.calculateWeekDays();
+  }
+
+  ngAfterViewInit(): void {
+    // Sincronizza lo scroll tra colonna ore e griglia per vista giornaliera
+    if (this.dailyGridContainer) {
+      this.dailyGridContainer.nativeElement.addEventListener('scroll', this.syncDailyScroll.bind(this));
+    }
+    // Sincronizza lo scroll tra colonna ore e griglia per vista settimanale
+    if (this.weeklyGridContainer) {
+      this.weeklyGridContainer.nativeElement.addEventListener('scroll', this.syncWeeklyScroll.bind(this));
+    }
+  }
+
+  syncDailyScroll(event: Event): void {
+    const target = event.target as HTMLElement;
+    if (this.dailyTimeColumn) {
+      this.dailyTimeColumn.nativeElement.scrollTop = target.scrollTop;
+    }
+  }
+
+  syncWeeklyScroll(event: Event): void {
+    const target = event.target as HTMLElement;
+    if (this.weeklyTimeColumn) {
+      this.weeklyTimeColumn.nativeElement.scrollTop = target.scrollTop;
+    }
   }
 
   // === VISTA SETTIMANALE ===
@@ -1740,5 +1779,114 @@ export class CalendarComponent implements OnInit {
       const dateStr = this.formatDateISO(date);
       this.openEditModal(userId, appointment.id, dateStr, appointment);
     }
+  }
+
+  // Calcola la larghezza dinamica delle colonne operatori in base al numero selezionato
+  getDailyColumnWidth(): string {
+    const numOperators = this.selectedUsers.length;
+    if (numOperators === 1) return 'min-w-96'; // 24rem per 1 operatore
+    if (numOperators === 2) return 'min-w-64'; // 16rem per 2 operatori
+    if (numOperators === 3) return 'min-w-48'; // 12rem per 3 operatori
+    return 'min-w-32'; // 8rem per 4+ operatori
+  }
+
+  // Calcola la larghezza dinamica delle colonne nella vista settimanale
+  getWeeklyColumnWidth(): string {
+    const numOperators = this.selectedUsers.length;
+    const numDays = this.weekDays.length;
+    const totalColumns = numOperators * numDays;
+
+    if (totalColumns <= 5) return 'w-64'; // 16rem
+    if (totalColumns <= 10) return 'w-48'; // 12rem
+    if (totalColumns <= 15) return 'w-32'; // 8rem
+    if (totalColumns <= 21) return 'w-24'; // 6rem
+    return 'w-20'; // 5rem per molti operatori
+  }
+
+  // Gestisce il click su un appuntamento
+  handleAppointmentClick(userId: number, appointmentId: number, date: string, event: MouseEvent): void {
+    event.stopPropagation();
+
+    // Se è lo stesso appuntamento già cliccato, chiudi il box
+    if (this.clickedAppointment &&
+        this.clickedAppointment.userId === userId &&
+        this.clickedAppointment.appointmentId === appointmentId &&
+        this.clickedAppointment.date === date) {
+      this.clickedAppointment = null;
+      return;
+    }
+
+    // Calcola posizione ottimale del box
+    const position = this.calculateAppointmentBoxPosition(event, userId);
+
+    // Apri/aggiorna il box
+    this.clickedAppointment = {
+      userId,
+      appointmentId,
+      date,
+      position
+    };
+  }
+
+  // Calcola la posizione ottimale del box evitando la colonna dell'operatore
+  calculateAppointmentBoxPosition(event: MouseEvent, userId: number): { x: number; y: number } {
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const boxWidth = 320; // larghezza del box in px
+    const boxHeight = 250; // altezza stimata del box
+
+    // Determina la posizione della colonna dell'operatore
+    const target = event.target as HTMLElement;
+    const columnRect = target.closest('.group')?.getBoundingClientRect();
+
+    let x = clickX;
+    let y = clickY;
+
+    if (columnRect) {
+      const columnLeft = columnRect.left;
+      const columnRight = columnRect.right;
+      const columnCenter = (columnLeft + columnRight) / 2;
+
+      // Se il click è nella metà sinistra della colonna, posiziona il box a destra
+      if (clickX < columnCenter) {
+        x = Math.min(columnRight + 10, windowWidth - boxWidth - 20);
+      } else {
+        // Altrimenti posiziona a sinistra
+        x = Math.max(columnLeft - boxWidth - 10, 20);
+      }
+    }
+
+    // Assicurati che il box non esca dallo schermo verticalmente
+    if (y + boxHeight > windowHeight - 20) {
+      y = windowHeight - boxHeight - 20;
+    }
+    if (y < 20) {
+      y = 20;
+    }
+
+    return { x, y };
+  }
+
+  // Chiude il box quando si clicca su una cella vuota
+  handleEmptyCellClick(): void {
+    if (this.clickedAppointment) {
+      this.clickedAppointment = null;
+    }
+  }
+
+  // Ottieni i dettagli dell'appuntamento cliccato
+  getClickedAppointmentDetails(): Appointment | null {
+    if (!this.clickedAppointment) return null;
+
+    const { userId, appointmentId, date } = this.clickedAppointment;
+    const userAppointments = this.appointments[userId];
+    if (!userAppointments) return null;
+
+    const dayAppointments = userAppointments[date];
+    if (!dayAppointments) return null;
+
+    return dayAppointments.find(apt => apt.id === appointmentId) || null;
   }
 }

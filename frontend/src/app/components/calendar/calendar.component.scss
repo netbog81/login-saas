@@ -1,9 +1,21 @@
 .calendar-cell {
   position: relative;
   user-select: none;
+  overflow: hidden; // Evita che il contenuto si sovrapponga alle celle sotto
+  pointer-events: auto; // Assicura che la cella riceva gli eventi mouse
 
   &:hover {
     z-index: 1;
+  }
+
+  // Assicura che il contenuto degli appuntamenti non interferisca con gli eventi delle celle sotto
+  > * {
+    pointer-events: none;
+  }
+
+  // Ma permetti interazione con bottoni e contenuti interattivi
+  button {
+    pointer-events: auto;
   }
 }
 

@@ -296,15 +296,15 @@
       <!-- VISTA GIORNALIERA -->
       <div
         *ngIf="selectedUsers.length > 0 && viewMode === 'daily'"
-        class="h-full overflow-auto"
+        class="h-full flex"
         (mouseleave)="dragState.isDragging && handleMouseUp()"
         (mouseup)="handleMouseUp()">
-        <div class="flex min-w-fit">
-          <!-- Colonna orari -->
-          <div class="w-20 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
-            <div class="bg-gray-100 border-b border-gray-200 flex items-center justify-center sticky top-0 z-20 h-12">
-              <span class="text-xs font-medium text-gray-600">Orario</span>
-            </div>
+        <!-- Colonna orari (fixed, non scrollabile dall'utente) -->
+        <div #dailyTimeColumn class="w-20 bg-gray-50 border-r border-gray-200 flex-shrink-0 overflow-hidden">
+          <div class="bg-gray-100 border-b border-gray-200 flex items-center justify-center h-12">
+            <span class="text-xs font-medium text-gray-600">Orario</span>
+          </div>
+          <div>
             <div
               *ngFor="let time of filteredTimeSlots; let index = index"
               class="border-b border-gray-100 flex items-start justify-center text-xs text-gray-600 pt-0.5"
@@ -316,71 +316,78 @@
               {{ shouldShowTimeLabel(index) ? time : '' }}
             </div>
           </div>
+        </div>
 
-          <!-- Colonne operatori -->
-          <div
-            *ngFor="let userId of selectedUsers"
-            class="min-w-48 border-r border-gray-200 group">
-            <div class="sticky top-0 z-10 bg-white border-b border-gray-200 flex items-center justify-center shadow-sm h-12">
-              <div class="flex items-center gap-2">
-                <div
-                  class="w-3 h-3 rounded-full"
-                  [style.backgroundColor]="getUserById(userId)?.color">
+        <!-- Container scrollabile per colonne operatori -->
+        <div #dailyGridContainer class="flex-1 overflow-auto">
+          <div class="flex min-w-fit">
+            <!-- Colonne operatori -->
+            <div
+              *ngFor="let userId of selectedUsers"
+              [ngClass]="getDailyColumnWidth()"
+              class="border-r border-gray-200 group flex-shrink-0">
+              <div class="sticky top-0 z-10 bg-white border-b border-gray-200 flex items-center justify-center shadow-sm h-12">
+                <div class="flex items-center gap-2">
+                  <div
+                    class="w-3 h-3 rounded-full"
+                    [style.backgroundColor]="getUserById(userId)?.color">
+                  </div>
+                  <span class="text-sm font-medium text-gray-700 truncate">
+                    {{ getUserById(userId)?.name }}
+                  </span>
                 </div>
-                <span class="text-sm font-medium text-gray-700 truncate">
-                  {{ getUserById(userId)?.name }}
-                </span>
               </div>
-            </div>
 
-            <!-- Celle tempo -->
-            <div class="select-none">
-              <div
-                *ngFor="let timeSlot of filteredTimeSlots"
-                [ngClass]="getCellClass(userId, timeSlot)"
-                [ngStyle]="getCellStyle(userId, timeSlot)"
-                (mousedown)="handleMouseDown(userId, timeSlot, $event)"
-                (mouseenter)="handleMouseEnter(userId, timeSlot); getAppointmentForSlot(userId, timeSlot) && handleAppointmentHover(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), true)"
-                (mouseleave)="getAppointmentForSlot(userId, timeSlot) && handleAppointmentHover(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), false)"
-                (dblclick)="getAppointmentForSlot(userId, timeSlot) && openEditModal(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), getAppointmentForSlot(userId, timeSlot)!)">
+              <!-- Celle tempo -->
+              <div class="select-none">
+                <div
+                  *ngFor="let timeSlot of filteredTimeSlots"
+                  [ngClass]="getCellClass(userId, timeSlot)"
+                  [ngStyle]="getCellStyle(userId, timeSlot)"
+                  (mousedown)="handleMouseDown(userId, timeSlot, $event)"
+                  (mouseenter)="handleMouseEnter(userId, timeSlot)"
+                  (mouseleave)="true"
+                  (click)="getAppointmentForSlot(userId, timeSlot) ? handleAppointmentClick(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), $event) : handleEmptyCellClick()"
+                  (dblclick)="getAppointmentForSlot(userId, timeSlot) && openEditModal(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), getAppointmentForSlot(userId, timeSlot)!)">
 
-                <ng-container *ngIf="getAppointmentForSlot(userId, timeSlot) as appointment">
-                  <div class="flex flex-col justify-start w-full h-full">
-                    <div *ngIf="isFirstSlot(appointment, timeSlot)"
-                         class="flex items-center gap-1 text-xs font-medium text-green-800 cursor-move">
-                      <span>{{ appointment.startTime }}</span>
-                      <div *ngIf="zoomLevel > 1" class="flex-1 min-w-0">
-                        <div class="flex items-center gap-1 group/item">
-                          <span class="truncate flex-1">
-                            {{ (tempAppointment && appointment && tempAppointment.appointment.id === appointment.id) ? '(Nuovo) ' : '' }}
-                            {{ appointment?.title }}
-                          </span>
-                          <div *ngIf="appointment && (!tempAppointment || (tempAppointment.appointment && tempAppointment.appointment.id !== appointment.id))"
-                               class="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                            <button
-                              (click)="openEditModal(userId, appointment.id, formatDateISO(currentDate), appointment); $event.stopPropagation()"
-                              class="p-0.5 hover:bg-green-200 rounded"
-                              title="Modifica appuntamento">
-                              ✏️
-                            </button>
-                            <button
-                              (click)="showDeleteConfirm = { userId, appointmentId: appointment.id, dateStr: formatDateISO(currentDate), appointmentTitle: appointment.title }; $event.stopPropagation()"
-                              class="p-0.5 hover:bg-red-200 rounded text-red-600"
-                              title="Elimina appuntamento">
-                              🗑️
-                            </button>
+                  <ng-container *ngIf="getAppointmentForSlot(userId, timeSlot) as appointment">
+                    <div class="flex flex-col justify-start w-full h-full">
+                      <div *ngIf="isFirstSlot(appointment, timeSlot)"
+                           class="flex items-center gap-1 text-xs font-medium text-green-800 cursor-move">
+                        <span>{{ appointment.startTime }}</span>
+                        <div *ngIf="zoomLevel > 1" class="flex-1 min-w-0">
+                          <div class="flex items-center gap-1 group/item">
+                            <span class="truncate flex-1">
+                              {{ (tempAppointment && appointment && tempAppointment.appointment.id === appointment.id) ? '(Nuovo) ' : '' }}
+                              {{ appointment?.title }}
+                            </span>
+                            <div *ngIf="appointment && (!tempAppointment || (tempAppointment.appointment && tempAppointment.appointment.id !== appointment.id))"
+                                 class="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                              <button
+                                (click)="openEditModal(userId, appointment.id, formatDateISO(currentDate), appointment); $event.stopPropagation()"
+                                class="p-0.5 hover:bg-green-200 rounded"
+                                title="Modifica appuntamento">
+                                ✏️
+                              </button>
+                              <button
+                                (click)="showDeleteConfirm = { userId, appointmentId: appointment.id, dateStr: formatDateISO(currentDate), appointmentTitle: appointment.title }; $event.stopPropagation()"
+                                class="p-0.5 hover:bg-red-200 rounded text-red-600"
+                                title="Elimina appuntamento">
+                                🗑️
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
+
+                      <!-- Indicatore ultima cella rimosso: bordo gestito da getCellStyle() -->
                     </div>
+                  </ng-container>
 
-                    <!-- Indicatore ultima cella rimosso: bordo gestito da getCellStyle() -->
+                  <!-- Indicatore slot non disponibile -->
+                  <div *ngIf="!isSlotAvailable(userId, formatDateISO(currentDate), timeSlot) && !availabilityMode"
+                       class="absolute top-0 right-0 w-0 h-0 border-t-8 border-t-red-500 border-l-8 border-l-transparent">
                   </div>
-                </ng-container>
-
-                <!-- Indicatore slot non disponibile -->
-                <div *ngIf="!isSlotAvailable(userId, formatDateISO(currentDate), timeSlot) && !availabilityMode"
-                     class="absolute top-0 right-0 w-0 h-0 border-t-8 border-t-red-500 border-l-8 border-l-transparent">
                 </div>
               </div>
             </div>
@@ -391,15 +398,15 @@
       <!-- VISTA SETTIMANALE -->
       <div
         *ngIf="selectedUsers.length > 0 && viewMode === 'weekly'"
-        class="h-full overflow-auto"
+        class="h-full flex"
         (mouseleave)="dragState.isDragging && resetWeeklyDrag()"
         (mouseup)="weeklyDragDate && handleWeeklyMouseUp(weeklyDragDate)">
-        <div class="flex min-w-fit">
-          <!-- Colonna orari -->
-          <div class="w-16 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
-            <div class="bg-gray-100 border-b border-gray-200 sticky top-0 z-20 h-16">
-              <div class="text-xs font-medium text-gray-600 text-center pt-2">Orario</div>
-            </div>
+        <!-- Colonna orari (fixed, non scrollabile dall'utente) -->
+        <div #weeklyTimeColumn class="w-16 bg-gray-50 border-r border-gray-200 flex-shrink-0 overflow-hidden">
+          <div class="bg-gray-100 border-b border-gray-200 h-16">
+            <div class="text-xs font-medium text-gray-600 text-center pt-2">Orario</div>
+          </div>
+          <div>
             <div
               *ngFor="let time of filteredTimeSlots; let index = index"
               class="border-b border-gray-100 flex items-start justify-center text-xs text-gray-600 pt-0.5"
@@ -411,9 +418,13 @@
               {{ shouldShowTimeLabel(index) ? time : '' }}
             </div>
           </div>
+        </div>
 
-          <!-- Colonne giorni settimana -->
-          <div *ngFor="let day of weekDays" class="flex flex-col border-r border-gray-200">
+        <!-- Container scrollabile per giorni settimana -->
+        <div #weeklyGridContainer class="flex-1 overflow-auto">
+          <div class="flex min-w-fit">
+            <!-- Colonne giorni settimana -->
+            <div *ngFor="let day of weekDays" class="flex flex-col border-r border-gray-200">
             <!-- Header giorno -->
             <div class="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
               <div class="text-center py-1 border-b border-gray-100">
@@ -425,13 +436,8 @@
               <div class="flex border-t border-gray-200">
                 <div
                   *ngFor="let userId of selectedUsers"
-                  [ngClass]="{
-                    'w-80': selectedUsers.length === 1,
-                    'w-56': selectedUsers.length === 2,
-                    'w-32': selectedUsers.length === 3,
-                    'w-20': selectedUsers.length > 3
-                  }"
-                  class="border-r border-gray-100 bg-gray-50">
+                  [ngClass]="getWeeklyColumnWidth()"
+                  class="border-r border-gray-100 bg-gray-50 flex-shrink-0">
                   <div class="text-center py-1">
                     <div class="text-xs font-semibold text-gray-700 truncate px-1">
                       {{ getUserSurname(userId) }}
@@ -448,13 +454,8 @@
             <div class="flex">
               <div
                 *ngFor="let userId of selectedUsers"
-                [ngClass]="{
-                  'w-80': selectedUsers.length === 1,
-                  'w-56': selectedUsers.length === 2,
-                  'w-32': selectedUsers.length === 3,
-                  'w-20': selectedUsers.length > 3
-                }"
-                class="border-r border-gray-100">
+                [ngClass]="getWeeklyColumnWidth()"
+                class="border-r border-gray-100 flex-shrink-0">
                 <!-- Celle tempo -->
                 <div class="select-none">
                   <div
@@ -463,8 +464,9 @@
                     [ngStyle]="getWeeklyCellStyle(day, userId, timeSlot)"
                     [ngClass]="getWeeklyCellClass(day, userId, timeSlot)"
                     (mousedown)="handleWeeklyMouseDown(day, userId, timeSlot, $event)"
-                    (mouseenter)="handleWeeklyHover(day, userId, timeSlot, true); handleWeeklyMouseEnter(day, userId, timeSlot)"
-                    (mouseleave)="handleWeeklyHover(day, userId, timeSlot, false)"
+                    (mouseenter)="handleWeeklyMouseEnter(day, userId, timeSlot)"
+                    (mouseleave)="true"
+                    (click)="getAppointmentForDateUserSlot(day, userId, timeSlot) ? handleAppointmentClick(userId, getAppointmentForDateUserSlot(day, userId, timeSlot)!.id, formatDateISO(day), $event) : handleEmptyCellClick()"
                     (dblclick)="handleWeeklyDoubleClick(day, userId, timeSlot)">
 
                     <!-- Solo colore, dettagli al hover -->
@@ -475,32 +477,67 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
 
-      <!-- Tooltip hover appuntamento (entrambe le viste) -->
+      <!-- Box appuntamento cliccato (posizionamento intelligente) -->
       <div
-        *ngIf="hoveredAppointment"
-        class="fixed z-50 bg-white shadow-xl rounded-lg p-4 max-w-xs border-2 border-blue-500"
+        *ngIf="clickedAppointment"
+        class="fixed z-50 bg-white shadow-2xl rounded-lg p-4 w-80 border-2 border-blue-500"
         [ngStyle]="{
-          left: viewMode === 'weekly' ? '50%' : 'auto',
-          top: viewMode === 'weekly' ? '50%' : 'auto',
-          right: viewMode === 'daily' ? '20px' : 'auto',
-          bottom: viewMode === 'daily' ? '20px' : 'auto',
-          transform: viewMode === 'weekly' ? 'translate(-50%, -50%)' : 'none'
+          left: clickedAppointment.position.x + 'px',
+          top: clickedAppointment.position.y + 'px'
         }">
-        <ng-container *ngIf="getHoveredAppointmentDetails() as apt">
-          <div class="text-sm font-semibold text-gray-800 mb-2">{{ apt.title }}</div>
-          <div class="text-xs text-gray-600 space-y-1">
-            <div>🕐 {{ apt.startTime }} - {{ apt.endTime }}</div>
-            <div *ngIf="apt.patient">
-              👤 {{ apt.patient.name }} {{ apt.patient.surname }}
+        <ng-container *ngIf="getClickedAppointmentDetails() as apt">
+          <!-- Header con chiusura -->
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex-1">
+              <div class="text-base font-semibold text-gray-800">{{ apt.title || 'Appuntamento' }}</div>
+              <div class="text-xs text-gray-500 mt-1">
+                {{ getUserById(clickedAppointment.userId)?.name }}
+              </div>
             </div>
-            <div *ngIf="apt.patient && apt.patient.phone">
-              📞 {{ apt.patient.phone }}
+            <button
+              (click)="clickedAppointment = null"
+              class="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0">
+              ✕
+            </button>
+          </div>
+
+          <!-- Dettagli -->
+          <div class="space-y-2 text-sm text-gray-700">
+            <div class="flex items-center gap-2">
+              <span class="text-gray-500">🕐</span>
+              <span>{{ apt.startTime }} - {{ apt.endTime }}</span>
             </div>
-            <div *ngIf="apt.notes" class="mt-2 pt-2 border-t border-gray-200">
-              📝 {{ apt.notes }}
+            <div *ngIf="apt.patient" class="flex items-center gap-2">
+              <span class="text-gray-500">👤</span>
+              <span>{{ apt.patient.name }} {{ apt.patient.surname }}</span>
             </div>
+            <div *ngIf="apt.patient && apt.patient.phone" class="flex items-center gap-2">
+              <span class="text-gray-500">📞</span>
+              <span>{{ apt.patient.phone }}</span>
+            </div>
+            <div *ngIf="apt.notes" class="pt-2 border-t border-gray-200">
+              <div class="flex items-start gap-2">
+                <span class="text-gray-500">📝</span>
+                <span class="flex-1">{{ apt.notes }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Azioni -->
+          <div class="flex gap-2 mt-4 pt-3 border-t border-gray-200">
+            <button
+              (click)="openEditModal(clickedAppointment.userId, apt.id, clickedAppointment.date, apt); clickedAppointment = null"
+              class="flex-1 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium">
+              Modifica
+            </button>
+            <button
+              (click)="showDeleteConfirm = { userId: clickedAppointment.userId, appointmentId: apt.id, dateStr: clickedAppointment.date, appointmentTitle: apt.title }; clickedAppointment = null"
+              class="px-3 py-2 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors text-sm font-medium">
+              Elimina
+            </button>
           </div>
         </ng-container>
       </div>
