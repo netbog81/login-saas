@@ -4,6 +4,12 @@ import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 
+// Angular CDK
+import { ScrollingModule } from '@angular/cdk/scrolling';
+import { DragDropModule } from '@angular/cdk/drag-drop';
+import { OverlayModule } from '@angular/cdk/overlay';
+import { A11yModule } from '@angular/cdk/a11y';
+
 import { AppComponent } from './app.component';
 import { CalendarComponent } from './components/calendar/calendar.component';
 import { ApiService } from './services/api.service';
@@ -17,7 +23,12 @@ import { ApiService } from './services/api.service';
     BrowserModule,
     CommonModule,
     HttpClientModule,
-    FormsModule
+    FormsModule,
+    // Angular CDK Modules
+    ScrollingModule,
+    DragDropModule,
+    OverlayModule,
+    A11yModule
   ],
   providers: [ApiService],
   bootstrap: [AppComponent]

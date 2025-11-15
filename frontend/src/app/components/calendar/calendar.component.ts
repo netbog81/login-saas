@@ -1,9 +1,16 @@
-import { Component, OnInit, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, OnInit, ViewChild, AfterViewInit, ViewChildren, QueryList, OnDestroy, TemplateRef, ViewContainerRef } from '@angular/core';
 import { ApiService } from '../../services/api.service';
 import { User } from '../../models/user.model';
 import { Patient } from '../../models/patient.model';
 import { Appointment, RepeatConfig } from '../../models/appointment.model';
 import { Availability } from '../../models/availability.model';
+
+// Angular CDK
+import { CdkScrollable, ScrollDispatcher } from '@angular/cdk/scrolling';
+import { CdkDragDrop, CdkDragMove, CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
+import { Overlay, OverlayRef, OverlayConfig } from '@angular/cdk/overlay';
+import { TemplatePortal } from '@angular/cdk/portal';
+import { Subscription } from 'rxjs';
 
 interface DragState {
   isDragging: boolean;
@@ -38,15 +45,24 @@ interface MoveConfirmation {
   templateUrl: './calendar.component.html',
   styleUrls: ['./calendar.component.scss']
 })
-export class CalendarComponent implements OnInit, AfterViewInit {
+export class CalendarComponent implements OnInit, AfterViewInit, OnDestroy {
   // Espone Math al template
   Math = Math;
 
-  // Riferimenti per sincronizzazione scroll
-  @ViewChild('dailyTimeColumn') dailyTimeColumn?: ElementRef<HTMLDivElement>;
-  @ViewChild('dailyGridContainer') dailyGridContainer?: ElementRef<HTMLDivElement>;
-  @ViewChild('weeklyTimeColumn') weeklyTimeColumn?: ElementRef<HTMLDivElement>;
-  @ViewChild('weeklyGridContainer') weeklyGridContainer?: ElementRef<HTMLDivElement>;
+  // Riferimenti CDK per sincronizzazione scroll
+  @ViewChild('dailyTimeScroll') dailyTimeScroll?: CdkScrollable;
+  @ViewChild('dailyGridScroll') dailyGridScroll?: CdkScrollable;
+  @ViewChild('weeklyTimeScroll') weeklyTimeScroll?: CdkScrollable;
+  @ViewChild('weeklyGridScroll') weeklyGridScroll?: CdkScrollable;
+
+  // Template per box appuntamento
+  @ViewChild('appointmentDetailsTemplate') appointmentDetailsTemplate?: TemplateRef<any>;
+
+  // Subscription per scroll sync
+  private scrollSubscription?: Subscription;
+
+  // Overlay per box appuntamento
+  private overlayRef?: OverlayRef;
 
   users: User[] = [];
   selectedUsers: number[] = [];
@@ -137,7 +153,12 @@ export class CalendarComponent implements OnInit, AfterViewInit {
   isDraggingModal = false;
   dragOffset = { x: 0, y: 0 };
 
-  constructor(private apiService: ApiService) {}
+  constructor(
+    private apiService: ApiService,
+    private scrollDispatcher: ScrollDispatcher,
+    private overlay: Overlay,
+    private viewContainerRef: ViewContainerRef
+  ) {}
 
   ngOnInit(): void {
     this.generateTimeSlots();
@@ -147,27 +168,32 @@ export class CalendarComponent implements OnInit, AfterViewInit {
   }
 
   ngAfterViewInit(): void {
-    // Sincronizza lo scroll tra colonna ore e griglia per vista giornaliera
-    if (this.dailyGridContainer) {
-      this.dailyGridContainer.nativeElement.addEventListener('scroll', this.syncDailyScroll.bind(this));
-    }
-    // Sincronizza lo scroll tra colonna ore e griglia per vista settimanale
-    if (this.weeklyGridContainer) {
-      this.weeklyGridContainer.nativeElement.addEventListener('scroll', this.syncWeeklyScroll.bind(this));
-    }
+    // Sincronizza lo scroll usando CDK ScrollDispatcher
+    this.scrollSubscription = this.scrollDispatcher.scrolled().subscribe((scrollable) => {
+      if (!scrollable) return;
+
+      // Sincronizza vista giornaliera
+      if (scrollable === this.dailyGridScroll && this.dailyTimeScroll) {
+        const scrollTop = scrollable.measureScrollOffset('top');
+        this.dailyTimeScroll.scrollTo({ top: scrollTop });
+      }
+
+      // Sincronizza vista settimanale
+      if (scrollable === this.weeklyGridScroll && this.weeklyTimeScroll) {
+        const scrollTop = scrollable.measureScrollOffset('top');
+        this.weeklyTimeScroll.scrollTo({ top: scrollTop });
+      }
+    });
   }
 
-  syncDailyScroll(event: Event): void {
-    const target = event.target as HTMLElement;
-    if (this.dailyTimeColumn) {
-      this.dailyTimeColumn.nativeElement.scrollTop = target.scrollTop;
+  ngOnDestroy(): void {
+    // Cleanup subscription
+    if (this.scrollSubscription) {
+      this.scrollSubscription.unsubscribe();
     }
-  }
-
-  syncWeeklyScroll(event: Event): void {
-    const target = event.target as HTMLElement;
-    if (this.weeklyTimeColumn) {
-      this.weeklyTimeColumn.nativeElement.scrollTop = target.scrollTop;
+    // Cleanup overlay
+    if (this.overlayRef) {
+      this.overlayRef.dispose();
     }
   }
 
@@ -1803,7 +1829,7 @@ export class CalendarComponent implements OnInit, AfterViewInit {
     return 'w-20'; // 5rem per molti operatori
   }
 
-  // Gestisce il click su un appuntamento
+  // Gestisce il click su un appuntamento con CDK Overlay
   handleAppointmentClick(userId: number, appointmentId: number, date: string, event: MouseEvent): void {
     event.stopPropagation();
 
@@ -1812,68 +1838,95 @@ export class CalendarComponent implements OnInit, AfterViewInit {
         this.clickedAppointment.userId === userId &&
         this.clickedAppointment.appointmentId === appointmentId &&
         this.clickedAppointment.date === date) {
-      this.clickedAppointment = null;
+      this.closeAppointmentBox();
       return;
     }
 
-    // Calcola posizione ottimale del box
-    const position = this.calculateAppointmentBoxPosition(event, userId);
+    // Chiudi overlay esistente
+    if (this.overlayRef) {
+      this.overlayRef.dispose();
+    }
 
-    // Apri/aggiorna il box
+    // Calcola posizione intelligente usando Connected Position Strategy
+    const target = event.target as HTMLElement;
+    const columnElement = target.closest('.group') || target;
+
+    // Crea strategia di posizionamento CDK
+    const positionStrategy = this.overlay
+      .position()
+      .flexibleConnectedTo(columnElement)
+      .withPositions([
+        {
+          // Prova a destra della colonna
+          originX: 'end',
+          originY: 'center',
+          overlayX: 'start',
+          overlayY: 'center',
+          offsetX: 10
+        },
+        {
+          // Se non c'è spazio, prova a sinistra
+          originX: 'start',
+          originY: 'center',
+          overlayX: 'end',
+          overlayY: 'center',
+          offsetX: -10
+        },
+        {
+          // Come fallback, sopra
+          originX: 'center',
+          originY: 'top',
+          overlayX: 'center',
+          overlayY: 'bottom',
+          offsetY: -10
+        }
+      ])
+      .withPush(true) // Push nel viewport se necessario
+      .withViewportMargin(20);
+
+    // Configura overlay
+    const overlayConfig = new OverlayConfig({
+      positionStrategy,
+      scrollStrategy: this.overlay.scrollStrategies.reposition(),
+      hasBackdrop: true,
+      backdropClass: 'cdk-overlay-transparent-backdrop'
+    });
+
+    // Crea overlay
+    this.overlayRef = this.overlay.create(overlayConfig);
+
+    // Chiudi al click sul backdrop
+    this.overlayRef.backdropClick().subscribe(() => this.closeAppointmentBox());
+
+    // Salva riferimento appuntamento
     this.clickedAppointment = {
       userId,
       appointmentId,
       date,
-      position
+      position: { x: 0, y: 0 } // Non più usato con overlay
     };
+
+    // Crea e attacca il template portal all'overlay
+    if (this.appointmentDetailsTemplate) {
+      const portal = new TemplatePortal(
+        this.appointmentDetailsTemplate,
+        this.viewContainerRef
+      );
+      this.overlayRef.attach(portal);
+    }
   }
 
-  // Calcola la posizione ottimale del box evitando la colonna dell'operatore
-  calculateAppointmentBoxPosition(event: MouseEvent, userId: number): { x: number; y: number } {
-    const clickX = event.clientX;
-    const clickY = event.clientY;
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    const boxWidth = 320; // larghezza del box in px
-    const boxHeight = 250; // altezza stimata del box
-
-    // Determina la posizione della colonna dell'operatore
-    const target = event.target as HTMLElement;
-    const columnRect = target.closest('.group')?.getBoundingClientRect();
-
-    let x = clickX;
-    let y = clickY;
-
-    if (columnRect) {
-      const columnLeft = columnRect.left;
-      const columnRight = columnRect.right;
-      const columnCenter = (columnLeft + columnRight) / 2;
-
-      // Se il click è nella metà sinistra della colonna, posiziona il box a destra
-      if (clickX < columnCenter) {
-        x = Math.min(columnRight + 10, windowWidth - boxWidth - 20);
-      } else {
-        // Altrimenti posiziona a sinistra
-        x = Math.max(columnLeft - boxWidth - 10, 20);
-      }
+  closeAppointmentBox(): void {
+    this.clickedAppointment = null;
+    if (this.overlayRef) {
+      this.overlayRef.dispose();
+      this.overlayRef = undefined;
     }
-
-    // Assicurati che il box non esca dallo schermo verticalmente
-    if (y + boxHeight > windowHeight - 20) {
-      y = windowHeight - boxHeight - 20;
-    }
-    if (y < 20) {
-      y = 20;
-    }
-
-    return { x, y };
   }
 
   // Chiude il box quando si clicca su una cella vuota
   handleEmptyCellClick(): void {
-    if (this.clickedAppointment) {
-      this.clickedAppointment = null;
-    }
+    this.closeAppointmentBox();
   }
 
   // Ottieni i dettagli dell'appuntamento cliccato
@@ -1889,4 +1942,77 @@ export class CalendarComponent implements OnInit, AfterViewInit {
 
     return dayAppointments.find(apt => apt.id === appointmentId) || null;
   }
+
+  // === CDK DRAG & DROP ===
+
+  // Evento quando inizia il drag di un appuntamento
+  onAppointmentDragStarted(event: CdkDragStart, appointment: Appointment, userId: number): void {
+    this.dragState = {
+      isDragging: true,
+      startSlot: appointment.startTime,
+      endSlot: appointment.endTime,
+      currentUser: userId,
+      dragType: 'move',
+      appointmentId: appointment.id,
+      originalStartTime: appointment.startTime,
+      originalEndTime: appointment.endTime
+    };
+  }
+
+  // Evento durante il movimento del drag
+  onAppointmentDragMoved(event: CdkDragMove): void {
+    // Logica per visual feedback durante il drag
+    // CDK gestisce automaticamente la posizione visuale
+  }
+
+  // Evento quando il drag viene rilasciato
+  onAppointmentDropped(event: CdkDragDrop<any>, targetTimeSlot: string, targetUserId: number, targetDate?: Date): void {
+    const dateStr = targetDate ? this.formatDateISO(targetDate) : this.formatDateISO(this.currentDate);
+
+    if (!this.dragState.appointmentId || !this.dragState.originalStartTime || !this.dragState.originalEndTime) {
+      this.resetDragState();
+      return;
+    }
+
+    const appointment = this.findAppointmentById(this.dragState.appointmentId);
+    if (!appointment) {
+      this.resetDragState();
+      return;
+    }
+
+    // Calcola nuova durata
+    const duration = this.getAppointmentDuration(appointment);
+    const targetIndex = this.timeSlotList.indexOf(targetTimeSlot);
+    const newEndIndex = targetIndex + duration;
+    const newEndTime = this.timeSlotList[Math.min(newEndIndex, this.timeSlotList.length - 1)];
+
+    // Verifica se può essere spostato
+    const lastSlotIndex = newEndIndex - 1;
+    const canMove = lastSlotIndex < this.timeSlotList.length &&
+                   this.canExtendToSlot(targetUserId, dateStr, targetTimeSlot, this.timeSlotList[lastSlotIndex]);
+
+    if (canMove) {
+      this.moveConfirmation = {
+        appointment,
+        userId: targetUserId,
+        oldDate: appointment.date,
+        newDate: dateStr,
+        oldStartTime: this.dragState.originalStartTime,
+        newStartTime: targetTimeSlot,
+        oldEndTime: this.dragState.originalEndTime,
+        newEndTime
+      };
+    } else {
+      alert('Non è possibile spostare l\'appuntamento in questa posizione');
+    }
+
+    this.resetDragState();
+  }
+
+  // Predicato per determinare se un appuntamento può essere droppato in una cella
+  canDropAppointment = (drag: any, drop: any): boolean => {
+    // Permetti solo drop nello stesso medico per ora
+    // Puoi personalizzare questa logica
+    return true;
+  };
 }

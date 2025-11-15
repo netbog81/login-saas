@@ -299,8 +299,8 @@
         class="h-full flex"
         (mouseleave)="dragState.isDragging && handleMouseUp()"
         (mouseup)="handleMouseUp()">
-        <!-- Colonna orari (fixed, non scrollabile dall'utente) -->
-        <div #dailyTimeColumn class="w-20 bg-gray-50 border-r border-gray-200 flex-shrink-0 overflow-hidden">
+        <!-- Colonna orari (fixed, sincronizzata con CDK) -->
+        <div #dailyTimeScroll="cdkScrollable" cdkScrollable class="w-20 bg-gray-50 border-r border-gray-200 flex-shrink-0 overflow-hidden">
           <div class="bg-gray-100 border-b border-gray-200 flex items-center justify-center h-12">
             <span class="text-xs font-medium text-gray-600">Orario</span>
           </div>
@@ -318,14 +318,18 @@
           </div>
         </div>
 
-        <!-- Container scrollabile per colonne operatori -->
-        <div #dailyGridContainer class="flex-1 overflow-auto">
+        <!-- Container scrollabile per colonne operatori con CDK -->
+        <div #dailyGridScroll="cdkScrollable" cdkScrollable class="flex-1 overflow-auto">
           <div class="flex min-w-fit">
-            <!-- Colonne operatori -->
+            <!-- Colonne operatori con CDK Drop List -->
             <div
               *ngFor="let userId of selectedUsers"
               [ngClass]="getDailyColumnWidth()"
-              class="border-r border-gray-200 group flex-shrink-0">
+              class="border-r border-gray-200 group flex-shrink-0"
+              cdkDropList
+              [cdkDropListData]="userId"
+              (cdkDropListDropped)="onAppointmentDropped($event, '', userId)"
+              [cdkDropListEnterPredicate]="canDropAppointment">
               <div class="sticky top-0 z-10 bg-white border-b border-gray-200 flex items-center justify-center shadow-sm h-12">
                 <div class="flex items-center gap-2">
                   <div
@@ -338,7 +342,7 @@
                 </div>
               </div>
 
-              <!-- Celle tempo -->
+              <!-- Celle tempo con supporto CDK Drag -->
               <div class="select-none">
                 <div
                   *ngFor="let timeSlot of filteredTimeSlots"
@@ -351,9 +355,14 @@
                   (dblclick)="getAppointmentForSlot(userId, timeSlot) && openEditModal(userId, getAppointmentForSlot(userId, timeSlot)!.id, formatDateISO(currentDate), getAppointmentForSlot(userId, timeSlot)!)">
 
                   <ng-container *ngIf="getAppointmentForSlot(userId, timeSlot) as appointment">
-                    <div class="flex flex-col justify-start w-full h-full">
-                      <div *ngIf="isFirstSlot(appointment, timeSlot)"
-                           class="flex items-center gap-1 text-xs font-medium text-green-800 cursor-move">
+                    <div
+                      class="flex flex-col justify-start w-full h-full"
+                      cdkDrag
+                      [cdkDragData]="appointment"
+                      (cdkDragStarted)="onAppointmentDragStarted($event, appointment, userId)"
+                      (cdkDragMoved)="onAppointmentDragMoved($event)"
+                      *ngIf="isFirstSlot(appointment, timeSlot)">
+                      <div class="flex items-center gap-1 text-xs font-medium text-green-800 cursor-move">
                         <span>{{ appointment.startTime }}</span>
                         <div *ngIf="zoomLevel > 1" class="flex-1 min-w-0">
                           <div class="flex items-center gap-1 group/item">
@@ -380,7 +389,10 @@
                         </div>
                       </div>
 
-                      <!-- Indicatore ultima cella rimosso: bordo gestito da getCellStyle() -->
+                      <!-- CDK Drag Preview -->
+                      <div *cdkDragPreview class="px-2 py-1 bg-blue-500 text-white rounded shadow-lg text-xs">
+                        {{ appointment.title }}
+                      </div>
                     </div>
                   </ng-container>
 
@@ -401,8 +413,8 @@
         class="h-full flex"
         (mouseleave)="dragState.isDragging && resetWeeklyDrag()"
         (mouseup)="weeklyDragDate && handleWeeklyMouseUp(weeklyDragDate)">
-        <!-- Colonna orari (fixed, non scrollabile dall'utente) -->
-        <div #weeklyTimeColumn class="w-16 bg-gray-50 border-r border-gray-200 flex-shrink-0 overflow-hidden">
+        <!-- Colonna orari (fixed, sincronizzata con CDK) -->
+        <div #weeklyTimeScroll="cdkScrollable" cdkScrollable class="w-16 bg-gray-50 border-r border-gray-200 flex-shrink-0 overflow-hidden">
           <div class="bg-gray-100 border-b border-gray-200 h-16">
             <div class="text-xs font-medium text-gray-600 text-center pt-2">Orario</div>
           </div>
@@ -420,8 +432,8 @@
           </div>
         </div>
 
-        <!-- Container scrollabile per giorni settimana -->
-        <div #weeklyGridContainer class="flex-1 overflow-auto">
+        <!-- Container scrollabile per giorni settimana con CDK -->
+        <div #weeklyGridScroll="cdkScrollable" cdkScrollable class="flex-1 overflow-auto">
           <div class="flex min-w-fit">
             <!-- Colonne giorni settimana -->
             <div *ngFor="let day of weekDays" class="flex flex-col border-r border-gray-200">
@@ -450,13 +462,17 @@
               </div>
             </div>
 
-            <!-- Colonne operatori per questo giorno -->
+            <!-- Colonne operatori per questo giorno con CDK Drop List -->
             <div class="flex">
               <div
                 *ngFor="let userId of selectedUsers"
                 [ngClass]="getWeeklyColumnWidth()"
-                class="border-r border-gray-100 flex-shrink-0">
-                <!-- Celle tempo -->
+                class="border-r border-gray-100 flex-shrink-0"
+                cdkDropList
+                [cdkDropListData]="{ userId: userId, date: day }"
+                (cdkDropListDropped)="onAppointmentDropped($event, '', userId, day)"
+                [cdkDropListEnterPredicate]="canDropAppointment">
+                <!-- Celle tempo con supporto CDK Drag -->
                 <div class="select-none">
                   <div
                     *ngFor="let timeSlot of filteredTimeSlots"
@@ -469,8 +485,21 @@
                     (click)="getAppointmentForDateUserSlot(day, userId, timeSlot) ? handleAppointmentClick(userId, getAppointmentForDateUserSlot(day, userId, timeSlot)!.id, formatDateISO(day), $event) : handleEmptyCellClick()"
                     (dblclick)="handleWeeklyDoubleClick(day, userId, timeSlot)">
 
-                    <!-- Solo colore, dettagli al hover -->
-                    <div class="w-full h-full"></div>
+                    <!-- Appuntamenti draggabili con CDK -->
+                    <ng-container *ngIf="getAppointmentForDateUserSlot(day, userId, timeSlot) as appointment">
+                      <div
+                        *ngIf="isFirstSlot(appointment, timeSlot)"
+                        cdkDrag
+                        [cdkDragData]="appointment"
+                        (cdkDragStarted)="onAppointmentDragStarted($event, appointment, userId)"
+                        (cdkDragMoved)="onAppointmentDragMoved($event)"
+                        class="w-full h-full">
+                        <!-- CDK Drag Preview -->
+                        <div *cdkDragPreview class="px-2 py-1 bg-blue-500 text-white rounded shadow-lg text-xs">
+                          {{ appointment.title }}
+                        </div>
+                      </div>
+                    </ng-container>
                   </div>
                 </div>
               </div>
@@ -480,14 +509,9 @@
         </div>
       </div>
 
-      <!-- Box appuntamento cliccato (posizionamento intelligente) -->
-      <div
-        *ngIf="clickedAppointment"
-        class="fixed z-50 bg-white shadow-2xl rounded-lg p-4 w-80 border-2 border-blue-500"
-        [ngStyle]="{
-          left: clickedAppointment.position.x + 'px',
-          top: clickedAppointment.position.y + 'px'
-        }">
+      <!-- Box appuntamento cliccato (gestito da CDK Overlay) -->
+      <ng-template #appointmentDetailsTemplate>
+        <div class="bg-white shadow-2xl rounded-lg p-4 w-80 border-2 border-blue-500">
         <ng-container *ngIf="getClickedAppointmentDetails() as apt">
           <!-- Header con chiusura -->
           <div class="flex items-start justify-between mb-3">
@@ -540,7 +564,8 @@
             </button>
           </div>
         </ng-container>
-      </div>
+        </div>
+      </ng-template>
     </div>
   </div>
 
