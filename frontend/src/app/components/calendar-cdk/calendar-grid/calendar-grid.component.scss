@@ -31,6 +31,7 @@
   justify-content: center;
   padding-top: 4px;
   border-bottom: 1px solid #e5e7eb;
+  background-color: #f9fafb;
 
   &:last-child {
     border-bottom: none;
@@ -73,12 +74,25 @@
   &:last-child {
     border-right: none;
   }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    opacity: 0.15;
+    background-color: inherit;
+    z-index: 0;
+  }
 }
 
 .user-name {
   font-size: 14px;
   font-weight: 600;
   color: #1f2937;
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
   z-index: 1;
   position: relative;
 }

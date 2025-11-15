@@ -1,0 +1,86 @@
+<div class="calendar-weekly-grid-container">
+  <div class="grid-content">
+    <!-- Headers -->
+    <div class="grid-header">
+      <div class="time-column-header-space"></div>
+      <div class="days-headers-container" [class.enable-scroll]="enableHorizontalScroll">
+        <!-- Day headers with user sub-columns -->
+        <div *ngFor="let day of dayColumns" class="day-column-header">
+          <div class="day-header-title">
+            <span class="day-name">{{ day.dayName }}</span>
+            <span class="day-number">{{ day.dayNumber }}</span>
+          </div>
+          <div class="users-sub-headers">
+            <div *ngFor="let user of users"
+                 class="user-sub-header"
+                 [style.backgroundColor]="user.color"
+                 [style.minWidth]="getColumnWidth()">
+              <span class="user-name">{{ user.name }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid body -->
+    <div class="grid-body-wrapper"
+         [class.working-hours-only]="showWorkingHoursOnly"
+         [class.full-day]="!showWorkingHoursOnly">
+      <div class="grid-body" #gridBody (scroll)="onGridScroll($event)" [class.enable-scroll]="enableHorizontalScroll">
+        <!-- Time column (sticky) -->
+        <div class="time-column">
+          <div class="time-slots">
+            <div *ngFor="let slot of timeSlots"
+                 class="time-slot"
+                 [style.height.px]="slotHeight">
+              <span class="time-label">{{ slot.time }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Day columns with user sub-columns -->
+        <div *ngFor="let day of dayColumns" class="day-column">
+          <div *ngFor="let user of users"
+               class="user-sub-column"
+               [style.minWidth]="getColumnWidth()">
+            <!-- Cells -->
+            <div class="cells-container">
+              <app-calendar-cell
+                *ngFor="let slot of timeSlots"
+                [timeSlot]="slot"
+                [date]="day.date"
+                [user]="user"
+                [slotHeight]="slotHeight"
+                [isAvailable]="isCellAvailable(user.id, day.date, slot.time)"
+                [isOccupied]="isCellOccupied(user.id, day.date, slot.time)"
+                (cellMouseDown)="onCellMouseDown($event)"
+                (cellMouseEnter)="onCellMouseEnter($event)"
+                (cellMouseUp)="onCellMouseUp($event)"
+                (cellDblClick)="onCellDblClick($event)">
+              </app-calendar-cell>
+            </div>
+
+            <!-- Events -->
+            <div class="events-container">
+              <app-calendar-event
+                *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.id)"
+                [appointment]="eventPos.appointment"
+                [user]="user"
+                [top]="eventPos.top"
+                [height]="eventPos.height"
+                [width]="eventPos.width"
+                [left]="eventPos.left"
+                [slotDuration]="slotDuration"
+                (eventClick)="onEventClick($event)"
+                (eventDblClick)="onEventDblClick($event)"
+                (eventDragStart)="onEventDragStart($event)"
+                (eventDragEnd)="onEventDragEnd($event)"
+                (eventResize)="onEventResize($event)">
+              </app-calendar-event>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -21,6 +21,7 @@ export class CalendarCellComponent {
   @Input() timeSlot!: TimeSlot;
   @Input() date!: string;
   @Input() user!: User;
+  @Input() slotHeight: number = 60;
   @Input() isAvailable: boolean = true;
   @Input() isOccupied: boolean = false;
   @Input() isDragTarget: boolean = false;
@@ -32,6 +33,7 @@ export class CalendarCellComponent {
   @Output() cellMouseUp = new EventEmitter<CellEvent>();
   @Output() cellDblClick = new EventEmitter<CellEvent>();
 
+  @HostBinding('style.height.px') get cellHeight() { return this.slotHeight; }
   @HostBinding('class.available') get availableClass() { return this.isAvailable; }
   @HostBinding('class.occupied') get occupiedClass() { return this.isOccupied; }
   @HostBinding('class.drag-target') get dragTargetClass() { return this.isDragTarget; }

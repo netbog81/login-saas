@@ -17,8 +17,7 @@
     <div class="grid-header">
       <div *ngFor="let user of users"
            class="user-header"
-           [style.backgroundColor]="user.color"
-           [style.opacity]="0.1">
+           [style.backgroundColor]="user.color">
         <span class="user-name">{{ user.name }}</span>
       </div>
     </div>
@@ -36,6 +35,7 @@
             [timeSlot]="slot"
             [date]="date"
             [user]="user"
+            [slotHeight]="slotHeight"
             [isAvailable]="isCellAvailable(user.id, date, slot.time)"
             [isOccupied]="isCellOccupied(user.id, date, slot.time)"
             (cellMouseDown)="onCellMouseDown($event)"

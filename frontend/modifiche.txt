@@ -1,0 +1,1228 @@
+diff --git a/backend/package-lock.json b/backend/package-lock.json
+index 837525e..6abe2b9 100644
+--- a/backend/package-lock.json
++++ b/backend/package-lock.json
+@@ -644,6 +644,7 @@
+       "resolved": "https://registry.npmjs.org/@nestjs/common/-/common-10.4.20.tgz",
+       "integrity": "sha512-hxJxZF7jcKGuUzM9EYbuES80Z/36piJbiqmPy86mk8qOn5gglFebBTvcx7PWVbRNSb4gngASYnefBj/Y2HAzpQ==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "file-type": "20.4.1",
+         "iterare": "1.2.1",
+@@ -690,6 +691,7 @@
+       "integrity": "sha512-kRdtyKA3+Tu70N3RQ4JgmO1E3LzAMs/eppj7SfjabC7TgqNWoS4RLhWl4BqmsNVmjj6D5jgfPVtHtgYkU3AfpQ==",
+       "hasInstallScript": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@nuxtjs/opencollective": "0.3.2",
+         "fast-safe-stringify": "2.1.1",
+@@ -727,6 +729,7 @@
+       "resolved": "https://registry.npmjs.org/@nestjs/platform-express/-/platform-express-10.4.20.tgz",
+       "integrity": "sha512-rh97mX3rimyf4xLMLHuTOBKe6UD8LOJ14VlJ1F/PTd6C6ZK9Ak6EHuJvdaGcSFQhd3ZMBh3I6CuujKGW9pNdIg==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "body-parser": "1.20.3",
+         "cors": "2.8.5",
+@@ -980,6 +983,7 @@
+       "integrity": "sha512-tbsV1jPne5CkFQCgPBcDOt30ItF7aJoZL997JSF7MhGQqOeT3svWRYxiqlfA5RUdlHN6Fi+EI9bxqbdyAUZjYQ==",
+       "dev": true,
+       "license": "BSD-2-Clause",
++      "peer": true,
+       "dependencies": {
+         "@typescript-eslint/scope-manager": "6.21.0",
+         "@typescript-eslint/types": "6.21.0",
+@@ -1337,6 +1341,7 @@
+       "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "bin": {
+         "acorn": "bin/acorn"
+       },
+@@ -1360,6 +1365,7 @@
+       "integrity": "sha512-sRu1kpcO9yLtYxBKvqfTeh9KzZEwO3STyX1HT+4CaDzC6HpTGYhIhPIzj9XuKU7KYDwnaeh5hcOwjy1QuJzBPA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "fast-deep-equal": "^3.1.1",
+         "json-schema-traverse": "^1.0.0",
+@@ -1703,6 +1709,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "baseline-browser-mapping": "^2.8.25",
+         "caniuse-lite": "^1.0.30001754",
+@@ -1908,13 +1915,15 @@
+       "version": "0.5.1",
+       "resolved": "https://registry.npmjs.org/class-transformer/-/class-transformer-0.5.1.tgz",
+       "integrity": "sha512-SQa1Ws6hUbfC98vKGxZH3KFY0Y1lm5Zm0SY8XX9zbK7FJCyVEac3ATW0RIpwzW+oOfmHE5PMPufDG9hCfoEOMw==",
+-      "license": "MIT"
++      "license": "MIT",
++      "peer": true
+     },
+     "node_modules/class-validator": {
+       "version": "0.14.2",
+       "resolved": "https://registry.npmjs.org/class-validator/-/class-validator-0.14.2.tgz",
+       "integrity": "sha512-3kMVRF2io8N8pY1IFIXlho9r8IPUUIfHe2hYVtiebvAzU2XeQFXTv+XI4WX+TnXmtwXMDcjngcpkiPM0O9PvLw==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@types/validator": "^13.11.8",
+         "libphonenumber-js": "^1.11.1",
+@@ -2478,6 +2487,7 @@
+       "deprecated": "This version is no longer supported. Please see https://eslint.org/version-support for other options.",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.2.0",
+         "@eslint-community/regexpp": "^4.6.1",
+@@ -4460,6 +4470,7 @@
+       "resolved": "https://registry.npmjs.org/pg/-/pg-8.16.3.tgz",
+       "integrity": "sha512-enxc1h0jA/aq5oSDMvqyW3q89ra6XIIDZgCX9vkMrnz5DFTw/Ny3Li2lFQ+pt3L6MCgm/5o2o8HW9hiJji+xvw==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "pg-connection-string": "^2.9.1",
+         "pg-pool": "^3.10.1",
+@@ -4785,7 +4796,8 @@
+       "version": "0.1.14",
+       "resolved": "https://registry.npmjs.org/reflect-metadata/-/reflect-metadata-0.1.14.tgz",
+       "integrity": "sha512-ZhYeb6nRaXCfhnndflDK8qI6ZQ/YcWZCISRAWICW9XYqMUwjZM9Z0DveWX/ABN01oxSHwVxKQmxeYZSsm0jh5A==",
+-      "license": "Apache-2.0"
++      "license": "Apache-2.0",
++      "peer": true
+     },
+     "node_modules/repeat-string": {
+       "version": "1.6.1",
+@@ -4960,6 +4972,7 @@
+       "resolved": "https://registry.npmjs.org/rxjs/-/rxjs-7.8.2.tgz",
+       "integrity": "sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==",
+       "license": "Apache-2.0",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.1.0"
+       }
+@@ -5015,6 +5028,7 @@
+       "integrity": "sha512-j3fVLgvTo527anyYyJOGTYJbG+vnnQYvE0m5mmkc1TK+nxAppkCLMIL0aZ4dblVCNoGShhm+kzE4ZUykBoMg4g==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "fast-deep-equal": "^3.1.1",
+         "fast-json-stable-stringify": "^2.0.0",
+@@ -5790,6 +5804,7 @@
+       "resolved": "https://registry.npmjs.org/typeorm/-/typeorm-0.3.27.tgz",
+       "integrity": "sha512-pNV1bn+1n8qEe8tUNsNdD8ejuPcMAg47u2lUGnbsajiNUr3p2Js1XLKQjBMH0yMRMDfdX8T+fIRejFmIwy9x4A==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@sqltools/formatter": "^1.2.5",
+         "ansis": "^3.17.0",
+@@ -5942,6 +5957,7 @@
+       "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+       "dev": true,
+       "license": "Apache-2.0",
++      "peer": true,
+       "bin": {
+         "tsc": "bin/tsc",
+         "tsserver": "bin/tsserver"
+@@ -6123,6 +6139,7 @@
+       "integrity": "sha512-EksG6gFY3L1eFMROS/7Wzgrii5mBAFe4rIr3r2BTfo7bcc+DWwFZ4OJ/miOuHJO/A85HwyI4eQ0F6IKXesO7Fg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@types/eslint-scope": "^3.7.7",
+         "@types/estree": "^1.0.6",
+diff --git a/frontend/angular.json b/frontend/angular.json
+index 0f43e1b..772d7b1 100644
+--- a/frontend/angular.json
++++ b/frontend/angular.json
+@@ -75,5 +75,8 @@
+         }
+       }
+     }
++  },
++  "cli": {
++    "analytics": false
+   }
+ }
+diff --git a/frontend/package-lock.json b/frontend/package-lock.json
+index 9af485f..d660d49 100644
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -286,6 +286,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "nanoid": "^3.3.7",
+         "picocolors": "^1.0.0",
+@@ -414,6 +415,7 @@
+       "resolved": "https://registry.npmjs.org/@angular/animations/-/animations-17.3.12.tgz",
+       "integrity": "sha512-9hsdWF4gRRcVJtPcCcYLaX1CIyM9wUu6r+xRl6zU5hq8qhl35hig6ounz7CXFAzLf0WDBdM16bPHouVGaG76lg==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.3.0"
+       },
+@@ -481,6 +483,7 @@
+       "resolved": "https://registry.npmjs.org/@angular/common/-/common-17.3.12.tgz",
+       "integrity": "sha512-vabJzvrx76XXFrm1RJZ6o/CyG32piTB/1sfFfKHdlH1QrmArb8It4gyk9oEjZ1IkAD0HvBWlfWmn+T6Vx3pdUw==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.3.0"
+       },
+@@ -497,6 +500,7 @@
+       "resolved": "https://registry.npmjs.org/@angular/compiler/-/compiler-17.3.12.tgz",
+       "integrity": "sha512-vwI8oOL/gM+wPnptOVeBbMfZYwzRxQsovojZf+Zol9szl0k3SZ3FycWlxxXZGFu3VIEfrP6pXplTmyODS/Lt1w==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.3.0"
+       },
+@@ -518,6 +522,7 @@
+       "integrity": "sha512-1F8M7nWfChzurb7obbvuE7mJXlHtY1UG58pcwcomVtpPb+kPavgAO8OEvJHYBMV+bzSxkXt5UIwL9lt9jHUxZA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@babel/core": "7.23.9",
+         "@jridgewell/sourcemap-codec": "^1.4.14",
+@@ -594,6 +599,7 @@
+       "resolved": "https://registry.npmjs.org/@angular/core/-/core-17.3.12.tgz",
+       "integrity": "sha512-MuFt5yKi161JmauUta4Dh0m8ofwoq6Ino+KoOtkYMBGsSx+A7dSm+DUxxNwdj7+DNyg3LjVGCFgBFnq4g8z06A==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.3.0"
+       },
+@@ -628,6 +634,7 @@
+       "resolved": "https://registry.npmjs.org/@angular/platform-browser/-/platform-browser-17.3.12.tgz",
+       "integrity": "sha512-DYY04ptWh/ulMHzd+y52WCE8QnEYGeIiW3hEIFjCN8z0kbIdFdUtEB0IK5vjNL3ejyhUmphcpeT5PYf3YXtqWQ==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.3.0"
+       },
+@@ -712,6 +719,7 @@
+       "integrity": "sha512-vMqyb7XCDMPvJFFOaT9kxtiRh42GwlZEg1/uIgtZshS5a/8OaduUfCi7kynKgc3Tw/6Uo2D+db9qBttghhmxwQ==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@ampproject/remapping": "^2.2.0",
+         "@babel/code-frame": "^7.26.2",
+@@ -3806,6 +3814,7 @@
+       "integrity": "sha512-ZsJzA5thDQMSQO788d7IocwwQbI8B5OPzmqNvpf3NY/+MHDAS759Wo0gd2WQeXYt5AAAQjzcrTVC6SKCuYgoCQ==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "undici-types": "~6.21.0"
+       }
+@@ -4139,6 +4148,7 @@
+       "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "bin": {
+         "acorn": "bin/acorn"
+       },
+@@ -4215,6 +4225,7 @@
+       "integrity": "sha512-sRu1kpcO9yLtYxBKvqfTeh9KzZEwO3STyX1HT+4CaDzC6HpTGYhIhPIzj9XuKU7KYDwnaeh5hcOwjy1QuJzBPA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "fast-deep-equal": "^3.1.1",
+         "json-schema-traverse": "^1.0.0",
+@@ -4688,6 +4699,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "baseline-browser-mapping": "^2.8.25",
+         "caniuse-lite": "^1.0.30001754",
+@@ -7530,6 +7542,7 @@
+       "integrity": "sha512-P3b3HJDBtSzsXUl0im2L7gTO5Ubg8mEN6G8qoTS77iXxXX4Hvu4Qj540PZDvQ8V6DmX6iXo98k7Md0Cm1PrLaA==",
+       "dev": true,
+       "license": "Apache-2.0",
++      "peer": true,
+       "dependencies": {
+         "copy-anything": "^2.0.1",
+         "parse-node-version": "^1.0.1",
+@@ -9188,6 +9201,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "nanoid": "^3.3.11",
+         "picocolors": "^1.1.1",
+@@ -10054,6 +10068,7 @@
+       "resolved": "https://registry.npmjs.org/rxjs/-/rxjs-7.8.2.tgz",
+       "integrity": "sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==",
+       "license": "Apache-2.0",
++      "peer": true,
+       "dependencies": {
+         "tslib": "^2.1.0"
+       }
+@@ -10092,6 +10107,7 @@
+       "integrity": "sha512-wovtnV2PxzteLlfNzbgm1tFXPLoZILYAMJtvoXXkD7/+1uP41eKkIt1ypWq5/q2uT94qHjXehEYfmjKOvjL9sg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "chokidar": ">=3.0.0 <4.0.0",
+         "immutable": "^4.0.0",
+@@ -10957,6 +10973,7 @@
+       "integrity": "sha512-6A2rnmW5xZMdw11LYjhcI5846rt9pbLSabY5XPxo+XWdxwZaFEn47Go4NzFiHu9sNNmr/kXivP1vStfvMaK1GQ==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@alloc/quick-lru": "^5.2.0",
+         "arg": "^5.0.2",
+@@ -11383,6 +11400,7 @@
+       "integrity": "sha512-mI4WrpHsbCIcwT9cF4FZvr80QUeKvsUsUvKDoR+X/7XHQH98xYD8YHZg7ANtz2GtZt/CBq2QJ0thkGJMHfqc1w==",
+       "dev": true,
+       "license": "Apache-2.0",
++      "peer": true,
+       "bin": {
+         "tsc": "bin/tsc",
+         "tsserver": "bin/tsserver"
+@@ -11583,6 +11601,7 @@
+       "integrity": "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "esbuild": "^0.21.3",
+         "postcss": "^8.4.43",
+@@ -12107,6 +12126,7 @@
+       "integrity": "sha512-KcsGn50VT+06JH/iunZJedYGUJS5FGjow8wb9c0v5n1Om8O1g4L6LjtfxwlXIATopoQu+vOXXa7gYisWxCoPyg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@types/estree": "^1.0.5",
+         "@webassemblyjs/ast": "^1.12.1",
+@@ -12183,6 +12203,7 @@
+       "integrity": "sha512-5hbAst3h3C3L8w6W4P96L5vaV0PxSmJhxZvWKYIdgxOQm8pNZ5dEOmmSLBVpP85ReeyRt6AS1QJNyo/oFFPeVA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@types/bonjour": "^3.5.9",
+         "@types/connect-history-api-fallback": "^1.3.5",
+@@ -12314,6 +12335,7 @@
+       "integrity": "sha512-j3fVLgvTo527anyYyJOGTYJbG+vnnQYvE0m5mmkc1TK+nxAppkCLMIL0aZ4dblVCNoGShhm+kzE4ZUykBoMg4g==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "fast-deep-equal": "^3.1.1",
+         "fast-json-stable-stringify": "^2.0.0",
+@@ -12556,7 +12578,8 @@
+       "version": "0.14.10",
+       "resolved": "https://registry.npmjs.org/zone.js/-/zone.js-0.14.10.tgz",
+       "integrity": "sha512-YGAhaO7J5ywOXW6InXNlLmfU194F8lVgu7bRntUF3TiG8Y3nBK0x1UJJuHUP/e8IyihkjCYqhCScpSwnlaSRkQ==",
+-      "license": "MIT"
++      "license": "MIT",
++      "peer": true
+     }
+   }
+ }
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.scss b/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.scss
+index dcef5d1..a1bfe2a 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.scss
++++ b/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.scss
+@@ -1,7 +1,7 @@
+ :host {
+   display: block;
+   position: relative;
+-  height: 60px; // Default height, can be adjusted via zoom
++  // Height is set dynamically via [style.height.px] binding for zoom support
+   border-right: 1px solid #e5e7eb;
+   border-bottom: 1px solid #e5e7eb;
+   cursor: pointer;
+@@ -17,8 +17,9 @@
+   }
+ 
+   &.occupied {
+-    cursor: default;
+-    pointer-events: none;
++    // Cells under appointments should still be clickable
++    // The visual feedback is enough to show they're occupied
++    cursor: pointer;
+   }
+ 
+   &.drag-target {
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.ts b/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.ts
+index 299d324..d47655f 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.ts
++++ b/frontend/src/app/components/calendar-cdk/calendar-cell/calendar-cell.component.ts
+@@ -26,6 +26,7 @@ export class CalendarCellComponent {
+   @Input() isDragTarget: boolean = false;
+   @Input() isWorkingHour: boolean = true;
+   @Input() showTimeLabel: boolean = false;
++  @Input() slotHeight: number = 60; // Default 60px, can be changed by zoom
+ 
+   @Output() cellMouseDown = new EventEmitter<CellEvent>();
+   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
+@@ -36,6 +37,7 @@ export class CalendarCellComponent {
+   @HostBinding('class.occupied') get occupiedClass() { return this.isOccupied; }
+   @HostBinding('class.drag-target') get dragTargetClass() { return this.isDragTarget; }
+   @HostBinding('class.non-working') get nonWorkingClass() { return !this.isWorkingHour; }
++  @HostBinding('style.height.px') get heightPx() { return this.slotHeight; }
+ 
+   @HostListener('mousedown', ['$event'])
+   onMouseDown(event: MouseEvent): void {
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.html b/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.html
+index 051c8f4..2b24d76 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.html
++++ b/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.html
+@@ -13,7 +13,11 @@
+   <!-- Toolbar -->
+   <app-calendar-toolbar
+     [config]="config"
+-    (configChange)="onConfigChange($event)">
++    [enableHorizontalScroll]="enableHorizontalScroll"
++    [minColumnWidth]="minColumnWidth"
++    (configChange)="onConfigChange($event)"
++    (horizontalScrollChange)="onHorizontalScrollChange($event)"
++    (minColumnWidthChange)="onMinColumnWidthChange($event)">
+   </app-calendar-toolbar>
+ 
+   <!-- Main content area -->
+@@ -36,8 +40,9 @@
+         <p>Caricamento...</p>
+       </div>
+ 
++      <!-- Daily view -->
+       <app-calendar-grid
+-        *ngIf="!isLoading && selectedOperators.length > 0"
++        *ngIf="!isLoading && selectedOperators.length > 0 && config.viewType === 'daily'"
+         [timeSlots]="timeSlots"
+         [users]="selectedOperators"
+         [date]="mainDate"
+@@ -59,6 +64,32 @@
+         (eventResize)="onEventResize($event)">
+       </app-calendar-grid>
+ 
++      <!-- Weekly view -->
++      <app-calendar-weekly-grid
++        *ngIf="!isLoading && selectedOperators.length > 0 && config.viewType === 'weekly'"
++        [timeSlots]="timeSlots"
++        [users]="selectedOperators"
++        [dates]="visibleDates"
++        [appointments]="appointments"
++        [availabilities]="availabilities"
++        [slotDuration]="config.slotDuration"
++        [slotHeight]="slotHeight"
++        [startHour]="config.showWorkingHoursOnly ? config.workingHoursStart : config.startHour"
++        [showWorkingHoursOnly]="config.showWorkingHoursOnly"
++        [showWeekend]="config.showWeekend"
++        [enableHorizontalScroll]="enableHorizontalScroll"
++        [minColumnWidth]="minColumnWidth"
++        (cellMouseDown)="onCellMouseDown($event)"
++        (cellMouseEnter)="onCellMouseEnter($event)"
++        (cellMouseUp)="onCellMouseUp($event)"
++        (cellDblClick)="onCellDblClick($event)"
++        (eventClick)="onEventClick($event)"
++        (eventDblClick)="onEventDblClick($event)"
++        (eventDragStart)="onEventDragStart($event)"
++        (eventDragEnd)="onEventDragEnd($event)"
++        (eventResize)="onEventResize($event)">
++      </app-calendar-weekly-grid>
++
+       <!-- Empty state -->
+       <div *ngIf="!isLoading && selectedOperators.length === 0" class="empty-state">
+         <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+@@ -82,4 +113,16 @@
+       </app-event-dialog>
+     </div>
+   </div>
++
++  <!-- Confirm Delete Dialog -->
++  <app-confirm-dialog
++    *ngIf="showConfirmDialog"
++    [title]="confirmDialogData.title"
++    [message]="confirmDialogData.message"
++    confirmText="Elimina"
++    cancelText="Annulla"
++    confirmButtonClass="btn-danger"
++    (confirm)="onConfirmDelete()"
++    (cancel)="onCancelDelete()">
++  </app-confirm-dialog>
+ </div>
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.ts b/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.ts
+index 96689c0..b8d8378 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.ts
++++ b/frontend/src/app/components/calendar-cdk/calendar-container/calendar-container.component.ts
+@@ -11,7 +11,9 @@ import { CalendarHeaderComponent } from '../calendar-header/calendar-header.comp
+ import { CalendarSidebarComponent } from '../calendar-sidebar/calendar-sidebar.component';
+ import { CalendarToolbarComponent } from '../calendar-toolbar/calendar-toolbar.component';
+ import { CalendarGridComponent } from '../calendar-grid/calendar-grid.component';
++import { CalendarWeeklyGridComponent } from '../calendar-weekly-grid/calendar-weekly-grid.component';
+ import { EventDialogComponent, EventDialogData, EventDialogResult } from '../event-dialog/event-dialog.component';
++import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+ import { CellEvent } from '../calendar-cell/calendar-cell.component';
+ import { EventAction } from '../calendar-event/calendar-event.component';
+ 
+@@ -30,7 +32,9 @@ import { Availability } from '../../../models/availability.model';
+     CalendarSidebarComponent,
+     CalendarToolbarComponent,
+     CalendarGridComponent,
+-    EventDialogComponent
++    CalendarWeeklyGridComponent,
++    EventDialogComponent,
++    ConfirmDialogComponent
+   ],
+   templateUrl: './calendar-container.component.html',
+   styleUrls: ['./calendar-container.component.scss']
+@@ -53,6 +57,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
+   // Dialog state
+   showEventDialog: boolean = false;
+   eventDialogData!: EventDialogData;
++  showConfirmDialog: boolean = false;
++  confirmDialogData: { title: string; message: string; appointmentId?: number } = { title: '', message: '' };
+ 
+   // Drag state
+   dragStartCell: CellEvent | null = null;
+@@ -62,6 +68,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
+   // Loading state
+   isLoading: boolean = false;
+ 
++  // Weekly view settings
++  enableHorizontalScroll: boolean = false;
++  minColumnWidth: number = 120;
++
+   constructor(
+     public stateService: CalendarStateService,
+     private apiService: ApiService
+@@ -260,6 +270,14 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
+     this.stateService.updateConfig(configUpdate);
+   }
+ 
++  onHorizontalScrollChange(enabled: boolean): void {
++    this.enableHorizontalScroll = enabled;
++  }
++
++  onMinColumnWidthChange(width: number): void {
++    this.minColumnWidth = width;
++  }
++
+   // Grid cell events
+   onCellMouseDown(event: CellEvent): void {
+     this.dragStartCell = event;
+@@ -311,7 +329,18 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
+ 
+   // Event events
+   onEventClick(action: EventAction): void {
+-    // Single click - could show preview
++    if (action.type === 'delete') {
++      // Show confirm dialog
++      this.confirmDialogData = {
++        title: 'Conferma eliminazione',
++        message: `Sei sicuro di voler eliminare l'appuntamento "${action.appointment.title || 'Senza titolo'}"?`,
++        appointmentId: action.appointment.id
++      };
++      this.showConfirmDialog = true;
++    } else if (action.type === 'click') {
++      // Show appointment detail box (TO BE IMPLEMENTED)
++      console.log('Show appointment detail:', action.appointment);
++    }
+   }
+ 
+   onEventDblClick(action: EventAction): void {
+@@ -436,4 +465,22 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
+   get mainDate(): string {
+     return this.config.viewType === 'daily' ? this.formatDate(this.currentDate) : this.visibleDates[0];
+   }
++
++  // Confirm dialog handlers
++  async onConfirmDelete(): Promise<void> {
++    if (!this.confirmDialogData.appointmentId) return;
++
++    try {
++      await this.apiService.deleteAppointment(this.confirmDialogData.appointmentId).toPromise();
++      this.stateService.removeAppointment(this.confirmDialogData.appointmentId);
++      this.showConfirmDialog = false;
++    } catch (error) {
++      console.error('Error deleting appointment:', error);
++      alert('Errore durante l\'eliminazione dell\'appuntamento');
++    }
++  }
++
++  onCancelDelete(): void {
++    this.showConfirmDialog = false;
++  }
+ }
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.html b/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.html
+index 9b3bd1a..070e55c 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.html
++++ b/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.html
+@@ -28,6 +28,17 @@
+     </div>
+   </div>
+ 
++  <!-- Delete icon (visible on hover) -->
++  <button class="delete-btn"
++          (click)="onDeleteClick($event)"
++          title="Elimina appuntamento">
++    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
++      <path d="M3 6h18"></path>
++      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
++      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
++    </svg>
++  </button>
++
+   <!-- Resize handle -->
+   <div class="resize-handle"
+        (mousedown)="onResizeStart($event)">
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.scss b/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.scss
+index 02bdaa3..3c0744d 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.scss
++++ b/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.scss
+@@ -83,6 +83,38 @@
+   line-height: 1.3;
+ }
+ 
++.delete-btn {
++  position: absolute;
++  top: 4px;
++  right: 4px;
++  width: 24px;
++  height: 24px;
++  border: none;
++  background-color: rgba(0, 0, 0, 0.3);
++  color: white;
++  border-radius: 4px;
++  cursor: pointer;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  opacity: 0;
++  transition: opacity 0.2s ease, background-color 0.2s ease;
++  z-index: 15;
++  padding: 0;
++
++  &:hover {
++    background-color: rgba(239, 68, 68, 0.9);
++  }
++
++  svg {
++    pointer-events: none;
++  }
++}
++
++.calendar-event:hover .delete-btn {
++  opacity: 1;
++}
++
+ .resize-handle {
+   position: absolute;
+   bottom: 0;
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.ts b/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.ts
+index 13bf2f5..58c235e 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.ts
++++ b/frontend/src/app/components/calendar-cdk/calendar-event/calendar-event.component.ts
+@@ -5,7 +5,7 @@ import { Appointment } from '../../../models/appointment.model';
+ import { User } from '../../../models/user.model';
+ 
+ export interface EventAction {
+-  type: 'click' | 'dblclick' | 'resize' | 'drag';
++  type: 'click' | 'dblclick' | 'resize' | 'drag' | 'delete';
+   appointment: Appointment;
+   newStartTime?: string;
+   newEndTime?: string;
+@@ -62,6 +62,15 @@ export class CalendarEventComponent {
+     });
+   }
+ 
++  onDeleteClick(event: MouseEvent): void {
++    event.stopPropagation();
++    event.preventDefault();
++    this.eventClick.emit({
++      type: 'delete',
++      appointment: this.appointment
++    });
++  }
++
+   onDragStarted(event: CdkDragStart): void {
+     this.isDragging = true;
+     this.eventDragStart.emit(this.appointment);
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.html b/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.html
+index b60ffcb..b91f376 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.html
++++ b/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.html
+@@ -1,67 +1,75 @@
+ <div class="calendar-grid-container">
+-  <!-- Time column (fixed on left) -->
+-  <div class="time-column">
+-    <div class="time-column-header"></div>
+-    <div class="time-slots">
+-      <div *ngFor="let slot of timeSlots"
+-           class="time-slot"
+-           [style.height.px]="slotHeight">
+-        <span class="time-label">{{ slot.time }}</span>
+-      </div>
+-    </div>
+-  </div>
+-
+   <!-- Main grid with users/dates -->
+   <div class="grid-content">
+     <!-- Headers for users/dates -->
+     <div class="grid-header">
+-      <div *ngFor="let user of users"
+-           class="user-header"
+-           [style.backgroundColor]="user.color"
+-           [style.opacity]="0.1">
+-        <span class="user-name">{{ user.name }}</span>
++      <!-- Empty space for time column header -->
++      <div class="time-column-header-space"></div>
++      <!-- User headers -->
++      <div class="user-headers-container">
++        <div *ngFor="let user of users"
++             class="user-header"
++             [style.backgroundColor]="user.color">
++          <span class="user-name">{{ user.name }}</span>
++        </div>
+       </div>
+     </div>
+ 
+     <!-- Grid body with cells and events -->
+-    <div class="grid-body" [style.height.px]="gridHeight">
+-      <!-- Columns for each user -->
+-      <div *ngFor="let user of users"
+-           class="user-column">
+-
+-        <!-- Cells grid -->
+-        <div class="cells-container">
+-          <app-calendar-cell
+-            *ngFor="let slot of timeSlots"
+-            [timeSlot]="slot"
+-            [date]="date"
+-            [user]="user"
+-            [isAvailable]="isCellAvailable(user.id, date, slot.time)"
+-            [isOccupied]="isCellOccupied(user.id, date, slot.time)"
+-            (cellMouseDown)="onCellMouseDown($event)"
+-            (cellMouseEnter)="onCellMouseEnter($event)"
+-            (cellMouseUp)="onCellMouseUp($event)"
+-            (cellDblClick)="onCellDblClick($event)">
+-          </app-calendar-cell>
++    <div class="grid-body-wrapper"
++         [class.working-hours-only]="showWorkingHoursOnly"
++         [class.full-day]="!showWorkingHoursOnly">
++      <!-- Grid body scrollable area -->
++      <div class="grid-body" #gridBody (scroll)="onGridScroll($event)">
++        <!-- Time column (sticky, scrolls vertically with content) -->
++        <div class="time-column">
++          <div class="time-slots">
++            <div *ngFor="let slot of timeSlots"
++                 class="time-slot"
++                 [style.height.px]="slotHeight">
++              <span class="time-label">{{ slot.time }}</span>
++            </div>
++          </div>
+         </div>
+ 
+-        <!-- Events layer (absolute positioned) -->
+-        <div class="events-container">
+-          <app-calendar-event
+-            *ngFor="let eventPos of getEventsForUser(user.id)"
+-            [appointment]="eventPos.appointment"
+-            [user]="user"
+-            [top]="eventPos.top"
+-            [height]="eventPos.height"
+-            [width]="eventPos.width"
+-            [left]="eventPos.left"
+-            [slotDuration]="slotDuration"
+-            (eventClick)="onEventClick($event)"
+-            (eventDblClick)="onEventDblClick($event)"
+-            (eventDragStart)="onEventDragStart($event)"
+-            (eventDragEnd)="onEventDragEnd($event)"
+-            (eventResize)="onEventResize($event)">
+-          </app-calendar-event>
++        <!-- Columns for each user -->
++        <div *ngFor="let user of users"
++             class="user-column">
++          <!-- Cells grid -->
++          <div class="cells-container">
++            <app-calendar-cell
++              *ngFor="let slot of timeSlots"
++              [timeSlot]="slot"
++              [date]="date"
++              [user]="user"
++              [slotHeight]="slotHeight"
++              [isAvailable]="isCellAvailable(user.id, date, slot.time)"
++              [isOccupied]="isCellOccupied(user.id, date, slot.time)"
++              (cellMouseDown)="onCellMouseDown($event)"
++              (cellMouseEnter)="onCellMouseEnter($event)"
++              (cellMouseUp)="onCellMouseUp($event)"
++              (cellDblClick)="onCellDblClick($event)">
++            </app-calendar-cell>
++          </div>
++
++          <!-- Events layer (absolute positioned) -->
++          <div class="events-container">
++            <app-calendar-event
++              *ngFor="let eventPos of getEventsForUser(user.id)"
++              [appointment]="eventPos.appointment"
++              [user]="user"
++              [top]="eventPos.top"
++              [height]="eventPos.height"
++              [width]="eventPos.width"
++              [left]="eventPos.left"
++              [slotDuration]="slotDuration"
++              (eventClick)="onEventClick($event)"
++              (eventDblClick)="onEventDblClick($event)"
++              (eventDragStart)="onEventDragStart($event)"
++              (eventDragEnd)="onEventDragEnd($event)"
++              (eventResize)="onEventResize($event)">
++            </app-calendar-event>
++          </div>
+         </div>
+       </div>
+     </div>
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.scss b/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.scss
+index 345f69c..4a5d4ea 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.scss
++++ b/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.scss
+@@ -1,63 +1,51 @@
++:host {
++  display: flex;
++  flex: 1;
++  min-height: 0;
++}
++
+ .calendar-grid-container {
+   display: flex;
+-  height: 100%;
++  flex-direction: column;
++  flex: 1;
+   overflow: hidden;
+   background-color: #ffffff;
+   border: 1px solid #e5e7eb;
+   border-radius: 8px;
+ }
+ 
+-.time-column {
+-  flex-shrink: 0;
+-  width: 70px;
+-  border-right: 2px solid #e5e7eb;
+-  background-color: #f9fafb;
++.grid-content {
++  flex: 1;
++  display: flex;
++  flex-direction: column;
++  overflow: hidden;
+ }
+ 
+-.time-column-header {
++.grid-header {
++  display: flex;
++  flex-shrink: 0;
+   height: 50px;
+   border-bottom: 2px solid #e5e7eb;
+   background-color: #f3f4f6;
++  overflow: hidden;
+ }
+ 
+-.time-slots {
+-  position: relative;
+-}
+-
+-.time-slot {
+-  position: relative;
+-  display: flex;
+-  align-items: flex-start;
+-  justify-content: center;
+-  padding-top: 4px;
+-  border-bottom: 1px solid #e5e7eb;
+-
+-  &:last-child {
+-    border-bottom: none;
+-  }
+-}
+-
+-.time-label {
+-  font-size: 12px;
+-  color: #6b7280;
+-  font-weight: 500;
+-  user-select: none;
++.time-column-header-space {
++  flex-shrink: 0;
++  width: 70px;
++  border-right: 2px solid #e5e7eb;
++  background-color: #f3f4f6;
+ }
+ 
+-.grid-content {
++.user-headers-container {
+   flex: 1;
+   display: flex;
+-  flex-direction: column;
+   overflow-x: auto;
+   overflow-y: hidden;
+-}
+ 
+-.grid-header {
+-  display: flex;
+-  flex-shrink: 0;
+-  height: 50px;
+-  border-bottom: 2px solid #e5e7eb;
+-  background-color: #f3f4f6;
++  &::-webkit-scrollbar {
++    display: none; // Hide scrollbar for headers
++  }
+ }
+ 
+ .user-header {
+@@ -73,21 +61,81 @@
+   &:last-child {
+     border-right: none;
+   }
++
++  &::before {
++    content: '';
++    position: absolute;
++    top: 0;
++    left: 0;
++    right: 0;
++    bottom: 0;
++    opacity: 0.15;
++    background-color: inherit;
++    z-index: 0;
++  }
+ }
+ 
+ .user-name {
+   font-size: 14px;
+   font-weight: 600;
+   color: #1f2937;
++  text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+   z-index: 1;
+   position: relative;
+ }
+ 
++.grid-body-wrapper {
++  flex: 1;
++  position: relative;
++  min-height: 0; // Critical for flexbox scrolling to work
++  display: flex;
++  flex-direction: column;
++}
++
+ .grid-body {
+   display: flex;
++  flex: 1;
+   overflow-y: auto;
+-  overflow-x: hidden;
++  overflow-x: auto;
++  position: relative;
++  min-height: 0;
++}
++
++.time-column {
++  flex-shrink: 0;
++  width: 70px;
++  border-right: 2px solid #e5e7eb;
++  background-color: #f9fafb !important;
++  position: sticky;
++  left: 0;
++  z-index: 20;
++}
++
++.time-slots {
++  position: relative;
++  background-color: #f9fafb !important;
++  min-height: 100%;
++}
++
++.time-slot {
+   position: relative;
++  display: flex;
++  align-items: flex-start;
++  justify-content: center;
++  padding-top: 4px;
++  border-bottom: 1px solid #e5e7eb;
++  background-color: #f9fafb !important;
++
++  &:last-child {
++    border-bottom: none;
++  }
++}
++
++.time-label {
++  font-size: 12px;
++  color: #6b7280;
++  font-weight: 500;
++  user-select: none;
+ }
+ 
+ .user-column {
+@@ -113,10 +161,11 @@
+   right: 0;
+   bottom: 0;
+   z-index: 10;
+-  pointer-events: none;
++  pointer-events: none; // Container doesn't block clicks
+ 
++  // Only the events themselves can receive clicks
+   app-calendar-event {
+-    pointer-events: all;
++    pointer-events: auto;
+   }
+ }
+ 
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.ts b/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.ts
+index 4cf00b9..d5a31df 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.ts
++++ b/frontend/src/app/components/calendar-cdk/calendar-grid/calendar-grid.component.ts
+@@ -1,4 +1,4 @@
+-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
++import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+ import { CommonModule } from '@angular/common';
+ import { ScrollingModule } from '@angular/cdk/scrolling';
+ import { CalendarCellComponent, CellEvent } from '../calendar-cell/calendar-cell.component';
+@@ -23,7 +23,8 @@ interface EventPosition {
+   templateUrl: './calendar-grid.component.html',
+   styleUrls: ['./calendar-grid.component.scss']
+ })
+-export class CalendarGridComponent implements OnInit, OnChanges {
++export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
++  @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
+   @Input() timeSlots: TimeSlot[] = [];
+   @Input() users: User[] = [];
+   @Input() date: string = ''; // YYYY-MM-DD
+@@ -53,6 +54,13 @@ export class CalendarGridComponent implements OnInit, OnChanges {
+     this.calculateGridHeight();
+   }
+ 
++  ngAfterViewInit(): void {
++    // Sync horizontal scroll between header and body
++    if (this.gridBodyRef) {
++      this.syncHorizontalScroll();
++    }
++  }
++
+   ngOnChanges(changes: SimpleChanges): void {
+     if (changes['appointments'] || changes['timeSlots'] || changes['slotHeight']) {
+       this.calculateEventPositions();
+@@ -62,6 +70,22 @@ export class CalendarGridComponent implements OnInit, OnChanges {
+     }
+   }
+ 
++  private syncHorizontalScroll(): void {
++    const gridBody = this.gridBodyRef.nativeElement;
++    const headerContainer = gridBody.closest('.grid-content')?.querySelector('.user-headers-container') as HTMLElement;
++
++    if (headerContainer) {
++      gridBody.addEventListener('scroll', () => {
++        headerContainer.scrollLeft = gridBody.scrollLeft;
++      });
++    }
++  }
++
++  onGridScroll(event: Event): void {
++    // The scroll sync is already handled by syncHorizontalScroll()
++    // This method can be used for additional scroll-based logic if needed
++  }
++
+   private calculateGridHeight(): void {
+     this.gridHeight = this.timeSlots.length * this.slotHeight;
+   }
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.html b/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.html
+index 6e955fa..e64c276 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.html
++++ b/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.html
+@@ -48,6 +48,29 @@
+     </label>
+   </div>
+ 
++  <!-- Horizontal scroll toggle (only in weekly view) -->
++  <div class="toolbar-group" *ngIf="config.viewType === 'weekly'">
++    <label class="toolbar-checkbox">
++      <input type="checkbox"
++             [checked]="enableHorizontalScroll"
++             (change)="onHorizontalScrollToggle()">
++      <span>Abilita scroll orizzontale</span>
++    </label>
++  </div>
++
++  <!-- Min column width (only in weekly view when scroll enabled) -->
++  <div class="toolbar-group" *ngIf="config.viewType === 'weekly' && enableHorizontalScroll">
++    <label class="toolbar-label">Larghezza min colonna:</label>
++    <input type="number"
++           class="toolbar-input"
++           [value]="minColumnWidth"
++           (input)="onMinColumnWidthChange($event)"
++           min="80"
++           max="300"
++           step="10">
++    <span class="toolbar-unit">px</span>
++  </div>
++
+   <!-- Info display -->
+   <div class="toolbar-info">
+     <span class="info-text">Altezza cella: {{ slotHeightPx }}px</span>
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.scss b/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.scss
+index 4799a6d..fb2a6bb 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.scss
++++ b/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.scss
+@@ -86,6 +86,33 @@
+   }
+ }
+ 
++.toolbar-input {
++  width: 80px;
++  padding: 6px 10px;
++  border: 1px solid #d1d5db;
++  border-radius: 6px;
++  font-size: 14px;
++  color: #374151;
++  background-color: #ffffff;
++  transition: border-color 0.2s ease;
++
++  &:focus {
++    outline: none;
++    border-color: #3b82f6;
++  }
++
++  &::-webkit-inner-spin-button,
++  &::-webkit-outer-spin-button {
++    opacity: 1;
++  }
++}
++
++.toolbar-unit {
++  font-size: 14px;
++  color: #6b7280;
++  font-weight: 500;
++}
++
+ .toolbar-info {
+   margin-left: auto;
+   padding: 6px 12px;
+diff --git a/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.ts b/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.ts
+index a011a41..a221801 100644
+--- a/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.ts
++++ b/frontend/src/app/components/calendar-cdk/calendar-toolbar/calendar-toolbar.component.ts
+@@ -12,8 +12,12 @@ import { CalendarConfig } from '../services/calendar-state.service';
+ })
+ export class CalendarToolbarComponent {
+   @Input() config!: CalendarConfig;
++  @Input() enableHorizontalScroll: boolean = false;
++  @Input() minColumnWidth: number = 120;
+ 
+   @Output() configChange = new EventEmitter<Partial<CalendarConfig>>();
++  @Output() horizontalScrollChange = new EventEmitter<boolean>();
++  @Output() minColumnWidthChange = new EventEmitter<number>();
+ 
+   slotDurations = [5, 10, 15, 20, 30];
+   zoomLevels = [
+@@ -39,6 +43,17 @@ export class CalendarToolbarComponent {
+     this.configChange.emit({ showWeekend: !this.config.showWeekend });
+   }
+ 
++  onHorizontalScrollToggle(): void {
++    this.horizontalScrollChange.emit(!this.enableHorizontalScroll);
++  }
++
++  onMinColumnWidthChange(event: Event): void {
++    const value = parseInt((event.target as HTMLInputElement).value, 10);
++    if (!isNaN(value) && value >= 80 && value <= 300) {
++      this.minColumnWidthChange.emit(value);
++    }
++  }
++
+   get slotHeightPx(): number {
+     return Math.round(60 * this.config.zoom);
+   }
+diff --git a/frontend/src/app/components/calendar/calendar.component.html b/frontend/src/app/components/calendar/calendar.component.html
+index 4a68952..6d550d2 100644
+--- a/frontend/src/app/components/calendar/calendar.component.html
++++ b/frontend/src/app/components/calendar/calendar.component.html
+@@ -301,16 +301,15 @@
+         (mouseup)="handleMouseUp()">
+         <div class="flex min-w-fit">
+           <!-- Colonna orari -->
+-          <div class="w-20 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
+-            <div class="bg-gray-100 border-b border-gray-200 flex items-center justify-center sticky top-0 z-20 h-12">
+-              <span class="text-xs font-medium text-gray-600">Orario</span>
++          <div class="w-20 sticky left-0 z-20 time-column border-r-4 border-slate-600">
++            <div class="time-column__header flex items-center justify-center sticky top-0 z-20 h-12 border-r-4 border-slate-600">
++              <span class="text-xs font-semibold text-gray-700">Orario</span>
+             </div>
+             <div
+               *ngFor="let time of filteredTimeSlots; let index = index"
+-              class="border-b border-gray-100 flex items-start justify-center text-xs text-gray-600 pt-0.5"
++              class="time-column__cell border-b border-r-4 border-slate-600 flex items-center justify-center text-xs text-gray-600"
+               [ngClass]="{
+-                'bg-gray-100 font-medium': index % (60 / slotDuration) === 0,
+-                'bg-gray-50': index % (60 / slotDuration) !== 0
++                'time-column__cell--hour font-semibold text-gray-700': index % (60 / slotDuration) === 0
+               }"
+               [ngStyle]="getCellStyle(null, time)">
+               {{ shouldShowTimeLabel(index) ? time : '' }}
+diff --git a/frontend/src/app/components/calendar/calendar.component.scss b/frontend/src/app/components/calendar/calendar.component.scss
+index 0129f97..e88a84a 100644
+--- a/frontend/src/app/components/calendar/calendar.component.scss
++++ b/frontend/src/app/components/calendar/calendar.component.scss
+@@ -7,6 +7,43 @@
+   }
+ }
+ 
++.time-column {
++  position: sticky;
++  background-color: #e3e6ed;
++  border-right: 2px solid #cbd5f5;
++  box-shadow: 4px 0 8px -4px rgba(15, 23, 42, 0.2);
++  isolation: isolate; // allow pseudo element stacking
++
++  &::after {
++    content: '';
++    position: absolute;
++    top: 0;
++    bottom: 0;
++    right: -2px;
++    width: 6px;
++    background: linear-gradient(180deg, #cbd5f5 0%, #94a3b8 100%);
++    box-shadow: inset 0 0 4px rgba(71, 85, 105, 0.45);
++    border-radius: 0 6px 6px 0;
++    pointer-events: none;
++  }
++
++  &__header {
++    background: linear-gradient(180deg, #d8dbe5 0%, #cbd1dd 100%);
++    border-bottom: 2px solid #cbd5f5;
++    border-right: 4px solid #94a3b8;
++  }
++
++  &__cell {
++    background-color: #eef1f7;
++    border-bottom: 1px solid #cdd5e3;
++    border-right: 4px solid #94a3b8;
++
++    &--hour {
++      background-color: #dde3ef;
++    }
++  }
++}
++
+ // Migliora il cursore per le diverse modalità di drag
+ .calendar-cell {
+   &.bg-green-100 {
