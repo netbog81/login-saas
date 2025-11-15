@@ -54,6 +54,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Output() eventDragStart = new EventEmitter<Appointment>();
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
+  @Output() eventDelete = new EventEmitter<EventAction>();
 
   dayColumns: DayColumn[] = [];
   eventPositions: Map<string, Map<number, EventPosition[]>> = new Map();
@@ -316,5 +317,9 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
 
   onEventResize(action: EventAction): void {
     this.eventResize.emit(action);
+  }
+
+  onEventDelete(action: EventAction): void {
+    this.eventDelete.emit(action);
   }
 }

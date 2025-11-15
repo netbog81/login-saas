@@ -1,6 +1,9 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil, combineLatest } from 'rxjs';
+import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
+import { OverlayModule } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
 
 // Services
 import { CalendarStateService, CalendarConfig } from '../services/calendar-state.service';
@@ -13,6 +16,8 @@ import { CalendarToolbarComponent } from '../calendar-toolbar/calendar-toolbar.c
 import { CalendarGridComponent } from '../calendar-grid/calendar-grid.component';
 import { CalendarWeeklyGridComponent } from '../calendar-weekly-grid/calendar-weekly-grid.component';
 import { EventDialogComponent, EventDialogData, EventDialogResult } from '../event-dialog/event-dialog.component';
+import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+import { AppointmentSummaryComponent, SummaryAction } from '../appointment-summary/appointment-summary.component';
 import { CellEvent } from '../calendar-cell/calendar-cell.component';
 import { EventAction } from '../calendar-event/calendar-event.component';
 
@@ -27,12 +32,15 @@ import { Availability } from '../../../models/availability.model';
   standalone: true,
   imports: [
     CommonModule,
+    OverlayModule,
     CalendarHeaderComponent,
     CalendarSidebarComponent,
     CalendarToolbarComponent,
     CalendarGridComponent,
     CalendarWeeklyGridComponent,
-    EventDialogComponent
+    EventDialogComponent,
+    ConfirmDialogComponent,
+    AppointmentSummaryComponent
   ],
   templateUrl: './calendar-container.component.html',
   styleUrls: ['./calendar-container.component.scss']
@@ -55,6 +63,13 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Dialog state
   showEventDialog: boolean = false;
   eventDialogData!: EventDialogData;
+  showDeleteConfirmDialog: boolean = false;
+  appointmentToDelete: Appointment | null = null;
+
+  // Summary overlay
+  summaryOverlayRef: OverlayRef | null = null;
+  currentSummaryAppointment: Appointment | null = null;
+  isSummaryOpen: boolean = false;
 
   // Drag state
   dragStartCell: CellEvent | null = null;
@@ -66,7 +81,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   constructor(
     public stateService: CalendarStateService,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private overlay: Overlay,
+    private viewContainerRef: ViewContainerRef,
+    private injector: Injector
   ) {}
 
   ngOnInit(): void {
@@ -75,6 +93,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.closeSummary();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -264,6 +283,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   // Grid cell events
   onCellMouseDown(event: CellEvent): void {
+    // If summary is open, close it and don't start dragging
+    if (this.isSummaryOpen) {
+      this.closeSummary();
+      return;
+    }
+
     this.dragStartCell = event;
     this.dragCurrentCell = event;
     this.isDragging = true;
@@ -276,7 +301,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   onCellMouseUp(event: CellEvent): void {
-    if (this.isDragging && this.dragStartCell) {
+    // Don't create appointment if we just closed the summary
+    if (this.isDragging && this.dragStartCell && !this.isSummaryOpen) {
       this.createAppointmentFromDrag();
     }
     this.isDragging = false;
@@ -285,6 +311,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   onCellDblClick(event: CellEvent): void {
+    // Close summary if open
+    if (this.isSummaryOpen) {
+      this.closeSummary();
+    }
+
     this.openEventDialog({
       defaultDate: event.date,
       defaultStartTime: event.timeSlot.time,
@@ -313,7 +344,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   // Event events
   onEventClick(action: EventAction): void {
-    // Single click - could show preview
+    // Show appointment summary on click
+    this.showAppointmentSummary(action.appointment, action.mouseEvent);
   }
 
   onEventDblClick(action: EventAction): void {
@@ -363,6 +395,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
   }
 
+  async onEventDelete(action: EventAction): Promise<void> {
+    this.appointmentToDelete = action.appointment;
+    this.showDeleteConfirmDialog = true;
+  }
+
   // Dialog events
   openEventDialog(data: EventDialogData): void {
     this.eventDialogData = data;
@@ -409,10 +446,24 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     try {
       await this.apiService.deleteAppointment(appointment.id).toPromise();
       this.stateService.removeAppointment(appointment.id);
+      await this.loadAppointmentsForCurrentView();
     } catch (error) {
       console.error('Error deleting appointment:', error);
       alert('Errore durante l\'eliminazione dell\'appuntamento');
     }
+  }
+
+  async onDeleteConfirm(): Promise<void> {
+    this.showDeleteConfirmDialog = false;
+    if (this.appointmentToDelete) {
+      await this.deleteAppointment(this.appointmentToDelete);
+      this.appointmentToDelete = null;
+    }
+  }
+
+  onDeleteCancel(): void {
+    this.showDeleteConfirmDialog = false;
+    this.appointmentToDelete = null;
   }
 
   // Utility methods
@@ -437,5 +488,176 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   get mainDate(): string {
     return this.config.viewType === 'daily' ? this.formatDate(this.currentDate) : this.visibleDates[0];
+  }
+
+  // Appointment Summary methods
+  showAppointmentSummary(appointment: Appointment, event?: MouseEvent): void {
+    console.log('showAppointmentSummary called', appointment, event);
+
+    // If summary is already open for a different appointment, close it first
+    if (this.isSummaryOpen && this.currentSummaryAppointment?.id !== appointment.id) {
+      this.closeSummary();
+    }
+
+    // If same appointment, just close it
+    if (this.currentSummaryAppointment?.id === appointment.id && this.isSummaryOpen) {
+      this.closeSummary();
+      return;
+    }
+
+    // Get the event element position
+    const target = event?.target as HTMLElement;
+    if (!target) {
+      console.log('No target element');
+      return;
+    }
+
+    const eventElement = target.closest('.calendar-event') as HTMLElement;
+    if (!eventElement) {
+      console.log('No .calendar-event element found');
+      return;
+    }
+
+    // Create overlay
+    const positionStrategy = this.overlay
+      .position()
+      .flexibleConnectedTo(eventElement)
+      .withPositions([
+        // Try to show on the right
+        {
+          originX: 'end',
+          originY: 'top',
+          overlayX: 'start',
+          overlayY: 'top',
+          offsetX: 8
+        },
+        // If no space on right, show on left
+        {
+          originX: 'start',
+          originY: 'top',
+          overlayX: 'end',
+          overlayY: 'top',
+          offsetX: -8
+        },
+        // If no horizontal space, show below
+        {
+          originX: 'start',
+          originY: 'bottom',
+          overlayX: 'start',
+          overlayY: 'top',
+          offsetY: 8
+        },
+        // If no space below, show above
+        {
+          originX: 'start',
+          originY: 'top',
+          overlayX: 'start',
+          overlayY: 'bottom',
+          offsetY: -8
+        }
+      ]);
+
+    const overlayConfig = new OverlayConfig({
+      positionStrategy,
+      hasBackdrop: false,
+      scrollStrategy: this.overlay.scrollStrategies.reposition(),
+      panelClass: 'appointment-summary-overlay'
+    });
+
+    this.summaryOverlayRef = this.overlay.create(overlayConfig);
+    console.log('Overlay created', this.summaryOverlayRef);
+    console.log('Overlay host element:', this.summaryOverlayRef.hostElement);
+    console.log('Overlay pane element:', this.summaryOverlayRef.overlayElement);
+
+    // Create component portal
+    const portal = new ComponentPortal(AppointmentSummaryComponent, this.viewContainerRef);
+    const componentRef = this.summaryOverlayRef.attach(portal);
+    console.log('Component attached', componentRef);
+
+    // Set component inputs
+    componentRef.instance.appointment = appointment;
+    componentRef.instance.user = this.getUserById(appointment.userId);
+
+    // Handle component outputs
+    componentRef.instance.action.subscribe((action: SummaryAction) => {
+      this.handleSummaryAction(action);
+    });
+
+    componentRef.instance.clickOutside.subscribe(() => {
+      if (!this.isDragging) {
+        this.closeSummary();
+      }
+    });
+
+    this.currentSummaryAppointment = appointment;
+    this.isSummaryOpen = true;
+    console.log('Summary should be open now', this.isSummaryOpen);
+
+    // Force update position after the component is rendered
+    setTimeout(() => {
+      this.summaryOverlayRef?.updatePosition();
+      console.log('Position updated');
+    }, 0);
+  }
+
+  closeSummary(): void {
+    if (this.summaryOverlayRef) {
+      this.summaryOverlayRef.dispose();
+      this.summaryOverlayRef = null;
+    }
+    this.currentSummaryAppointment = null;
+    this.isSummaryOpen = false;
+  }
+
+  handleSummaryAction(action: SummaryAction): void {
+    switch (action.type) {
+      case 'edit':
+        this.closeSummary();
+        this.openEventDialog({
+          appointment: action.appointment,
+          users: this.allUsers,
+          patients: this.patients
+        });
+        break;
+      case 'delete':
+        this.closeSummary();
+        this.appointmentToDelete = action.appointment;
+        this.showDeleteConfirmDialog = true;
+        break;
+      case 'share':
+        this.shareAppointment(action.appointment, action.shareMethod);
+        break;
+      case 'close':
+        this.closeSummary();
+        break;
+    }
+  }
+
+  shareAppointment(appointment: Appointment, method?: 'email' | 'whatsapp'): void {
+    const user = this.getUserById(appointment.userId);
+    const text = `Appuntamento: ${appointment.title}\nData: ${this.formatDateLocalized(new Date(appointment.date + 'T00:00:00'))}\nOra: ${appointment.startTime} - ${appointment.endTime}\nOperatore: ${user?.name || 'N/A'}${appointment.notes ? '\nNote: ' + appointment.notes : ''}`;
+
+    if (method === 'whatsapp') {
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      window.open(whatsappUrl, '_blank');
+    } else if (method === 'email') {
+      const subject = `Appuntamento - ${appointment.title}`;
+      const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+      window.location.href = mailtoUrl;
+    }
+  }
+
+  getUserById(userId: number): User | undefined {
+    return this.allUsers.find(u => u.id === userId);
+  }
+
+  private formatDateLocalized(date: Date): string {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    };
+    return date.toLocaleDateString('it-IT', options);
   }
 }

@@ -56,7 +56,8 @@
         (eventDblClick)="onEventDblClick($event)"
         (eventDragStart)="onEventDragStart($event)"
         (eventDragEnd)="onEventDragEnd($event)"
-        (eventResize)="onEventResize($event)">
+        (eventResize)="onEventResize($event)"
+        (eventDelete)="onEventDelete($event)">
       </app-calendar-grid>
 
       <app-calendar-weekly-grid
@@ -79,7 +80,8 @@
         (eventDblClick)="onEventDblClick($event)"
         (eventDragStart)="onEventDragStart($event)"
         (eventDragEnd)="onEventDragEnd($event)"
-        (eventResize)="onEventResize($event)">
+        (eventResize)="onEventResize($event)"
+        (eventDelete)="onEventDelete($event)">
       </app-calendar-weekly-grid>
 
       <!-- Empty state -->
@@ -103,6 +105,21 @@
         [data]="eventDialogData"
         (result)="onDialogResult($event)">
       </app-event-dialog>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Dialog -->
+  <div class="dialog-overlay" *ngIf="showDeleteConfirmDialog" (click)="onDeleteCancel()">
+    <div class="dialog-content" (click)="$event.stopPropagation()">
+      <app-confirm-dialog
+        title="Elimina Appuntamento"
+        [message]="'Sei sicuro di voler eliminare l\'appuntamento per ' + (appointmentToDelete?.title || 'questo appuntamento') + '?'"
+        confirmText="Elimina"
+        cancelText="Annulla"
+        confirmButtonClass="btn-danger"
+        (confirm)="onDeleteConfirm()"
+        (cancel)="onDeleteCancel()">
+      </app-confirm-dialog>
     </div>
   </div>
 </div>

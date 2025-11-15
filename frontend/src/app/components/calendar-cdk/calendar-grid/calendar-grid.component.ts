@@ -44,6 +44,7 @@ export class CalendarGridComponent implements OnInit, OnChanges {
   @Output() eventDragStart = new EventEmitter<Appointment>();
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
+  @Output() eventDelete = new EventEmitter<EventAction>();
 
   eventPositions: Map<number, EventPosition[]> = new Map();
   gridHeight: number = 0;
@@ -250,5 +251,9 @@ export class CalendarGridComponent implements OnInit, OnChanges {
 
   onEventResize(action: EventAction): void {
     this.eventResize.emit(action);
+  }
+
+  onEventDelete(action: EventAction): void {
+    this.eventDelete.emit(action);
   }
 }

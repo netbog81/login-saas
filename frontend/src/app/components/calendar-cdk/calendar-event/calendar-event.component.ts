@@ -5,10 +5,11 @@ import { Appointment } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 
 export interface EventAction {
-  type: 'click' | 'dblclick' | 'resize' | 'drag';
+  type: 'click' | 'dblclick' | 'resize' | 'drag' | 'delete';
   appointment: Appointment;
   newStartTime?: string;
   newEndTime?: string;
+  mouseEvent?: MouseEvent;
 }
 
 @Component({
@@ -33,6 +34,7 @@ export class CalendarEventComponent {
   @Output() eventDragStart = new EventEmitter<Appointment>();
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
+  @Output() eventDelete = new EventEmitter<EventAction>();
 
   @HostBinding('style.top.px') get topPosition() { return this.top; }
   @HostBinding('style.height.px') get heightValue() { return this.height; }
@@ -50,7 +52,8 @@ export class CalendarEventComponent {
     event.stopPropagation();
     this.eventClick.emit({
       type: 'click',
-      appointment: this.appointment
+      appointment: this.appointment,
+      mouseEvent: event
     });
   }
 
@@ -58,6 +61,15 @@ export class CalendarEventComponent {
     event.stopPropagation();
     this.eventDblClick.emit({
       type: 'dblclick',
+      appointment: this.appointment
+    });
+  }
+
+  onDeleteClick(event: MouseEvent): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.eventDelete.emit({
+      type: 'delete',
       appointment: this.appointment
     });
   }
