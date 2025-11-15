@@ -11,6 +11,7 @@ import { CalendarHeaderComponent } from '../calendar-header/calendar-header.comp
 import { CalendarSidebarComponent } from '../calendar-sidebar/calendar-sidebar.component';
 import { CalendarToolbarComponent } from '../calendar-toolbar/calendar-toolbar.component';
 import { CalendarGridComponent } from '../calendar-grid/calendar-grid.component';
+import { CalendarWeeklyGridComponent } from '../calendar-weekly-grid/calendar-weekly-grid.component';
 import { EventDialogComponent, EventDialogData, EventDialogResult } from '../event-dialog/event-dialog.component';
 import { CellEvent } from '../calendar-cell/calendar-cell.component';
 import { EventAction } from '../calendar-event/calendar-event.component';
@@ -30,6 +31,7 @@ import { Availability } from '../../../models/availability.model';
     CalendarSidebarComponent,
     CalendarToolbarComponent,
     CalendarGridComponent,
+    CalendarWeeklyGridComponent,
     EventDialogComponent
   ],
   templateUrl: './calendar-container.component.html',

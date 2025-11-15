@@ -19,6 +19,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0; // Critical for nested flexbox scrolling
 }
 
 .loading-overlay {

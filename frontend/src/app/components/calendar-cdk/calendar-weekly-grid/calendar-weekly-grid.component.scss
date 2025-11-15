@@ -155,6 +155,7 @@
   min-height: 0; // Critical for flexbox scrolling to work
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .grid-body {

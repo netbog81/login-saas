@@ -37,7 +37,7 @@
       </div>
 
       <app-calendar-grid
-        *ngIf="!isLoading && selectedOperators.length > 0"
+        *ngIf="!isLoading && selectedOperators.length > 0 && config.viewType === 'daily'"
         [timeSlots]="timeSlots"
         [users]="selectedOperators"
         [date]="mainDate"
@@ -58,6 +58,29 @@
         (eventDragEnd)="onEventDragEnd($event)"
         (eventResize)="onEventResize($event)">
       </app-calendar-grid>
+
+      <app-calendar-weekly-grid
+        *ngIf="!isLoading && selectedOperators.length > 0 && config.viewType === 'weekly'"
+        [timeSlots]="timeSlots"
+        [users]="selectedOperators"
+        [dates]="visibleDates"
+        [appointments]="appointments"
+        [availabilities]="availabilities"
+        [slotDuration]="config.slotDuration"
+        [slotHeight]="slotHeight"
+        [startHour]="config.showWorkingHoursOnly ? config.workingHoursStart : config.startHour"
+        [showWeekend]="config.showWeekend"
+        [showWorkingHoursOnly]="config.showWorkingHoursOnly"
+        (cellMouseDown)="onCellMouseDown($event)"
+        (cellMouseEnter)="onCellMouseEnter($event)"
+        (cellMouseUp)="onCellMouseUp($event)"
+        (cellDblClick)="onCellDblClick($event)"
+        (eventClick)="onEventClick($event)"
+        (eventDblClick)="onEventDblClick($event)"
+        (eventDragStart)="onEventDragStart($event)"
+        (eventDragEnd)="onEventDragEnd($event)"
+        (eventResize)="onEventResize($event)">
+      </app-calendar-weekly-grid>
 
       <!-- Empty state -->
       <div *ngIf="!isLoading && selectedOperators.length === 0" class="empty-state">

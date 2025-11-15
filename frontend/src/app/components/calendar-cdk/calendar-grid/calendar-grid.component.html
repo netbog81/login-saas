@@ -1,20 +1,9 @@
 <div class="calendar-grid-container">
-  <!-- Time column (fixed on left) -->
-  <div class="time-column">
-    <div class="time-column-header"></div>
-    <div class="time-slots">
-      <div *ngFor="let slot of timeSlots"
-           class="time-slot"
-           [style.height.px]="slotHeight">
-        <span class="time-label">{{ slot.time }}</span>
-      </div>
-    </div>
-  </div>
-
   <!-- Main grid with users/dates -->
   <div class="grid-content">
     <!-- Headers for users/dates -->
     <div class="grid-header">
+      <div class="time-column-header"></div>
       <div *ngFor="let user of users"
            class="user-header"
            [style.backgroundColor]="user.color">
@@ -23,7 +12,18 @@
     </div>
 
     <!-- Grid body with cells and events -->
-    <div class="grid-body" [style.height.px]="gridHeight">
+    <div class="grid-body">
+      <!-- Time column (sticky on left) -->
+      <div class="time-column">
+        <div class="time-slots">
+          <div *ngFor="let slot of timeSlots"
+               class="time-slot"
+               [style.height.px]="slotHeight">
+            <span class="time-label">{{ slot.time }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Columns for each user -->
       <div *ngFor="let user of users"
            class="user-column">
