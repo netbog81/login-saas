@@ -357,7 +357,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   onEventDragStart(appointment: Appointment): void {
-    console.log('Event drag started:', appointment);
+    // Event drag started
   }
 
   async onEventDragEnd(action: EventAction): Promise<void> {
@@ -492,7 +492,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   // Appointment Summary methods
   showAppointmentSummary(appointment: Appointment, event?: MouseEvent): void {
-    console.log('showAppointmentSummary called', appointment, event);
 
     // If summary is already open for a different appointment, close it first
     if (this.isSummaryOpen && this.currentSummaryAppointment?.id !== appointment.id) {
@@ -508,13 +507,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     // Get the event element position
     const target = event?.target as HTMLElement;
     if (!target) {
-      console.log('No target element');
       return;
     }
 
     const eventElement = target.closest('.calendar-event') as HTMLElement;
     if (!eventElement) {
-      console.log('No .calendar-event element found');
       return;
     }
 
@@ -565,14 +562,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     });
 
     this.summaryOverlayRef = this.overlay.create(overlayConfig);
-    console.log('Overlay created', this.summaryOverlayRef);
-    console.log('Overlay host element:', this.summaryOverlayRef.hostElement);
-    console.log('Overlay pane element:', this.summaryOverlayRef.overlayElement);
 
     // Create component portal
     const portal = new ComponentPortal(AppointmentSummaryComponent, this.viewContainerRef);
     const componentRef = this.summaryOverlayRef.attach(portal);
-    console.log('Component attached', componentRef);
 
     // Set component inputs
     componentRef.instance.appointment = appointment;
@@ -591,12 +584,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
     this.currentSummaryAppointment = appointment;
     this.isSummaryOpen = true;
-    console.log('Summary should be open now', this.isSummaryOpen);
 
     // Force update position after the component is rendered
     setTimeout(() => {
       this.summaryOverlayRef?.updatePosition();
-      console.log('Position updated');
     }, 0);
   }
 

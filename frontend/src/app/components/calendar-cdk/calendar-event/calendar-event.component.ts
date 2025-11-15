@@ -45,11 +45,19 @@ export class CalendarEventComponent {
   isResizing: boolean = false;
   resizeStartY: number = 0;
   resizeStartHeight: number = 0;
+  wasDragged: boolean = false;
+  wasResized: boolean = false;
 
   constructor(private elementRef: ElementRef) {}
 
   onClick(event: MouseEvent): void {
     event.stopPropagation();
+
+    // Don't emit click if we just finished dragging or resizing
+    if (this.wasDragged || this.wasResized) {
+      return;
+    }
+
     this.eventClick.emit({
       type: 'click',
       appointment: this.appointment,
@@ -99,6 +107,16 @@ export class CalendarEventComponent {
       });
     }
 
+    // Mark that we dragged so the click event doesn't fire
+    // Set this even if no actual movement, because drag was initiated
+    if (event.distance.y !== 0 || event.distance.x !== 0) {
+      this.wasDragged = true;
+      // Reset the flag after a short delay to handle the click event timing
+      setTimeout(() => {
+        this.wasDragged = false;
+      }, 100);
+    }
+
     // Reset position
     event.source.element.nativeElement.style.transform = 'none';
     event.source._dragRef.reset();
@@ -139,6 +157,14 @@ export class CalendarEventComponent {
             newEndTime
           });
         }
+
+        // Mark that we resized so the click event doesn't fire
+        // Set this even if no actual resize, because resize was initiated
+        this.wasResized = true;
+        // Reset the flag after a short delay to handle the click event timing
+        setTimeout(() => {
+          this.wasResized = false;
+        }, 100);
       }
     };
 
