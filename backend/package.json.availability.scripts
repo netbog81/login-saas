@@ -1,0 +1,23 @@
+{
+  "scripts": {
+    "// Add these scripts to your existing package.json": "",
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d ./src/data-source.ts",
+    "migration:run": "typeorm-ts-node-commonjs migration:run -d ./src/data-source.ts",
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d ./src/data-source.ts",
+    "migration:create": "typeorm migration:create",
+    "schema:drop": "typeorm-ts-node-commonjs schema:drop -d ./src/data-source.ts",
+    "schema:sync": "typeorm-ts-node-commonjs schema:sync -d ./src/data-source.ts"
+  },
+  "devDependencies": {
+    "// Add these if not already present": "",
+    "@nestjs/typeorm": "^10.0.0",
+    "typeorm": "^0.3.17",
+    "pg": "^8.11.3",
+    "@nestjs/graphql": "^12.0.0",
+    "@nestjs/apollo": "^12.0.0",
+    "@apollo/server": "^4.9.0",
+    "graphql": "^16.8.0",
+    "class-validator": "^0.14.0",
+    "class-transformer": "^0.5.1"
+  }
+}
