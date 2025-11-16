@@ -189,7 +189,7 @@ export class CreateAvailabilityTables1700000000000 implements MigrationInterface
 
         // Create appointments table
         await queryRunner.query(`
-            CREATE TABLE "appointments" (
+            CREATE TABLE "availability_appointments" (
                 "id" uuid NOT NULL DEFAULT gen_random_uuid(),
                 "operatorId" uuid,
                 "serviceId" uuid,
@@ -207,34 +207,34 @@ export class CreateAvailabilityTables1700000000000 implements MigrationInterface
                 "createdBy" uuid,
                 "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
                 "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
-                CONSTRAINT "PK_appointments" PRIMARY KEY ("id"),
-                CONSTRAINT "FK_appointments_operator" FOREIGN KEY ("operatorId")
+                CONSTRAINT "PK_availability_appointments" PRIMARY KEY ("id"),
+                CONSTRAINT "FK_availability_appointments_operator" FOREIGN KEY ("operatorId")
                     REFERENCES "operators"("id") ON DELETE SET NULL,
-                CONSTRAINT "FK_appointments_service" FOREIGN KEY ("serviceId")
+                CONSTRAINT "FK_availability_appointments_service" FOREIGN KEY ("serviceId")
                     REFERENCES "services"("id") ON DELETE SET NULL,
                 CONSTRAINT "CHK_valid_appointment_times" CHECK ("endTime" > "startTime")
             );
         `);
 
-        // Create indices for appointments
+        // Create indices for availability_appointments
         await queryRunner.query(`
-            CREATE INDEX "IDX_appointments_operator_date"
-                ON "appointments" ("operatorId", "appointmentDate");
+            CREATE INDEX "IDX_availability_appointments_operator_date"
+                ON "availability_appointments" ("operatorId", "appointmentDate");
         `);
         await queryRunner.query(`
-            CREATE INDEX "IDX_appointments_date_time"
-                ON "appointments" ("appointmentDate", "startTime");
+            CREATE INDEX "IDX_availability_appointments_date_time"
+                ON "availability_appointments" ("appointmentDate", "startTime");
         `);
         await queryRunner.query(`
-            CREATE INDEX "IDX_appointments_status"
-                ON "appointments" ("status")
+            CREATE INDEX "IDX_availability_appointments_status"
+                ON "availability_appointments" ("status")
                 WHERE "status" != 'cancelled';
         `);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
         // Drop tables in reverse order of dependencies
-        await queryRunner.query(`DROP TABLE "appointments"`);
+        await queryRunner.query(`DROP TABLE "availability_appointments"`);
         await queryRunner.query(`DROP TYPE "appointment_status_enum"`);
 
         await queryRunner.query(`DROP TABLE "availability_cache"`);

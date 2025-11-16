@@ -3,6 +3,7 @@ import { UseGuards } from '@nestjs/common';
 import { AvailabilityService } from '../services/availability.service';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
+import { GroupException } from '../entities/group-exception.entity';
 import { CreateAvailabilityTemplateInput } from '../dto/create-availability-template.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
 // import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
@@ -107,5 +108,40 @@ export class AvailabilityResolver {
   ): Promise<boolean> {
     await this.availabilityService.rebuildCache(operatorId, startDate, endDate);
     return true;
+  }
+
+  // Group Exception Mutations
+  @Mutation(() => GroupException, { name: 'createGroupException' })
+  // @UseGuards(GqlAuthGuard)
+  async createGroupException(
+    @Args('name') name: string,
+    @Args('exceptionDate') exceptionDate: string,
+    @Args('exceptionType') exceptionType: string,
+    @Args('appliesToAll', { type: () => Boolean, nullable: true }) appliesToAll?: boolean,
+    @Args('operatorIds', { type: () => [ID], nullable: true }) operatorIds?: string[],
+    @Args('reason', { nullable: true }) reason?: string
+  ): Promise<GroupException> {
+    return this.availabilityService.createGroupException({
+      name,
+      exceptionDate,
+      exceptionType,
+      appliesToAll,
+      operatorIds,
+      reason
+    });
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteGroupException' })
+  // @UseGuards(GqlAuthGuard)
+  async deleteGroupException(
+    @Args('id', { type: () => ID }) id: string
+  ): Promise<boolean> {
+    return this.availabilityService.deleteGroupException(id);
+  }
+
+  @Query(() => [GroupException], { name: 'groupExceptions' })
+  // @UseGuards(GqlAuthGuard)
+  async getGroupExceptions(): Promise<GroupException[]> {
+    return this.availabilityService.getGroupExceptions();
   }
 }

@@ -9,13 +9,17 @@ import { AvailabilityTemplate } from './entities/availability-template.entity';
 import { AvailabilityException } from './entities/availability-exception.entity';
 import { GroupException } from './entities/group-exception.entity';
 import { AvailabilityCache } from './entities/availability-cache.entity';
-import { Appointment } from './entities/appointment.entity';
+import { AvailabilityAppointment } from './entities/availability-appointment.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
+import { OperatorServiceService } from './services/operator-service.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
+import { OperatorResolver } from './resolvers/operator.resolver';
+import { ServiceResolver } from './resolvers/service.resolver';
+import { OperatorServiceResolver } from './resolvers/operator-service.resolver';
 
 @Module({
   imports: [
@@ -27,15 +31,20 @@ import { AvailabilityResolver } from './resolvers/availability.resolver';
       AvailabilityException,
       GroupException,
       AvailabilityCache,
-      Appointment,
+      AvailabilityAppointment,
     ]),
   ],
   providers: [
     AvailabilityService,
+    OperatorServiceService,
     AvailabilityResolver,
+    OperatorResolver,
+    ServiceResolver,
+    OperatorServiceResolver,
   ],
   exports: [
     AvailabilityService,
+    OperatorServiceService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })

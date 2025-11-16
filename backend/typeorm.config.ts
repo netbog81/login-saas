@@ -9,7 +9,7 @@ import { AvailabilityTemplate } from './src/modules/availability/entities/availa
 import { AvailabilityException } from './src/modules/availability/entities/availability-exception.entity';
 import { GroupException } from './src/modules/availability/entities/group-exception.entity';
 import { AvailabilityCache } from './src/modules/availability/entities/availability-cache.entity';
-import { Appointment } from './src/modules/availability/entities/appointment.entity';
+import { AvailabilityAppointment } from './src/modules/availability/entities/availability-appointment.entity';
 
 export const getTypeOrmConfig = (configService: ConfigService): DataSourceOptions => ({
   type: 'postgres',
@@ -27,7 +27,7 @@ export const getTypeOrmConfig = (configService: ConfigService): DataSourceOption
     AvailabilityException,
     GroupException,
     AvailabilityCache,
-    Appointment,
+    AvailabilityAppointment,
     // Add other existing entities here
   ],
 
@@ -53,7 +53,7 @@ export const dataSourceOptions: DataSourceOptions = {
   port: parseInt(process.env.DB_PORT || '5432'),
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'agenda',
+  database: process.env.DB_DATABASE || 'calendar_db',
 
   entities: ['src/**/*.entity.ts'],
   migrations: ['src/migrations/*.ts'],

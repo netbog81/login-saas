@@ -1,4 +1,6 @@
 import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 import { User } from '../../models/user.model';
 import { Patient } from '../../models/patient.model';
@@ -35,6 +37,8 @@ interface MoveConfirmation {
 
 @Component({
   selector: 'app-calendar',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
   templateUrl: './calendar.component.html',
   styleUrls: ['./calendar.component.scss']
 })

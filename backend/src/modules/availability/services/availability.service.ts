@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not, In } from 'typeorm';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AvailabilityCache } from '../entities/availability-cache.entity';
 import { Operator } from '../entities/operator.entity';
+import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+import { GroupException } from '../entities/group-exception.entity';
 import { CreateAvailabilityTemplateInput } from '../dto/create-availability-template.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
 
@@ -19,6 +21,10 @@ export class AvailabilityService {
     private cacheRepo: Repository<AvailabilityCache>,
     @InjectRepository(Operator)
     private operatorRepo: Repository<Operator>,
+    @InjectRepository(AvailabilityAppointment)
+    private appointmentRepo: Repository<AvailabilityAppointment>,
+    @InjectRepository(GroupException)
+    private groupExceptionRepo: Repository<GroupException>,
   ) {}
 
   async getTemplates(operatorId: string, onlyCurrent: boolean = true): Promise<AvailabilityTemplate[]> {
@@ -355,10 +361,7 @@ export class AvailabilityService {
   }
 
   private async updateBookedCapacity(operatorId: string, startDate: Date, endDate: Date): Promise<void> {
-    // This would typically query the appointments table
-    // For now, just setting to 0
-    // In production, you'd do something like:
-    /*
+    // Query all appointments for this operator in the date range
     const appointments = await this.appointmentRepo.find({
       where: {
         operatorId,
@@ -367,19 +370,146 @@ export class AvailabilityService {
       }
     });
 
-    // Update cache based on appointments
-    for (const appointment of appointments) {
-      await this.cacheRepo.update(
-        {
+    // Group appointments by date for efficient processing
+    const appointmentsByDate = new Map<string, typeof appointments>();
+    appointments.forEach(appointment => {
+      const dateKey = appointment.appointmentDate.toISOString().split('T')[0];
+      if (!appointmentsByDate.has(dateKey)) {
+        appointmentsByDate.set(dateKey, []);
+      }
+      appointmentsByDate.get(dateKey)!.push(appointment);
+    });
+
+    // Update cache for each date
+    for (const [dateStr, dateAppointments] of appointmentsByDate) {
+      // Get all cache slots for this date
+      const cacheSlots = await this.cacheRepo.find({
+        where: {
           operatorId,
-          availableDate: appointment.appointmentDate,
-          // Add time overlap check
-        },
-        {
-          bookedCapacity: () => 'bookedCapacity + 1'
+          availableDate: new Date(dateStr)
         }
-      );
+      });
+
+      // Update each cache slot with appointment count
+      for (const slot of cacheSlots) {
+        // Count appointments that overlap with this slot
+        const overlappingCount = dateAppointments.filter(apt => {
+          // Check if appointment time overlaps with cache slot
+          return this.timeOverlaps(
+            apt.startTime, apt.endTime,
+            slot.startTime, slot.endTime
+          );
+        }).reduce((sum, apt) => sum + (apt.participantCount || 1), 0);
+
+        // Update the cache slot
+        await this.cacheRepo.update(slot.id, {
+          bookedCapacity: overlappingCount
+        });
+      }
     }
-    */
+  }
+
+  private timeOverlaps(
+    start1: string, end1: string,
+    start2: string, end2: string
+  ): boolean {
+    // Convert time strings to minutes for comparison
+    const toMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const start1Min = toMinutes(start1);
+    const end1Min = toMinutes(end1);
+    const start2Min = toMinutes(start2);
+    const end2Min = toMinutes(end2);
+
+    // Check if times overlap
+    return start1Min < end2Min && end1Min > start2Min;
+  }
+
+  // Group Exception Methods
+  async createGroupException(input: {
+    name: string;
+    exceptionDate: string;
+    exceptionType: string;
+    appliesToAll?: boolean;
+    operatorIds?: string[];
+    reason?: string;
+  }): Promise<GroupException> {
+    const groupException = this.groupExceptionRepo.create({
+      name: input.name,
+      exceptionDate: new Date(input.exceptionDate),
+      exceptionType: input.exceptionType,
+      appliesToAll: input.appliesToAll || false,
+      reason: input.reason
+    });
+
+    // Save the group exception
+    const savedGroupException = await this.groupExceptionRepo.save(groupException);
+
+    // If specific operators are provided, create individual exceptions
+    if (input.operatorIds && input.operatorIds.length > 0) {
+      for (const operatorId of input.operatorIds) {
+        await this.exceptionRepo.save({
+          operatorId,
+          exceptionDate: new Date(input.exceptionDate),
+          exceptionType: input.exceptionType as any,
+          groupExceptionId: savedGroupException.id,
+          reason: input.reason
+        });
+
+        // Rebuild cache for affected date
+        await this.rebuildCache(operatorId, input.exceptionDate, input.exceptionDate);
+      }
+    } else if (input.appliesToAll) {
+      // Apply to all active operators
+      const operators = await this.operatorRepo.find({ where: { isActive: true } });
+
+      for (const operator of operators) {
+        await this.exceptionRepo.save({
+          operatorId: operator.id,
+          exceptionDate: new Date(input.exceptionDate),
+          exceptionType: input.exceptionType as any,
+          groupExceptionId: savedGroupException.id,
+          reason: input.reason
+        });
+
+        // Rebuild cache for affected date
+        await this.rebuildCache(operator.id, input.exceptionDate, input.exceptionDate);
+      }
+    }
+
+    return savedGroupException;
+  }
+
+  async deleteGroupException(id: string): Promise<boolean> {
+    const groupException = await this.groupExceptionRepo.findOne({ where: { id } });
+    if (!groupException) {
+      throw new NotFoundException('Group exception not found');
+    }
+
+    // Get all related individual exceptions before deletion
+    const exceptions = await this.exceptionRepo.find({
+      where: { groupExceptionId: id }
+    });
+
+    // Delete the group exception (cascade will handle individual exceptions)
+    await this.groupExceptionRepo.delete(id);
+
+    // Rebuild cache for all affected operators
+    const dateStr = groupException.exceptionDate.toISOString().split('T')[0];
+    for (const exception of exceptions) {
+      await this.rebuildCache(exception.operatorId, dateStr, dateStr);
+    }
+
+    return true;
+  }
+
+  async getGroupExceptions(): Promise<GroupException[]> {
+    return this.groupExceptionRepo.find({
+      order: { exceptionDate: 'DESC' },
+      relations: ['exceptions']
+    });
   }
 }

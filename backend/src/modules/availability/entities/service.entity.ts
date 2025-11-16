@@ -1,7 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { OperatorService } from './operator-service.entity';
-import { Appointment } from './appointment.entity';
+import { AvailabilityAppointment } from './availability-appointment.entity';
 
 @ObjectType()
 @Entity('services')
@@ -14,13 +14,25 @@ export class Service {
   @Column({ length: 255 })
   name: string;
 
+  @Field({ nullable: true })
+  @Column({ type: 'text', nullable: true })
+  description?: string;
+
   @Field(() => Int)
   @Column()
-  duration: number; // in minutes
+  defaultDuration: number; // in minutes
+
+  @Field()
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  defaultPrice: number;
 
   @Field(() => Int)
   @Column({ default: 0 })
-  bufferTime: number; // cleanup time between appointments
+  bufferTimeBefore: number; // buffer time before appointment
+
+  @Field(() => Int)
+  @Column({ default: 0 })
+  bufferTimeAfter: number; // buffer time after appointment
 
   @Field({ nullable: true })
   @Column({ length: 7, nullable: true })
@@ -43,7 +55,7 @@ export class Service {
   @OneToMany(() => OperatorService, operatorService => operatorService.service)
   operators?: OperatorService[];
 
-  @Field(() => [Appointment], { nullable: true })
-  @OneToMany(() => Appointment, appointment => appointment.service)
-  appointments?: Appointment[];
+  @Field(() => [AvailabilityAppointment], { nullable: true })
+  @OneToMany(() => AvailabilityAppointment, appointment => appointment.service)
+  appointments?: AvailabilityAppointment[];
 }

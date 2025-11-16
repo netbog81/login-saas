@@ -1,0 +1,74 @@
+<div class="availability-dashboard">
+  <!-- Header with Statistics -->
+  <div class="dashboard-header">
+    <h1>Gestione Disponibilità</h1>
+
+    <div class="statistics">
+      <div class="stat-card">
+        <div class="stat-value">{{ totalOperators }}</div>
+        <div class="stat-label">Operatori Totali</div>
+        <div class="stat-sublabel">{{ activeOperators }} attivi</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-value">{{ totalServices }}</div>
+        <div class="stat-label">Servizi Totali</div>
+        <div class="stat-sublabel">{{ activeServices }} attivi</div>
+      </div>
+
+      <div class="stat-card">
+        <button class="refresh-btn" (click)="refreshData()" title="Aggiorna dati">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Aggiorna
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs Navigation -->
+  <div class="tabs-container">
+    <div class="tabs">
+      <button class="tab"
+              [class.active]="activeTab === 'operators'"
+              (click)="setActiveTab('operators')">
+        Operatori
+      </button>
+      <button class="tab"
+              [class.active]="activeTab === 'services'"
+              (click)="setActiveTab('services')">
+        Servizi
+      </button>
+      <button class="tab"
+              [class.active]="activeTab === 'templates'"
+              (click)="setActiveTab('templates')">
+        Template Orari
+      </button>
+      <button class="tab"
+              [class.active]="activeTab === 'calendar'"
+              (click)="setActiveTab('calendar')">
+        Calendario
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab Content -->
+  <div class="tab-content">
+    <app-operator-management *ngIf="activeTab === 'operators'"></app-operator-management>
+    <app-service-management *ngIf="activeTab === 'services'"></app-service-management>
+
+    <div *ngIf="activeTab === 'templates'" class="coming-soon">
+      <h3>Template Orari</h3>
+      <p>Gestione dei template di disponibilità ricorrente per gli operatori.</p>
+      <p class="note">Funzionalità in sviluppo...</p>
+    </div>
+
+    <div *ngIf="activeTab === 'calendar'" class="coming-soon">
+      <h3>Integrazione Calendario</h3>
+      <p>Visualizzazione e gestione delle disponibilità direttamente sul calendario.</p>
+      <p class="note">Funzionalità in sviluppo...</p>
+    </div>
+  </div>
+</div>

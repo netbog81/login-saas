@@ -1,0 +1,210 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+"""Status of the appointment"""
+enum AppointmentStatus {
+  CANCELLED
+  COMPLETED
+  CONFIRMED
+  IN_PROGRESS
+  NO_SHOW
+  SCHEDULED
+}
+
+type AvailabilityAppointment {
+  appointmentDate: DateTime!
+  cancellationReason: String
+  clientEmail: String
+  clientName: String!
+  clientPhone: String
+  createdAt: DateTime!
+  createdBy: ID
+  endTime: String!
+  id: ID!
+  maxParticipants: Int
+  notes: String
+  operator: Operator
+  operatorId: ID
+  participantCount: Int!
+  service: Service
+  serviceId: ID
+  startTime: String!
+  status: AppointmentStatus!
+  updatedAt: DateTime!
+}
+
+type AvailabilityException {
+  createdAt: DateTime!
+  endTime: String
+  exceptionDate: DateTime!
+  exceptionType: ExceptionType!
+  groupException: GroupException
+  groupExceptionId: ID
+  id: ID!
+  operator: Operator!
+  operatorId: ID!
+  reason: String
+  startTime: String
+}
+
+type AvailabilitySlot {
+  availableCapacity: Int!
+  bookedCapacity: Int!
+  date: String!
+  endTime: String!
+  isAvailable: Boolean!
+  operatorId: ID!
+  source: String
+  sourceId: ID
+  startTime: String!
+  totalCapacity: Int!
+}
+
+type AvailabilityTemplate {
+  createdAt: DateTime!
+  dayInPattern: Int!
+  description: String
+  endTime: String!
+  id: ID!
+  isCurrent: Boolean!
+  name: String
+  operator: Operator!
+  operatorId: ID!
+  patternDuration: Int!
+  patternStartDate: DateTime!
+  startTime: String!
+  updatedAt: DateTime!
+  validFrom: DateTime!
+  validUntil: DateTime
+  version: Int!
+}
+
+input CreateAvailabilityTemplateInput {
+  dayInPattern: Int!
+  description: String
+  endTime: String!
+  name: String
+  operatorId: ID!
+  patternDuration: Int!
+  patternStartDate: String!
+  startTime: String!
+  validFrom: String!
+  validUntil: String
+}
+
+type DailyAvailability {
+  date: String!
+  hasAvailability: Boolean!
+  slots: [AvailabilitySlot!]!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+"""Type of availability exception"""
+enum ExceptionType {
+  HOLIDAY
+  MODIFIED
+  SICK
+  UNAVAILABLE
+  VACATION
+}
+
+type GroupException {
+  appliesToAll: Boolean!
+  createdAt: DateTime!
+  exceptionDate: DateTime!
+  exceptionType: String!
+  exceptions: [AvailabilityException!]
+  id: ID!
+  name: String!
+  operators: [Operator!]
+  reason: String
+}
+
+type Mutation {
+  assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
+  createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
+  createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
+  createOperator(color: String, email: String, maxConcurrentAppointments: Float! = 1, name: String!, operatorType: OperatorType! = STANDARD, phone: String, surname: String): Operator!
+  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, isActive: Boolean, name: String!): Service!
+  deleteAvailabilityTemplate(id: ID!): Boolean!
+  deleteGroupException(id: ID!): Boolean!
+  deleteOperator(id: ID!): Boolean!
+  deleteService(id: ID!): Boolean!
+  rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
+  removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
+  updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  updateOperator(email: String, id: ID!, isActive: Boolean, maxConcurrentAppointments: Float, name: String, operatorType: OperatorType, phone: String, surname: String): Operator!
+  updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
+  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String): Service!
+}
+
+type Operator {
+  appointments: [AvailabilityAppointment!]
+  availabilityExceptions: [AvailabilityException!]
+  availabilityTemplates: [AvailabilityTemplate!]
+  color: String
+  createdAt: DateTime!
+  email: String
+  id: ID!
+  isActive: Boolean!
+  maxConcurrentAppointments: Int!
+  name: String!
+  operatorType: OperatorType!
+  phone: String
+  services: [OperatorService!]
+  surname: String
+  updatedAt: DateTime!
+}
+
+type OperatorService {
+  customBufferTime: Int
+  customDuration: Int
+  operator: Operator!
+  operatorId: ID!
+  service: Service!
+  serviceId: ID!
+}
+
+"""Type of operator defining booking behavior"""
+enum OperatorType {
+  GYM
+  RESOURCE
+  STANDARD
+}
+
+type Query {
+  allOperatorServices: [OperatorService!]!
+  availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!
+  availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
+  checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
+  groupExceptions: [GroupException!]!
+  operator(id: ID!): Operator
+  operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
+  operatorServices(operatorId: ID!): [OperatorService!]!
+  operators: [Operator!]!
+  service(id: ID!): Service
+  serviceOperators(serviceId: ID!): [OperatorService!]!
+  services: [Service!]!
+}
+
+type Service {
+  appointments: [AvailabilityAppointment!]
+  bufferTimeAfter: Int!
+  bufferTimeBefore: Int!
+  color: String
+  createdAt: DateTime!
+  defaultDuration: Int!
+  defaultPrice: Float!
+  description: String
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  operators: [OperatorService!]
+  updatedAt: DateTime!
+}

@@ -1,0 +1,164 @@
+<div class="service-management">
+  <!-- Header -->
+  <div class="header">
+    <h2>Gestione Servizi</h2>
+    <button class="btn btn-primary" (click)="openServiceForm()">
+      + Nuovo Servizio
+    </button>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <div class="search-box">
+      <input type="text"
+             [(ngModel)]="searchTerm"
+             placeholder="Cerca servizio..."
+             class="search-input">
+    </div>
+    <label class="checkbox-label">
+      <input type="checkbox" [(ngModel)]="showInactive">
+      Mostra servizi inattivi
+    </label>
+  </div>
+
+  <!-- Loading/Error states -->
+  <div *ngIf="loading" class="loading">Caricamento...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <!-- Services Table -->
+  <div class="services-table" *ngIf="!loading">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Descrizione</th>
+          <th>Durata</th>
+          <th>Prezzo</th>
+          <th>Buffer</th>
+          <th>Stato</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let service of filteredServices"
+            [class.selected]="selectedService?.id === service.id"
+            (click)="selectService(service)">
+          <td class="service-name">
+            <span class="color-indicator" [style.background-color]="service.color"></span>
+            {{ service.name }}
+          </td>
+          <td class="service-description">{{ service.description || '-' }}</td>
+          <td>{{ formatDuration(service.defaultDuration) }}</td>
+          <td>{{ formatPrice(service.defaultPrice) }}</td>
+          <td>
+            <span *ngIf="service.bufferTimeBefore || service.bufferTimeAfter">
+              {{ service.bufferTimeBefore }}' / {{ service.bufferTimeAfter }}'
+            </span>
+            <span *ngIf="!service.bufferTimeBefore && !service.bufferTimeAfter">-</span>
+          </td>
+          <td>
+            <span [class]="service.isActive ? 'status-active' : 'status-inactive'">
+              {{ service.isActive ? 'Attivo' : 'Inattivo' }}
+            </span>
+          </td>
+          <td class="actions">
+            <button class="btn btn-sm" (click)="openServiceForm(service); $event.stopPropagation()">
+              Modifica
+            </button>
+            <button class="btn btn-sm" (click)="duplicateService(service); $event.stopPropagation()">
+              Duplica
+            </button>
+            <button class="btn btn-sm btn-danger" (click)="deleteService(service); $event.stopPropagation()">
+              Elimina
+            </button>
+          </td>
+        </tr>
+        <tr *ngIf="filteredServices.length === 0">
+          <td colspan="7" class="no-data">Nessun servizio trovato</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Service Form Modal -->
+  <div *ngIf="showServiceForm" class="modal-overlay" (click)="closeServiceForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ selectedService ? 'Modifica Servizio' : 'Nuovo Servizio' }}</h3>
+        <button class="close-btn" (click)="closeServiceForm()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nome *</label>
+            <input type="text" [(ngModel)]="editingService.name" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Colore</label>
+            <input type="color" [(ngModel)]="editingService.color" class="form-control color-picker">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Descrizione</label>
+          <textarea [(ngModel)]="editingService.description" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Durata (minuti) *</label>
+            <input type="number"
+                   [(ngModel)]="editingService.defaultDuration"
+                   min="5"
+                   step="5"
+                   class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Prezzo (€)</label>
+            <input type="number"
+                   [(ngModel)]="editingService.defaultPrice"
+                   min="0"
+                   step="0.01"
+                   class="form-control">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Buffer prima (minuti)</label>
+            <input type="number"
+                   [(ngModel)]="editingService.bufferTimeBefore"
+                   min="0"
+                   step="5"
+                   class="form-control">
+            <small>Tempo di preparazione prima dell'appuntamento</small>
+          </div>
+          <div class="form-group">
+            <label>Buffer dopo (minuti)</label>
+            <input type="number"
+                   [(ngModel)]="editingService.bufferTimeAfter"
+                   min="0"
+                   step="5"
+                   class="form-control">
+            <small>Tempo di pulizia/reset dopo l'appuntamento</small>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingService.isActive">
+            Servizio Attivo
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeServiceForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveService()">
+          {{ selectedService ? 'Aggiorna' : 'Crea' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

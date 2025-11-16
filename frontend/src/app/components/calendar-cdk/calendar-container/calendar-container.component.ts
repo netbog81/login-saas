@@ -42,7 +42,6 @@ import { Availability } from '../../../models/availability.model';
     CalendarWeeklyGridComponent,
     EventDialogComponent,
     ConfirmDialogComponent,
-    AppointmentSummaryComponent,
     UsersLegendComponent,
     WorkingHoursDialogComponent
   ],
@@ -605,15 +604,16 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     const componentRef = this.summaryOverlayRef.attach(portal);
 
     // Set component inputs
-    componentRef.instance.appointment = appointment;
-    componentRef.instance.user = this.getUserById(appointment.userId);
+    const instance = componentRef.instance as AppointmentSummaryComponent;
+    instance.appointment = appointment;
+    instance.user = this.getUserById(appointment.userId);
 
     // Handle component outputs
-    componentRef.instance.action.subscribe((action: SummaryAction) => {
+    instance.action.subscribe((action: SummaryAction) => {
       this.handleSummaryAction(action);
     });
 
-    componentRef.instance.clickOutside.subscribe(() => {
+    instance.clickOutside.subscribe(() => {
       if (!this.isDragging) {
         this.closeSummary();
       }

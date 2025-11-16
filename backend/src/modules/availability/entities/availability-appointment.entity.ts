@@ -17,12 +17,12 @@ registerEnumType(AppointmentStatus, {
   description: 'Status of the appointment',
 });
 
-@ObjectType()
-@Entity('appointments')
+@ObjectType('AvailabilityAppointment') // Renamed to avoid conflict
+@Entity('availability_appointments') // Different table to avoid conflict
 @Index(['operatorId', 'appointmentDate'])
 @Index(['appointmentDate', 'startTime'])
 @Index(['status'], { where: "status != 'cancelled'" })
-export class Appointment {
+export class AvailabilityAppointment {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
   id: string;

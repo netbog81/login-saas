@@ -2,7 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, Up
 import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
 import { AvailabilityTemplate } from './availability-template.entity';
 import { AvailabilityException } from './availability-exception.entity';
-import { Appointment } from './appointment.entity';
+import { AvailabilityAppointment } from './availability-appointment.entity';
 import { OperatorService } from './operator-service.entity';
 
 export enum OperatorType {
@@ -76,9 +76,9 @@ export class Operator {
   @OneToMany(() => AvailabilityException, exception => exception.operator)
   availabilityExceptions?: AvailabilityException[];
 
-  @Field(() => [Appointment], { nullable: true })
-  @OneToMany(() => Appointment, appointment => appointment.operator)
-  appointments?: Appointment[];
+  @Field(() => [AvailabilityAppointment], { nullable: true })
+  @OneToMany(() => AvailabilityAppointment, appointment => appointment.operator)
+  appointments?: AvailabilityAppointment[];
 
   @Field(() => [OperatorService], { nullable: true })
   @OneToMany(() => OperatorService, operatorService => operatorService.operator)
