@@ -27,6 +27,8 @@ export class CalendarCellComponent {
   @Input() isDragTarget: boolean = false;
   @Input() isWorkingHour: boolean = true;
   @Input() showTimeLabel: boolean = false;
+  @Input() isDragSelected: boolean = false;
+  @Input() dragSelectionColor: string = '#3b82f6';
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
@@ -38,6 +40,10 @@ export class CalendarCellComponent {
   @HostBinding('class.occupied') get occupiedClass() { return this.isOccupied; }
   @HostBinding('class.drag-target') get dragTargetClass() { return this.isDragTarget; }
   @HostBinding('class.non-working') get nonWorkingClass() { return !this.isWorkingHour; }
+  @HostBinding('class.drag-selected') get dragSelectedClass() { return this.isDragSelected; }
+  @HostBinding('style.--drag-selection-color') get dragColor() {
+    return this.isDragSelected ? this.dragSelectionColor : '';
+  }
 
   @HostListener('mousedown', ['$event'])
   onMouseDown(event: MouseEvent): void {

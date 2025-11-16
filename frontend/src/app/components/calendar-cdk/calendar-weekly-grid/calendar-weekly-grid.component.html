@@ -53,6 +53,8 @@
                 [slotHeight]="slotHeight"
                 [isAvailable]="isCellAvailable(user.id, day.date, slot.time)"
                 [isOccupied]="isCellOccupied(user.id, day.date, slot.time)"
+                [isDragSelected]="isCellInDragSelection(user.id, day.date, slot.time)"
+                [dragSelectionColor]="getUserColorForDrag(user.id)"
                 (cellMouseDown)="onCellMouseDown($event)"
                 (cellMouseEnter)="onCellMouseEnter($event)"
                 (cellMouseUp)="onCellMouseUp($event)"

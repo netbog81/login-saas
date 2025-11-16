@@ -34,6 +34,9 @@ export class CalendarGridComponent implements OnInit, OnChanges {
   @Input() startHour: number = 0;
   @Input() viewType: 'daily' | 'weekly' = 'daily';
   @Input() showWorkingHoursOnly: boolean = false;
+  @Input() dragStartCell: CellEvent | null = null;
+  @Input() dragCurrentCell: CellEvent | null = null;
+  @Input() isDragging: boolean = false;
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
@@ -215,6 +218,33 @@ export class CalendarGridComponent implements OnInit, OnChanges {
 
   getUserById(userId: number): User | undefined {
     return this.users.find(u => u.id === userId);
+  }
+
+  isCellInDragSelection(userId: number, date: string, time: string): boolean {
+    if (!this.isDragging || !this.dragStartCell || !this.dragCurrentCell) {
+      return false;
+    }
+
+    // Check if this cell is in the same column (user) and date as the drag
+    if (this.dragStartCell.userId !== userId || this.dragStartCell.date !== date) {
+      return false;
+    }
+
+    // Get the time range of the drag selection
+    const startMinutes = this.timeToMinutes(this.dragStartCell.timeSlot.time);
+    const currentMinutes = this.timeToMinutes(this.dragCurrentCell.timeSlot.time);
+    const cellMinutes = this.timeToMinutes(time);
+
+    // Check if this cell's time is within the drag range
+    const minTime = Math.min(startMinutes, currentMinutes);
+    const maxTime = Math.max(startMinutes, currentMinutes) + this.slotDuration;
+
+    return cellMinutes >= minTime && cellMinutes < maxTime;
+  }
+
+  getUserColorForDrag(userId: number): string {
+    const user = this.users.find(u => u.id === userId);
+    return user?.color || '#3b82f6';
   }
 
   onCellMouseDown(event: CellEvent): void {

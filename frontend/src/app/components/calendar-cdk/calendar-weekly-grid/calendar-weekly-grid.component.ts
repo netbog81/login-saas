@@ -44,6 +44,9 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Input() showWeekend: boolean = true;
   @Input() enableHorizontalScroll: boolean = false;
   @Input() minColumnWidth: number = 120;
+  @Input() dragStartCell: CellEvent | null = null;
+  @Input() dragCurrentCell: CellEvent | null = null;
+  @Input() isDragging: boolean = false;
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
@@ -281,6 +284,33 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
 
     const totalColumns = this.dayColumns.length * (this.users.length || 1);
     return totalColumns > 0 ? `calc(100% / ${totalColumns})` : '100%';
+  }
+
+  isCellInDragSelection(userId: number, date: string, time: string): boolean {
+    if (!this.isDragging || !this.dragStartCell || !this.dragCurrentCell) {
+      return false;
+    }
+
+    // Check if this cell is in the same column (user and date) as the drag
+    if (this.dragStartCell.userId !== userId || this.dragStartCell.date !== date) {
+      return false;
+    }
+
+    // Get the time range of the drag selection
+    const startMinutes = this.timeToMinutes(this.dragStartCell.timeSlot.time);
+    const currentMinutes = this.timeToMinutes(this.dragCurrentCell.timeSlot.time);
+    const cellMinutes = this.timeToMinutes(time);
+
+    // Check if this cell's time is within the drag range
+    const minTime = Math.min(startMinutes, currentMinutes);
+    const maxTime = Math.max(startMinutes, currentMinutes) + this.slotDuration;
+
+    return cellMinutes >= minTime && cellMinutes < maxTime;
+  }
+
+  getUserColorForDrag(userId: number): string {
+    const user = this.users.find(u => u.id === userId);
+    return user?.color || '#3b82f6';
   }
 
   onCellMouseDown(event: CellEvent): void {

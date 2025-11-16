@@ -33,6 +33,26 @@
       background-color: #d1d5db;
     }
   }
+
+  &.drag-selected {
+    position: relative;
+    background-color: var(--drag-selection-color) !important;
+    opacity: 0.25;
+    border-color: var(--drag-selection-color);
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-color: var(--drag-selection-color);
+      opacity: 0.15;
+      pointer-events: none;
+    }
+
+    &:hover {
+      opacity: 0.35;
+    }
+  }
 }
 
 .calendar-cell {
