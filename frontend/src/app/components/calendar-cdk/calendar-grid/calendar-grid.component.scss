@@ -2,6 +2,10 @@
   display: flex;
   flex: 1;
   min-height: 0;
+
+  * {
+    box-sizing: border-box; // Ensure all nested elements use border-box
+  }
 }
 
 .calendar-grid-container {
@@ -86,6 +90,7 @@
   border-right: 1px solid #e5e7eb;
   position: relative;
   max-width: 100%; // Prevent overflow
+  box-sizing: border-box; // Include padding and border in width calculation
 
   &:last-child {
     border-right: none;
@@ -120,6 +125,12 @@
   overflow-x: auto; // Allow horizontal scroll for many users
   position: relative;
   min-height: 0; // Important for flex scrolling
+
+  // Use overlay scrollbars when supported to avoid layout shift
+  @supports (overflow: overlay) {
+    overflow-y: overlay;
+    overflow-x: overlay;
+  }
 }
 
 .user-column {
@@ -128,6 +139,7 @@
   position: relative;
   border-right: 1px solid #e5e7eb;
   max-width: 100%; // Prevent overflow
+  box-sizing: border-box; // Include border in width calculation
 
   &:last-child {
     border-right: none;

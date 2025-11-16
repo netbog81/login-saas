@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { CalendarCellComponent, CellEvent } from '../calendar-cell/calendar-cell.component';
@@ -23,7 +23,8 @@ interface EventPosition {
   templateUrl: './calendar-grid.component.html',
   styleUrls: ['./calendar-grid.component.scss']
 })
-export class CalendarGridComponent implements OnInit, OnChanges {
+export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
+  @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
   @Input() timeSlots: TimeSlot[] = [];
   @Input() users: User[] = [];
   @Input() date: string = ''; // YYYY-MM-DD
@@ -57,6 +58,16 @@ export class CalendarGridComponent implements OnInit, OnChanges {
     this.calculateGridHeight();
   }
 
+  ngAfterViewInit(): void {
+    if (this.gridBodyRef) {
+      this.adjustHeaderForScrollbar();
+    }
+    // Check after view init
+    setTimeout(() => {
+      this.adjustHeaderForScrollbar();
+    }, 0);
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['appointments'] || changes['timeSlots'] || changes['slotHeight']) {
       this.calculateEventPositions();
@@ -64,6 +75,8 @@ export class CalendarGridComponent implements OnInit, OnChanges {
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
     }
+    // Adjust header for scrollbar whenever content changes
+    setTimeout(() => this.adjustHeaderForScrollbar(), 0);
   }
 
   private calculateGridHeight(): void {
@@ -285,5 +298,26 @@ export class CalendarGridComponent implements OnInit, OnChanges {
 
   onEventDelete(action: EventAction): void {
     this.eventDelete.emit(action);
+  }
+
+  private adjustHeaderForScrollbar(): void {
+    if (!this.gridBodyRef?.nativeElement) {
+      return;
+    }
+
+    const gridBody = this.gridBodyRef.nativeElement;
+    const gridHeader = gridBody.closest('.grid-content')?.querySelector('.grid-header') as HTMLElement;
+
+    if (gridHeader) {
+      // Calculate scrollbar width
+      const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
+
+      // Apply padding to header to compensate for scrollbar
+      if (scrollbarWidth > 0) {
+        gridHeader.style.paddingRight = `${scrollbarWidth}px`;
+      } else {
+        gridHeader.style.paddingRight = '0';
+      }
+    }
   }
 }

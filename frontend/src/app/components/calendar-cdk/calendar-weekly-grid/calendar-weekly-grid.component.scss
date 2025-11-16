@@ -2,6 +2,10 @@
   display: flex;
   flex: 1;
   min-height: 0;
+
+  * {
+    box-sizing: border-box; // Ensure all nested elements use border-box
+  }
 }
 
 .calendar-weekly-grid-container {
@@ -20,6 +24,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .grid-header {
@@ -40,7 +45,7 @@
 .days-headers-container {
   flex: 1;
   display: flex;
-  overflow-x: auto;
+  overflow-x: hidden; // Changed from auto to hidden to match the wrapper
   overflow-y: hidden;
 
   &::-webkit-scrollbar {
@@ -77,6 +82,7 @@
   border-right: 2px solid #e5e7eb;
   min-width: 0; // Allow shrinking
   max-width: 100%; // Prevent overflow
+  box-sizing: border-box; // Include border in width calculation
 
   &:last-child {
     border-right: none;
@@ -123,6 +129,7 @@
   min-height: 40px;
   min-width: 0; // Allow shrinking
   max-width: 100%; // Prevent overflow
+  box-sizing: border-box; // Include padding and border in width calculation
 
   &:last-child {
     border-right: none;
@@ -169,12 +176,12 @@
   display: flex;
   flex: 1;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden; // Hide horizontal scroll by default
   position: relative;
   min-height: 0;
 
   &.enable-scroll {
-    overflow-x: scroll;
+    overflow-x: auto;
   }
 }
 
@@ -192,6 +199,7 @@
   flex: 1; // Take all remaining space after time column
   display: flex;
   min-width: 0; // Allow shrinking
+  width: 100%; // Ensure it takes full width
 }
 
 .time-slots {
@@ -227,6 +235,7 @@
   border-right: 2px solid #e5e7eb;
   min-width: 0; // Allow shrinking below content size
   max-width: 100%; // Prevent overflow
+  box-sizing: border-box; // Include border in width calculation
 
   &:last-child {
     border-right: none;
@@ -239,6 +248,7 @@
   border-right: 1px solid #e5e7eb;
   min-width: 0; // Allow shrinking below content
   max-width: 100%; // Prevent overflow
+  box-sizing: border-box; // Include border in width calculation
 
   &:last-child {
     border-right: none;

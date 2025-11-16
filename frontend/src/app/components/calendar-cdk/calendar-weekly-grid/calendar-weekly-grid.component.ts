@@ -76,9 +76,13 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   ngAfterViewInit(): void {
     if (this.gridBodyRef) {
       this.syncHorizontalScroll();
+      this.adjustHeaderForScrollbar();
     }
     // Check visibility after view init
-    setTimeout(() => this.checkUserNameVisibility(), 0);
+    setTimeout(() => {
+      this.checkUserNameVisibility();
+      this.adjustHeaderForScrollbar();
+    }, 0);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -96,6 +100,8 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     if (changes['users'] || changes['dates']) {
       setTimeout(() => this.checkUserNameVisibility(), 0);
     }
+    // Adjust header for scrollbar whenever content changes
+    setTimeout(() => this.adjustHeaderForScrollbar(), 0);
   }
 
   private buildDayColumns(): void {
@@ -129,6 +135,27 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
       gridBody.addEventListener('scroll', () => {
         headerContainer.scrollLeft = gridBody.scrollLeft;
       });
+    }
+  }
+
+  private adjustHeaderForScrollbar(): void {
+    if (!this.gridBodyRef?.nativeElement) {
+      return;
+    }
+
+    const gridBody = this.gridBodyRef.nativeElement;
+    const headerContainer = gridBody.closest('.grid-content')?.querySelector('.days-headers-container') as HTMLElement;
+
+    if (headerContainer) {
+      // Calculate scrollbar width
+      const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
+
+      // Apply padding to header to compensate for scrollbar
+      if (scrollbarWidth > 0) {
+        headerContainer.style.paddingRight = `${scrollbarWidth}px`;
+      } else {
+        headerContainer.style.paddingRight = '0';
+      }
     }
   }
 

@@ -41,48 +41,48 @@
         <div class="days-columns-wrapper">
           <!-- Day columns with user sub-columns -->
           <div *ngFor="let day of dayColumns" class="day-column">
-          <div *ngFor="let user of users"
-               class="user-sub-column">
-            <!-- Cells -->
-            <div class="cells-container">
-              <app-calendar-cell
-                *ngFor="let slot of timeSlots"
-                [timeSlot]="slot"
-                [date]="day.date"
-                [user]="user"
-                [slotHeight]="slotHeight"
-                [isAvailable]="isCellAvailable(user.id, day.date, slot.time)"
-                [isOccupied]="isCellOccupied(user.id, day.date, slot.time)"
-                [isDragSelected]="isCellInDragSelection(user.id, day.date, slot.time)"
-                [dragSelectionColor]="getUserColorForDrag(user.id)"
-                (cellMouseDown)="onCellMouseDown($event)"
-                (cellMouseEnter)="onCellMouseEnter($event)"
-                (cellMouseUp)="onCellMouseUp($event)"
-                (cellDblClick)="onCellDblClick($event)">
-              </app-calendar-cell>
-            </div>
+            <div *ngFor="let user of users"
+                 class="user-sub-column">
+              <!-- Cells -->
+              <div class="cells-container">
+                <app-calendar-cell
+                  *ngFor="let slot of timeSlots"
+                  [timeSlot]="slot"
+                  [date]="day.date"
+                  [user]="user"
+                  [slotHeight]="slotHeight"
+                  [isAvailable]="isCellAvailable(user.id, day.date, slot.time)"
+                  [isOccupied]="isCellOccupied(user.id, day.date, slot.time)"
+                  [isDragSelected]="isCellInDragSelection(user.id, day.date, slot.time)"
+                  [dragSelectionColor]="getUserColorForDrag(user.id)"
+                  (cellMouseDown)="onCellMouseDown($event)"
+                  (cellMouseEnter)="onCellMouseEnter($event)"
+                  (cellMouseUp)="onCellMouseUp($event)"
+                  (cellDblClick)="onCellDblClick($event)">
+                </app-calendar-cell>
+              </div>
 
-            <!-- Events -->
-            <div class="events-container">
-              <app-calendar-event
-                *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.id)"
-                [appointment]="eventPos.appointment"
-                [user]="user"
-                [top]="eventPos.top"
-                [height]="eventPos.height"
-                [width]="eventPos.width"
-                [left]="eventPos.left"
-                [slotDuration]="slotDuration"
-                (eventClick)="onEventClick($event)"
-                (eventDblClick)="onEventDblClick($event)"
-                (eventDragStart)="onEventDragStart($event)"
-                (eventDragEnd)="onEventDragEnd($event)"
-                (eventResize)="onEventResize($event)"
-                (eventDelete)="onEventDelete($event)">
-              </app-calendar-event>
-            </div>
-          </div>
-        </div>
+              <!-- Events -->
+              <div class="events-container">
+                <app-calendar-event
+                  *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.id)"
+                  [appointment]="eventPos.appointment"
+                  [user]="user"
+                  [top]="eventPos.top"
+                  [height]="eventPos.height"
+                  [width]="eventPos.width"
+                  [left]="eventPos.left"
+                  [slotDuration]="slotDuration"
+                  (eventClick)="onEventClick($event)"
+                  (eventDblClick)="onEventDblClick($event)"
+                  (eventDragStart)="onEventDragStart($event)"
+                  (eventDragEnd)="onEventDragEnd($event)"
+                  (eventResize)="onEventResize($event)"
+                  (eventDelete)="onEventDelete($event)">
+                </app-calendar-event>
+              </div>
+            </div> <!-- Close user-sub-column -->
+          </div> <!-- Close day-column -->
         </div> <!-- Close days-columns-wrapper -->
       </div>
     </div>
