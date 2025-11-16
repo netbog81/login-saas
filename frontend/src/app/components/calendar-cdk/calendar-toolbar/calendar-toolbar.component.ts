@@ -39,6 +39,10 @@ export class CalendarToolbarComponent {
     this.configChange.emit({ showWeekend: !this.config.showWeekend });
   }
 
+  onOperatorsToggle(): void {
+    this.configChange.emit({ showOperatorsLegend: !this.config.showOperatorsLegend });
+  }
+
   get slotHeightPx(): number {
     return Math.round(60 * this.config.zoom);
   }

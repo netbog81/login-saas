@@ -20,6 +20,7 @@ export interface CalendarConfig {
   workingHoursStart: number; // 0-23
   workingHoursEnd: number; // 0-23
   showWeekend: boolean;
+  showOperatorsLegend: boolean;
 }
 
 export interface CalendarView {
@@ -52,7 +53,8 @@ export class CalendarStateService {
     showWorkingHoursOnly: false,
     workingHoursStart: 8,
     workingHoursEnd: 20,
-    showWeekend: true
+    showWeekend: true,
+    showOperatorsLegend: false
   });
 
   private currentDateSubject = new BehaviorSubject<Date>(new Date());

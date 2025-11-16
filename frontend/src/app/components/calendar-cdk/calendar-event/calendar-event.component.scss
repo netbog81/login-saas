@@ -48,6 +48,21 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+
+  // When text is hidden (multiple users selected)
+  &.hide-text {
+    justify-content: center;
+    align-items: center;
+    padding: 4px;
+
+    .event-header {
+      justify-content: center;
+    }
+
+    .delete-button {
+      margin: 0;
+    }
+  }
 }
 
 .event-header {

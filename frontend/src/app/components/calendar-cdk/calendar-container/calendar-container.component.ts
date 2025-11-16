@@ -81,9 +81,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Loading state
   isLoading: boolean = false;
 
-  // Legend visibility
-  showUsersLegend: boolean = false;
-
   constructor(
     public stateService: CalendarStateService,
     private apiService: ApiService,
@@ -291,12 +288,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   onToggleSidebar(): void {
     this.stateService.toggleSidebar();
-  }
-
-  // Legend events
-  onShowLegendChange(show: boolean): void {
-    // Show legend only if sidebar is collapsed
-    this.showUsersLegend = show && this.sidebarCollapsed;
   }
 
   // Toolbar events

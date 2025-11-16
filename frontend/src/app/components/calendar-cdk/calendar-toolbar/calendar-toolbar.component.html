@@ -48,6 +48,16 @@
     </label>
   </div>
 
+  <!-- Operators legend toggle -->
+  <div class="toolbar-group">
+    <label class="toolbar-checkbox">
+      <input type="checkbox"
+             [checked]="config.showOperatorsLegend"
+             (change)="onOperatorsToggle()">
+      <span>Mostra operatori</span>
+    </label>
+  </div>
+
   <!-- Info display -->
   <div class="toolbar-info">
     <span class="info-text">Altezza cella: {{ slotHeightPx }}px</span>

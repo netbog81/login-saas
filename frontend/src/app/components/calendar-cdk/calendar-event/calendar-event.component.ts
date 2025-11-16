@@ -28,6 +28,7 @@ export class CalendarEventComponent {
   @Input() left: number = 0; // Left position in percentage (for overlapping events)
   @Input() slotDuration: number = 15; // Duration of each slot in minutes
   @Input() isDragging: boolean = false;
+  @Input() totalSelectedUsers: number = 1; // Number of selected users
 
   @Output() eventClick = new EventEmitter<EventAction>();
   @Output() eventDblClick = new EventEmitter<EventAction>();
@@ -41,6 +42,10 @@ export class CalendarEventComponent {
   @HostBinding('style.width.%') get widthValue() { return this.width; }
   @HostBinding('style.left.%') get leftPosition() { return this.left; }
   @HostBinding('class.dragging') get draggingClass() { return this.isDragging; }
+
+  get showTitle(): boolean {
+    return this.totalSelectedUsers === 1;
+  }
 
   isResizing: boolean = false;
   resizeStartY: number = 0;

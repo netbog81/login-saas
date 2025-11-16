@@ -11,10 +11,10 @@
      [class.resizing]="isResizing">
 
   <!-- Event content -->
-  <div class="event-content">
+  <div class="event-content" [class.hide-text]="!showTitle">
     <!-- Header with time and delete button -->
     <div class="event-header">
-      <span class="event-time">{{ displayTime }}</span>
+      <span class="event-time" *ngIf="showTitle">{{ displayTime }}</span>
       <button class="delete-button"
               (click)="onDeleteClick($event)"
               title="Elimina appuntamento">
@@ -28,13 +28,13 @@
       </button>
     </div>
 
-    <!-- Title/Patient name -->
-    <div class="event-title">
+    <!-- Title/Patient name - only shown when single user selected -->
+    <div class="event-title" *ngIf="showTitle">
       {{ displayTitle }}
     </div>
 
-    <!-- Notes preview (if available) -->
-    <div class="event-notes" *ngIf="appointment.notes && height > 80">
+    <!-- Notes preview (if available and single user selected) -->
+    <div class="event-notes" *ngIf="showTitle && appointment.notes && height > 80">
       {{ appointment.notes }}
     </div>
   </div>

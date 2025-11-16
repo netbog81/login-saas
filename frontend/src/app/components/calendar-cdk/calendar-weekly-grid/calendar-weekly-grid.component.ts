@@ -58,19 +58,16 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
   @Output() eventDelete = new EventEmitter<EventAction>();
-  @Output() showLegendChange = new EventEmitter<boolean>();
 
   dayColumns: DayColumn[] = [];
   eventPositions: Map<string, Map<number, EventPosition[]>> = new Map();
   gridHeight: number = 0;
   showUserNames: boolean = true;
-  minWidthForNames: number = 80; // Minimum width to show user names
 
   ngOnInit(): void {
     this.buildDayColumns();
     this.calculateEventPositions();
     this.calculateGridHeight();
-    this.checkUserNameVisibility();
   }
 
   ngAfterViewInit(): void {
@@ -78,9 +75,8 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
       this.syncHorizontalScroll();
       this.adjustHeaderForScrollbar();
     }
-    // Check visibility after view init
+    // Adjust header for scrollbar after view init
     setTimeout(() => {
-      this.checkUserNameVisibility();
       this.adjustHeaderForScrollbar();
     }, 0);
   }
@@ -96,9 +92,6 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     }
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
-    }
-    if (changes['users'] || changes['dates']) {
-      setTimeout(() => this.checkUserNameVisibility(), 0);
     }
     // Adjust header for scrollbar whenever content changes
     setTimeout(() => this.adjustHeaderForScrollbar(), 0);
@@ -318,33 +311,6 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     const dateMap = this.eventPositions.get(date);
     if (!dateMap) return [];
     return dateMap.get(userId) || [];
-  }
-
-  checkUserNameVisibility(): void {
-    // Simplified calculation based on container width
-    if (!this.gridBodyRef?.nativeElement) {
-      return;
-    }
-
-    const containerWidth = this.gridBodyRef.nativeElement.offsetWidth;
-    const daysCount = this.dayColumns.length || 1;
-    const usersCount = this.users.length || 1;
-
-    // Calculate total columns (days * users)
-    const totalColumns = daysCount * usersCount;
-
-    // Calculate available width per column (excluding time column)
-    const timeColumnWidth = 70;
-    const availableWidth = containerWidth - timeColumnWidth;
-    const widthPerColumn = availableWidth / totalColumns;
-
-    // Check if columns are too narrow for names
-    const shouldHideNames = widthPerColumn < this.minWidthForNames;
-
-    if (this.showUserNames !== !shouldHideNames) {
-      this.showUserNames = !shouldHideNames;
-      this.showLegendChange.emit(shouldHideNames);
-    }
   }
 
   isCellInDragSelection(userId: number, date: string, time: string): boolean {
