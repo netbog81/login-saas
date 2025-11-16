@@ -1,0 +1,45 @@
+<div class="dialog-header">
+  <h2 class="dialog-title">Imposta Orario di Lavoro</h2>
+</div>
+
+<div class="dialog-body">
+  <div class="form-group">
+    <label for="startHour" class="form-label">Orario di inizio:</label>
+    <select id="startHour"
+            class="form-select"
+            [(ngModel)]="startHour">
+      <option *ngFor="let hour of availableHours"
+              [value]="hour"
+              [disabled]="hour >= endHour">
+        {{ formatHour(hour) }}
+      </option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="endHour" class="form-label">Orario di fine:</label>
+    <select id="endHour"
+            class="form-select"
+            [(ngModel)]="endHour">
+      <option *ngFor="let hour of availableHours"
+              [value]="hour"
+              [disabled]="hour <= startHour">
+        {{ formatHour(hour) }}
+      </option>
+    </select>
+  </div>
+
+  <div class="info-message">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="16" x2="12" y2="12"></line>
+      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+    <span>Questa impostazione influenza la visualizzazione quando è attivo "Solo orario lavorativo"</span>
+  </div>
+</div>
+
+<div class="dialog-footer">
+  <button class="btn btn-cancel" (click)="onCancel()">Annulla</button>
+  <button class="btn btn-primary" (click)="onSave()">Salva</button>
+</div>

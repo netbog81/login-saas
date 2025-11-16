@@ -14,6 +14,7 @@ export class CalendarToolbarComponent {
   @Input() config!: CalendarConfig;
 
   @Output() configChange = new EventEmitter<Partial<CalendarConfig>>();
+  @Output() openWorkingHoursDialog = new EventEmitter<void>();
 
   slotDurations = [5, 10, 15, 20, 30];
   zoomLevels = [
@@ -41,6 +42,16 @@ export class CalendarToolbarComponent {
 
   onOperatorsToggle(): void {
     this.configChange.emit({ showOperatorsLegend: !this.config.showOperatorsLegend });
+  }
+
+  onWorkingHoursSettings(): void {
+    this.openWorkingHoursDialog.emit();
+  }
+
+  formatWorkingHours(): string {
+    const startHour = this.config.workingHoursStart.toString().padStart(2, '0');
+    const endHour = this.config.workingHoursEnd.toString().padStart(2, '0');
+    return `${startHour}:00 - ${endHour}:00`;
   }
 
   get slotHeightPx(): number {

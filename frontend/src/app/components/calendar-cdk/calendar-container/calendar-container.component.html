@@ -13,7 +13,8 @@
   <!-- Toolbar -->
   <app-calendar-toolbar
     [config]="config"
-    (configChange)="onConfigChange($event)">
+    (configChange)="onConfigChange($event)"
+    (openWorkingHoursDialog)="onOpenWorkingHoursDialog()">
   </app-calendar-toolbar>
 
   <!-- Users Legend (shown when user names don't fit in grid columns) -->
@@ -136,6 +137,16 @@
         (confirm)="onDeleteConfirm()"
         (cancel)="onDeleteCancel()">
       </app-confirm-dialog>
+    </div>
+  </div>
+
+  <!-- Working Hours Dialog -->
+  <div class="dialog-overlay" *ngIf="showWorkingHoursDialog" (click)="onWorkingHoursDialogResult({action: 'cancel'})">
+    <div class="dialog-content" (click)="$event.stopPropagation()">
+      <app-working-hours-dialog
+        [data]="workingHoursDialogData"
+        (result)="onWorkingHoursDialogResult($event)">
+      </app-working-hours-dialog>
     </div>
   </div>
 </div>

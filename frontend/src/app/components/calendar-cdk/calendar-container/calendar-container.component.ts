@@ -19,6 +19,7 @@ import { EventDialogComponent, EventDialogData, EventDialogResult } from '../eve
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { AppointmentSummaryComponent, SummaryAction } from '../appointment-summary/appointment-summary.component';
 import { UsersLegendComponent } from '../users-legend/users-legend.component';
+import { WorkingHoursDialogComponent, WorkingHoursDialogData, WorkingHoursDialogResult } from '../working-hours-dialog/working-hours-dialog.component';
 import { CellEvent } from '../calendar-cell/calendar-cell.component';
 import { EventAction } from '../calendar-event/calendar-event.component';
 
@@ -42,7 +43,8 @@ import { Availability } from '../../../models/availability.model';
     EventDialogComponent,
     ConfirmDialogComponent,
     AppointmentSummaryComponent,
-    UsersLegendComponent
+    UsersLegendComponent,
+    WorkingHoursDialogComponent
   ],
   templateUrl: './calendar-container.component.html',
   styleUrls: ['./calendar-container.component.scss']
@@ -67,6 +69,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   eventDialogData!: EventDialogData;
   showDeleteConfirmDialog: boolean = false;
   appointmentToDelete: Appointment | null = null;
+  showWorkingHoursDialog: boolean = false;
+  workingHoursDialogData!: WorkingHoursDialogData;
 
   // Summary overlay
   summaryOverlayRef: OverlayRef | null = null;
@@ -478,6 +482,25 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   onDeleteCancel(): void {
     this.showDeleteConfirmDialog = false;
     this.appointmentToDelete = null;
+  }
+
+  // Working Hours Dialog
+  onOpenWorkingHoursDialog(): void {
+    this.workingHoursDialogData = {
+      workingHoursStart: this.config.workingHoursStart,
+      workingHoursEnd: this.config.workingHoursEnd
+    };
+    this.showWorkingHoursDialog = true;
+  }
+
+  onWorkingHoursDialogResult(result: WorkingHoursDialogResult): void {
+    if (result.action === 'save' && result.workingHoursStart !== undefined && result.workingHoursEnd !== undefined) {
+      this.stateService.updateConfig({
+        workingHoursStart: result.workingHoursStart,
+        workingHoursEnd: result.workingHoursEnd
+      });
+    }
+    this.showWorkingHoursDialog = false;
   }
 
   // Utility methods
