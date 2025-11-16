@@ -16,6 +16,16 @@
     (configChange)="onConfigChange($event)">
   </app-calendar-toolbar>
 
+  <!-- Users Legend (shown when sidebar is collapsed and columns are narrow) -->
+  <app-users-legend
+    *ngIf="showUsersLegend && sidebarCollapsed"
+    [users]="allUsers"
+    [selectedUsers]="selectedOperators"
+    [showToggle]="true"
+    (userToggle)="onUserToggle($event)"
+    class="users-legend-bar">
+  </app-users-legend>
+
   <!-- Main content area -->
   <div class="calendar-main">
     <!-- Sidebar -->
@@ -87,7 +97,8 @@
         (eventDragStart)="onEventDragStart($event)"
         (eventDragEnd)="onEventDragEnd($event)"
         (eventResize)="onEventResize($event)"
-        (eventDelete)="onEventDelete($event)">
+        (eventDelete)="onEventDelete($event)"
+        (showLegendChange)="onShowLegendChange($event)">
       </app-calendar-weekly-grid>
 
       <!-- Empty state -->

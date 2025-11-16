@@ -13,9 +13,8 @@
           <div class="users-sub-headers">
             <div *ngFor="let user of users"
                  class="user-sub-header"
-                 [style.backgroundColor]="user.color"
-                 [style.minWidth]="getColumnWidth()">
-              <span class="user-name">{{ user.name }}</span>
+                 [style.backgroundColor]="user.color">
+              <span class="user-name" *ngIf="showUserNames">{{ user.name }}</span>
             </div>
           </div>
         </div>
@@ -38,11 +37,12 @@
           </div>
         </div>
 
-        <!-- Day columns with user sub-columns -->
-        <div *ngFor="let day of dayColumns" class="day-column">
+        <!-- Days wrapper to ensure proper flex distribution -->
+        <div class="days-columns-wrapper">
+          <!-- Day columns with user sub-columns -->
+          <div *ngFor="let day of dayColumns" class="day-column">
           <div *ngFor="let user of users"
-               class="user-sub-column"
-               [style.minWidth]="getColumnWidth()">
+               class="user-sub-column">
             <!-- Cells -->
             <div class="cells-container">
               <app-calendar-cell
@@ -83,6 +83,7 @@
             </div>
           </div>
         </div>
+        </div> <!-- Close days-columns-wrapper -->
       </div>
     </div>
   </div>

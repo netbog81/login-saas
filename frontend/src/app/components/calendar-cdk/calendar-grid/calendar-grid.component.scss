@@ -77,14 +77,15 @@
 }
 
 .user-header {
-  flex: 1;
-  min-width: 150px;
+  flex: 1 1 0; // Same as user-column for perfect alignment
+  min-width: 0; // Allow shrinking below content
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 8px;
   border-right: 1px solid #e5e7eb;
   position: relative;
+  max-width: 100%; // Prevent overflow
 
   &:last-child {
     border-right: none;
@@ -122,10 +123,11 @@
 }
 
 .user-column {
-  flex: 1;
-  min-width: 150px;
+  flex: 1 1 0; // flex-grow: 1, flex-shrink: 1, flex-basis: 0 for equal distribution
+  min-width: 0; // Allow columns to shrink below content
   position: relative;
   border-right: 1px solid #e5e7eb;
+  max-width: 100%; // Prevent overflow
 
   &:last-child {
     border-right: none;
@@ -181,11 +183,7 @@
     font-size: 10px;
   }
 
-  .user-header {
-    min-width: 120px;
-  }
-
-  .user-column {
-    min-width: 120px;
+  .user-name {
+    font-size: 11px;
   }
 }

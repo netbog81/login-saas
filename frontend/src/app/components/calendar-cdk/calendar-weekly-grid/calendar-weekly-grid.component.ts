@@ -43,7 +43,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Input() showWorkingHoursOnly: boolean = false;
   @Input() showWeekend: boolean = true;
   @Input() enableHorizontalScroll: boolean = false;
-  @Input() minColumnWidth: number = 120;
+  @Input() minColumnWidth: number = 40; // Reduced for better responsive design
   @Input() dragStartCell: CellEvent | null = null;
   @Input() dragCurrentCell: CellEvent | null = null;
   @Input() isDragging: boolean = false;
@@ -58,32 +58,43 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
   @Output() eventDelete = new EventEmitter<EventAction>();
+  @Output() showLegendChange = new EventEmitter<boolean>();
 
   dayColumns: DayColumn[] = [];
   eventPositions: Map<string, Map<number, EventPosition[]>> = new Map();
   gridHeight: number = 0;
+  showUserNames: boolean = true;
+  minWidthForNames: number = 80; // Minimum width to show user names
 
   ngOnInit(): void {
     this.buildDayColumns();
     this.calculateEventPositions();
     this.calculateGridHeight();
+    this.checkUserNameVisibility();
   }
 
   ngAfterViewInit(): void {
     if (this.gridBodyRef) {
       this.syncHorizontalScroll();
     }
+    // Check visibility after view init
+    setTimeout(() => this.checkUserNameVisibility(), 0);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['dates'] || changes['showWeekend']) {
       this.buildDayColumns();
+      // Recalculate event positions when dates change since the columns have changed
+      this.calculateEventPositions();
     }
     if (changes['appointments'] || changes['timeSlots'] || changes['slotHeight']) {
       this.calculateEventPositions();
     }
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
+    }
+    if (changes['users'] || changes['dates']) {
+      setTimeout(() => this.checkUserNameVisibility(), 0);
     }
   }
 
@@ -131,6 +142,11 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
 
   private calculateEventPositions(): void {
     this.eventPositions.clear();
+
+    // Safety check: only proceed if we have day columns
+    if (!this.dayColumns || this.dayColumns.length === 0) {
+      return;
+    }
 
     for (const day of this.dayColumns) {
       const dateMap = new Map<number, EventPosition[]>();
@@ -277,13 +293,31 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     return dateMap.get(userId) || [];
   }
 
-  getColumnWidth(): string {
-    if (this.enableHorizontalScroll) {
-      return `${this.minColumnWidth}px`;
+  checkUserNameVisibility(): void {
+    // Simplified calculation based on container width
+    if (!this.gridBodyRef?.nativeElement) {
+      return;
     }
 
-    const totalColumns = this.dayColumns.length * (this.users.length || 1);
-    return totalColumns > 0 ? `calc(100% / ${totalColumns})` : '100%';
+    const containerWidth = this.gridBodyRef.nativeElement.offsetWidth;
+    const daysCount = this.dayColumns.length || 1;
+    const usersCount = this.users.length || 1;
+
+    // Calculate total columns (days * users)
+    const totalColumns = daysCount * usersCount;
+
+    // Calculate available width per column (excluding time column)
+    const timeColumnWidth = 70;
+    const availableWidth = containerWidth - timeColumnWidth;
+    const widthPerColumn = availableWidth / totalColumns;
+
+    // Check if columns are too narrow for names
+    const shouldHideNames = widthPerColumn < this.minWidthForNames;
+
+    if (this.showUserNames !== !shouldHideNames) {
+      this.showUserNames = !shouldHideNames;
+      this.showLegendChange.emit(shouldHideNames);
+    }
   }
 
   isCellInDragSelection(userId: number, date: string, time: string): boolean {

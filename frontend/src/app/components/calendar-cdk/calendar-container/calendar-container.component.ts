@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil, combineLatest } from 'rxjs';
+import { Subject, takeUntil, combineLatest, debounceTime } from 'rxjs';
 import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -18,6 +18,7 @@ import { CalendarWeeklyGridComponent } from '../calendar-weekly-grid/calendar-we
 import { EventDialogComponent, EventDialogData, EventDialogResult } from '../event-dialog/event-dialog.component';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { AppointmentSummaryComponent, SummaryAction } from '../appointment-summary/appointment-summary.component';
+import { UsersLegendComponent } from '../users-legend/users-legend.component';
 import { CellEvent } from '../calendar-cell/calendar-cell.component';
 import { EventAction } from '../calendar-event/calendar-event.component';
 
@@ -40,7 +41,8 @@ import { Availability } from '../../../models/availability.model';
     CalendarWeeklyGridComponent,
     EventDialogComponent,
     ConfirmDialogComponent,
-    AppointmentSummaryComponent
+    AppointmentSummaryComponent,
+    UsersLegendComponent
   ],
   templateUrl: './calendar-container.component.html',
   styleUrls: ['./calendar-container.component.scss']
@@ -79,6 +81,9 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Loading state
   isLoading: boolean = false;
 
+  // Legend visibility
+  showUsersLegend: boolean = false;
+
   constructor(
     public stateService: CalendarStateService,
     private apiService: ApiService,
@@ -99,28 +104,40 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   private subscribeToState(): void {
-    // Subscribe to config
+    // Subscribe to config changes (except when triggered by date changes)
     this.stateService.config$
       .pipe(takeUntil(this.destroy$))
       .subscribe(config => {
         this.config = config;
-        this.loadAppointmentsForCurrentView();
       });
 
-    // Subscribe to current date
+    // Subscribe to current date changes
     this.stateService.currentDate$
       .pipe(takeUntil(this.destroy$))
       .subscribe(date => {
         this.currentDate = date;
-        this.loadAppointmentsForCurrentView();
       });
 
-    // Subscribe to view
+    // Subscribe to view changes
     this.stateService.view$
       .pipe(takeUntil(this.destroy$))
       .subscribe(view => {
         this.visibleDates = view.visibleDates;
         this.timeSlots = view.timeSlots;
+      });
+
+    // Combine config, date, and operator changes and debounce to avoid multiple API calls
+    combineLatest([
+      this.stateService.config$,
+      this.stateService.currentDate$,
+      this.stateService.selectedOperators$
+    ])
+      .pipe(
+        debounceTime(50), // Small debounce to group rapid changes
+        takeUntil(this.destroy$)
+      )
+      .subscribe(() => {
+        this.loadAppointmentsForCurrentView();
       });
 
     // Subscribe to selected operators
@@ -274,6 +291,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   onToggleSidebar(): void {
     this.stateService.toggleSidebar();
+  }
+
+  // Legend events
+  onShowLegendChange(show: boolean): void {
+    // Show legend only if sidebar is collapsed
+    this.showUsersLegend = show && this.sidebarCollapsed;
   }
 
   // Toolbar events
