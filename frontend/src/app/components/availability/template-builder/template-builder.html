@@ -1,0 +1,128 @@
+<div class="template-builder">
+  <!-- Template Info Section -->
+  <div class="template-info">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="templateName">Nome Template *</label>
+        <input
+          id="templateName"
+          type="text"
+          class="form-control"
+          [(ngModel)]="templateName"
+          placeholder="es. Orario Standard Settimana"
+          (ngModelChange)="notifyPatternChange()"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-section">
+      <label>Durata Cella:</label>
+      <select
+        class="toolbar-select"
+        [(ngModel)]="config.cellDuration"
+        (ngModelChange)="onCellDurationChange()"
+      >
+        <option [value]="30">30 minuti</option>
+        <option [value]="60">60 minuti</option>
+      </select>
+    </div>
+
+    <div class="toolbar-section">
+      <label>Orario Lavoro:</label>
+      <input
+        type="time"
+        class="toolbar-input"
+        [(ngModel)]="config.workingHours.start"
+        (blur)="onWorkingHoursChange()"
+      />
+      <span class="separator">-</span>
+      <input
+        type="time"
+        class="toolbar-input"
+        [(ngModel)]="config.workingHours.end"
+        (blur)="onWorkingHoursChange()"
+      />
+    </div>
+
+    <div class="toolbar-section">
+      <label>Pattern Settimane:</label>
+      <select
+        class="toolbar-select"
+        [(ngModel)]="config.patternWeeks"
+        (ngModelChange)="onPatternWeeksChange()"
+      >
+        <option [value]="1">1 Settimana</option>
+        <option [value]="2">2 Settimane</option>
+        <option [value]="3">3 Settimane</option>
+        <option [value]="4">4 Settimane</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Weeks Grid Container -->
+  <div class="weeks-container">
+    <div
+      *ngFor="let week of weeks; trackBy: trackByWeekNumber"
+      class="week-card"
+      [class.collapsed]="!isWeekExpanded(week.weekNumber)"
+    >
+      <!-- Week Header -->
+      <div class="week-header" (click)="toggleWeekExpansion(week.weekNumber)">
+        <div class="week-title">
+          <button
+            class="expand-btn"
+            [class.expanded]="isWeekExpanded(week.weekNumber)"
+          >
+            {{ isWeekExpanded(week.weekNumber) ? '−' : '+' }}
+          </button>
+          <h3>Settimana {{ week.weekNumber }}</h3>
+          <span class="slot-count" *ngIf="getWeekSlotCount(week.weekNumber) > 0">
+            ({{ getWeekSlotCount(week.weekNumber) }} fasce orarie)
+          </span>
+        </div>
+
+        <div class="week-actions" (click)="$event.stopPropagation()">
+          <button
+            class="btn btn-sm btn-secondary"
+            (click)="copyWeek(week.weekNumber)"
+            *ngIf="config.patternWeeks > 1"
+            title="Copia settimana"
+          >
+            Copia
+          </button>
+          <button
+            class="btn btn-sm btn-danger"
+            (click)="clearWeek(week.weekNumber)"
+            *ngIf="getWeekSlotCount(week.weekNumber) > 0"
+            title="Cancella tutte le fasce"
+          >
+            Cancella
+          </button>
+        </div>
+      </div>
+
+      <!-- Week Grid -->
+      <div class="week-content" *ngIf="isWeekExpanded(week.weekNumber)">
+        <app-week-grid
+          [config]="config"
+          [weekNumber]="week.weekNumber"
+          [schedule]="week.days"
+          (scheduleChange)="onWeekScheduleChange(week.weekNumber, $event)"
+        ></app-week-grid>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="action-buttons">
+    <button class="btn btn-secondary" (click)="onCancel()">
+      Annulla
+    </button>
+    <button class="btn btn-primary" (click)="onSave()">
+      Salva Template
+    </button>
+  </div>
+</div>

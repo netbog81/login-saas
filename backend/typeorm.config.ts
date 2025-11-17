@@ -6,6 +6,8 @@ import { Operator } from './src/modules/availability/entities/operator.entity';
 import { Service } from './src/modules/availability/entities/service.entity';
 import { OperatorService } from './src/modules/availability/entities/operator-service.entity';
 import { AvailabilityTemplate } from './src/modules/availability/entities/availability-template.entity';
+import { TemplatePattern } from './src/modules/availability/entities/template-pattern.entity';
+import { TemplateAssignment } from './src/modules/availability/entities/template-assignment.entity';
 import { AvailabilityException } from './src/modules/availability/entities/availability-exception.entity';
 import { GroupException } from './src/modules/availability/entities/group-exception.entity';
 import { AvailabilityCache } from './src/modules/availability/entities/availability-cache.entity';
@@ -24,11 +26,12 @@ export const getTypeOrmConfig = (configService: ConfigService): DataSourceOption
     Service,
     OperatorService,
     AvailabilityTemplate,
+    TemplatePattern,
+    TemplateAssignment,
     AvailabilityException,
     GroupException,
     AvailabilityCache,
     AvailabilityAppointment,
-    // Add other existing entities here
   ],
 
   migrations: ['dist/migrations/*.js'],

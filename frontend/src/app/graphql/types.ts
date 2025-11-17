@@ -254,3 +254,109 @@ export interface UpdateOperatorServiceInput {
   customDuration?: number;
   customBufferTime?: number;
 }
+
+// New pattern/assignment input types
+export interface CreateTemplatePatternInput {
+  name: string;
+  description?: string;
+  dayInPattern: number;
+  patternDuration: number;
+  startTime: string; // HH:mm format
+  endTime: string;   // HH:mm format
+}
+
+export interface AssignTemplateToOperatorInput {
+  operatorId: string;
+  templateName: string;
+  patternStartDate: string; // YYYY-MM-DD format
+  validFrom: string; // YYYY-MM-DD format
+  validUntil?: string; // YYYY-MM-DD format
+}
+
+// New entity types for separated pattern/assignment structure
+export interface BackendTemplatePattern {
+  id: string;
+  name: string;
+  description?: string;
+  dayInPattern: number;
+  patternDuration: number;
+  startTime: string;
+  endTime: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface BackendTemplateAssignment {
+  id: string;
+  operatorId: string;
+  patternId: string;
+  patternStartDate: Date;
+  validFrom: Date;
+  validUntil?: Date;
+  version: number;
+  isCurrent: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// UI-specific types for Template Builder
+
+export interface TimeSlot {
+  startTime: string; // "09:00"
+  endTime: string;   // "12:30"
+}
+
+export interface DaySchedule {
+  dayOfWeek: number; // 0=Lun, 1=Mar, ..., 6=Dom
+  slots: TimeSlot[];
+}
+
+export interface WeekSchedule {
+  weekNumber: number; // 1-4
+  days: DaySchedule[];
+}
+
+export interface TemplatePattern {
+  id?: string;
+  name: string;
+  operatorId?: string;
+  patternWeeks: number; // 1-4
+  weeks: WeekSchedule[];
+  validFrom?: string;
+  validUntil?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface GridConfig {
+  cellDuration: 30 | 60; // minuti
+  workingHours: {
+    start: string; // "07:00"
+    end: string;   // "20:00"
+  };
+  patternWeeks: number; // 1-4
+}
+
+export interface OperatorTemplateAssignment {
+  id: string;
+  operator: Operator;
+  template: AvailabilityTemplate;
+  templateName: string;
+  validFrom: Date;
+  validUntil?: Date;
+  status: 'active' | 'expiring' | 'expired' | 'none';
+  daysUntilExpiration?: number;
+}
+
+// Colori fissi per i giorni della settimana
+export const DAY_COLORS = {
+  0: '#4A90E2', // Lunedì - blu
+  1: '#50C878', // Martedì - verde
+  2: '#F5A623', // Mercoledì - arancione
+  3: '#BD10E0', // Giovedì - viola
+  4: '#E94B3C', // Venerdì - rosso
+  5: '#7ED321', // Sabato - lime
+  6: '#9013FE', // Domenica - magenta
+};
+
+export const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];

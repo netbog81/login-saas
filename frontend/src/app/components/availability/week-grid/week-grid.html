@@ -1,0 +1,101 @@
+<div class="week-grid">
+  <div class="grid-container">
+    <!-- Header with day names -->
+    <div class="grid-header">
+      <div class="time-column-header"></div>
+      <div
+        *ngFor="let dayName of dayNames; let day = index; trackBy: trackByDay"
+        class="day-header"
+        [style.background-color]="getDayColor(day)"
+      >
+        {{ dayName }}
+      </div>
+    </div>
+
+    <!-- Grid body -->
+    <div class="grid-body">
+      <!-- Time column -->
+      <div class="time-column">
+        <div
+          *ngFor="let time of timeSlots; trackBy: trackByTime"
+          class="time-cell"
+        >
+          {{ time }}
+        </div>
+      </div>
+
+      <!-- Day columns -->
+      <div class="days-container">
+        <div
+          *ngFor="let dayName of dayNames; let day = index; trackBy: trackByDay"
+          class="day-column"
+        >
+          <!-- Grid cells -->
+          <div class="cells-wrapper">
+            <div
+              *ngFor="let cell of cells[day]; let timeIndex = index; trackBy: trackByTime"
+              class="grid-cell"
+              [class.selected]="cell.selected"
+              [class.in-slot]="cell.inSlot"
+              (mousedown)="onMouseDown(day, timeIndex, $event)"
+              (mouseenter)="onMouseEnter(day, timeIndex)"
+            ></div>
+          </div>
+
+          <!-- Availability slots overlay -->
+          <div class="slots-overlay">
+            <div
+              *ngFor="let slot of getSlotsByDay(day); let slotIndex = index; trackBy: trackByTime"
+              class="time-slot"
+              [ngStyle]="getSlotStyle(day, slot)"
+              [class.hovered]="isSlotHovered(day, slotIndex)"
+              [class.dragging]="isDraggingSlot && currentDraggedSlot?.day === day && currentDraggedSlot?.slotIndex === slotIndex"
+              [class.resizing]="isResizing && resizingSlot?.day === day && resizingSlot?.slotIndex === slotIndex"
+              cdkDrag
+              [cdkDragBoundary]="getCdkDragBoundary()"
+              [cdkDragDisabled]="isResizing"
+              cdkDragLockAxis="y"
+              (cdkDragStarted)="onSlotDragStarted($event, day, slotIndex)"
+              (cdkDragMoved)="onSlotDragMoved($event, day, slotIndex)"
+              (cdkDragEnded)="onSlotDragEnded($event, day, slotIndex)"
+              (click)="onSlotClick(day, day + '-' + slotIndex, $event)"
+              (mouseenter)="onSlotHover(day, slotIndex, true)"
+              (mouseleave)="onSlotHover(day, slotIndex, false)"
+            >
+              <!-- CDK Drag Preview -->
+              <div *cdkDragPreview class="drag-preview" [ngStyle]="getSlotStyle(day, slot)">
+                <div class="slot-content">
+                  <span class="slot-time">{{ slot.startTime }} - {{ slot.endTime }}</span>
+                </div>
+              </div>
+
+              <!-- CDK Drag Placeholder -->
+              <div *cdkDragPlaceholder class="drag-placeholder" [ngStyle]="getSlotStyle(day, slot)"></div>
+
+              <!-- Slot Content -->
+              <div class="slot-content">
+                <span class="slot-time">{{ slot.startTime }} - {{ slot.endTime }}</span>
+                <button
+                  *ngIf="isSlotHovered(day, slotIndex) && !isDraggingSlot && !isResizing"
+                  class="delete-btn"
+                  (click)="onDeleteSlot(day, slotIndex, $event)"
+                  title="Elimina fascia oraria"
+                >
+                  ×
+                </button>
+              </div>
+
+              <!-- Resize Handle -->
+              <div
+                *ngIf="isSlotHovered(day, slotIndex) && !isDraggingSlot"
+                class="resize-handle"
+                (mousedown)="onResizeStart($event, day, slotIndex)"
+                title="Ridimensiona"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

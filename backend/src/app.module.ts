@@ -20,6 +20,8 @@ import { Operator } from './modules/availability/entities/operator.entity';
 import { Service } from './modules/availability/entities/service.entity';
 import { OperatorService } from './modules/availability/entities/operator-service.entity';
 import { AvailabilityTemplate } from './modules/availability/entities/availability-template.entity';
+import { TemplatePattern } from './modules/availability/entities/template-pattern.entity';
+import { TemplateAssignment } from './modules/availability/entities/template-assignment.entity';
 import { AvailabilityException } from './modules/availability/entities/availability-exception.entity';
 import { GroupException } from './modules/availability/entities/group-exception.entity';
 import { AvailabilityCache } from './modules/availability/entities/availability-cache.entity';
@@ -47,6 +49,8 @@ import { AvailabilityAppointment } from './modules/availability/entities/availab
         Service,
         OperatorService,
         AvailabilityTemplate,
+        TemplatePattern,
+        TemplateAssignment,
         AvailabilityException,
         GroupException,
         AvailabilityCache,

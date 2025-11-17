@@ -12,6 +12,14 @@ enum AppointmentStatus {
   SCHEDULED
 }
 
+input AssignTemplateToOperatorInput {
+  operatorId: ID!
+  patternStartDate: String!
+  templateName: String!
+  validFrom: String!
+  validUntil: String
+}
+
 type AvailabilityAppointment {
   appointmentDate: DateTime!
   cancellationReason: String
@@ -93,6 +101,15 @@ input CreateAvailabilityTemplateInput {
   validUntil: String
 }
 
+input CreateTemplatePatternInput {
+  dayInPattern: Int!
+  description: String
+  endTime: String!
+  name: String!
+  patternDuration: Int!
+  startTime: String!
+}
+
 type DailyAvailability {
   date: String!
   hasAvailability: Boolean!
@@ -127,21 +144,25 @@ type GroupException {
 
 type Mutation {
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
+  assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
   createOperator(color: String, email: String, maxConcurrentAppointments: Float! = 1, name: String!, operatorType: OperatorType! = STANDARD, phone: String, surname: String): Operator!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, isActive: Boolean, name: String!): Service!
+  createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   deleteAvailabilityTemplate(id: ID!): Boolean!
   deleteGroupException(id: ID!): Boolean!
   deleteOperator(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
+  deleteTemplatePattern(id: ID!): Boolean!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   updateOperator(email: String, id: ID!, isActive: Boolean, maxConcurrentAppointments: Float, name: String, operatorType: OperatorType, phone: String, surname: String): Operator!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String): Service!
+  updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
 }
 
 type Operator {
@@ -180,6 +201,7 @@ enum OperatorType {
 
 type Query {
   allOperatorServices: [OperatorService!]!
+  allTemplatePatterns: [TemplatePattern!]!
   availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!
   availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
   checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
@@ -206,5 +228,32 @@ type Service {
   isActive: Boolean!
   name: String!
   operators: [OperatorService!]
+  updatedAt: DateTime!
+}
+
+type TemplateAssignment {
+  createdAt: DateTime!
+  id: ID!
+  isCurrent: Boolean!
+  operator: Operator!
+  operatorId: ID!
+  pattern: TemplatePattern!
+  patternId: ID!
+  patternStartDate: DateTime!
+  updatedAt: DateTime!
+  validFrom: DateTime!
+  validUntil: DateTime
+  version: Int!
+}
+
+type TemplatePattern {
+  createdAt: DateTime!
+  dayInPattern: Int!
+  description: String
+  endTime: String!
+  id: ID!
+  name: String!
+  patternDuration: Int!
+  startTime: String!
   updatedAt: DateTime!
 }

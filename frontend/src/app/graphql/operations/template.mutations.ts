@@ -63,3 +63,58 @@ export const REBUILD_AVAILABILITY_CACHE = gql`
     )
   }
 `;
+
+export const CREATE_TEMPLATE_PATTERN = gql`
+  mutation CreateTemplatePattern($input: CreateTemplatePatternInput!) {
+    createTemplatePattern(input: $input) {
+      id
+      name
+      description
+      dayInPattern
+      patternDuration
+      startTime
+      endTime
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const UPDATE_TEMPLATE_PATTERN = gql`
+  mutation UpdateTemplatePattern($id: ID!, $input: CreateTemplatePatternInput!) {
+    updateTemplatePattern(id: $id, input: $input) {
+      id
+      name
+      description
+      dayInPattern
+      patternDuration
+      startTime
+      endTime
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const DELETE_TEMPLATE_PATTERN = gql`
+  mutation DeleteTemplatePattern($id: ID!) {
+    deleteTemplatePattern(id: $id)
+  }
+`;
+
+export const ASSIGN_TEMPLATE_TO_OPERATOR = gql`
+  mutation AssignTemplateToOperator($input: AssignTemplateToOperatorInput!) {
+    assignTemplateToOperator(input: $input) {
+      id
+      operatorId
+      patternId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+    }
+  }
+`;

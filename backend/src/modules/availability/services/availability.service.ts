@@ -2,12 +2,16 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not, In } from 'typeorm';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
+import { TemplatePattern } from '../entities/template-pattern.entity';
+import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AvailabilityCache } from '../entities/availability-cache.entity';
 import { Operator } from '../entities/operator.entity';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 import { GroupException } from '../entities/group-exception.entity';
 import { CreateAvailabilityTemplateInput } from '../dto/create-availability-template.input';
+import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
+import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
 
 @Injectable()
@@ -15,6 +19,10 @@ export class AvailabilityService {
   constructor(
     @InjectRepository(AvailabilityTemplate)
     private templateRepo: Repository<AvailabilityTemplate>,
+    @InjectRepository(TemplatePattern)
+    private patternRepo: Repository<TemplatePattern>,
+    @InjectRepository(TemplateAssignment)
+    private assignmentRepo: Repository<TemplateAssignment>,
     @InjectRepository(AvailabilityException)
     private exceptionRepo: Repository<AvailabilityException>,
     @InjectRepository(AvailabilityCache)
@@ -179,6 +187,151 @@ export class AvailabilityService {
     await this.rebuildCache(input.operatorId, input.validFrom, cacheEndDate);
 
     return saved;
+  }
+
+  /**
+   * Create a generic template pattern without operator assignment
+   * This allows creating reusable patterns for template management
+   */
+  async createTemplatePattern(input: CreateTemplatePatternInput): Promise<TemplatePattern[]> {
+    // Validate pattern configuration
+    if (input.dayInPattern >= input.patternDuration) {
+      throw new BadRequestException('dayInPattern must be less than patternDuration');
+    }
+
+    // Check if pattern with same characteristics already exists
+    const existing = await this.patternRepo.findOne({
+      where: {
+        name: input.name,
+        dayInPattern: input.dayInPattern,
+        patternDuration: input.patternDuration,
+        startTime: input.startTime,
+        endTime: input.endTime,
+      }
+    });
+
+    if (existing) {
+      throw new BadRequestException(`Template pattern with these characteristics already exists`);
+    }
+
+    // Create the pattern entry
+    const pattern = this.patternRepo.create({
+      name: input.name,
+      description: input.description,
+      dayInPattern: input.dayInPattern,
+      patternDuration: input.patternDuration,
+      startTime: input.startTime,
+      endTime: input.endTime,
+    });
+
+    const saved = await this.patternRepo.save(pattern);
+
+    return [saved];
+  }
+
+  /**
+   * Update an existing template pattern by ID
+   */
+  async updateTemplatePattern(id: string, input: CreateTemplatePatternInput): Promise<TemplatePattern> {
+    // Validate pattern configuration
+    if (input.dayInPattern >= input.patternDuration) {
+      throw new BadRequestException('dayInPattern must be less than patternDuration');
+    }
+
+    // Find the pattern to update
+    const pattern = await this.patternRepo.findOne({ where: { id } });
+    if (!pattern) {
+      throw new NotFoundException('Template pattern not found');
+    }
+
+    // Update pattern fields
+    pattern.name = input.name;
+    pattern.description = input.description;
+    pattern.dayInPattern = input.dayInPattern;
+    pattern.patternDuration = input.patternDuration;
+    pattern.startTime = input.startTime;
+    pattern.endTime = input.endTime;
+
+    return await this.patternRepo.save(pattern);
+  }
+
+  /**
+   * Delete a template pattern by ID
+   */
+  async deleteTemplatePattern(id: string): Promise<boolean> {
+    const pattern = await this.patternRepo.findOne({ where: { id } });
+    if (!pattern) {
+      throw new NotFoundException('Template pattern not found');
+    }
+
+    await this.patternRepo.delete(id);
+    return true;
+  }
+
+  /**
+   * Assign an existing template pattern to an operator with validity dates
+   * Creates assignment entries linking patterns to operator
+   */
+  async assignTemplateToOperator(input: AssignTemplateToOperatorInput): Promise<TemplateAssignment[]> {
+    // Validate operator exists
+    const operator = await this.operatorRepo.findOne({ where: { id: input.operatorId } });
+    if (!operator) {
+      throw new NotFoundException('Operator not found');
+    }
+
+    // Find all pattern entries by name
+    const patterns = await this.patternRepo.find({
+      where: { name: input.templateName }
+    });
+
+    if (patterns.length === 0) {
+      throw new NotFoundException(`Template pattern "${input.templateName}" not found`);
+    }
+
+    // Deactivate current assignments for this operator
+    await this.assignmentRepo.update(
+      { operatorId: input.operatorId, isCurrent: true },
+      { isCurrent: false }
+    );
+
+    // Create new assignments linking patterns to operator
+    const newAssignments: TemplateAssignment[] = [];
+
+    for (const pattern of patterns) {
+      const assignment = this.assignmentRepo.create({
+        operatorId: input.operatorId,
+        patternId: pattern.id,
+        patternStartDate: new Date(input.patternStartDate),
+        validFrom: new Date(input.validFrom),
+        validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+        isCurrent: true,
+        version: 1
+      });
+
+      const saved = await this.assignmentRepo.save(assignment);
+      newAssignments.push(saved);
+    }
+
+    // Rebuild cache for affected period
+    const cacheEndDate = input.validUntil ||
+      new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0];
+
+    await this.rebuildCache(input.operatorId, input.validFrom, cacheEndDate);
+
+    return newAssignments;
+  }
+
+  /**
+   * Get all template patterns (generic, not assigned to operators)
+   * Groups patterns by name for UI display
+   */
+  async getAllTemplatePatterns(): Promise<TemplatePattern[]> {
+    return this.patternRepo.find({
+      order: {
+        name: 'ASC',
+        dayInPattern: 'ASC',
+      }
+    });
   }
 
   async updateTemplate(id: string, input: CreateAvailabilityTemplateInput): Promise<AvailabilityTemplate> {

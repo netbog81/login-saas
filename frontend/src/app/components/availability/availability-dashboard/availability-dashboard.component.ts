@@ -5,9 +5,11 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 
 import { OperatorManagementComponent } from '../operator-management/operator-management.component';
 import { ServiceManagementComponent } from '../service-management/service-management.component';
+import { TemplateManagement } from '../template-management/template-management';
+import { OperatorTemplateAssignment } from '../operator-template-assignment/operator-template-assignment';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 
-type TabType = 'operators' | 'services' | 'templates' | 'calendar';
+type TabType = 'operators' | 'services' | 'templates' | 'assignments' | 'calendar';
 
 @Component({
   selector: 'app-availability-dashboard',
@@ -17,7 +19,9 @@ type TabType = 'operators' | 'services' | 'templates' | 'calendar';
     FormsModule,
     CdkMenuModule,
     OperatorManagementComponent,
-    ServiceManagementComponent
+    ServiceManagementComponent,
+    TemplateManagement,
+    OperatorTemplateAssignment
   ],
   templateUrl: './availability-dashboard.component.html',
   styleUrls: ['./availability-dashboard.component.scss']

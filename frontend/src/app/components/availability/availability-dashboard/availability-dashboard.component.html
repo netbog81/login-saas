@@ -47,6 +47,11 @@
         Template Orari
       </button>
       <button class="tab"
+              [class.active]="activeTab === 'assignments'"
+              (click)="setActiveTab('assignments')">
+        Assegnazioni
+      </button>
+      <button class="tab"
               [class.active]="activeTab === 'calendar'"
               (click)="setActiveTab('calendar')">
         Calendario
@@ -58,12 +63,8 @@
   <div class="tab-content">
     <app-operator-management *ngIf="activeTab === 'operators'"></app-operator-management>
     <app-service-management *ngIf="activeTab === 'services'"></app-service-management>
-
-    <div *ngIf="activeTab === 'templates'" class="coming-soon">
-      <h3>Template Orari</h3>
-      <p>Gestione dei template di disponibilità ricorrente per gli operatori.</p>
-      <p class="note">Funzionalità in sviluppo...</p>
-    </div>
+    <app-template-management *ngIf="activeTab === 'templates'"></app-template-management>
+    <app-operator-template-assignment *ngIf="activeTab === 'assignments'"></app-operator-template-assignment>
 
     <div *ngIf="activeTab === 'calendar'" class="coming-soon">
       <h3>Integrazione Calendario</h3>

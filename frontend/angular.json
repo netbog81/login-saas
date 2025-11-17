@@ -69,6 +69,11 @@
             },
             "development": {
               "buildTarget": "calendar-frontend:build:development"
+            },
+            "no-hmr": {
+              "buildTarget": "calendar-frontend:build:development",
+              "hmr": false,
+              "liveReload": false
             }
           },
           "defaultConfiguration": "development"

@@ -2,9 +2,13 @@ import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AvailabilityService } from '../services/availability.service';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
+import { TemplatePattern } from '../entities/template-pattern.entity';
+import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { GroupException } from '../entities/group-exception.entity';
 import { CreateAvailabilityTemplateInput } from '../dto/create-availability-template.input';
+import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
+import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
 // import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
 
@@ -20,6 +24,12 @@ export class AvailabilityResolver {
     @Args('onlyCurrent', { type: () => Boolean, defaultValue: true }) onlyCurrent: boolean
   ): Promise<AvailabilityTemplate[]> {
     return this.availabilityService.getTemplates(operatorId, onlyCurrent);
+  }
+
+  @Query(() => [TemplatePattern], { name: 'allTemplatePatterns' })
+  // @UseGuards(GqlAuthGuard)
+  async getAllTemplatePatterns(): Promise<TemplatePattern[]> {
+    return this.availabilityService.getAllTemplatePatterns();
   }
 
   @Query(() => [DailyAvailability], { name: 'operatorAvailability' })
@@ -77,6 +87,39 @@ export class AvailabilityResolver {
     @Args('id', { type: () => ID }) id: string
   ): Promise<boolean> {
     return this.availabilityService.deleteTemplate(id);
+  }
+
+  @Mutation(() => [TemplatePattern], { name: 'createTemplatePattern' })
+  // @UseGuards(GqlAuthGuard)
+  async createTemplatePattern(
+    @Args('input') input: CreateTemplatePatternInput
+  ): Promise<TemplatePattern[]> {
+    return this.availabilityService.createTemplatePattern(input);
+  }
+
+  @Mutation(() => TemplatePattern, { name: 'updateTemplatePattern' })
+  // @UseGuards(GqlAuthGuard)
+  async updateTemplatePattern(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: CreateTemplatePatternInput
+  ): Promise<TemplatePattern> {
+    return this.availabilityService.updateTemplatePattern(id, input);
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteTemplatePattern' })
+  // @UseGuards(GqlAuthGuard)
+  async deleteTemplatePattern(
+    @Args('id', { type: () => ID }) id: string
+  ): Promise<boolean> {
+    return this.availabilityService.deleteTemplatePattern(id);
+  }
+
+  @Mutation(() => [TemplateAssignment], { name: 'assignTemplateToOperator' })
+  // @UseGuards(GqlAuthGuard)
+  async assignTemplateToOperator(
+    @Args('input') input: AssignTemplateToOperatorInput
+  ): Promise<TemplateAssignment[]> {
+    return this.availabilityService.assignTemplateToOperator(input);
   }
 
   @Mutation(() => AvailabilityException, { name: 'createAvailabilityException' })

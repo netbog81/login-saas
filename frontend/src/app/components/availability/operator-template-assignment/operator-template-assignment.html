@@ -1,0 +1,165 @@
+<div class="operator-assignment">
+  <div class="header">
+    <h2>Assegnazione Template Operatori</h2>
+  </div>
+
+  <!-- Search -->
+  <div class="filters">
+    <div class="search-box">
+      <input
+        type="text"
+        class="search-input"
+        [(ngModel)]="searchTerm"
+        (ngModelChange)="onSearchChange()"
+        placeholder="Cerca operatore..."
+      />
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading">
+    Caricamento in corso...
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error" class="error">
+    {{ error }}
+  </div>
+
+  <!-- Operators List -->
+  <div class="operators-container" *ngIf="!loading">
+    <div class="operators-grid">
+      <div
+        *ngFor="let item of filteredOperators; trackBy: trackByOperatorId"
+        class="operator-card"
+        [class.selected]="selectedOperator === item"
+        [class.has-template]="item.status !== 'none'"
+        (click)="selectOperator(item)"
+      >
+        <!-- Card Header -->
+        <div class="card-header">
+          <div class="operator-info">
+            <h3>{{ item.operator.name }} {{ item.operator.surname || '' }}</h3>
+            <span class="operator-type">{{ item.operator.type }}</span>
+          </div>
+          <div class="status-badge" [ngClass]="getStatusClass(item.status)">
+            <span class="status-icon">{{ getStatusIcon(item.status) }}</span>
+            <span class="status-label">{{ getStatusLabel(item.status) }}</span>
+          </div>
+        </div>
+
+        <!-- Template Details -->
+        <div class="card-details" *ngIf="item.pattern">
+          <div class="detail-row">
+            <span class="label">Template:</span>
+            <span class="value">{{ item.pattern.name }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Validità:</span>
+            <span class="value">{{ getValidityLabel(item) }}</span>
+          </div>
+          <div class="detail-row" *ngIf="getExpirationWarning(item)">
+            <span class="warning-message">
+              {{ getExpirationWarning(item) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- No Template Message -->
+        <div class="no-template" *ngIf="!item.pattern">
+          <p>Nessun template assegnato</p>
+        </div>
+
+        <!-- Card Actions -->
+        <div class="card-actions" (click)="$event.stopPropagation()">
+          <button
+            class="btn btn-sm btn-primary"
+            (click)="openAssignModal(item)"
+            [title]="item.pattern ? 'Modifica assegnazione' : 'Assegna template'"
+          >
+            {{ item.pattern ? 'Modifica' : 'Assegna' }}
+          </button>
+          <button
+            class="btn btn-sm btn-danger"
+            (click)="removeAssignment(item)"
+            *ngIf="item.pattern"
+            title="Rimuovi assegnazione"
+          >
+            Rimuovi
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="filteredOperators.length === 0">
+      <p *ngIf="searchTerm">Nessun operatore trovato con il termine "{{ searchTerm }}"</p>
+      <p *ngIf="!searchTerm">Nessun operatore disponibile.</p>
+    </div>
+  </div>
+
+  <!-- Assignment Modal -->
+  <div class="modal-overlay" *ngIf="showAssignModal" (click)="onAssignCancel()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>
+          Assegna Template a {{ currentOperator?.operator?.name }}
+          {{ currentOperator?.operator?.surname || '' }}
+        </h3>
+        <button class="close-btn" (click)="onAssignCancel()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="templateSelect">Template *</label>
+          <select
+            id="templateSelect"
+            class="form-control"
+            [(ngModel)]="selectedTemplateName"
+          >
+            <option value="">Seleziona un template...</option>
+            <option *ngFor="let option of templateOptions" [value]="option.name">
+              {{ option.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="validFrom">Valido Dal *</label>
+            <input
+              id="validFrom"
+              type="date"
+              class="form-control"
+              [(ngModel)]="assignValidFrom"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="validUntil">Valido Fino (opzionale)</label>
+            <input
+              id="validUntil"
+              type="date"
+              class="form-control"
+              [(ngModel)]="assignValidUntil"
+            />
+          </div>
+        </div>
+
+        <div class="info-message" *ngIf="currentOperator?.pattern">
+          <strong>Nota:</strong> Questa operazione sostituirà l'assegnazione
+          esistente del template "{{ currentOperator?.pattern?.name }}".
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="onAssignCancel()">
+          Annulla
+        </button>
+        <button class="btn btn-primary" (click)="onAssignSave()">
+          Salva Assegnazione
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

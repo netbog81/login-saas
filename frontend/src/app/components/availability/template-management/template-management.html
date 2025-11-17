@@ -1,0 +1,119 @@
+<div class="template-management">
+  <div class="header">
+    <h2>Gestione Template Orari</h2>
+    <button class="btn btn-primary" (click)="openCreateModal()">
+      + Nuovo Template
+    </button>
+  </div>
+
+  <!-- Search and Filters -->
+  <div class="filters">
+    <div class="search-box">
+      <input
+        type="text"
+        class="search-input"
+        [(ngModel)]="searchTerm"
+        (ngModelChange)="onSearchChange()"
+        placeholder="Cerca template per nome..."
+      />
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading">
+    Caricamento template in corso...
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error" class="error">
+    {{ error }}
+  </div>
+
+  <!-- Templates List -->
+  <div class="templates-container" *ngIf="!loading">
+    <div class="templates-grid">
+      <div
+        *ngFor="let group of filteredGroups; trackBy: trackByGroupName"
+        class="template-card"
+        [class.selected]="selectedGroup === group"
+        (click)="selectGroup(group)"
+      >
+        <!-- Card Header -->
+        <div class="card-header">
+          <div class="card-title">
+            <h3>{{ group.name }}</h3>
+            <span class="operator-badge" *ngIf="group.operatorCount > 0">
+              {{ group.operatorCount }} operatore{{ group.operatorCount > 1 ? 'i' : '' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Card Details -->
+        <div class="card-details">
+          <div class="detail-row">
+            <span class="label">Pattern:</span>
+            <span class="value">{{ getPatternWeeksLabel(group.pattern) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Fasce Orarie:</span>
+            <span class="value">{{ getTotalSlots(group.pattern) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Validità:</span>
+            <span class="value">{{ getValidityLabel(group.pattern) }}</span>
+          </div>
+        </div>
+
+        <!-- Card Actions -->
+        <div class="card-actions" (click)="$event.stopPropagation()">
+          <button
+            class="btn btn-sm btn-primary"
+            (click)="openEditModal(group)"
+            title="Modifica template"
+          >
+            Modifica
+          </button>
+          <button
+            class="btn btn-sm btn-secondary"
+            (click)="duplicateTemplate(group)"
+            title="Duplica template"
+          >
+            Duplica
+          </button>
+          <button
+            class="btn btn-sm btn-danger"
+            (click)="deleteTemplate(group)"
+            [disabled]="group.operatorCount > 0"
+            title="Elimina template"
+          >
+            Elimina
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="filteredGroups.length === 0">
+      <p *ngIf="searchTerm">Nessun template trovato con il termine "{{ searchTerm }}"</p>
+      <p *ngIf="!searchTerm">Nessun template disponibile. Crea il primo template per iniziare.</p>
+    </div>
+  </div>
+
+  <!-- Template Builder Modal -->
+  <div class="modal-overlay" *ngIf="showBuilderModal" (click)="onBuilderCancel()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditMode ? 'Modifica Template' : 'Nuovo Template' }}</h3>
+        <button class="close-btn" (click)="onBuilderCancel()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <app-template-builder
+          [pattern]="currentPattern"
+          (save)="onBuilderSave($event)"
+          (cancel)="onBuilderCancel()"
+        ></app-template-builder>
+      </div>
+    </div>
+  </div>
+</div>

@@ -6,6 +6,8 @@ import { Operator } from './entities/operator.entity';
 import { Service } from './entities/service.entity';
 import { OperatorService } from './entities/operator-service.entity';
 import { AvailabilityTemplate } from './entities/availability-template.entity';
+import { TemplatePattern } from './entities/template-pattern.entity';
+import { TemplateAssignment } from './entities/template-assignment.entity';
 import { AvailabilityException } from './entities/availability-exception.entity';
 import { GroupException } from './entities/group-exception.entity';
 import { AvailabilityCache } from './entities/availability-cache.entity';
@@ -28,6 +30,8 @@ import { OperatorServiceResolver } from './resolvers/operator-service.resolver';
       Service,
       OperatorService,
       AvailabilityTemplate,
+      TemplatePattern,
+      TemplateAssignment,
       AvailabilityException,
       GroupException,
       AvailabilityCache,
