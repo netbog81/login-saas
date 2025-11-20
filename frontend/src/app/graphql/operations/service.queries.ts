@@ -32,7 +32,7 @@ export const GET_SERVICE = gql`
       isActive
       createdAt
       updatedAt
-      operatorServices {
+      operators {
         operatorId
         serviceId
         customDuration

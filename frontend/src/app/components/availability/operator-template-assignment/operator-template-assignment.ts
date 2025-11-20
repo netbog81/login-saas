@@ -3,12 +3,13 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OperatorService } from '../../../services/operator.service';
 import { TemplateService } from '../../../services/template.service';
-import { Operator, AvailabilityTemplate, TemplatePattern } from '../../../graphql/types';
+import { Operator, TemplatePattern } from '../../../graphql/ui-types';
+import { AvailabilityTemplate } from '../../../graphql/generated/types';
 import { catchError, finalize, forkJoin, map, of } from 'rxjs';
 
 interface OperatorWithTemplate {
   operator: Operator;
-  templates: AvailabilityTemplate[];
+  templates: Partial<AvailabilityTemplate>[];
   pattern: TemplatePattern | null;
   status: 'active' | 'expiring' | 'none';
   validFrom?: string;
@@ -18,7 +19,7 @@ interface OperatorWithTemplate {
 
 interface TemplateOption {
   name: string;
-  templates: AvailabilityTemplate[];
+  templates: Partial<AvailabilityTemplate>[];
   pattern: TemplatePattern | null;
 }
 
@@ -78,7 +79,7 @@ export class OperatorTemplateAssignment implements OnInit {
 
   private buildOperatorList(
     operators: Operator[],
-    allTemplates: AvailabilityTemplate[]
+    allTemplates: Partial<AvailabilityTemplate>[]
   ) {
     this.operators = operators.map((operator) => {
       // Find templates for this operator (current ones)
@@ -146,7 +147,7 @@ export class OperatorTemplateAssignment implements OnInit {
     });
   }
 
-  private buildTemplateOptions(allTemplates: AvailabilityTemplate[]) {
+  private buildTemplateOptions(allTemplates: Partial<AvailabilityTemplate>[]) {
     const grouped = this.templateService.groupTemplatesByName(allTemplates);
     this.templateOptions = [];
 
@@ -274,7 +275,7 @@ export class OperatorTemplateAssignment implements OnInit {
 
     // Delete all templates for this operator
     const deleteObservables = operator.templates.map((template) =>
-      this.templateService.deleteTemplate(template.id)
+      this.templateService.deleteTemplate(template.id!)
     );
 
     Promise.all(deleteObservables.map((obs) => obs.toPromise()))

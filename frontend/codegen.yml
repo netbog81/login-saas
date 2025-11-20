@@ -1,0 +1,7 @@
+schema: 'http://localhost:3000/graphql'  # URL del tuo backend
+documents: './src/app/graphql/**/*.ts'   # Dove hai le tue query
+generates:
+  ./src/app/graphql/generated/types.ts:  # Dove salvare i tipi
+    plugins:
+      - 'typescript'
+      - 'typescript-operations'

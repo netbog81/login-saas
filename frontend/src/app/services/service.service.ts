@@ -4,11 +4,11 @@ import { Observable, map } from 'rxjs';
 import {
   Service,
   OperatorService,
-  CreateServiceInput,
-  UpdateServiceInput,
-  AssignServiceToOperatorInput,
-  UpdateOperatorServiceInput
-} from '../graphql/types';
+  MutationCreateServiceArgs as CreateServiceInput,
+  MutationUpdateServiceArgs as UpdateServiceInput,
+  MutationAssignServiceToOperatorArgs as AssignServiceToOperatorInput,
+  MutationUpdateOperatorServiceArgs as UpdateOperatorServiceInput
+} from '../graphql/generated/types';
 import {
   GET_SERVICES,
   GET_SERVICE,

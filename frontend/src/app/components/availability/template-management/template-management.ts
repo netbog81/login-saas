@@ -3,12 +3,13 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TemplateBuilder } from '../template-builder/template-builder';
 import { TemplateService } from '../../../services/template.service';
-import { TemplatePattern, AvailabilityTemplate } from '../../../graphql/types';
+import { TemplatePattern } from '../../../graphql/ui-types';
+import { AvailabilityTemplate } from '../../../graphql/generated/types';
 import { catchError, finalize, of } from 'rxjs';
 
 interface TemplateGroup {
   name: string;
-  templates: AvailabilityTemplate[];
+  templates: Partial<AvailabilityTemplate>[];
   pattern: TemplatePattern | null;
   operatorCount: number;
 }
@@ -59,7 +60,7 @@ export class TemplateManagement implements OnInit {
       });
   }
 
-  private buildTemplateGroups(templates: AvailabilityTemplate[]) {
+  private buildTemplateGroups(templates: Partial<AvailabilityTemplate>[]) {
     const grouped = this.templateService.groupTemplatesByName(templates);
     this.templateGroups = [];
 
@@ -185,7 +186,7 @@ export class TemplateManagement implements OnInit {
 
     // Delete all templates in the group
     const deleteObservables = group.templates.map((template) =>
-      this.templateService.deleteTemplate(template.id)
+      this.templateService.deleteTemplate(template.id!)
     );
 
     // Execute all deletions
@@ -233,7 +234,7 @@ export class TemplateManagement implements OnInit {
     if (this.isEditMode && this.editingGroup) {
       // Delete all templates in the group
       const deleteObservables = this.editingGroup.templates.map((template) =>
-        this.templateService.deleteTemplate(template.id)
+        this.templateService.deleteTemplate(template.id!)
       );
 
       // Execute all deletions first

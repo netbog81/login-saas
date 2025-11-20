@@ -1,12 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Apollo } from 'apollo-angular';
 import { Observable, map } from 'rxjs';
+import { Operator } from '../graphql/ui-types';
 import {
-  Operator,
-  CreateOperatorInput,
-  UpdateOperatorInput,
+  MutationCreateOperatorArgs as CreateOperatorInput,
+  MutationUpdateOperatorArgs as UpdateOperatorInput,
   DailyAvailability
-} from '../graphql/types';
+} from '../graphql/generated/types';
 import {
   GET_OPERATORS,
   GET_OPERATOR,
@@ -95,7 +95,7 @@ export class OperatorService {
       );
   }
 
-  updateOperator(id: string, input: UpdateOperatorInput): Observable<Operator> {
+  updateOperator(id: string, input: Omit<UpdateOperatorInput, 'id'>): Observable<Operator> {
     return this.apollo
       .mutate<{ updateOperator: any }>({
         mutation: UPDATE_OPERATOR,

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil, combineLatest, debounceTime } from 'rxjs';
 import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
@@ -89,7 +89,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     private apiService: ApiService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
-    private injector: Injector
+    private injector: Injector,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -108,7 +109,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     this.stateService.config$
       .pipe(takeUntil(this.destroy$))
       .subscribe(config => {
-        this.config = config;
+        this.config = { ...config };
+        this.cdr.markForCheck();
       });
 
     // Subscribe to current date changes
@@ -116,6 +118,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(date => {
         this.currentDate = date;
+        this.cdr.markForCheck();
       });
 
     // Subscribe to view changes
@@ -124,6 +127,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .subscribe(view => {
         this.visibleDates = view.visibleDates;
         this.timeSlots = view.timeSlots;
+        this.cdr.markForCheck();
       });
 
     // Combine config, date, and operator changes and debounce to avoid multiple API calls
@@ -145,6 +149,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(operators => {
         this.selectedOperators = operators;
+        this.cdr.markForCheck();
       });
 
     // Subscribe to appointments
@@ -152,6 +157,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(appointments => {
         this.appointments = appointments;
+        this.cdr.markForCheck();
       });
 
     // Subscribe to availabilities
@@ -159,6 +165,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(availabilities => {
         this.availabilities = availabilities;
+        this.cdr.markForCheck();
       });
 
     // Subscribe to sidebar state
@@ -166,6 +173,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(collapsed => {
         this.sidebarCollapsed = collapsed;
+        this.cdr.markForCheck();
       });
   }
 
@@ -186,9 +194,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       this.patients = patients || [];
 
       this.isLoading = false;
+      this.cdr.markForCheck();
     } catch (error) {
       console.error('Error loading initial data:', error);
       this.isLoading = false;
+      this.cdr.markForCheck();
     }
   }
 

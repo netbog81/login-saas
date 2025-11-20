@@ -15,7 +15,9 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d ./src/data-source.ts",
     "migration:create": "typeorm migration:create",
     "schema:drop": "typeorm-ts-node-commonjs schema:drop -d ./src/data-source.ts",
-    "schema:sync": "typeorm-ts-node-commonjs schema:sync -d ./src/data-source.ts"
+    "schema:sync": "typeorm-ts-node-commonjs schema:sync -d ./src/data-source.ts",
+    "schema:log": "typeorm-ts-node-commonjs schema:log -d ./src/data-source.ts",
+    "db:check": "npm run schema:log"
   },
   "dependencies": {
     "@apollo/server": "^4.12.2",

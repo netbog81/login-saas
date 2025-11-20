@@ -8,7 +8,8 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 import { OperatorService } from '../../../services/operator.service';
 import { ServiceService } from '../../../services/service.service';
-import { Operator, Service, OperatorType, CreateOperatorInput, UpdateOperatorInput } from '../../../graphql/types';
+import { Operator, OperatorType } from '../../../graphql/ui-types';
+import { Service, MutationCreateOperatorArgs as CreateOperatorInput, MutationUpdateOperatorArgs as UpdateOperatorInput } from '../../../graphql/generated/types';
 
 @Component({
   selector: 'app-operator-management',
@@ -30,10 +31,10 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   showOperatorForm = false;
   isEditMode = false;
   editingOperatorId: string | null = null;
-  editingOperator: Partial<CreateOperatorInput> = {
+  editingOperator: Partial<CreateOperatorInput> & { type?: OperatorType; isActive?: boolean } = {
     name: '',
     email: '',
-    type: OperatorType.STANDARD,
+    type: OperatorType.Standard,
     maxConcurrentAppointments: 1,
     isActive: true
   };
@@ -130,7 +131,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
       this.editingOperator = {
         name: '',
         email: '',
-        type: OperatorType.STANDARD,
+        type: OperatorType.Standard,
         maxConcurrentAppointments: 1,
         isActive: true
       };
@@ -146,7 +147,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     this.editingOperator = {
       name: '',
       email: '',
-      type: OperatorType.STANDARD,
+      type: OperatorType.Standard,
       maxConcurrentAppointments: 1,
       isActive: true
     };
@@ -201,7 +202,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         name: name,
         email: email || undefined, // Make email optional
         phone: this.editingOperator.phone?.trim() || undefined,
-        operatorType: this.editingOperator.type || OperatorType.STANDARD,
+        operatorType: this.editingOperator.type || OperatorType.Standard,
         maxConcurrentAppointments: this.editingOperator.maxConcurrentAppointments || 1
       };
 
@@ -339,11 +340,11 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
 
   getOperatorTypeLabel(type: OperatorType): string {
     switch (type) {
-      case OperatorType.STANDARD:
+      case OperatorType.Standard:
         return 'Standard';
-      case OperatorType.GYM:
+      case OperatorType.Gym:
         return 'Palestra';
-      case OperatorType.RESOURCE:
+      case OperatorType.Resource:
         return 'Risorsa';
       default:
         return type;

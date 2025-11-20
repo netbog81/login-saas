@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, combineLatest, interval, switchMap, takeWhile } from 'rxjs';
+import { Operator } from '../graphql/ui-types';
 import {
-  Operator,
   Service,
   AvailabilityTemplate,
   AvailabilityException,
@@ -9,7 +9,7 @@ import {
   AvailabilitySlot,
   DailyAvailability,
   GroupException
-} from '../graphql/types';
+} from '../graphql/generated/types';
 import { OperatorService as OperatorApiService } from './operator.service';
 import { ServiceService } from './service.service';
 

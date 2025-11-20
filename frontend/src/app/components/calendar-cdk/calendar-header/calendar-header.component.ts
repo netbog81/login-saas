@@ -51,6 +51,7 @@ export class CalendarHeaderComponent {
   }
 
   onViewTypeChange(type: 'daily' | 'weekly'): void {
+    console.log('Header: emitting viewType change to', type);
     this.viewTypeChange.emit(type);
   }
 

@@ -19,15 +19,17 @@ import {
 import {
   AvailabilityTemplate,
   CreateAvailabilityTemplateInput,
+  CreateTemplatePatternInput,
+  TemplatePattern as BackendTemplatePattern,
+  TemplateAssignment as BackendTemplateAssignment,
+  AssignTemplateToOperatorInput,
+} from '../graphql/generated/types';
+import {
   TemplatePattern,
   TimeSlot,
   DaySchedule,
   WeekSchedule,
-  CreateTemplatePatternInput,
-  BackendTemplatePattern,
-  BackendTemplateAssignment,
-  AssignTemplateToOperatorInput,
-} from '../graphql/types';
+} from '../graphql/ui-types';
 
 @Injectable({
   providedIn: 'root',
@@ -55,7 +57,7 @@ export class TemplateService {
    * Ottiene tutti i template pattern generici (non assegnati a operatori)
    * Converte BackendTemplatePattern in AvailabilityTemplate per compatibilità UI
    */
-  getAllTemplates(): Observable<AvailabilityTemplate[]> {
+  getAllTemplates(): Observable<Partial<AvailabilityTemplate>[]> {
     return this.apollo
       .query<{ allTemplatePatterns: BackendTemplatePattern[] }>({
         query: GET_ALL_TEMPLATE_PATTERNS,
@@ -106,7 +108,7 @@ export class TemplateService {
    */
   createTemplateFromPattern(
     pattern: TemplatePattern
-  ): Observable<AvailabilityTemplate[]> {
+  ): Observable<Partial<AvailabilityTemplate>[]> {
     // If no operatorId, create a generic pattern template
     if (!pattern.operatorId) {
       return this.createPatternTemplate(pattern);
@@ -150,7 +152,7 @@ export class TemplateService {
    */
   private createPatternTemplate(
     pattern: TemplatePattern
-  ): Observable<AvailabilityTemplate[]> {
+  ): Observable<Partial<AvailabilityTemplate>[]> {
     const inputs = this.convertPatternToPatternInputs(pattern);
     const mutations$ = inputs.map((input) =>
       this.apollo
@@ -163,7 +165,7 @@ export class TemplateService {
 
     // Esegui tutte le mutazioni e ritorna i risultati convertiti
     return new Observable((observer) => {
-      const results: AvailabilityTemplate[] = [];
+      const results: Partial<AvailabilityTemplate>[] = [];
       let completed = 0;
 
       mutations$.forEach((mutation$, index) => {
@@ -190,7 +192,7 @@ export class TemplateService {
   private convertBackendPatternToTemplate(
     backendPattern: BackendTemplatePattern,
     uiPattern: TemplatePattern
-  ): AvailabilityTemplate {
+  ): Partial<AvailabilityTemplate> {
     return {
       id: backendPattern.id,
       operatorId: '', // No operator for generic patterns
@@ -343,7 +345,7 @@ export class TemplateService {
    * Converte i template backend in una struttura UI (TemplatePattern)
    */
   convertBackendToPattern(
-    templates: AvailabilityTemplate[]
+    templates: Partial<AvailabilityTemplate>[]
   ): TemplatePattern | null {
     if (templates.length === 0) return null;
 
@@ -351,7 +353,7 @@ export class TemplateService {
     const firstTemplate = templates[0];
 
     // Determina il numero di settimane dal patternDuration
-    const patternWeeks = Math.ceil(firstTemplate.patternDuration / 7);
+    const patternWeeks = Math.ceil((firstTemplate.patternDuration || 7) / 7);
 
     // Raggruppa i template per settimana e giorno
     const weeks: WeekSchedule[] = [];
@@ -369,8 +371,8 @@ export class TemplateService {
 
         if (dayTemplates.length > 0) {
           const slots: TimeSlot[] = dayTemplates.map((t) => ({
-            startTime: t.startTime,
-            endTime: t.endTime,
+            startTime: t.startTime || '',
+            endTime: t.endTime || '',
           }));
 
           days.push({ dayOfWeek, slots });
@@ -388,7 +390,7 @@ export class TemplateService {
       operatorId: firstTemplate.operatorId,
       patternWeeks,
       weeks,
-      validFrom: firstTemplate.validFrom.toString(),
+      validFrom: firstTemplate.validFrom?.toString() || '',
       validUntil: firstTemplate.validUntil?.toString(),
       createdAt: firstTemplate.createdAt,
       updatedAt: firstTemplate.updatedAt,
@@ -407,9 +409,9 @@ export class TemplateService {
    * Raggruppa i template per nome (per gestire pattern multi-slot)
    */
   groupTemplatesByName(
-    templates: AvailabilityTemplate[]
-  ): Map<string, AvailabilityTemplate[]> {
-    const grouped = new Map<string, AvailabilityTemplate[]>();
+    templates: Partial<AvailabilityTemplate>[]
+  ): Map<string, Partial<AvailabilityTemplate>[]> {
+    const grouped = new Map<string, Partial<AvailabilityTemplate>[]>();
 
     templates.forEach((template) => {
       const name = template.name || 'Senza Nome';

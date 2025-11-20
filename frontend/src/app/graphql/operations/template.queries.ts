@@ -23,8 +23,8 @@ export const GET_AVAILABILITY_TEMPLATES = gql`
 `;
 
 export const GET_ALL_TEMPLATES = gql`
-  query GetAllTemplates {
-    allAvailabilityTemplates {
+  query GetAllTemplates ($operatorId: ID!) {
+    availabilityTemplates(operatorId: $operatorId) {
       id
       operatorId
       name

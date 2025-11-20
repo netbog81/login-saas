@@ -5,10 +5,12 @@
     "ng": "ng",
     "start": "ng serve",
     "start:lan": "ng serve --host 0.0.0.0 --disable-host-check",
-    "start:no-hmr": "ng serve --host 0.0.0.0 --disable-host-check --configuration no-hmr",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "codegen": "graphql-codegen",
+    "dev": "npm run codegen && ng serve",
+    "codegen:watch": "graphql-codegen --watch"
   },
   "private": true,
   "dependencies": {
@@ -32,6 +34,9 @@
     "@angular-devkit/build-angular": "^20.0.0",
     "@angular/cli": "^20.0.0",
     "@angular/compiler-cli": "^20.0.0",
+    "@graphql-codegen/cli": "^6.0.2",
+    "@graphql-codegen/typescript": "^5.0.4",
+    "@graphql-codegen/typescript-operations": "^5.0.4",
     "@types/node": "^20.11.0",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",

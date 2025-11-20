@@ -29,7 +29,7 @@
         <div class="operator-details">
           <p><strong>Email:</strong> {{ operator.email }}</p>
           <p *ngIf="operator.phone"><strong>Telefono:</strong> {{ operator.phone }}</p>
-          <p *ngIf="operator.type === OperatorType.GYM">
+          <p *ngIf="operator.type === OperatorType.Gym">
             <strong>Max simultanei:</strong> {{ operator.maxConcurrentAppointments }}
           </p>
           <p>
@@ -92,13 +92,13 @@
         <div class="form-group">
           <label>Tipo Operatore</label>
           <select [(ngModel)]="editingOperator.type" class="form-control">
-            <option [value]="OperatorType.STANDARD">Standard</option>
-            <option [value]="OperatorType.GYM">Palestra (appuntamenti simultanei)</option>
-            <option [value]="OperatorType.RESOURCE">Risorsa (sala/strumento)</option>
+            <option [value]="OperatorType.Standard">Standard</option>
+            <option [value]="OperatorType.Gym">Palestra (appuntamenti simultanei)</option>
+            <option [value]="OperatorType.Resource">Risorsa (sala/strumento)</option>
           </select>
         </div>
 
-        <div class="form-group" *ngIf="editingOperator.type === OperatorType.GYM">
+        <div class="form-group" *ngIf="editingOperator.type === OperatorType.Gym">
           <label>Max Appuntamenti Simultanei</label>
           <input type="number"
                  [(ngModel)]="editingOperator.maxConcurrentAppointments"

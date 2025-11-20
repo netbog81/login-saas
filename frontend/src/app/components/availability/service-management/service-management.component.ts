@@ -5,7 +5,7 @@ import { Subject, takeUntil } from 'rxjs';
 
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 import { ServiceService } from '../../../services/service.service';
-import { Service, CreateServiceInput, UpdateServiceInput } from '../../../graphql/types';
+import { Service, MutationCreateServiceArgs as CreateServiceInput, MutationUpdateServiceArgs as UpdateServiceInput } from '../../../graphql/generated/types';
 
 @Component({
   selector: 'app-service-management',
@@ -150,6 +150,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
     if (this.selectedService) {
       // Update existing service
       const input: UpdateServiceInput = {
+        id: this.selectedService.id,
         name: this.editingService.name,
         description: this.editingService.description,
         defaultDuration: this.editingService.defaultDuration!,

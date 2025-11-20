@@ -59,6 +59,9 @@ import { AvailabilityAppointment } from './modules/availability/entities/availab
       autoLoadEntities: false, // Disabled to prevent conflicts
       synchronize: false, // Disabled to prevent conflicts - use migrations instead
       logging: process.env.NODE_ENV === 'development',
+      migrationsRun: true,
+      migrations: [__dirname + '/../migrations/*.ts'], // ✅ AGGIUNGI QUESTA
+      migrationsTableName: 'migrations', // ✅ OPZIONALE MA CONSIGLIATO
     }),
     // GraphQL configuration
     GraphQLModule.forRoot<ApolloDriverConfig>({

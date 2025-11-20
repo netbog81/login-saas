@@ -1,7 +1,7 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DragDropModule, CdkDragEnd, CdkDragStart } from '@angular/cdk/drag-drop';
-import { GridConfig, DaySchedule, TimeSlot, DAY_COLORS, DAY_NAMES } from '../../../graphql/types';
+import { GridConfig, DaySchedule, TimeSlot, DAY_COLORS, DAY_NAMES } from '../../../graphql/ui-types';
 
 interface Cell {
   day: number;

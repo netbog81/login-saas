@@ -2,7 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WeekGrid } from '../week-grid/week-grid';
-import { TemplatePattern, GridConfig, WeekSchedule, DaySchedule } from '../../../graphql/types';
+import { TemplatePattern, GridConfig, WeekSchedule, DaySchedule } from '../../../graphql/ui-types';
 
 @Component({
   selector: 'app-template-builder',
