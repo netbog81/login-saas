@@ -37,6 +37,11 @@
         Operatori
       </button>
       <button class="tab"
+              [class.active]="activeTab === 'categories'"
+              (click)="setActiveTab('categories')">
+        Categorie
+      </button>
+      <button class="tab"
               [class.active]="activeTab === 'services'"
               (click)="setActiveTab('services')">
         Servizi
@@ -62,6 +67,7 @@
   <!-- Tab Content -->
   <div class="tab-content">
     <app-operator-management *ngIf="activeTab === 'operators'"></app-operator-management>
+    <app-operator-category-management *ngIf="activeTab === 'categories'"></app-operator-category-management>
     <app-service-management *ngIf="activeTab === 'services'"></app-service-management>
     <app-template-management *ngIf="activeTab === 'templates'"></app-template-management>
     <app-operator-template-assignment *ngIf="activeTab === 'assignments'"></app-operator-template-assignment>

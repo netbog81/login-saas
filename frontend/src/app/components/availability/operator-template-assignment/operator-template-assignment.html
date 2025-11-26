@@ -40,7 +40,7 @@
         <div class="card-header">
           <div class="operator-info">
             <h3>{{ item.operator.name }} {{ item.operator.surname || '' }}</h3>
-            <span class="operator-type">{{ item.operator.type }}</span>
+            <span class="operator-type">{{ getMacroCategoryLabel(item.operator.macroCategory) }}</span>
           </div>
           <div class="status-badge" [ngClass]="getStatusClass(item.status)">
             <span class="status-icon">{{ getStatusIcon(item.status) }}</span>

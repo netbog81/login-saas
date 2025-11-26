@@ -9,7 +9,7 @@
 
   <!-- Loading/Error states -->
   <div *ngIf="loading" class="loading">Caricamento...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
+  <div *ngIf="error && !showOperatorForm && !showServiceAssignment" class="error">{{ error }}</div>
 
   <!-- Operators List -->
   <div class="operators-container">
@@ -20,16 +20,25 @@
            (click)="selectOperator(operator)">
 
         <div class="operator-header">
-          <h3>{{ operator.name }}</h3>
-          <span class="operator-type" [class]="'type-' + operator.type.toLowerCase()">
-            {{ getOperatorTypeLabel(operator.type) }}
+          <div class="operator-name-color">
+            <div class="color-indicator" [style.background-color]="operator.color || '#4A90E2'"></div>
+            <h3>{{ operator.name }} {{ operator.surname || '' }}</h3>
+          </div>
+          <span class="operator-macro-category" [class]="'macro-' + operator.macroCategory">
+            {{ getMacroCategoryLabel(operator.macroCategory) }}
           </span>
         </div>
 
         <div class="operator-details">
-          <p><strong>Email:</strong> {{ operator.email }}</p>
+          <p *ngIf="operator.category">
+            <strong>Categoria:</strong> {{ operator.category.name }}
+          </p>
+          <p *ngIf="operator.email"><strong>Email:</strong> {{ operator.email }}</p>
           <p *ngIf="operator.phone"><strong>Telefono:</strong> {{ operator.phone }}</p>
-          <p *ngIf="operator.type === OperatorType.Gym">
+          <p *ngIf="operator.preferredDurations && operator.preferredDurations.length > 0">
+            <strong>Durate preferite:</strong> {{ operator.preferredDurations.join(', ') }} min
+          </p>
+          <p *ngIf="operator.macroCategory === OperatorMacroCategory.GYM_INSTRUCTOR">
             <strong>Max simultanei:</strong> {{ operator.maxConcurrentAppointments }}
           </p>
           <p>
@@ -74,36 +83,77 @@
 
       <div class="modal-body">
         <div *ngIf="error" class="error-message">{{ error }}</div>
-        <div class="form-group">
-          <label>Nome *</label>
-          <input type="text" [(ngModel)]="editingOperator.name" class="form-control">
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Nome *</label>
+            <input type="text" [(ngModel)]="editingOperator.name" class="form-control" placeholder="Mario">
+          </div>
+
+          <div class="form-group flex-1">
+            <label>Cognome</label>
+            <input type="text" [(ngModel)]="editingOperator.surname" class="form-control" placeholder="Rossi">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Email</label>
+            <input type="email" [(ngModel)]="editingOperator.email" class="form-control" placeholder="mario.rossi@example.com">
+          </div>
+
+          <div class="form-group flex-1">
+            <label>Telefono</label>
+            <input type="tel" [(ngModel)]="editingOperator.phone" class="form-control" placeholder="+39 123 456 7890">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Macro Categoria *</label>
+            <select [(ngModel)]="editingOperator.macroCategory"
+                    (change)="onMacroCategoryChange()"
+                    class="form-control">
+              <option [value]="OperatorMacroCategory.PHYSIOTHERAPIST">{{ getMacroCategoryLabel(OperatorMacroCategory.PHYSIOTHERAPIST) }}</option>
+              <option [value]="OperatorMacroCategory.DOCTOR">{{ getMacroCategoryLabel(OperatorMacroCategory.DOCTOR) }}</option>
+              <option [value]="OperatorMacroCategory.GYM_INSTRUCTOR">{{ getMacroCategoryLabel(OperatorMacroCategory.GYM_INSTRUCTOR) }}</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-1">
+            <label>Categoria Specifica</label>
+            <select [(ngModel)]="editingOperator.categoryId" class="form-control">
+              <option [value]="undefined">-- Nessuna categoria --</option>
+              <option *ngFor="let category of getFilteredCategories()" [value]="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Colore</label>
+            <input type="color" [(ngModel)]="editingOperator.color" class="form-control">
+          </div>
+
+          <div class="form-group flex-2">
+            <label>Durate Preferite (minuti, separati da virgola)</label>
+            <input type="text"
+                   [(ngModel)]="preferredDurationsString"
+                   class="form-control"
+                   placeholder="30, 45, 60">
+            <small class="form-text">Es: 30, 45, 60</small>
+          </div>
         </div>
 
         <div class="form-group">
-          <label>Email</label>
-          <input type="email" [(ngModel)]="editingOperator.email" class="form-control">
-        </div>
-
-        <div class="form-group">
-          <label>Telefono</label>
-          <input type="tel" [(ngModel)]="editingOperator.phone" class="form-control">
-        </div>
-
-        <div class="form-group">
-          <label>Tipo Operatore</label>
-          <select [(ngModel)]="editingOperator.type" class="form-control">
-            <option [value]="OperatorType.Standard">Standard</option>
-            <option [value]="OperatorType.Gym">Palestra (appuntamenti simultanei)</option>
-            <option [value]="OperatorType.Resource">Risorsa (sala/strumento)</option>
-          </select>
-        </div>
-
-        <div class="form-group" *ngIf="editingOperator.type === OperatorType.Gym">
           <label>Max Appuntamenti Simultanei</label>
           <input type="number"
                  [(ngModel)]="editingOperator.maxConcurrentAppointments"
                  min="1"
                  class="form-control">
+          <small class="form-text">Utile per istruttori palestra che gestiscono classi o per risorse condivise</small>
         </div>
 
         <div class="form-group">
@@ -116,7 +166,7 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary" (click)="closeOperatorForm()">Annulla</button>
-        <button class="btn btn-primary" (click)="saveOperator()">
+        <button class="btn btn-primary" (click)="saveOperator()" [disabled]="loading">
           {{ isEditMode ? 'Aggiorna' : 'Crea' }}
         </button>
       </div>

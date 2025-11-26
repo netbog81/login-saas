@@ -7,8 +7,11 @@ export const CREATE_OPERATOR = gql`
     $email: String
     $phone: String
     $color: String
-    $operatorType: OperatorType
-    $maxConcurrentAppointments: Float
+    $macroCategory: OperatorMacroCategory!
+    $categoryId: ID
+    $preferredDurations: [Int!]
+    $maxConcurrentAppointments: Int
+    $legacyUserId: Int
   ) {
     createOperator(
       name: $name
@@ -16,8 +19,11 @@ export const CREATE_OPERATOR = gql`
       email: $email
       phone: $phone
       color: $color
-      operatorType: $operatorType
+      macroCategory: $macroCategory
+      categoryId: $categoryId
+      preferredDurations: $preferredDurations
       maxConcurrentAppointments: $maxConcurrentAppointments
+      legacyUserId: $legacyUserId
     ) {
       id
       name
@@ -25,7 +31,15 @@ export const CREATE_OPERATOR = gql`
       email
       phone
       color
-      operatorType
+      macroCategory
+      categoryId
+      category {
+        id
+        name
+        macroCategory
+      }
+      preferredDurations
+      legacyUserId
       maxConcurrentAppointments
       isActive
       createdAt
@@ -41,9 +55,13 @@ export const UPDATE_OPERATOR = gql`
     $surname: String
     $email: String
     $phone: String
-    $operatorType: OperatorType
+    $color: String
+    $macroCategory: OperatorMacroCategory
+    $categoryId: ID
+    $preferredDurations: [Int!]
     $isActive: Boolean
-    $maxConcurrentAppointments: Float
+    $maxConcurrentAppointments: Int
+    $legacyUserId: Int
   ) {
     updateOperator(
       id: $id
@@ -51,9 +69,13 @@ export const UPDATE_OPERATOR = gql`
       surname: $surname
       email: $email
       phone: $phone
-      operatorType: $operatorType
+      color: $color
+      macroCategory: $macroCategory
+      categoryId: $categoryId
+      preferredDurations: $preferredDurations
       isActive: $isActive
       maxConcurrentAppointments: $maxConcurrentAppointments
+      legacyUserId: $legacyUserId
     ) {
       id
       name
@@ -61,7 +83,15 @@ export const UPDATE_OPERATOR = gql`
       email
       phone
       color
-      operatorType
+      macroCategory
+      categoryId
+      category {
+        id
+        name
+        macroCategory
+      }
+      preferredDurations
+      legacyUserId
       maxConcurrentAppointments
       isActive
       createdAt

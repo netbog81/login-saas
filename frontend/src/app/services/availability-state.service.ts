@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, combineLatest, interval, switchMap, takeWhile } from 'rxjs';
-import { Operator } from '../graphql/ui-types';
+import { Operator } from '../graphql/types';
 import {
   Service,
   AvailabilityTemplate,
@@ -128,14 +128,14 @@ export class AvailabilityStateService {
   // Load operator templates
   private loadOperatorTemplates(operator: Operator): void {
     if (operator.availabilityTemplates) {
-      this.operatorTemplatesSubject.next(operator.availabilityTemplates);
+      this.operatorTemplatesSubject.next(operator.availabilityTemplates as any);
     }
   }
 
   // Load operator exceptions
   private loadOperatorExceptions(operator: Operator): void {
     if (operator.availabilityExceptions) {
-      this.operatorExceptionsSubject.next(operator.availabilityExceptions);
+      this.operatorExceptionsSubject.next(operator.availabilityExceptions as any);
     }
   }
 

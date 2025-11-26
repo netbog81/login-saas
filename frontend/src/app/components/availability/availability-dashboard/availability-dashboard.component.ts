@@ -7,9 +7,10 @@ import { OperatorManagementComponent } from '../operator-management/operator-man
 import { ServiceManagementComponent } from '../service-management/service-management.component';
 import { TemplateManagement } from '../template-management/template-management';
 import { OperatorTemplateAssignment } from '../operator-template-assignment/operator-template-assignment';
+import { OperatorCategoryManagementComponent } from '../operator-category-management/operator-category-management.component';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 
-type TabType = 'operators' | 'services' | 'templates' | 'assignments' | 'calendar';
+type TabType = 'operators' | 'categories' | 'services' | 'templates' | 'assignments' | 'calendar';
 
 @Component({
   selector: 'app-availability-dashboard',
@@ -19,6 +20,7 @@ type TabType = 'operators' | 'services' | 'templates' | 'assignments' | 'calenda
     FormsModule,
     CdkMenuModule,
     OperatorManagementComponent,
+    OperatorCategoryManagementComponent,
     ServiceManagementComponent,
     TemplateManagement,
     OperatorTemplateAssignment

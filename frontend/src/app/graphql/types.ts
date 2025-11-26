@@ -1,8 +1,8 @@
 // Enums
-export enum OperatorType {
-  STANDARD = 'STANDARD',
-  GYM = 'GYM',
-  RESOURCE = 'RESOURCE',
+export enum OperatorMacroCategory {
+  DOCTOR = 'DOCTOR',
+  PHYSIOTHERAPIST = 'PHYSIOTHERAPIST',
+  GYM_INSTRUCTOR = 'GYM_INSTRUCTOR',
 }
 
 export enum ExceptionType {
@@ -14,6 +14,17 @@ export enum ExceptionType {
 }
 
 // Entity Types
+export interface OperatorCategory {
+  id: string;
+  macroCategory: OperatorMacroCategory;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  operators?: Operator[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Operator {
   id: string;
   name: string;
@@ -21,7 +32,11 @@ export interface Operator {
   email?: string;
   phone?: string;
   color?: string;
-  type: OperatorType;
+  macroCategory: OperatorMacroCategory;
+  categoryId?: string;
+  category?: OperatorCategory;
+  preferredDurations?: number[];
+  legacyUserId?: number;
   maxConcurrentAppointments: number;
   isActive: boolean;
   createdAt: Date;
@@ -151,15 +166,30 @@ export interface DailyAvailability {
 }
 
 // Input Types
+export interface CreateOperatorCategoryInput {
+  macroCategory: OperatorMacroCategory;
+  name: string;
+  description?: string;
+}
+
+export interface UpdateOperatorCategoryInput {
+  name?: string;
+  description?: string;
+  macroCategory?: OperatorMacroCategory;
+  isActive?: boolean;
+}
+
 export interface CreateOperatorInput {
   name: string;
   surname?: string;
-  email: string;
+  email?: string;
   phone?: string;
   color?: string;
-  type?: OperatorType;
+  macroCategory: OperatorMacroCategory;
+  categoryId?: string;
+  preferredDurations?: number[];
   maxConcurrentAppointments?: number;
-  isActive?: boolean;
+  legacyUserId?: number;
 }
 
 export interface UpdateOperatorInput {
@@ -168,9 +198,12 @@ export interface UpdateOperatorInput {
   email?: string;
   phone?: string;
   color?: string;
-  type?: OperatorType;
+  macroCategory?: OperatorMacroCategory;
+  categoryId?: string;
+  preferredDurations?: number[];
   isActive?: boolean;
   maxConcurrentAppointments?: number;
+  legacyUserId?: number;
 }
 
 export interface CreateServiceInput {
@@ -360,3 +393,17 @@ export const DAY_COLORS = {
 };
 
 export const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+
+// Utility function to get readable macro category name
+export function getMacroCategoryLabel(macroCategory: OperatorMacroCategory): string {
+  switch (macroCategory) {
+    case OperatorMacroCategory.DOCTOR:
+      return 'Medico';
+    case OperatorMacroCategory.PHYSIOTHERAPIST:
+      return 'Fisioterapista';
+    case OperatorMacroCategory.GYM_INSTRUCTOR:
+      return 'Istruttore Palestra';
+    default:
+      return macroCategory;
+  }
+}

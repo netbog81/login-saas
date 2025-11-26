@@ -1,15 +1,5 @@
 // UI-specific types for Template Builder and Grid components
 
-import { Operator as GeneratedOperator, OperatorType } from './generated/types';
-
-// Extended Operator type with 'type' alias for backward compatibility
-export interface Operator extends GeneratedOperator {
-  type: OperatorType; // Alias for operatorType
-}
-
-// Re-export OperatorType for convenience
-export { OperatorType } from './generated/types';
-
 export interface TimeSlot {
   startTime: string; // "09:00"
   endTime: string;   // "12:30"

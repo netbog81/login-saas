@@ -1,15 +1,32 @@
 import { gql } from '@apollo/client/core';
 
 export const GET_OPERATORS = gql`
-  query GetOperators {
-    operators {
+  query GetOperators(
+    $macroCategory: OperatorMacroCategory
+    $categoryId: ID
+    $onlyActive: Boolean
+  ) {
+    operators(
+      macroCategory: $macroCategory
+      categoryId: $categoryId
+      onlyActive: $onlyActive
+    ) {
       id
       name
       surname
       email
       phone
       color
-      operatorType
+      macroCategory
+      categoryId
+      category {
+        id
+        name
+        macroCategory
+        description
+      }
+      preferredDurations
+      legacyUserId
       maxConcurrentAppointments
       isActive
       createdAt
@@ -27,7 +44,16 @@ export const GET_OPERATOR = gql`
       email
       phone
       color
-      operatorType
+      macroCategory
+      categoryId
+      category {
+        id
+        name
+        macroCategory
+        description
+      }
+      preferredDurations
+      legacyUserId
       maxConcurrentAppointments
       isActive
       createdAt

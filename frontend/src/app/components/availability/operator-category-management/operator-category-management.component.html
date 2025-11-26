@@ -1,0 +1,166 @@
+<div class="category-management">
+  <!-- Header -->
+  <div class="header">
+    <h2>Gestione Categorie Operatori</h2>
+    <button class="btn btn-primary" (click)="openCategoryForm()">
+      + Nuova Categoria
+    </button>
+  </div>
+
+  <!-- Loading/Error states -->
+  <div *ngIf="loading" class="loading">Caricamento...</div>
+  <div *ngIf="error && !showCategoryForm" class="error">{{ error }}</div>
+
+  <!-- Filter -->
+  <div class="filter-section">
+    <label>Filtra per Macro Categoria:</label>
+    <select [(ngModel)]="filterMacroCategory" (change)="onFilterChange()" class="form-control">
+      <option [value]="null">Tutte le categorie</option>
+      <option [value]="OperatorMacroCategory.PHYSIOTHERAPIST">
+        {{ getMacroCategoryLabel(OperatorMacroCategory.PHYSIOTHERAPIST) }}
+        ({{ getCategoryCount(OperatorMacroCategory.PHYSIOTHERAPIST) }})
+      </option>
+      <option [value]="OperatorMacroCategory.DOCTOR">
+        {{ getMacroCategoryLabel(OperatorMacroCategory.DOCTOR) }}
+        ({{ getCategoryCount(OperatorMacroCategory.DOCTOR) }})
+      </option>
+      <option [value]="OperatorMacroCategory.GYM_INSTRUCTOR">
+        {{ getMacroCategoryLabel(OperatorMacroCategory.GYM_INSTRUCTOR) }}
+        ({{ getCategoryCount(OperatorMacroCategory.GYM_INSTRUCTOR) }})
+      </option>
+    </select>
+  </div>
+
+  <!-- Categories List -->
+  <div class="categories-container">
+    <div *ngIf="filteredCategories.length === 0" class="no-categories">
+      <p>Nessuna categoria trovata</p>
+    </div>
+
+    <div class="categories-grid">
+      <div *ngFor="let category of filteredCategories" class="category-card">
+        <div class="category-header">
+          <div>
+            <h3>{{ category.name }}</h3>
+            <span class="category-macro" [class]="'macro-' + category.macroCategory">
+              {{ getMacroCategoryLabel(category.macroCategory) }}
+            </span>
+          </div>
+          <div class="category-status">
+            <span
+              [class]="category.isActive ? 'status-active' : 'status-inactive'"
+              (click)="toggleCategoryActive(category)"
+              style="cursor: pointer"
+              title="Click per cambiare stato"
+            >
+              {{ category.isActive ? 'Attiva' : 'Inattiva' }}
+            </span>
+          </div>
+        </div>
+
+        <div class="category-details">
+          <p *ngIf="category.description">
+            <strong>Descrizione:</strong> {{ category.description }}
+          </p>
+          <p *ngIf="category.operators && category.operators.length > 0">
+            <strong>Operatori assegnati:</strong> {{ category.operators.length }}
+          </p>
+          <p class="category-dates">
+            <small>
+              Creata: {{ category.createdAt | date: 'dd/MM/yyyy HH:mm' }}
+            </small>
+          </p>
+        </div>
+
+        <div class="category-actions">
+          <button class="btn btn-sm" (click)="openCategoryForm(category)">
+            Modifica
+          </button>
+          <button
+            class="btn btn-sm btn-danger"
+            (click)="deleteCategory(category)"
+            [disabled]="category.operators && category.operators.length > 0"
+          >
+            Elimina
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category Form Modal -->
+  <div *ngIf="showCategoryForm" class="modal-overlay" (click)="closeCategoryForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditMode ? 'Modifica Categoria' : 'Nuova Categoria' }}</h3>
+        <button class="close-btn" (click)="closeCategoryForm()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Macro Categoria *</label>
+          <select
+            [(ngModel)]="editingCategory.macroCategory"
+            class="form-control"
+            [disabled]="isEditMode"
+          >
+            <option [value]="OperatorMacroCategory.PHYSIOTHERAPIST">
+              {{ getMacroCategoryLabel(OperatorMacroCategory.PHYSIOTHERAPIST) }}
+            </option>
+            <option [value]="OperatorMacroCategory.DOCTOR">
+              {{ getMacroCategoryLabel(OperatorMacroCategory.DOCTOR) }}
+            </option>
+            <option [value]="OperatorMacroCategory.GYM_INSTRUCTOR">
+              {{ getMacroCategoryLabel(OperatorMacroCategory.GYM_INSTRUCTOR) }}
+            </option>
+          </select>
+          <small class="form-text" *ngIf="isEditMode">
+            La macro categoria non può essere modificata
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label>Nome Categoria *</label>
+          <input
+            type="text"
+            [(ngModel)]="editingCategory.name"
+            class="form-control"
+            placeholder="es: Fisioterapista Sportivo"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Descrizione</label>
+          <textarea
+            [(ngModel)]="editingCategory.description"
+            class="form-control"
+            rows="3"
+            placeholder="Descrizione opzionale della categoria"
+          ></textarea>
+        </div>
+
+        <div class="form-group" *ngIf="isEditMode">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingCategory.isActive" />
+            Categoria Attiva
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeCategoryForm()">
+          Annulla
+        </button>
+        <button
+          class="btn btn-primary"
+          (click)="saveCategory()"
+          [disabled]="loading"
+        >
+          {{ isEditMode ? 'Aggiorna' : 'Crea' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

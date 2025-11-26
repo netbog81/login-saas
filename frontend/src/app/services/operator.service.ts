@@ -1,148 +1,151 @@
 import { Injectable } from '@angular/core';
 import { Apollo } from 'apollo-angular';
 import { Observable, map } from 'rxjs';
-import { Operator } from '../graphql/ui-types';
 import {
-  MutationCreateOperatorArgs as CreateOperatorInput,
-  MutationUpdateOperatorArgs as UpdateOperatorInput,
-  DailyAvailability
-} from '../graphql/generated/types';
+  Operator,
+  OperatorMacroCategory,
+  CreateOperatorInput,
+  UpdateOperatorInput,
+  DailyAvailability,
+} from '../graphql/types';
 import {
   GET_OPERATORS,
   GET_OPERATOR,
-  GET_OPERATOR_AVAILABILITY
+  GET_OPERATOR_AVAILABILITY,
 } from '../graphql/operations/operator.queries';
 import {
   CREATE_OPERATOR,
   UPDATE_OPERATOR,
-  DELETE_OPERATOR
+  DELETE_OPERATOR,
 } from '../graphql/operations/operator.mutations';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class OperatorService {
   constructor(private apollo: Apollo) {}
 
-  getOperators(): Observable<Operator[]> {
+  /**
+   * Ottiene tutti gli operatori con filtri opzionali
+   */
+  getOperators(
+    macroCategory?: OperatorMacroCategory,
+    categoryId?: string,
+    onlyActive?: boolean
+  ): Observable<Operator[]> {
     return this.apollo
       .watchQuery<{ operators: any[] }>({
         query: GET_OPERATORS,
-        fetchPolicy: 'network-only'
+        variables: { macroCategory, categoryId, onlyActive },
+        fetchPolicy: 'network-only',
       })
-      .valueChanges.pipe(
-        map(result => {
-          const operators = result.data?.operators || [];
-          // Map operatorType to type for frontend consistency
-          return operators.map(op => ({
-            ...op,
-            type: op.operatorType
-          })) as Operator[];
-        })
-      );
+      .valueChanges.pipe(map((result) => (result.data?.operators || []) as Operator[]));
   }
 
+  /**
+   * Ottiene un singolo operatore per ID
+   */
   getOperator(id: string): Observable<Operator | null> {
     return this.apollo
       .watchQuery<{ operator: any | null }>({
         query: GET_OPERATOR,
-        variables: { id }
+        variables: { id },
+        fetchPolicy: 'network-only',
       })
-      .valueChanges.pipe(
-        map(result => {
-          const operator = result.data?.operator;
-          if (!operator) return null;
-          // Map operatorType to type for frontend consistency
-          return {
-            ...operator,
-            type: operator.operatorType
-          } as Operator;
-        })
-      );
+      .valueChanges.pipe(map((result) => (result.data?.operator || null) as Operator | null));
   }
 
+  /**
+   * Crea un nuovo operatore
+   */
   createOperator(input: CreateOperatorInput): Observable<Operator> {
-    // Map type to operatorType for backend
     const variables = {
       name: input.name,
+      surname: input.surname,
       email: input.email,
-      phone: (input as any).phone,
-      operatorType: (input as any).operatorType || (input as any).type,
-      maxConcurrentAppointments: (input as any).maxConcurrentAppointments
+      phone: input.phone,
+      color: input.color,
+      macroCategory: input.macroCategory,
+      categoryId: input.categoryId,
+      preferredDurations: input.preferredDurations,
+      maxConcurrentAppointments:
+        input.maxConcurrentAppointments !== undefined
+          ? input.maxConcurrentAppointments
+          : 1,
+      legacyUserId: input.legacyUserId,
     };
 
-    console.log('OperatorService.createOperator - sending variables:', variables);
-
     return this.apollo
-      .mutate<{ createOperator: any }>({
+      .mutate<{ createOperator: Operator }>({
         mutation: CREATE_OPERATOR,
         variables,
-        refetchQueries: [{ query: GET_OPERATORS }]
+        refetchQueries: [{ query: GET_OPERATORS }],
+        awaitRefetchQueries: true,
       })
       .pipe(
-        map(result => {
-          console.log('OperatorService.createOperator - received result:', result);
+        map((result) => {
           if (!result.data) {
             throw new Error('Failed to create operator');
           }
-          // Map operatorType back to type for frontend consistency
-          const operator = result.data.createOperator;
-          return {
-            ...operator,
-            type: operator.operatorType
-          } as Operator;
+          return result.data.createOperator;
         })
       );
   }
 
-  updateOperator(id: string, input: Omit<UpdateOperatorInput, 'id'>): Observable<Operator> {
+  /**
+   * Aggiorna un operatore esistente
+   */
+  updateOperator(
+    id: string,
+    input: UpdateOperatorInput
+  ): Observable<Operator> {
     return this.apollo
-      .mutate<{ updateOperator: any }>({
+      .mutate<{ updateOperator: Operator }>({
         mutation: UPDATE_OPERATOR,
         variables: { id, ...input },
         refetchQueries: [
           { query: GET_OPERATORS },
-          { query: GET_OPERATOR, variables: { id } }
-        ]
+          { query: GET_OPERATOR, variables: { id } },
+        ],
+        awaitRefetchQueries: true,
       })
       .pipe(
-        map(result => {
+        map((result) => {
           if (!result.data) {
             throw new Error('Failed to update operator');
           }
-          // Map operatorType back to type for frontend consistency
-          const operator = result.data.updateOperator;
-          return {
-            ...operator,
-            type: operator.operatorType
-          } as Operator;
+          return result.data.updateOperator;
         })
       );
   }
 
+  /**
+   * Elimina un operatore
+   */
   deleteOperator(id: string): Observable<boolean> {
     return this.apollo
       .mutate<{ deleteOperator: boolean }>({
         mutation: DELETE_OPERATOR,
         variables: { id },
         refetchQueries: [{ query: GET_OPERATORS }],
+        awaitRefetchQueries: true,
         update: (cache) => {
           // Remove the deleted operator from cache
           const data = cache.readQuery<{ operators: Operator[] }>({
-            query: GET_OPERATORS
+            query: GET_OPERATORS,
           });
           if (data) {
             cache.writeQuery({
               query: GET_OPERATORS,
               data: {
-                operators: data.operators.filter(op => op.id !== id)
-              }
+                operators: data.operators.filter((op) => op.id !== id),
+              },
             });
           }
-        }
+        },
       })
       .pipe(
-        map(result => {
+        map((result) => {
           if (!result.data) {
             throw new Error('Failed to delete operator');
           }
@@ -151,19 +154,22 @@ export class OperatorService {
       );
   }
 
+  /**
+   * Ottiene la disponibilità di un operatore per un periodo
+   */
   getOperatorAvailability(
     operatorId: string,
     startDate: string,
     endDate: string
   ): Observable<DailyAvailability[]> {
     return this.apollo
-      .watchQuery<{ operatorAvailability: DailyAvailability[] }>({
+      .watchQuery<{ operatorAvailability: any[] }>({
         query: GET_OPERATOR_AVAILABILITY,
         variables: { operatorId, startDate, endDate },
-        fetchPolicy: 'network-only' // Always fetch fresh availability data
+        fetchPolicy: 'network-only', // Always fetch fresh availability data
       })
       .valueChanges.pipe(
-        map(result => (result.data?.operatorAvailability || []) as DailyAvailability[])
+        map((result) => (result.data?.operatorAvailability || []) as DailyAvailability[])
       );
   }
 }

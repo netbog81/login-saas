@@ -7,21 +7,30 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 import { OperatorService } from '../../../services/operator.service';
+import { OperatorCategoryService } from '../../../services/operator-category.service';
 import { ServiceService } from '../../../services/service.service';
-import { Operator, OperatorType } from '../../../graphql/ui-types';
-import { Service, MutationCreateOperatorArgs as CreateOperatorInput, MutationUpdateOperatorArgs as UpdateOperatorInput } from '../../../graphql/generated/types';
+import {
+  Operator,
+  OperatorCategory,
+  OperatorMacroCategory,
+  Service,
+  CreateOperatorInput,
+  UpdateOperatorInput,
+  getMacroCategoryLabel,
+} from '../../../graphql/types';
 
 @Component({
   selector: 'app-operator-management',
   standalone: true,
   imports: [CommonModule, FormsModule, OverlayModule, CdkMenuModule],
   templateUrl: './operator-management.component.html',
-  styleUrls: ['./operator-management.component.scss']
+  styleUrls: ['./operator-management.component.scss'],
 })
 export class OperatorManagementComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   operators: Operator[] = [];
+  categories: OperatorCategory[] = [];
   services: Service[] = [];
   selectedOperator: Operator | null = null;
   loading = false;
@@ -31,24 +40,34 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   showOperatorForm = false;
   isEditMode = false;
   editingOperatorId: string | null = null;
-  editingOperator: Partial<CreateOperatorInput> & { type?: OperatorType; isActive?: boolean } = {
+  editingOperator: Partial<CreateOperatorInput> & { isActive?: boolean } = {
     name: '',
+    surname: '',
     email: '',
-    type: OperatorType.Standard,
+    phone: '',
+    color: '#4A90E2',
+    macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+    categoryId: undefined,
+    preferredDurations: [],
     maxConcurrentAppointments: 1,
-    isActive: true
+    isActive: true,
   };
+
+  // Preferred durations as string for input
+  preferredDurationsString = '';
 
   // Service assignment
   showServiceAssignment = false;
   selectedServices: string[] = [];
   operatorServices: { [operatorId: string]: Service[] } = {};
 
-  OperatorType = OperatorType;
+  // Expose enum to template
+  OperatorMacroCategory = OperatorMacroCategory;
 
   constructor(
     private availabilityState: AvailabilityStateService,
     private operatorService: OperatorService,
+    private operatorCategoryService: OperatorCategoryService,
     private serviceService: ServiceService
   ) {}
 
@@ -56,21 +75,21 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     // Subscribe to operators from state
     this.availabilityState.operators$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(operators => {
+      .subscribe((operators) => {
         this.operators = operators;
       });
 
     // Subscribe to services from state
     this.availabilityState.services$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(services => {
-        this.services = services;
+      .subscribe((services) => {
+        this.services = services as any;
       });
 
     // Subscribe to selected operator
     this.availabilityState.selectedOperator$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(operator => {
+      .subscribe((operator) => {
         this.selectedOperator = operator;
         if (operator) {
           this.loadOperatorServices(operator.id);
@@ -80,19 +99,20 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     // Subscribe to loading state
     this.availabilityState.loading$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(loading => {
+      .subscribe((loading) => {
         this.loading = loading;
       });
 
     // Subscribe to error state
     this.availabilityState.error$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(error => {
+      .subscribe((error) => {
         this.error = error;
       });
 
     // Initial load
     this.loadOperators();
+    this.loadCategories();
     this.loadServices();
   }
 
@@ -103,6 +123,17 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
 
   loadOperators() {
     this.availabilityState.loadOperators();
+  }
+
+  loadCategories() {
+    this.operatorCategoryService.getOperatorCategories().subscribe({
+      next: (categories) => {
+        this.categories = categories.filter((c) => c.isActive);
+      },
+      error: (error) => {
+        console.error('Error loading categories:', error);
+      },
+    });
   }
 
   loadServices() {
@@ -119,25 +150,37 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
       this.editingOperatorId = operator.id;
       this.editingOperator = {
         name: operator.name,
+        surname: operator.surname,
         email: operator.email,
         phone: operator.phone,
-        type: operator.type,
+        color: operator.color || '#4A90E2',
+        macroCategory: operator.macroCategory,
+        categoryId: operator.categoryId,
+        preferredDurations: operator.preferredDurations || [],
         maxConcurrentAppointments: operator.maxConcurrentAppointments,
-        isActive: operator.isActive
+        isActive: operator.isActive,
       };
+      this.preferredDurationsString =
+        (operator.preferredDurations || []).join(', ');
     } else {
       this.isEditMode = false;
       this.editingOperatorId = null;
       this.editingOperator = {
         name: '',
+        surname: '',
         email: '',
-        type: OperatorType.Standard,
+        phone: '',
+        color: '#4A90E2',
+        macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+        categoryId: undefined,
+        preferredDurations: [],
         maxConcurrentAppointments: 1,
-        isActive: true
+        isActive: true,
       };
+      this.preferredDurationsString = '';
     }
     this.showOperatorForm = true;
-    this.error = null; // Clear any previous errors
+    this.error = null;
   }
 
   closeOperatorForm() {
@@ -146,92 +189,133 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     this.editingOperatorId = null;
     this.editingOperator = {
       name: '',
+      surname: '',
       email: '',
-      type: OperatorType.Standard,
+      phone: '',
+      color: '#4A90E2',
+      macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+      categoryId: undefined,
+      preferredDurations: [],
       maxConcurrentAppointments: 1,
-      isActive: true
+      isActive: true,
     };
+    this.preferredDurationsString = '';
     this.error = null;
   }
 
   saveOperator() {
-    // Debug log to see actual values
-    console.log('Saving operator with values:', this.editingOperator);
-
-    // Trim whitespace from input values
     const name = this.editingOperator.name?.trim();
     const email = this.editingOperator.email?.trim();
 
     if (!name) {
       this.error = 'Il nome è obbligatorio';
-      console.error('Validation failed - Name:', name);
       return;
     }
+
+    // Parse preferred durations from string
+    const preferredDurations = this.preferredDurationsString
+      .split(',')
+      .map((s) => parseInt(s.trim()))
+      .filter((n) => !isNaN(n) && n > 0);
 
     this.loading = true;
     this.error = null;
 
     if (this.isEditMode && this.editingOperatorId) {
-      // Update existing operator - include all fields
-      const input: any = {
+      // Update existing operator
+      const input: UpdateOperatorInput = {
         name: name,
-        email: email || undefined, // Make email optional
-        phone: this.editingOperator.phone?.trim() || undefined,
-        operatorType: this.editingOperator.type, // Send the type field as operatorType
+        surname: this.editingOperator.surname?.trim(),
+        email: email || undefined,
+        phone: this.editingOperator.phone?.trim(),
+        color: this.editingOperator.color,
+        macroCategory: this.editingOperator.macroCategory,
+        categoryId: this.editingOperator.categoryId || undefined,
+        preferredDurations:
+          preferredDurations.length > 0 ? preferredDurations : undefined,
         isActive: this.editingOperator.isActive,
-        maxConcurrentAppointments: this.editingOperator.maxConcurrentAppointments
+        maxConcurrentAppointments:
+          this.editingOperator.maxConcurrentAppointments,
       };
 
-      this.operatorService.updateOperator(this.editingOperatorId, input)
-        .subscribe({
-          next: (operator) => {
-            // The service already handles the mapping
-            this.availabilityState.updateOperator(operator);
-            this.closeOperatorForm();
-            this.loading = false;
-          },
-          error: (error) => {
-            console.error('Error updating operator:', error);
-            this.error = 'Errore durante l\'aggiornamento dell\'operatore';
-            this.loading = false;
+      this.operatorService.updateOperator(this.editingOperatorId, input).subscribe({
+        next: (operator) => {
+          console.log('Operator updated successfully:', operator);
+          this.availabilityState.updateOperator(operator);
+          this.closeOperatorForm();
+          this.loading = false;
+        },
+        error: (error) => {
+          console.error('Error updating operator - Full error object:', error);
+          console.error('Error graphQLErrors:', error?.graphQLErrors);
+          console.error('Error networkError:', error?.networkError);
+
+          let errorMsg = 'Errore sconosciuto';
+
+          // Check for GraphQL errors
+          if (error?.graphQLErrors && error.graphQLErrors.length > 0) {
+            errorMsg = error.graphQLErrors.map((e: any) => e.message).join(', ');
+          } else if (error?.networkError?.error?.errors) {
+            errorMsg = error.networkError.error.errors.map((e: any) => e.message).join(', ');
+          } else if (error?.error?.message) {
+            errorMsg = error.error.message;
+          } else if (error?.message) {
+            errorMsg = error.message;
           }
-        });
+
+          this.error = `Errore durante l'aggiornamento: ${errorMsg}`;
+          this.loading = false;
+          // NON chiudere il modal in caso di errore per permettere all'utente di leggere il messaggio
+        },
+      });
     } else {
-      // Create new operator - map type to operatorType for backend
-      const input: any = {
-        name: name,
-        email: email || undefined, // Make email optional
-        phone: this.editingOperator.phone?.trim() || undefined,
-        operatorType: this.editingOperator.type || OperatorType.Standard,
-        maxConcurrentAppointments: this.editingOperator.maxConcurrentAppointments || 1
+      // Create new operator
+      const input: CreateOperatorInput = {
+        name: name!,
+        surname: this.editingOperator.surname?.trim(),
+        email: email,
+        phone: this.editingOperator.phone?.trim(),
+        color: this.editingOperator.color,
+        macroCategory:
+          this.editingOperator.macroCategory ||
+          OperatorMacroCategory.PHYSIOTHERAPIST,
+        categoryId: this.editingOperator.categoryId,
+        preferredDurations:
+          preferredDurations.length > 0 ? preferredDurations : undefined,
+        maxConcurrentAppointments:
+          this.editingOperator.maxConcurrentAppointments || 1,
       };
 
-      console.log('Creating operator with input:', input);
-      this.operatorService.createOperator(input)
-        .subscribe({
-          next: (operator) => {
-            console.log('Operator created successfully:', operator);
-            // The service already handles the mapping
-            this.availabilityState.addOperator(operator);
-            this.closeOperatorForm();
-            this.loading = false;
-          },
-          error: (error) => {
-            console.error('Error creating operator - Full error:', error);
-            if (error.graphQLErrors && error.graphQLErrors.length > 0) {
-              console.error('GraphQL errors:', error.graphQLErrors);
-              this.error = `Errore: ${error.graphQLErrors[0].message}`;
-            } else if (error.networkError) {
-              console.error('Network error:', error.networkError);
-              this.error = 'Errore di rete durante la creazione dell\'operatore';
-            } else if (error.message) {
-              this.error = `Errore: ${error.message}`;
-            } else {
-              this.error = 'Errore durante la creazione dell\'operatore';
-            }
-            this.loading = false;
+      this.operatorService.createOperator(input).subscribe({
+        next: (operator) => {
+          console.log('Operator created successfully:', operator);
+          this.availabilityState.addOperator(operator);
+          this.closeOperatorForm();
+          this.loading = false;
+        },
+        error: (error) => {
+          console.error('Error creating operator - Full error object:', error);
+          console.error('Error graphQLErrors:', error?.graphQLErrors);
+          console.error('Error networkError:', error?.networkError);
+
+          let errorMsg = 'Errore sconosciuto';
+
+          // Check for GraphQL errors
+          if (error?.graphQLErrors && error.graphQLErrors.length > 0) {
+            errorMsg = error.graphQLErrors.map((e: any) => e.message).join(', ');
+          } else if (error?.networkError?.error?.errors) {
+            errorMsg = error.networkError.error.errors.map((e: any) => e.message).join(', ');
+          } else if (error?.error?.message) {
+            errorMsg = error.error.message;
+          } else if (error?.message) {
+            errorMsg = error.message;
           }
-        });
+
+          this.error = `Errore durante la creazione: ${errorMsg}`;
+          this.loading = false;
+          // NON chiudere il modal in caso di errore per permettere all'utente di leggere il messaggio
+        },
+      });
     }
   }
 
@@ -241,21 +325,20 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    this.operatorService.deleteOperator(operator.id)
-      .subscribe({
-        next: () => {
-          this.availabilityState.removeOperator(operator.id);
-          if (this.selectedOperator?.id === operator.id) {
-            this.availabilityState.selectOperator(null);
-          }
-          this.loading = false;
-        },
-        error: (error) => {
-          console.error('Error deleting operator:', error);
-          this.error = 'Errore durante l\'eliminazione dell\'operatore';
-          this.loading = false;
+    this.operatorService.deleteOperator(operator.id).subscribe({
+      next: () => {
+        this.availabilityState.removeOperator(operator.id);
+        if (this.selectedOperator?.id === operator.id) {
+          this.availabilityState.selectOperator(null);
         }
-      });
+        this.loading = false;
+      },
+      error: (error) => {
+        console.error('Error deleting operator:', error);
+        this.error = "Errore durante l'eliminazione dell'operatore";
+        this.loading = false;
+      },
+    });
   }
 
   openServiceAssignment(operator: Operator) {
@@ -270,17 +353,18 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   }
 
   loadOperatorServices(operatorId: string) {
-    this.serviceService.getOperatorServices(operatorId)
-      .subscribe({
-        next: (operatorServices) => {
-          const services = operatorServices.map(os => os.service).filter(s => s !== null) as Service[];
-          this.operatorServices[operatorId] = services;
-          this.selectedServices = services.map(s => s.id);
-        },
-        error: (error) => {
-          console.error('Error loading operator services:', error);
-        }
-      });
+    this.serviceService.getOperatorServices(operatorId).subscribe({
+      next: (operatorServices) => {
+        const services = operatorServices
+          .map((os) => os.service)
+          .filter((s) => s !== null) as Service[];
+        this.operatorServices[operatorId] = services;
+        this.selectedServices = services.map((s) => s.id);
+      },
+      error: (error) => {
+        console.error('Error loading operator services:', error);
+      },
+    });
   }
 
   toggleService(serviceId: string) {
@@ -300,29 +384,34 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     if (!this.selectedOperator) return;
 
     const currentServices = this.operatorServices[this.selectedOperator.id] || [];
-    const currentServiceIds = currentServices.map(s => s.id);
+    const currentServiceIds = currentServices.map((s) => s.id);
 
     // Find services to add and remove
-    const toAdd = this.selectedServices.filter(id => !currentServiceIds.includes(id));
-    const toRemove = currentServiceIds.filter(id => !this.selectedServices.includes(id));
+    const toAdd = this.selectedServices.filter(
+      (id) => !currentServiceIds.includes(id)
+    );
+    const toRemove = currentServiceIds.filter(
+      (id) => !this.selectedServices.includes(id)
+    );
 
     this.loading = true;
 
     // Process additions
-    const addPromises = toAdd.map(serviceId =>
-      this.serviceService.assignServiceToOperator({
-        operatorId: this.selectedOperator!.id,
-        serviceId: serviceId,
-        customDuration: undefined
-      }).toPromise()
+    const addPromises = toAdd.map((serviceId) =>
+      this.serviceService
+        .assignServiceToOperator({
+          operatorId: this.selectedOperator!.id,
+          serviceId: serviceId,
+          customDuration: undefined,
+        })
+        .toPromise()
     );
 
     // Process removals
-    const removePromises = toRemove.map(serviceId =>
-      this.serviceService.removeServiceFromOperator(
-        this.selectedOperator!.id,
-        serviceId
-      ).toPromise()
+    const removePromises = toRemove.map((serviceId) =>
+      this.serviceService
+        .removeServiceFromOperator(this.selectedOperator!.id, serviceId)
+        .toPromise()
     );
 
     Promise.all([...addPromises, ...removePromises])
@@ -331,23 +420,28 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         this.closeServiceAssignment();
         this.loading = false;
       })
-      .catch(error => {
+      .catch((error) => {
         console.error('Error updating service assignments:', error);
-        this.error = 'Errore durante l\'aggiornamento dei servizi';
+        this.error = "Errore durante l'aggiornamento dei servizi";
         this.loading = false;
       });
   }
 
-  getOperatorTypeLabel(type: OperatorType): string {
-    switch (type) {
-      case OperatorType.Standard:
-        return 'Standard';
-      case OperatorType.Gym:
-        return 'Palestra';
-      case OperatorType.Resource:
-        return 'Risorsa';
-      default:
-        return type;
+  getMacroCategoryLabel(macroCategory: OperatorMacroCategory): string {
+    return getMacroCategoryLabel(macroCategory);
+  }
+
+  getFilteredCategories(): OperatorCategory[] {
+    if (!this.editingOperator.macroCategory) {
+      return this.categories;
     }
+    return this.categories.filter(
+      (c) => c.macroCategory === this.editingOperator.macroCategory
+    );
+  }
+
+  onMacroCategoryChange() {
+    // Reset category when macro category changes
+    this.editingOperator.categoryId = undefined;
   }
 }

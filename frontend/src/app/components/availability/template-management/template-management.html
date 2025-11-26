@@ -25,7 +25,7 @@
   </div>
 
   <!-- Error State -->
-  <div *ngIf="error" class="error">
+  <div *ngIf="error && !showBuilderModal" class="error">
     {{ error }}
   </div>
 

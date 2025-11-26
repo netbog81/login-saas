@@ -3,7 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OperatorService } from '../../../services/operator.service';
 import { TemplateService } from '../../../services/template.service';
-import { Operator, TemplatePattern } from '../../../graphql/ui-types';
+import { Operator, OperatorMacroCategory, getMacroCategoryLabel } from '../../../graphql/types';
+import { TemplatePattern } from '../../../graphql/ui-types';
 import { AvailabilityTemplate } from '../../../graphql/generated/types';
 import { catchError, finalize, forkJoin, map, of } from 'rxjs';
 
@@ -343,5 +344,9 @@ export class OperatorTemplateAssignment implements OnInit {
 
   trackByOperatorId(index: number, item: OperatorWithTemplate): string {
     return item.operator.id;
+  }
+
+  getMacroCategoryLabel(macroCategory: OperatorMacroCategory): string {
+    return getMacroCategoryLabel(macroCategory);
   }
 }

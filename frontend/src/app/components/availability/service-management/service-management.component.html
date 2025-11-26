@@ -23,7 +23,7 @@
 
   <!-- Loading/Error states -->
   <div *ngIf="loading" class="loading">Caricamento...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
+  <div *ngIf="error && !showServiceForm" class="error">{{ error }}</div>
 
   <!-- Services Table -->
   <div class="services-table" *ngIf="!loading">
