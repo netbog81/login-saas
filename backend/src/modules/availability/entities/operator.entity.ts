@@ -1,20 +1,13 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { AvailabilityTemplate } from './availability-template.entity';
 import { AvailabilityException } from './availability-exception.entity';
 import { AvailabilityAppointment } from './availability-appointment.entity';
 import { OperatorService } from './operator-service.entity';
-
-export enum OperatorType {
-  STANDARD = 'standard',
-  GYM = 'gym',
-  RESOURCE = 'resource'
-}
-
-registerEnumType(OperatorType, {
-  name: 'OperatorType',
-  description: 'Type of operator defining booking behavior',
-});
+import { OperatorMacroCategory } from './operator-macro-category.enum';
+import { OperatorCategory } from './operator-category.entity';
+import { GymSchedule } from './gym-schedule.entity';
+import { TemplateAssignment } from './template-assignment.entity';
 
 @ObjectType()
 @Entity('operators')
@@ -43,13 +36,30 @@ export class Operator {
   @Column({ length: 7, nullable: true })
   color?: string;
 
-  @Field(() => OperatorType)
+  @Field(() => OperatorMacroCategory)
   @Column({
     type: 'enum',
-    enum: OperatorType,
-    default: OperatorType.STANDARD
+    enum: OperatorMacroCategory,
+    default: OperatorMacroCategory.PHYSIOTHERAPIST
   })
-  operatorType: OperatorType;
+  macroCategory: OperatorMacroCategory;
+
+  @Field({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  categoryId?: string;
+
+  @Field(() => OperatorCategory, { nullable: true })
+  @ManyToOne(() => OperatorCategory, category => category.operators)
+  @JoinColumn({ name: 'categoryId' })
+  category?: OperatorCategory;
+
+  @Field(() => [Int], { nullable: true })
+  @Column({ type: 'int', array: true, nullable: true })
+  preferredDurations?: number[];
+
+  @Field(() => Int, { nullable: true })
+  @Column({ type: 'int', nullable: true })
+  legacyUserId?: number;
 
   @Field(() => Int)
   @Column({ default: 1 })
@@ -83,4 +93,12 @@ export class Operator {
   @Field(() => [OperatorService], { nullable: true })
   @OneToMany(() => OperatorService, operatorService => operatorService.operator)
   services?: OperatorService[];
+
+  @Field(() => [GymSchedule], { nullable: true })
+  @OneToMany(() => GymSchedule, gymSchedule => gymSchedule.operator)
+  gymSchedules?: GymSchedule[];
+
+  @Field(() => [TemplateAssignment], { nullable: true })
+  @OneToMany(() => TemplateAssignment, assignment => assignment.operator)
+  templateAssignments?: TemplateAssignment[];
 }

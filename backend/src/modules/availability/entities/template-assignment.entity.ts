@@ -1,11 +1,11 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
-import { TemplatePattern } from './template-pattern.entity';
+import { PatternGroup } from './pattern-group.entity';
 
 /**
- * TemplateAssignment - Assigns a template pattern to an operator with validity dates
- * Represents the actual assignment of a pattern to a specific operator
+ * TemplateAssignment - Assigns a pattern group to an operator with validity dates
+ * Represents the actual assignment of a complete pattern group to a specific operator
  */
 @ObjectType()
 @Entity('template_assignments')
@@ -22,7 +22,7 @@ export class TemplateAssignment {
 
   @Field(() => ID)
   @Column('uuid')
-  patternId: string;
+  patternGroupId: string;
 
   // Pattern start date for cyclic calculations
   @Field()
@@ -61,8 +61,8 @@ export class TemplateAssignment {
   @JoinColumn({ name: 'operatorId' })
   operator: Operator;
 
-  @Field(() => TemplatePattern)
-  @ManyToOne(() => TemplatePattern, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'patternId' })
-  pattern: TemplatePattern;
+  @Field(() => PatternGroup)
+  @ManyToOne(() => PatternGroup, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'patternGroupId' })
+  patternGroup: PatternGroup;
 }

@@ -1,6 +1,8 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AvailabilityService } from '../services/availability.service';
+import { PhysiotherapistAvailabilityService } from '../services/physiotherapist-availability.service';
+import { GymAvailabilityService } from '../services/gym-availability.service';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
@@ -10,11 +12,18 @@ import { CreateAvailabilityTemplateInput } from '../dto/create-availability-temp
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
+import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherapist-availability.input';
+import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
+import { GymSlotOutput } from '../dto/gym-slot.output';
 // import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
 
 @Resolver()
 export class AvailabilityResolver {
-  constructor(private readonly availabilityService: AvailabilityService) {}
+  constructor(
+    private readonly availabilityService: AvailabilityService,
+    private readonly physiotherapistAvailabilityService: PhysiotherapistAvailabilityService,
+    private readonly gymAvailabilityService: GymAvailabilityService,
+  ) {}
 
   // Queries
   @Query(() => [AvailabilityTemplate], { name: 'availabilityTemplates' })
@@ -26,6 +35,9 @@ export class AvailabilityResolver {
     return this.availabilityService.getTemplates(operatorId, onlyCurrent);
   }
 
+  /**
+   * @deprecated Use patternGroups query from PatternGroupResolver instead
+   */
   @Query(() => [TemplatePattern], { name: 'allTemplatePatterns' })
   // @UseGuards(GqlAuthGuard)
   async getAllTemplatePatterns(): Promise<TemplatePattern[]> {
@@ -63,6 +75,55 @@ export class AvailabilityResolver {
     return this.availabilityService.checkSlotAvailability(operatorId, date, startTime, endTime);
   }
 
+  @Query(() => [PhysiotherapistSlotOutput], { name: 'physiotherapistAvailableSlots' })
+  // @UseGuards(GqlAuthGuard)
+  async getPhysiotherapistAvailableSlots(
+    @Args('input') input: CheckPhysiotherapistAvailabilityInput
+  ): Promise<PhysiotherapistSlotOutput[]> {
+    const date = new Date(input.date);
+
+    // Convert InstrumentSlotInput to InstrumentSlot (add placeholder categoryName)
+    const customSlots = input.customInstrumentSlots?.map(slot => ({
+      ...slot,
+      categoryName: '', // Will be populated by the service
+    }));
+
+    const slots = await this.physiotherapistAvailabilityService.getAvailableSlots(
+      input.operatorId,
+      date,
+      input.durationMinutes,
+      input.serviceId,
+      customSlots,
+    );
+
+    // Convert internal format to output format
+    return slots.map(slot => ({
+      startTime: `${slot.startTime.getHours().toString().padStart(2, '0')}:${slot.startTime.getMinutes().toString().padStart(2, '0')}`,
+      endTime: `${slot.endTime.getHours().toString().padStart(2, '0')}:${slot.endTime.getMinutes().toString().padStart(2, '0')}`,
+      available: slot.available,
+      reason: slot.reason,
+      suggestedInstruments: slot.instrumentSlots,
+    }));
+  }
+
+  @Query(() => [GymSlotOutput], { name: 'gymAvailableSlots' })
+  // @UseGuards(GqlAuthGuard)
+  async getGymAvailableSlots(
+    @Args('gymRoomId', { type: () => ID }) gymRoomId: string,
+    @Args('date') dateStr: string
+  ): Promise<GymSlotOutput[]> {
+    const date = new Date(dateStr);
+    const slots = await this.gymAvailabilityService.getAvailableSlots(gymRoomId, date);
+
+    return slots.map(slot => ({
+      startTime: `${slot.startTime.getHours().toString().padStart(2, '0')}:${slot.startTime.getMinutes().toString().padStart(2, '0')}`,
+      endTime: `${slot.endTime.getHours().toString().padStart(2, '0')}:${slot.endTime.getMinutes().toString().padStart(2, '0')}`,
+      availableCapacity: slot.maxCapacity - slot.currentBookings,
+      totalCapacity: slot.maxCapacity,
+      operatorName: slot.operatorName,
+    }));
+  }
+
   // Mutations
   @Mutation(() => AvailabilityTemplate, { name: 'createAvailabilityTemplate' })
   // @UseGuards(GqlAuthGuard)
@@ -89,6 +150,10 @@ export class AvailabilityResolver {
     return this.availabilityService.deleteTemplate(id);
   }
 
+  /**
+   * @deprecated Use createPatternGroup from PatternGroupResolver instead
+   * This method is kept for backward compatibility but creates a PatternGroup behind the scenes
+   */
   @Mutation(() => [TemplatePattern], { name: 'createTemplatePattern' })
   // @UseGuards(GqlAuthGuard)
   async createTemplatePattern(
@@ -97,6 +162,9 @@ export class AvailabilityResolver {
     return this.availabilityService.createTemplatePattern(input);
   }
 
+  /**
+   * @deprecated Use updatePatternGroup from PatternGroupResolver instead
+   */
   @Mutation(() => TemplatePattern, { name: 'updateTemplatePattern' })
   // @UseGuards(GqlAuthGuard)
   async updateTemplatePattern(

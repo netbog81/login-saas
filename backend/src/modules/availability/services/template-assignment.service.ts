@@ -1,0 +1,96 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { TemplateAssignment } from '../entities/template-assignment.entity';
+
+@Injectable()
+export class TemplateAssignmentService {
+  constructor(
+    @InjectRepository(TemplateAssignment)
+    private readonly assignmentRepo: Repository<TemplateAssignment>,
+  ) {}
+
+  async findAll(operatorId?: string, onlyCurrent?: boolean): Promise<TemplateAssignment[]> {
+    const where: any = {};
+    if (operatorId) where.operatorId = operatorId;
+    if (onlyCurrent) where.isCurrent = true;
+
+    return this.assignmentRepo.find({
+      where,
+      relations: ['operator', 'pattern', 'pattern.template'],
+      order: { validFrom: 'DESC' },
+    });
+  }
+
+  async findOne(id: string): Promise<TemplateAssignment> {
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id },
+      relations: ['operator', 'pattern', 'pattern.template'],
+    });
+
+    if (!assignment) {
+      throw new NotFoundException(`TemplateAssignment with ID ${id} not found`);
+    }
+
+    return assignment;
+  }
+
+  async findByOperator(operatorId: string, onlyCurrent = true): Promise<TemplateAssignment[]> {
+    const where: any = { operatorId };
+    if (onlyCurrent) where.isCurrent = true;
+
+    return this.assignmentRepo.find({
+      where,
+      relations: ['pattern', 'pattern.template'],
+      order: { validFrom: 'DESC' },
+    });
+  }
+
+  async findCurrentByOperator(operatorId: string, date: Date): Promise<TemplateAssignment[]> {
+    return this.assignmentRepo
+      .createQueryBuilder('assignment')
+      .leftJoinAndSelect('assignment.pattern', 'pattern')
+      .leftJoinAndSelect('pattern.template', 'template')
+      .where('assignment.operatorId = :operatorId', { operatorId })
+      .andWhere('assignment.isCurrent = true')
+      .andWhere('assignment.validFrom <= :date', { date })
+      .andWhere('(assignment.validUntil IS NULL OR assignment.validUntil >= :date)', { date })
+      .orderBy('assignment.validFrom', 'DESC')
+      .getMany();
+  }
+
+  async update(
+    id: string,
+    data: {
+      validFrom?: Date;
+      validUntil?: Date;
+      patternStartDate?: Date;
+      isCurrent?: boolean;
+    },
+  ): Promise<TemplateAssignment> {
+    const assignment = await this.findOne(id);
+
+    if (data.validFrom !== undefined) assignment.validFrom = data.validFrom;
+    if (data.validUntil !== undefined) assignment.validUntil = data.validUntil;
+    if (data.patternStartDate !== undefined) assignment.patternStartDate = data.patternStartDate;
+    if (data.isCurrent !== undefined) assignment.isCurrent = data.isCurrent;
+
+    return this.assignmentRepo.save(assignment);
+  }
+
+  async deactivate(id: string): Promise<TemplateAssignment> {
+    return this.update(id, { isCurrent: false });
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.assignmentRepo.delete(id);
+    return result.affected ? result.affected > 0 : false;
+  }
+
+  async deactivateAllForOperator(operatorId: string): Promise<void> {
+    await this.assignmentRepo.update(
+      { operatorId, isCurrent: true },
+      { isCurrent: false },
+    );
+  }
+}

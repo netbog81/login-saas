@@ -17,15 +17,24 @@ import { Availability } from './entities/availability.entity';
 import { AvailabilityModule } from './modules/availability/availability.module';
 // Import new entities for availability management
 import { Operator } from './modules/availability/entities/operator.entity';
+import { OperatorCategory } from './modules/availability/entities/operator-category.entity';
 import { Service } from './modules/availability/entities/service.entity';
 import { OperatorService } from './modules/availability/entities/operator-service.entity';
 import { AvailabilityTemplate } from './modules/availability/entities/availability-template.entity';
 import { TemplatePattern } from './modules/availability/entities/template-pattern.entity';
+import { PatternGroup } from './modules/availability/entities/pattern-group.entity';
 import { TemplateAssignment } from './modules/availability/entities/template-assignment.entity';
 import { AvailabilityException } from './modules/availability/entities/availability-exception.entity';
 import { GroupException } from './modules/availability/entities/group-exception.entity';
 import { AvailabilityCache } from './modules/availability/entities/availability-cache.entity';
 import { AvailabilityAppointment } from './modules/availability/entities/availability-appointment.entity';
+import { InstrumentCategory } from './modules/availability/entities/instrument-category.entity';
+import { Instrument } from './modules/availability/entities/instrument.entity';
+import { GymRoom } from './modules/availability/entities/gym-room.entity';
+import { GymSchedule } from './modules/availability/entities/gym-schedule.entity';
+import { Room } from './modules/availability/entities/room.entity';
+import { ServiceInstrument } from './modules/availability/entities/service-instrument.entity';
+import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
 
 @Module({
   imports: [
@@ -46,15 +55,24 @@ import { AvailabilityAppointment } from './modules/availability/entities/availab
         Availability,
         // New availability management entities
         Operator,
+        OperatorCategory,
         Service,
         OperatorService,
         AvailabilityTemplate,
+        PatternGroup,
         TemplatePattern,
         TemplateAssignment,
         AvailabilityException,
         GroupException,
         AvailabilityCache,
-        AvailabilityAppointment
+        AvailabilityAppointment,
+        InstrumentCategory,
+        Instrument,
+        GymRoom,
+        GymSchedule,
+        Room,
+        ServiceInstrument,
+        AppointmentInstrument,
       ],
       autoLoadEntities: false, // Disabled to prevent conflicts
       synchronize: false, // Disabled to prevent conflicts - use migrations instead

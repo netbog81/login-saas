@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not, In } from 'typeorm';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
+import { PatternGroup } from '../entities/pattern-group.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AvailabilityCache } from '../entities/availability-cache.entity';
@@ -21,6 +22,8 @@ export class AvailabilityService {
     private templateRepo: Repository<AvailabilityTemplate>,
     @InjectRepository(TemplatePattern)
     private patternRepo: Repository<TemplatePattern>,
+    @InjectRepository(PatternGroup)
+    private patternGroupRepo: Repository<PatternGroup>,
     @InjectRepository(TemplateAssignment)
     private assignmentRepo: Repository<TemplateAssignment>,
     @InjectRepository(AvailabilityException)
@@ -214,6 +217,16 @@ export class AvailabilityService {
       throw new BadRequestException(`Template pattern with these characteristics already exists`);
     }
 
+    // Create a pattern group for this single pattern
+    const group = this.patternGroupRepo.create({
+      name: input.name,
+      description: input.description || `Pattern group for ${input.name}`,
+      patternDuration: input.patternDuration,
+      isActive: true,
+    });
+
+    const savedGroup = await this.patternGroupRepo.save(group);
+
     // Create the pattern entry
     const pattern = this.patternRepo.create({
       name: input.name,
@@ -222,6 +235,7 @@ export class AvailabilityService {
       patternDuration: input.patternDuration,
       startTime: input.startTime,
       endTime: input.endTime,
+      patternGroupId: savedGroup.id,
     });
 
     const saved = await this.patternRepo.save(pattern);
@@ -269,8 +283,8 @@ export class AvailabilityService {
   }
 
   /**
-   * Assign an existing template pattern to an operator with validity dates
-   * Creates assignment entries linking patterns to operator
+   * Assign an existing pattern group to an operator with validity dates
+   * Creates assignment entry linking pattern group to operator
    */
   async assignTemplateToOperator(input: AssignTemplateToOperatorInput): Promise<TemplateAssignment[]> {
     // Validate operator exists
@@ -279,13 +293,14 @@ export class AvailabilityService {
       throw new NotFoundException('Operator not found');
     }
 
-    // Find all pattern entries by name
-    const patterns = await this.patternRepo.find({
-      where: { name: input.templateName }
+    // Find pattern group by name
+    const patternGroup = await this.patternGroupRepo.findOne({
+      where: { name: input.templateName },
+      relations: ['patterns']
     });
 
-    if (patterns.length === 0) {
-      throw new NotFoundException(`Template pattern "${input.templateName}" not found`);
+    if (!patternGroup) {
+      throw new NotFoundException(`Pattern group "${input.templateName}" not found`);
     }
 
     // Deactivate current assignments for this operator
@@ -294,23 +309,18 @@ export class AvailabilityService {
       { isCurrent: false }
     );
 
-    // Create new assignments linking patterns to operator
-    const newAssignments: TemplateAssignment[] = [];
+    // Create new assignment linking pattern group to operator
+    const assignment = this.assignmentRepo.create({
+      operatorId: input.operatorId,
+      patternGroupId: patternGroup.id,
+      patternStartDate: new Date(input.patternStartDate),
+      validFrom: new Date(input.validFrom),
+      validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+      isCurrent: true,
+      version: 1
+    });
 
-    for (const pattern of patterns) {
-      const assignment = this.assignmentRepo.create({
-        operatorId: input.operatorId,
-        patternId: pattern.id,
-        patternStartDate: new Date(input.patternStartDate),
-        validFrom: new Date(input.validFrom),
-        validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
-        isCurrent: true,
-        version: 1
-      });
-
-      const saved = await this.assignmentRepo.save(assignment);
-      newAssignments.push(saved);
-    }
+    const saved = await this.assignmentRepo.save(assignment);
 
     // Rebuild cache for affected period
     const cacheEndDate = input.validUntil ||
@@ -318,7 +328,7 @@ export class AvailabilityService {
 
     await this.rebuildCache(input.operatorId, input.validFrom, cacheEndDate);
 
-    return newAssignments;
+    return [saved];
   }
 
   /**

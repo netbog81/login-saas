@@ -1,10 +1,11 @@
 import { Injectable } from '@angular/core';
 import { Apollo } from 'apollo-angular';
-import { Observable, map } from 'rxjs';
+import { Observable, map, mergeMap } from 'rxjs';
 import {
   GET_AVAILABILITY_TEMPLATES,
   GET_ALL_TEMPLATES,
   GET_ALL_TEMPLATE_PATTERNS,
+  GET_ALL_PATTERN_GROUPS,
 } from '../graphql/operations/template.queries';
 import {
   CREATE_AVAILABILITY_TEMPLATE,
@@ -15,6 +16,9 @@ import {
   UPDATE_TEMPLATE_PATTERN,
   DELETE_TEMPLATE_PATTERN,
   ASSIGN_TEMPLATE_TO_OPERATOR,
+  CREATE_PATTERN_GROUP,
+  UPDATE_PATTERN_GROUP,
+  DELETE_PATTERN_GROUP,
 } from '../graphql/operations/template.mutations';
 import {
   AvailabilityTemplate,
@@ -54,36 +58,44 @@ export class TemplateService {
   }
 
   /**
-   * Ottiene tutti i template pattern generici (non assegnati a operatori)
-   * Converte BackendTemplatePattern in AvailabilityTemplate per compatibilità UI
+   * Ottiene tutti i pattern groups
+   * Converte PatternGroup.patterns in AvailabilityTemplate per compatibilità UI
    */
   getAllTemplates(): Observable<Partial<AvailabilityTemplate>[]> {
     return this.apollo
-      .query<{ allTemplatePatterns: BackendTemplatePattern[] }>({
-        query: GET_ALL_TEMPLATE_PATTERNS,
+      .query<{ patternGroups: any[] }>({
+        query: GET_ALL_PATTERN_GROUPS,
         fetchPolicy: 'network-only',
       })
       .pipe(
         map((result) => {
-          const patterns = result.data?.allTemplatePatterns || [];
-          // Convert BackendTemplatePattern to AvailabilityTemplate for UI
-          return patterns.map(p => ({
-            id: p.id,
-            operatorId: '', // No operator for generic patterns
-            name: p.name,
-            description: p.description,
-            dayInPattern: p.dayInPattern,
-            patternDuration: p.patternDuration,
-            patternStartDate: new Date(),
-            startTime: p.startTime,
-            endTime: p.endTime,
-            version: 1,
-            isCurrent: true,
-            validFrom: new Date(),
-            validUntil: undefined,
-            createdAt: p.createdAt,
-            updatedAt: p.updatedAt,
-          }));
+          const patternGroups = result.data?.patternGroups || [];
+          const allPatterns: Partial<AvailabilityTemplate>[] = [];
+
+          // Flatten all patterns from all groups
+          patternGroups.forEach((group) => {
+            group.patterns?.forEach((p: BackendTemplatePattern) => {
+              allPatterns.push({
+                id: p.id,
+                operatorId: '', // No operator for generic patterns
+                name: p.name,
+                description: p.description,
+                dayInPattern: p.dayInPattern,
+                patternDuration: p.patternDuration,
+                patternStartDate: new Date(),
+                startTime: p.startTime,
+                endTime: p.endTime,
+                version: 1,
+                isCurrent: true,
+                validFrom: new Date(),
+                validUntil: undefined,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+              });
+            });
+          });
+
+          return allPatterns;
         })
       );
   }
@@ -147,43 +159,31 @@ export class TemplateService {
   }
 
   /**
-   * Crea un template pattern generico (senza operatore)
-   * Returns BackendTemplatePattern[] from backend, converts to AvailabilityTemplate[] for UI
+   * Crea un template pattern generico (senza operatore) usando PatternGroup
+   * Returns AvailabilityTemplate[] for UI
    */
   private createPatternTemplate(
     pattern: TemplatePattern
   ): Observable<Partial<AvailabilityTemplate>[]> {
-    const inputs = this.convertPatternToPatternInputs(pattern);
-    const mutations$ = inputs.map((input) =>
-      this.apollo
-        .mutate<{ createTemplatePattern: BackendTemplatePattern[] }>({
-          mutation: CREATE_TEMPLATE_PATTERN,
-          variables: { input },
+    // Convert UI pattern to PatternGroup input
+    const input = this.convertPatternToPatternGroupInput(pattern);
+
+    return this.apollo
+      .mutate<{ createPatternGroup: any }>({
+        mutation: CREATE_PATTERN_GROUP,
+        variables: { input },
+        refetchQueries: [{ query: GET_ALL_PATTERN_GROUPS }],
+        awaitRefetchQueries: true,
+      })
+      .pipe(
+        map((result) => {
+          const patternGroup = result.data!.createPatternGroup;
+          // Convert PatternGroup.patterns to AvailabilityTemplate[] for UI compatibility
+          return patternGroup.patterns.map((bp: BackendTemplatePattern) =>
+            this.convertBackendPatternToTemplate(bp, pattern)
+          );
         })
-        .pipe(map((result) => result.data!.createTemplatePattern))
-    );
-
-    // Esegui tutte le mutazioni e ritorna i risultati convertiti
-    return new Observable((observer) => {
-      const results: Partial<AvailabilityTemplate>[] = [];
-      let completed = 0;
-
-      mutations$.forEach((mutation$, index) => {
-        mutation$.subscribe({
-          next: (backendPatterns) => {
-            // Convert BackendTemplatePattern to AvailabilityTemplate for UI compatibility
-            const uiTemplates = backendPatterns.map(bp => this.convertBackendPatternToTemplate(bp, pattern));
-            results.push(...uiTemplates);
-            completed++;
-            if (completed === mutations$.length) {
-              observer.next(results);
-              observer.complete();
-            }
-          },
-          error: (err) => observer.error(err),
-        });
-      });
-    });
+      );
   }
 
   /**
@@ -228,27 +228,38 @@ export class TemplateService {
   }
 
   /**
-   * Elimina un template (pattern generico o template assegnato)
-   * Prova prima a eliminare come pattern, poi come template assegnato
+   * Elimina un pattern group dato l'ID di un pattern o di un template
+   * Prima trova il pattern group associato, poi lo elimina
    */
-  deleteTemplate(id: string): Observable<boolean> {
-    // Try deleting as template pattern first (generic patterns)
+  deleteTemplate(patternId: string): Observable<boolean> {
+    // First, get all pattern groups to find which one contains this pattern
     return this.apollo
-      .mutate<{ deleteTemplatePattern: boolean }>({
-        mutation: DELETE_TEMPLATE_PATTERN,
-        variables: { id },
+      .query<{ patternGroups: any[] }>({
+        query: GET_ALL_PATTERN_GROUPS,
+        fetchPolicy: 'network-only',
       })
       .pipe(
-        map((result) => result.data!.deleteTemplatePattern),
-        // If it fails, it might be an assigned template, try the other delete
-        // catchError(() =>
-        //   this.apollo
-        //     .mutate<{ deleteAvailabilityTemplate: boolean }>({
-        //       mutation: DELETE_AVAILABILITY_TEMPLATE,
-        //       variables: { id },
-        //     })
-        //     .pipe(map((result) => result.data!.deleteAvailabilityTemplate))
-        // )
+        map((result) => {
+          const patternGroups = result.data?.patternGroups || [];
+          // Find the pattern group that contains this pattern
+          const patternGroup = patternGroups.find((group) =>
+            group.patterns?.some((p: any) => p.id === patternId)
+          );
+          return patternGroup?.id;
+        }),
+        // Delete the pattern group
+        mergeMap((patternGroupId) => {
+          if (!patternGroupId) {
+            throw new Error('Pattern group not found');
+          }
+          return this.apollo.mutate<{ deletePatternGroup: boolean }>({
+            mutation: DELETE_PATTERN_GROUP,
+            variables: { id: patternGroupId },
+            refetchQueries: [{ query: GET_ALL_PATTERN_GROUPS }],
+            awaitRefetchQueries: true,
+          });
+        }),
+        map((result) => result.data!.deletePatternGroup)
       );
   }
 
@@ -269,7 +280,46 @@ export class TemplateService {
   }
 
   /**
-   * Converte la struttura UI (TemplatePattern) in input per il pattern generico
+   * Converte la struttura UI (TemplatePattern) in input per PatternGroup
+   */
+  private convertPatternToPatternGroupInput(pattern: TemplatePattern): any {
+    const patternDuration = pattern.patternWeeks * 7;
+    const patterns: any[] = [];
+
+    // Per ogni settimana nel pattern
+    pattern.weeks.forEach((week) => {
+      // Per ogni giorno nella settimana
+      week.days.forEach((day) => {
+        // Per ogni fascia oraria nel giorno
+        day.slots.forEach((slot) => {
+          // Calcola dayInPattern considerando la settimana e il giorno
+          const dayInPattern = (week.weekNumber - 1) * 7 + day.dayOfWeek;
+
+          patterns.push({
+            name: pattern.name,
+            description: `Pattern ${pattern.patternWeeks} settiman${
+              pattern.patternWeeks > 1 ? 'e' : 'a'
+            }`,
+            dayInPattern,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          });
+        });
+      });
+    });
+
+    return {
+      name: pattern.name,
+      description: `Pattern ${pattern.patternWeeks} settiman${
+        pattern.patternWeeks > 1 ? 'e' : 'a'
+      }`,
+      patternDuration,
+      patterns,
+    };
+  }
+
+  /**
+   * @deprecated Use convertPatternToPatternGroupInput instead
    */
   private convertPatternToPatternInputs(pattern: TemplatePattern): CreateTemplatePatternInput[] {
     const inputs: CreateTemplatePatternInput[] = [];

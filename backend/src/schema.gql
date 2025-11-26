@@ -2,6 +2,19 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AppointmentInstrument {
+  appointment: AvailabilityAppointment!
+  appointmentId: String!
+  createdAt: DateTime!
+  endOffsetMinutes: Int!
+  id: ID!
+  instrument: Instrument!
+  instrumentId: String!
+  orderPosition: Int
+  startOffsetMinutes: Int!
+  updatedAt: DateTime!
+}
+
 """Status of the appointment"""
 enum AppointmentStatus {
   CANCELLED
@@ -10,6 +23,12 @@ enum AppointmentStatus {
   IN_PROGRESS
   NO_SHOW
   SCHEDULED
+}
+
+"""Type of appointment (standard or gym)"""
+enum AppointmentType {
+  GYM
+  STANDARD
 }
 
 input AssignTemplateToOperatorInput {
@@ -22,6 +41,7 @@ input AssignTemplateToOperatorInput {
 
 type AvailabilityAppointment {
   appointmentDate: DateTime!
+  appointmentType: AppointmentType!
   cancellationReason: String
   clientEmail: String
   clientName: String!
@@ -29,7 +49,11 @@ type AvailabilityAppointment {
   createdAt: DateTime!
   createdBy: ID
   endTime: String!
+  gymRoom: GymRoom
+  gymRoomId: ID
   id: ID!
+  instrumentOrderMatters: Boolean!
+  instruments: [AppointmentInstrument!]
   maxParticipants: Int
   notes: String
   operator: Operator
@@ -88,6 +112,14 @@ type AvailabilityTemplate {
   version: Int!
 }
 
+input CheckPhysiotherapistAvailabilityInput {
+  customInstrumentSlots: [InstrumentSlotInput!]
+  date: String!
+  durationMinutes: Int
+  operatorId: ID!
+  serviceId: ID
+}
+
 input CreateAvailabilityTemplateInput {
   dayInPattern: Int!
   description: String
@@ -99,6 +131,13 @@ input CreateAvailabilityTemplateInput {
   startTime: String!
   validFrom: String!
   validUntil: String
+}
+
+input CreatePatternGroupInput {
+  description: String
+  name: String!
+  patternDuration: Int!
+  patterns: [PatternInput!]!
 }
 
 input CreateTemplatePatternInput {
@@ -125,6 +164,7 @@ scalar DateTime
 enum ExceptionType {
   HOLIDAY
   MODIFIED
+  PERSONAL_LEAVE
   SICK
   UNAVAILABLE
   VACATION
@@ -142,26 +182,157 @@ type GroupException {
   reason: String
 }
 
+type GymRoom {
+  color: String
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
+  maxCapacity: Int!
+  name: String!
+  schedules: [GymSchedule!]
+  slotDuration: Int!
+  updatedAt: DateTime!
+}
+
+type GymSchedule {
+  createdAt: DateTime!
+  dayOfWeek: Int!
+  endTime: String!
+  gymRoom: GymRoom!
+  gymRoomId: String!
+  id: ID!
+  isCurrent: Boolean!
+  operator: Operator!
+  operatorId: String!
+  startTime: String!
+  updatedAt: DateTime!
+  validFrom: DateTime
+  validUntil: DateTime
+}
+
+type GymSlotOutput {
+  availableCapacity: Int!
+  endTime: String!
+  operatorName: String
+  startTime: String!
+  totalCapacity: Int!
+}
+
+type HolidayInfo {
+  date: DateTime!
+  name: String!
+}
+
+type Instrument {
+  appointmentInstruments: [AppointmentInstrument!]
+  brand: String
+  category: InstrumentCategory!
+  categoryId: String!
+  color: String
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
+  model: String
+  name: String!
+  status: InstrumentStatus!
+  technicalData: JSON
+  updatedAt: DateTime!
+  verificationExpiry: DateTime
+}
+
+type InstrumentCategory {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  instruments: [Instrument!]
+  isActive: Boolean!
+  macroCategory: OperatorMacroCategory!
+  name: String!
+  updatedAt: DateTime!
+}
+
+input InstrumentSlotInput {
+  endOffsetMinutes: Int!
+  instrumentCategoryId: ID!
+  startOffsetMinutes: Int!
+}
+
+type InstrumentSlotOutput {
+  categoryName: String!
+  endOffsetMinutes: Int!
+  instrumentCategoryId: ID!
+  instrumentId: ID
+  startOffsetMinutes: Int!
+}
+
+"""Status of an instrument (active, unavailable, or in maintenance)"""
+enum InstrumentStatus {
+  ACTIVE
+  MAINTENANCE
+  UNAVAILABLE
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
 type Mutation {
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
-  createOperator(color: String, email: String, maxConcurrentAppointments: Float! = 1, name: String!, operatorType: OperatorType! = STANDARD, phone: String, surname: String): Operator!
-  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, isActive: Boolean, name: String!): Service!
+  createGymRoom(color: String, maxCapacity: Int, name: String!, slotDuration: Int): GymRoom!
+  createGymSchedule(dayOfWeek: Int!, endTime: String!, gymRoomId: ID!, operatorId: ID!, startTime: String!, validFrom: DateTime, validUntil: DateTime): GymSchedule!
+  createInstrument(brand: String, categoryId: ID!, color: String, model: String, name: String!, technicalData: JSON, verificationExpiry: DateTime): Instrument!
+  createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
+  createOperator(categoryId: ID, color: String, email: String, legacyUserId: Int, macroCategory: OperatorMacroCategory! = PHYSIOTHERAPIST, maxConcurrentAppointments: Int! = 1, name: String!, phone: String, preferredDurations: [Int!], surname: String): Operator!
+  createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
+  createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
+  createRoom(capacity: Int, color: String, name: String!): Room!
+  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int): Service!
+  createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
+  createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
+  deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
+  deactivateTemplateAssignment(id: ID!): TemplateAssignment!
   deleteAvailabilityTemplate(id: ID!): Boolean!
+  deleteException(id: ID!): Boolean!
+  deleteExceptionsByDateRange(endDate: String!, exceptionType: ExceptionType, operatorId: ID!, startDate: String!): Int!
   deleteGroupException(id: ID!): Boolean!
+  deleteGymRoom(id: ID!): Boolean!
+  deleteGymSchedule(id: ID!): Boolean!
+  deleteHolidaysForYear(year: Int!): Int!
+  deleteInstrument(id: ID!): Boolean!
+  deleteInstrumentCategory(id: ID!): Boolean!
   deleteOperator(id: ID!): Boolean!
+  deleteOperatorCategory(id: ID!): Boolean!
+  deletePatternGroup(id: ID!): Boolean!
+  deleteRoom(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
+  deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
+  generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
+  generateHolidaysForYear(year: Int!): Int!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
+  setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
+  setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
-  updateOperator(email: String, id: ID!, isActive: Boolean, maxConcurrentAppointments: Float, name: String, operatorType: OperatorType, phone: String, surname: String): Operator!
+  updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
+  updateGymRoom(color: String, id: ID!, isActive: Boolean, maxCapacity: Int, name: String, slotDuration: Int): GymRoom!
+  updateGymSchedule(dayOfWeek: Int, endTime: String, id: ID!, isCurrent: Boolean, operatorId: ID, startTime: String, validFrom: DateTime, validUntil: DateTime): GymSchedule!
+  updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
+  updateInstrumentCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): InstrumentCategory!
+  updateOperator(categoryId: ID, color: String, email: String, id: ID!, isActive: Boolean, legacyUserId: Int, macroCategory: OperatorMacroCategory, maxConcurrentAppointments: Int, name: String, phone: String, preferredDurations: [Int!], surname: String): Operator!
+  updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
-  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String): Service!
+  updatePatternGroup(description: String, id: ID!, name: String, patternDuration: Int, patterns: [PatternInput!]): PatternGroup!
+  updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
+  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int): Service!
+  updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
 }
 
@@ -169,18 +340,44 @@ type Operator {
   appointments: [AvailabilityAppointment!]
   availabilityExceptions: [AvailabilityException!]
   availabilityTemplates: [AvailabilityTemplate!]
+  category: OperatorCategory
+  categoryId: String
   color: String
   createdAt: DateTime!
   email: String
+  gymSchedules: [GymSchedule!]
   id: ID!
   isActive: Boolean!
+  legacyUserId: Int
+  macroCategory: OperatorMacroCategory!
   maxConcurrentAppointments: Int!
   name: String!
-  operatorType: OperatorType!
   phone: String
+  preferredDurations: [Int!]
   services: [OperatorService!]
   surname: String
+  templateAssignments: [TemplateAssignment!]
   updatedAt: DateTime!
+}
+
+type OperatorCategory {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  isActive: Boolean!
+  macroCategory: OperatorMacroCategory!
+  name: String!
+  operators: [Operator!]
+  updatedAt: DateTime!
+}
+
+"""
+Macro category defining what an operator can do (use instruments, manage gym, etc.)
+"""
+enum OperatorMacroCategory {
+  DOCTOR
+  GYM_INSTRUCTOR
+  PHYSIOTHERAPIST
 }
 
 type OperatorService {
@@ -192,27 +389,85 @@ type OperatorService {
   serviceId: ID!
 }
 
-"""Type of operator defining booking behavior"""
-enum OperatorType {
-  GYM
-  RESOURCE
-  STANDARD
+type PatternGroup {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  patternDuration: Int!
+  patterns: [TemplatePattern!]
+  updatedAt: DateTime!
+}
+
+input PatternInput {
+  dayInPattern: Int!
+  description: String
+  endTime: String!
+  name: String!
+  startTime: String!
+}
+
+type PhysiotherapistSlotOutput {
+  available: Boolean!
+  endTime: String!
+  reason: String
+  startTime: String!
+  suggestedInstruments: [InstrumentSlotOutput!]
 }
 
 type Query {
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
+  availabilityException(id: ID!): AvailabilityException
+  availabilityExceptions(endDate: String, exceptionType: ExceptionType, operatorId: ID, startDate: String): [AvailabilityException!]!
   availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!
+  availableInstrumentsByCategory(categoryId: ID!): [Instrument!]!
   availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
   checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
+  currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
   groupExceptions: [GroupException!]!
+  gymAvailableSlots(date: String!, gymRoomId: ID!): [GymSlotOutput!]!
+  gymOperatorAtTime(dayOfWeek: Int!, gymRoomId: ID!, time: String!): GymSchedule
+  gymRoom(id: ID!): GymRoom
+  gymRooms(onlyActive: Boolean = false): [GymRoom!]!
+  gymSchedule(id: ID!): GymSchedule
+  gymSchedules(gymRoomId: ID, operatorId: ID): [GymSchedule!]!
+  gymSchedulesByRoomAndDay(dayOfWeek: Int!, gymRoomId: ID!): [GymSchedule!]!
+  holidays(year: Int!): [HolidayInfo!]!
+  instrument(id: ID!): Instrument
+  instrumentCategories(macroCategory: OperatorMacroCategory): [InstrumentCategory!]!
+  instrumentCategory(id: ID!): InstrumentCategory
+  instruments(categoryId: ID, status: InstrumentStatus): [Instrument!]!
+  isHoliday(date: String!): Boolean!
   operator(id: ID!): Operator
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
+  operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
+  operatorCategory(id: ID!): OperatorCategory
+  operatorExceptions(endDate: String, operatorId: ID!, startDate: String): [AvailabilityException!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
-  operators: [Operator!]!
+  operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
+  patternGroup(id: ID!): PatternGroup
+  patternGroups: [PatternGroup!]!
+  physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
+  room(id: ID!): Room
+  rooms(onlyActive: Boolean = false): [Room!]!
   service(id: ID!): Service
   serviceOperators(serviceId: ID!): [OperatorService!]!
-  services: [Service!]!
+  services(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Service!]!
+  templateAssignment(id: ID!): TemplateAssignment
+  templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
+  templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+}
+
+type Room {
+  capacity: Int!
+  color: String
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  updatedAt: DateTime!
 }
 
 type Service {
@@ -222,12 +477,31 @@ type Service {
   color: String
   createdAt: DateTime!
   defaultDuration: Int!
+  defaultInstrumentSlotOffset: Int
   defaultPrice: Float!
   description: String
   id: ID!
+  instrumentOrderMatters: Boolean!
   isActive: Boolean!
+  macroCategory: OperatorMacroCategory
   name: String!
   operators: [OperatorService!]
+  preferredDuration: Int
+  requiredInstruments: [ServiceInstrument!]
+  reverseInstrumentOrder: Boolean
+  updatedAt: DateTime!
+}
+
+type ServiceInstrument {
+  createdAt: DateTime!
+  id: ID!
+  instrumentCategory: InstrumentCategory!
+  instrumentCategoryId: String!
+  isRequired: Boolean!
+  orderPosition: Int
+  quantity: Int!
+  service: Service!
+  serviceId: String!
   updatedAt: DateTime!
 }
 
@@ -237,8 +511,8 @@ type TemplateAssignment {
   isCurrent: Boolean!
   operator: Operator!
   operatorId: ID!
-  pattern: TemplatePattern!
-  patternId: ID!
+  patternGroup: PatternGroup!
+  patternGroupId: ID!
   patternStartDate: DateTime!
   updatedAt: DateTime!
   validFrom: DateTime!
@@ -254,6 +528,8 @@ type TemplatePattern {
   id: ID!
   name: String!
   patternDuration: Int!
+  patternGroup: PatternGroup!
+  patternGroupId: ID!
   startTime: String!
   updatedAt: DateTime!
 }

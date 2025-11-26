@@ -258,7 +258,11 @@ export class TemplateManagement implements OnInit {
       .createTemplateFromPattern(pattern)
       .pipe(
         catchError((err) => {
-          this.error = 'Errore nel salvataggio: ' + err.message;
+          // Extract meaningful error message
+          const errorMsg = err?.error?.message || err?.message || 'Errore sconosciuto';
+          this.error = 'Errore nel salvataggio: ' + errorMsg;
+          this.loading = false;
+          this.showBuilderModal = false;
           return of([]);
         }),
         finalize(() => {

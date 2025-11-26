@@ -2,6 +2,8 @@ import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, Up
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { OperatorService } from './operator-service.entity';
 import { AvailabilityAppointment } from './availability-appointment.entity';
+import { OperatorMacroCategory } from './operator-macro-category.enum';
+import { ServiceInstrument } from './service-instrument.entity';
 
 @ObjectType()
 @Entity('services')
@@ -42,6 +44,30 @@ export class Service {
   @Column({ default: true })
   isActive: boolean;
 
+  @Field(() => OperatorMacroCategory, { nullable: true })
+  @Column({
+    type: 'enum',
+    enum: OperatorMacroCategory,
+    nullable: true
+  })
+  macroCategory?: OperatorMacroCategory;
+
+  @Field(() => Int, { nullable: true })
+  @Column({ type: 'int', nullable: true })
+  preferredDuration?: number;
+
+  @Field()
+  @Column({ default: false })
+  instrumentOrderMatters: boolean;
+
+  @Field(() => Int, { nullable: true })
+  @Column({ type: 'int', nullable: true, default: 0 })
+  defaultInstrumentSlotOffset?: number; // For single instrument: 0=first 30min, 15=second 30min (45min), 30=second 30min (60min)
+
+  @Field({ nullable: true })
+  @Column({ default: false })
+  reverseInstrumentOrder?: boolean; // For 2 instruments in 45min when orderMatters=false: reverse the order
+
   @Field()
   @CreateDateColumn()
   createdAt: Date;
@@ -58,4 +84,8 @@ export class Service {
   @Field(() => [AvailabilityAppointment], { nullable: true })
   @OneToMany(() => AvailabilityAppointment, appointment => appointment.service)
   appointments?: AvailabilityAppointment[];
+
+  @Field(() => [ServiceInstrument], { nullable: true })
+  @OneToMany(() => ServiceInstrument, serviceInstrument => serviceInstrument.service)
+  requiredInstruments?: ServiceInstrument[];
 }

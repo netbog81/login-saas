@@ -8,7 +8,8 @@ export enum ExceptionType {
   MODIFIED = 'modified',
   HOLIDAY = 'holiday',
   SICK = 'sick',
-  VACATION = 'vacation'
+  VACATION = 'vacation',
+  PERSONAL_LEAVE = 'personal_leave'
 }
 
 registerEnumType(ExceptionType, {

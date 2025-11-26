@@ -1,0 +1,330 @@
+# ========================================
+# TEST QUERIES FOR AVAILABILITY SYSTEM
+# ========================================
+
+# ----------------------------------------
+# 1. TEST: Physiotherapist slots with PRE-CONFIGURED SERVICE
+# ----------------------------------------
+# This tests the logic using service configuration from database
+# Replace UUIDs with actual values from your database
+query TestPhysiotherapistWithService {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    serviceId: "your-service-uuid-here"
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 2. TEST: Physiotherapist slots with CUSTOM PARAMETERS (30 min, 1 instrument)
+# ----------------------------------------
+# This tests custom service parameters without using pre-configured service
+query TestPhysiotherapistCustom30Min {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    durationMinutes: 30
+    customInstrumentSlots: [
+      {
+        instrumentCategoryId: "your-category-uuid-here"
+        startOffsetMinutes: 0
+        endOffsetMinutes: 30
+      }
+    ]
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 3. TEST: Physiotherapist slots 45 min with 1 instrument (SECOND 30 min slot)
+# ----------------------------------------
+# This tests single instrument in second half of 45 min appointment
+query TestPhysiotherapist45MinSecondSlot {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    durationMinutes: 45
+    customInstrumentSlots: [
+      {
+        instrumentCategoryId: "your-category-uuid-here"
+        startOffsetMinutes: 15
+        endOffsetMinutes: 45
+      }
+    ]
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 4. TEST: Physiotherapist slots 60 min with 1 instrument (SECOND 30 min slot)
+# ----------------------------------------
+# This tests single instrument in second half of 60 min appointment
+query TestPhysiotherapist60MinSecondSlot {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    durationMinutes: 60
+    customInstrumentSlots: [
+      {
+        instrumentCategoryId: "your-category-uuid-here"
+        startOffsetMinutes: 30
+        endOffsetMinutes: 60
+      }
+    ]
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 5. TEST: Physiotherapist slots 45 min with 2 instruments (overlapping)
+# ----------------------------------------
+# This tests 2 instruments with overlap: first 0-30, second 15-45
+query TestPhysiotherapist45MinTwoInstruments {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    durationMinutes: 45
+    customInstrumentSlots: [
+      {
+        instrumentCategoryId: "your-category-1-uuid-here"
+        startOffsetMinutes: 0
+        endOffsetMinutes: 30
+      },
+      {
+        instrumentCategoryId: "your-category-2-uuid-here"
+        startOffsetMinutes: 15
+        endOffsetMinutes: 45
+      }
+    ]
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 6. TEST: Physiotherapist slots 60 min with 2 instruments (sequential)
+# ----------------------------------------
+# This tests 2 instruments sequential: first 0-30, second 30-60
+query TestPhysiotherapist60MinTwoInstruments {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    durationMinutes: 60
+    customInstrumentSlots: [
+      {
+        instrumentCategoryId: "your-category-1-uuid-here"
+        startOffsetMinutes: 0
+        endOffsetMinutes: 30
+      },
+      {
+        instrumentCategoryId: "your-category-2-uuid-here"
+        startOffsetMinutes: 30
+        endOffsetMinutes: 60
+      }
+    ]
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 7. TEST: Physiotherapist slots 15 min (no instruments)
+# ----------------------------------------
+# This tests simple 15 minute appointment without instruments
+query TestPhysiotherapist15Min {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    durationMinutes: 15
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ----------------------------------------
+# 8. TEST: Gym room availability
+# ----------------------------------------
+# This tests gym room capacity-based availability
+query TestGymAvailability {
+  gymAvailableSlots(
+    gymRoomId: "your-gym-room-uuid-here"
+    date: "2025-11-26"
+  ) {
+    startTime
+    endTime
+    availableCapacity
+    totalCapacity
+    operatorName
+  }
+}
+
+# ----------------------------------------
+# 9. TEST: Hybrid approach - Service + Custom override
+# ----------------------------------------
+# This tests using a pre-configured service but overriding instrument slots
+query TestHybridServiceCustomSlots {
+  physiotherapistAvailableSlots(input: {
+    operatorId: "your-operator-uuid-here"
+    date: "2025-11-26"
+    serviceId: "your-service-uuid-here"
+    durationMinutes: 45
+    customInstrumentSlots: [
+      {
+        instrumentCategoryId: "your-category-uuid-here"
+        startOffsetMinutes: 15
+        endOffsetMinutes: 45
+      }
+    ]
+  }) {
+    startTime
+    endTime
+    available
+    reason
+    suggestedInstruments {
+      instrumentCategoryId
+      categoryName
+      instrumentId
+      instrumentName
+      startOffsetMinutes
+      endOffsetMinutes
+    }
+  }
+}
+
+# ========================================
+# HELPER QUERIES - Get IDs for testing
+# ========================================
+
+# Get all operators to find IDs
+query GetOperators {
+  operators {
+    id
+    firstName
+    lastName
+    category
+  }
+}
+
+# Get all services to find IDs
+query GetServices {
+  services {
+    id
+    name
+    defaultDuration
+    instrumentOrderMatters
+    defaultInstrumentSlotOffset
+    reverseInstrumentOrder
+    requiredInstruments {
+      id
+      instrumentCategory {
+        id
+        name
+      }
+      quantity
+    }
+  }
+}
+
+# Get all instrument categories to find IDs
+query GetInstrumentCategories {
+  instrumentCategories {
+    id
+    name
+    instruments {
+      id
+      name
+      isActive
+    }
+  }
+}
+
+# Get all gym rooms to find IDs
+query GetGymRooms {
+  gymRooms {
+    id
+    name
+    capacity
+  }
+}
