@@ -204,6 +204,11 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   }
 
   saveOperator() {
+    // Previeni multiple submissions
+    if (this.loading) {
+      return;
+    }
+
     const name = this.editingOperator.name?.trim();
     const email = this.editingOperator.email?.trim();
 

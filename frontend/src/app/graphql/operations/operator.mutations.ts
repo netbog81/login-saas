@@ -1,30 +1,8 @@
 import { gql } from '@apollo/client/core';
 
 export const CREATE_OPERATOR = gql`
-  mutation CreateOperator(
-    $name: String!
-    $surname: String
-    $email: String
-    $phone: String
-    $color: String
-    $macroCategory: OperatorMacroCategory!
-    $categoryId: ID
-    $preferredDurations: [Int!]
-    $maxConcurrentAppointments: Int
-    $legacyUserId: Int
-  ) {
-    createOperator(
-      name: $name
-      surname: $surname
-      email: $email
-      phone: $phone
-      color: $color
-      macroCategory: $macroCategory
-      categoryId: $categoryId
-      preferredDurations: $preferredDurations
-      maxConcurrentAppointments: $maxConcurrentAppointments
-      legacyUserId: $legacyUserId
-    ) {
+  mutation CreateOperator($input: CreateOperatorInput!) {
+    createOperator(input: $input) {
       id
       name
       surname
@@ -39,6 +17,7 @@ export const CREATE_OPERATOR = gql`
         macroCategory
       }
       preferredDurations
+      userId
       legacyUserId
       maxConcurrentAppointments
       isActive
@@ -49,34 +28,8 @@ export const CREATE_OPERATOR = gql`
 `;
 
 export const UPDATE_OPERATOR = gql`
-  mutation UpdateOperator(
-    $id: ID!
-    $name: String
-    $surname: String
-    $email: String
-    $phone: String
-    $color: String
-    $macroCategory: OperatorMacroCategory
-    $categoryId: ID
-    $preferredDurations: [Int!]
-    $isActive: Boolean
-    $maxConcurrentAppointments: Int
-    $legacyUserId: Int
-  ) {
-    updateOperator(
-      id: $id
-      name: $name
-      surname: $surname
-      email: $email
-      phone: $phone
-      color: $color
-      macroCategory: $macroCategory
-      categoryId: $categoryId
-      preferredDurations: $preferredDurations
-      isActive: $isActive
-      maxConcurrentAppointments: $maxConcurrentAppointments
-      legacyUserId: $legacyUserId
-    ) {
+  mutation UpdateOperator($id: ID!, $input: UpdateOperatorInput!) {
+    updateOperator(id: $id, input: $input) {
       id
       name
       surname
@@ -91,7 +44,7 @@ export const UPDATE_OPERATOR = gql`
         macroCategory
       }
       preferredDurations
-      legacyUserId
+      userId
       maxConcurrentAppointments
       isActive
       createdAt

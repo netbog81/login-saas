@@ -36,6 +36,7 @@ export interface Operator {
   categoryId?: string;
   category?: OperatorCategory;
   preferredDurations?: number[];
+  userId?: number;
   legacyUserId?: number;
   maxConcurrentAppointments: number;
   isActive: boolean;
@@ -166,19 +167,6 @@ export interface DailyAvailability {
 }
 
 // Input Types
-export interface CreateOperatorCategoryInput {
-  macroCategory: OperatorMacroCategory;
-  name: string;
-  description?: string;
-}
-
-export interface UpdateOperatorCategoryInput {
-  name?: string;
-  description?: string;
-  macroCategory?: OperatorMacroCategory;
-  isActive?: boolean;
-}
-
 export interface CreateOperatorInput {
   name: string;
   surname?: string;
@@ -189,6 +177,7 @@ export interface CreateOperatorInput {
   categoryId?: string;
   preferredDurations?: number[];
   maxConcurrentAppointments?: number;
+  userId?: number;
   legacyUserId?: number;
 }
 
@@ -201,9 +190,22 @@ export interface UpdateOperatorInput {
   macroCategory?: OperatorMacroCategory;
   categoryId?: string;
   preferredDurations?: number[];
-  isActive?: boolean;
   maxConcurrentAppointments?: number;
-  legacyUserId?: number;
+  isActive?: boolean;
+  userId?: number;
+}
+
+export interface CreateOperatorCategoryInput {
+  macroCategory: OperatorMacroCategory;
+  name: string;
+  description?: string;
+}
+
+export interface UpdateOperatorCategoryInput {
+  name?: string;
+  description?: string;
+  macroCategory?: OperatorMacroCategory;
+  isActive?: boolean;
 }
 
 export interface CreateServiceInput {

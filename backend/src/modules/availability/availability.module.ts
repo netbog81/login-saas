@@ -24,6 +24,7 @@ import { AppointmentInstrument } from './entities/appointment-instrument.entity'
 
 // Services
 import { AvailabilityService } from './services/availability.service';
+import { OperatorService as OperatorBusinessService } from './services/operator.service';
 import { OperatorServiceService } from './services/operator-service.service';
 import { OperatorCategoryService } from './services/operator-category.service';
 import { InstrumentCategoryService } from './services/instrument-category.service';
@@ -80,6 +81,7 @@ import { AvailabilityExceptionResolver } from './resolvers/availability-exceptio
   providers: [
     // Services
     AvailabilityService,
+    OperatorBusinessService,
     OperatorServiceService,
     OperatorCategoryService,
     InstrumentCategoryService,
@@ -110,6 +112,7 @@ import { AvailabilityExceptionResolver } from './resolvers/availability-exceptio
   ],
   exports: [
     AvailabilityService,
+    OperatorBusinessService,
     OperatorServiceService,
     OperatorCategoryService,
     InstrumentCategoryService,

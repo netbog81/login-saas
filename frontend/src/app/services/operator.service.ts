@@ -12,6 +12,7 @@ import {
   GET_OPERATORS,
   GET_OPERATOR,
   GET_OPERATOR_AVAILABILITY,
+  CHECK_DUPLICATE_OPERATOR,
 } from '../graphql/operations/operator.queries';
 import {
   CREATE_OPERATOR,
@@ -59,26 +60,10 @@ export class OperatorService {
    * Crea un nuovo operatore
    */
   createOperator(input: CreateOperatorInput): Observable<Operator> {
-    const variables = {
-      name: input.name,
-      surname: input.surname,
-      email: input.email,
-      phone: input.phone,
-      color: input.color,
-      macroCategory: input.macroCategory,
-      categoryId: input.categoryId,
-      preferredDurations: input.preferredDurations,
-      maxConcurrentAppointments:
-        input.maxConcurrentAppointments !== undefined
-          ? input.maxConcurrentAppointments
-          : 1,
-      legacyUserId: input.legacyUserId,
-    };
-
     return this.apollo
       .mutate<{ createOperator: Operator }>({
         mutation: CREATE_OPERATOR,
-        variables,
+        variables: { input },
         refetchQueries: [{ query: GET_OPERATORS }],
         awaitRefetchQueries: true,
       })
@@ -102,7 +87,7 @@ export class OperatorService {
     return this.apollo
       .mutate<{ updateOperator: Operator }>({
         mutation: UPDATE_OPERATOR,
-        variables: { id, ...input },
+        variables: { id, input },
         refetchQueries: [
           { query: GET_OPERATORS },
           { query: GET_OPERATOR, variables: { id } },
@@ -170,6 +155,21 @@ export class OperatorService {
       })
       .valueChanges.pipe(
         map((result) => (result.data?.operatorAvailability || []) as DailyAvailability[])
+      );
+  }
+
+  /**
+   * Controlla se esistono operatori con nome simile (per warning duplicati)
+   */
+  checkDuplicateOperator(name: string, surname?: string): Observable<Operator[]> {
+    return this.apollo
+      .query<{ checkDuplicateOperator: any[] }>({
+        query: CHECK_DUPLICATE_OPERATOR,
+        variables: { name, surname },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(
+        map((result) => (result.data?.checkDuplicateOperator || []) as Operator[])
       );
   }
 }

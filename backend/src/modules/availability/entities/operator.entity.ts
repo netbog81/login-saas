@@ -61,6 +61,10 @@ export class Operator {
   @Column({ type: 'int', nullable: true })
   legacyUserId?: number;
 
+  @Field(() => Int, { nullable: true })
+  @Column({ type: 'int', nullable: true })
+  userId?: number;
+
   @Field(() => Int)
   @Column({ default: 1 })
   maxConcurrentAppointments: number;

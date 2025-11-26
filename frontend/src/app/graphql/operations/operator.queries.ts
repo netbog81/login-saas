@@ -1,5 +1,21 @@
 import { gql } from '@apollo/client/core';
 
+export const CHECK_DUPLICATE_OPERATOR = gql`
+  query CheckDuplicateOperator($name: String!, $surname: String) {
+    checkDuplicateOperator(name: $name, surname: $surname) {
+      id
+      name
+      surname
+      email
+      macroCategory
+      category {
+        id
+        name
+      }
+    }
+  }
+`;
+
 export const GET_OPERATORS = gql`
   query GetOperators(
     $macroCategory: OperatorMacroCategory

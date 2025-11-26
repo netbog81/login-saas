@@ -133,6 +133,20 @@ input CreateAvailabilityTemplateInput {
   validUntil: String
 }
 
+input CreateOperatorInput {
+  categoryId: String
+  color: String
+  email: String
+  legacyUserId: Int
+  macroCategory: OperatorMacroCategory!
+  maxConcurrentAppointments: Int
+  name: String!
+  phone: String
+  preferredDurations: [Int!]
+  surname: String
+  userId: Int
+}
+
 input CreatePatternGroupInput {
   description: String
   name: String!
@@ -288,7 +302,7 @@ type Mutation {
   createGymSchedule(dayOfWeek: Int!, endTime: String!, gymRoomId: ID!, operatorId: ID!, startTime: String!, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   createInstrument(brand: String, categoryId: ID!, color: String, model: String, name: String!, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
-  createOperator(categoryId: ID, color: String, email: String, legacyUserId: Int, macroCategory: OperatorMacroCategory! = PHYSIOTHERAPIST, maxConcurrentAppointments: Int! = 1, name: String!, phone: String, preferredDurations: [Int!], surname: String): Operator!
+  createOperator(input: CreateOperatorInput!): Operator!
   createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
   createRoom(capacity: Int, color: String, name: String!): Room!
@@ -326,7 +340,7 @@ type Mutation {
   updateGymSchedule(dayOfWeek: Int, endTime: String, id: ID!, isCurrent: Boolean, operatorId: ID, startTime: String, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   updateInstrumentCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): InstrumentCategory!
-  updateOperator(categoryId: ID, color: String, email: String, id: ID!, isActive: Boolean, legacyUserId: Int, macroCategory: OperatorMacroCategory, maxConcurrentAppointments: Int, name: String, phone: String, preferredDurations: [Int!], surname: String): Operator!
+  updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   updatePatternGroup(description: String, id: ID!, name: String, patternDuration: Int, patterns: [PatternInput!]): PatternGroup!
@@ -358,6 +372,7 @@ type Operator {
   surname: String
   templateAssignments: [TemplateAssignment!]
   updatedAt: DateTime!
+  userId: Int
 }
 
 type OperatorCategory {
@@ -424,6 +439,7 @@ type Query {
   availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!
   availableInstrumentsByCategory(categoryId: ID!): [Instrument!]!
   availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
+  checkDuplicateOperator(name: String!, surname: String): [Operator!]!
   checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
   currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
   groupExceptions: [GroupException!]!
@@ -532,4 +548,18 @@ type TemplatePattern {
   patternGroupId: ID!
   startTime: String!
   updatedAt: DateTime!
+}
+
+input UpdateOperatorInput {
+  categoryId: String
+  color: String
+  email: String
+  isActive: Boolean
+  macroCategory: OperatorMacroCategory
+  maxConcurrentAppointments: Int
+  name: String
+  phone: String
+  preferredDurations: [Int!]
+  surname: String
+  userId: Int
 }
