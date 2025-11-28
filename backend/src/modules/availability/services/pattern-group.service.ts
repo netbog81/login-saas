@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PatternGroup } from '../entities/pattern-group.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
+import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
+import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
 
 @Injectable()
 export class PatternGroupService {
@@ -12,6 +14,8 @@ export class PatternGroupService {
     private patternGroupRepo: Repository<PatternGroup>,
     @InjectRepository(TemplatePattern)
     private patternRepo: Repository<TemplatePattern>,
+    @InjectRepository(TemplateAssignment)
+    private assignmentRepo: Repository<TemplateAssignment>,
   ) {}
 
   async findAll(): Promise<PatternGroup[]> {
@@ -71,7 +75,7 @@ export class PatternGroupService {
 
   async update(
     id: string,
-    input: Partial<CreatePatternGroupInput>
+    input: UpdatePatternGroupInput
   ): Promise<PatternGroup> {
     const group = await this.findOne(id);
 
@@ -116,6 +120,24 @@ export class PatternGroupService {
   }
 
   async delete(id: string): Promise<boolean> {
+    // Check if pattern group exists
+    const group = await this.patternGroupRepo.findOne({ where: { id } });
+    if (!group) {
+      throw new NotFoundException(`Pattern group with ID ${id} not found`);
+    }
+
+    // Check if pattern group has active assignments
+    const assignmentCount = await this.assignmentRepo.count({
+      where: { patternGroupId: id, isCurrent: true }
+    });
+
+    if (assignmentCount > 0) {
+      throw new ConflictException(
+        `Cannot delete pattern group: it is currently assigned to ${assignmentCount} operator(s). ` +
+        `Please remove the assignments first.`
+      );
+    }
+
     const result = await this.patternGroupRepo.delete(id);
     return result.affected ? result.affected > 0 : false;
   }

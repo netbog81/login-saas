@@ -81,7 +81,7 @@ export const GET_SERVICE_OPERATORS = gql`
         name
         surname
         email
-        operatorType
+        macroCategory
       }
     }
   }

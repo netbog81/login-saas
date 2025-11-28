@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, combineLatest, interval, switchMap, takeWhile } from 'rxjs';
-import { Operator } from '../graphql/types';
 import {
+  Operator,
   Service,
   AvailabilityTemplate,
   AvailabilityException,

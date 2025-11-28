@@ -12,9 +12,10 @@ export class AssignTemplateToOperatorInput {
   @IsUUID()
   operatorId: string;
 
-  @Field()
+  @Field(() => ID)
   @IsNotEmpty()
-  templateName: string; // Nome del pattern template da assegnare
+  @IsUUID()
+  patternGroupId: string; // ID del PatternGroup da assegnare
 
   @Field()
   @IsNotEmpty()

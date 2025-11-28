@@ -293,14 +293,14 @@ export class AvailabilityService {
       throw new NotFoundException('Operator not found');
     }
 
-    // Find pattern group by name
+    // Find pattern group by ID
     const patternGroup = await this.patternGroupRepo.findOne({
-      where: { name: input.templateName },
+      where: { id: input.patternGroupId },
       relations: ['patterns']
     });
 
     if (!patternGroup) {
-      throw new NotFoundException(`Pattern group "${input.templateName}" not found`);
+      throw new NotFoundException(`Pattern group with ID "${input.patternGroupId}" not found`);
     }
 
     // Deactivate current assignments for this operator
@@ -328,7 +328,13 @@ export class AvailabilityService {
 
     await this.rebuildCache(input.operatorId, input.validFrom, cacheEndDate);
 
-    return [saved];
+    // Reload with relations for GraphQL response
+    const savedWithRelations = await this.assignmentRepo.findOne({
+      where: { id: saved.id },
+      relations: ['operator', 'patternGroup', 'patternGroup.patterns']
+    });
+
+    return [savedWithRelations!];
   }
 
   /**

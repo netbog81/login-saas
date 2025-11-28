@@ -87,3 +87,151 @@ export const GET_ALL_TEMPLATE_PATTERNS = gql`
     }
   }
 `;
+
+export const GET_TEMPLATE_ASSIGNMENTS = gql`
+  query GetTemplateAssignments($operatorId: ID, $onlyCurrent: Boolean) {
+    templateAssignments(operatorId: $operatorId, onlyCurrent: $onlyCurrent) {
+      id
+      operatorId
+      patternGroupId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+      operator {
+        id
+        name
+        surname
+      }
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        isActive
+        patterns {
+          id
+          name
+          description
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+    }
+  }
+`;
+
+export const GET_TEMPLATE_ASSIGNMENT = gql`
+  query GetTemplateAssignment($id: ID!) {
+    templateAssignment(id: $id) {
+      id
+      operatorId
+      patternGroupId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+      operator {
+        id
+        name
+        surname
+      }
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        isActive
+        patterns {
+          id
+          name
+          description
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+    }
+  }
+`;
+
+export const GET_TEMPLATE_ASSIGNMENTS_BY_OPERATOR = gql`
+  query GetTemplateAssignmentsByOperator($operatorId: ID!, $onlyCurrent: Boolean) {
+    templateAssignmentsByOperator(operatorId: $operatorId, onlyCurrent: $onlyCurrent) {
+      id
+      operatorId
+      patternGroupId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+      operator {
+        id
+        name
+        surname
+      }
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        isActive
+        patterns {
+          id
+          name
+          description
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+    }
+  }
+`;
+
+export const GET_CURRENT_TEMPLATE_ASSIGNMENTS = gql`
+  query GetCurrentTemplateAssignments($operatorId: ID!, $date: String) {
+    currentTemplateAssignments(operatorId: $operatorId, date: $date) {
+      id
+      operatorId
+      patternGroupId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+      operator {
+        id
+        name
+        surname
+      }
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        isActive
+        patterns {
+          id
+          name
+          description
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+    }
+  }
+`;

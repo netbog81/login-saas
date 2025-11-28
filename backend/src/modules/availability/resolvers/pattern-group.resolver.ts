@@ -1,7 +1,8 @@
-import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { PatternGroup } from '../entities/pattern-group.entity';
 import { PatternGroupService } from '../services/pattern-group.service';
-import { CreatePatternGroupInput, PatternInput } from '../dto/create-pattern-group.input';
+import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
+import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
 
 @Resolver(() => PatternGroup)
 export class PatternGroupResolver {
@@ -29,17 +30,9 @@ export class PatternGroupResolver {
   @Mutation(() => PatternGroup, { name: 'updatePatternGroup' })
   async updatePatternGroup(
     @Args('id', { type: () => ID }) id: string,
-    @Args('name', { nullable: true }) name?: string,
-    @Args('description', { nullable: true }) description?: string,
-    @Args('patternDuration', { type: () => Int, nullable: true }) patternDuration?: number,
-    @Args('patterns', { type: () => [PatternInput], nullable: true }) patterns?: PatternInput[],
+    @Args('input') input: UpdatePatternGroupInput,
   ): Promise<PatternGroup> {
-    return this.patternGroupService.update(id, {
-      ...(name !== undefined && { name }),
-      ...(description !== undefined && { description }),
-      ...(patternDuration !== undefined && { patternDuration }),
-      ...(patterns !== undefined && { patterns }),
-    });
+    return this.patternGroupService.update(id, input);
   }
 
   @Mutation(() => Boolean, { name: 'deletePatternGroup' })

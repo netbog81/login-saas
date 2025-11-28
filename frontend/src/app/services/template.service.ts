@@ -6,6 +6,10 @@ import {
   GET_ALL_TEMPLATES,
   GET_ALL_TEMPLATE_PATTERNS,
   GET_ALL_PATTERN_GROUPS,
+  GET_TEMPLATE_ASSIGNMENTS,
+  GET_TEMPLATE_ASSIGNMENT,
+  GET_TEMPLATE_ASSIGNMENTS_BY_OPERATOR,
+  GET_CURRENT_TEMPLATE_ASSIGNMENTS,
 } from '../graphql/operations/template.queries';
 import {
   CREATE_AVAILABILITY_TEMPLATE,
@@ -19,21 +23,26 @@ import {
   CREATE_PATTERN_GROUP,
   UPDATE_PATTERN_GROUP,
   DELETE_PATTERN_GROUP,
+  UPDATE_TEMPLATE_ASSIGNMENT,
+  DEACTIVATE_TEMPLATE_ASSIGNMENT,
+  DELETE_TEMPLATE_ASSIGNMENT,
+  DEACTIVATE_ALL_TEMPLATE_ASSIGNMENTS_FOR_OPERATOR,
 } from '../graphql/operations/template.mutations';
 import {
   AvailabilityTemplate,
   CreateAvailabilityTemplateInput,
   CreateTemplatePatternInput,
-  TemplatePattern as BackendTemplatePattern,
-  TemplateAssignment as BackendTemplateAssignment,
   AssignTemplateToOperatorInput,
 } from '../graphql/generated/types';
 import {
+  BackendTemplatePattern,
+  TemplateAssignment,
+  PatternGroup,
   TemplatePattern,
   TimeSlot,
   DaySchedule,
   WeekSchedule,
-} from '../graphql/ui-types';
+} from '../graphql/types';
 
 @Injectable({
   providedIn: 'root',
@@ -91,7 +100,8 @@ export class TemplateService {
                 validUntil: undefined,
                 createdAt: p.createdAt,
                 updatedAt: p.updatedAt,
-              });
+                patternGroupId: group.id, // Include pattern group ID for updates
+              } as any);
             });
           });
 
@@ -472,5 +482,197 @@ export class TemplateService {
     });
 
     return grouped;
+  }
+
+  // ==================== Template Assignment Methods ====================
+
+  /**
+   * Get all template assignments with optional filters
+   */
+  getTemplateAssignments(
+    operatorId?: string,
+    onlyCurrent: boolean = true
+  ): Observable<TemplateAssignment[]> {
+    return this.apollo
+      .query<{ templateAssignments: any[] }>({
+        query: GET_TEMPLATE_ASSIGNMENTS,
+        variables: { operatorId, onlyCurrent },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(map((result) => result.data?.templateAssignments || []));
+  }
+
+  /**
+   * Get a specific template assignment by ID
+   */
+  getTemplateAssignment(id: string): Observable<TemplateAssignment> {
+    return this.apollo
+      .query<{ templateAssignment: any }>({
+        query: GET_TEMPLATE_ASSIGNMENT,
+        variables: { id },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(map((result) => result.data!.templateAssignment));
+  }
+
+  /**
+   * Get template assignments for a specific operator
+   */
+  getTemplateAssignmentsByOperator(
+    operatorId: string,
+    onlyCurrent: boolean = true
+  ): Observable<TemplateAssignment[]> {
+    return this.apollo
+      .query<{ templateAssignmentsByOperator: any[] }>({
+        query: GET_TEMPLATE_ASSIGNMENTS_BY_OPERATOR,
+        variables: { operatorId, onlyCurrent },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(map((result) => result.data?.templateAssignmentsByOperator || []));
+  }
+
+  /**
+   * Get current template assignments for an operator at a specific date
+   */
+  getCurrentTemplateAssignments(
+    operatorId: string,
+    date?: string
+  ): Observable<TemplateAssignment[]> {
+    return this.apollo
+      .query<{ currentTemplateAssignments: any[] }>({
+        query: GET_CURRENT_TEMPLATE_ASSIGNMENTS,
+        variables: { operatorId, date },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(map((result) => result.data?.currentTemplateAssignments || []));
+  }
+
+  /**
+   * Assign a pattern group to an operator
+   */
+  assignTemplateToOperator(
+    input: AssignTemplateToOperatorInput
+  ): Observable<TemplateAssignment> {
+    return this.apollo
+      .mutate<{ assignTemplateToOperator: any }>({
+        mutation: ASSIGN_TEMPLATE_TO_OPERATOR,
+        variables: { input },
+        refetchQueries: [
+          { query: GET_TEMPLATE_ASSIGNMENTS },
+          { query: GET_TEMPLATE_ASSIGNMENTS_BY_OPERATOR, variables: { operatorId: input.operatorId } },
+        ],
+        awaitRefetchQueries: true,
+      })
+      .pipe(map((result) => result.data!.assignTemplateToOperator));
+  }
+
+  /**
+   * Update a template assignment
+   */
+  updateTemplateAssignment(
+    id: string,
+    updates: {
+      validFrom?: string;
+      validUntil?: string;
+      patternStartDate?: string;
+      isCurrent?: boolean;
+    }
+  ): Observable<TemplateAssignment> {
+    return this.apollo
+      .mutate<{ updateTemplateAssignment: any }>({
+        mutation: UPDATE_TEMPLATE_ASSIGNMENT,
+        variables: { id, ...updates },
+        refetchQueries: [
+          { query: GET_TEMPLATE_ASSIGNMENTS },
+          { query: GET_TEMPLATE_ASSIGNMENT, variables: { id } },
+        ],
+        awaitRefetchQueries: true,
+      })
+      .pipe(map((result) => result.data!.updateTemplateAssignment));
+  }
+
+  /**
+   * Deactivate a template assignment (set isCurrent to false)
+   */
+  deactivateTemplateAssignment(id: string): Observable<TemplateAssignment> {
+    return this.apollo
+      .mutate<{ deactivateTemplateAssignment: any }>({
+        mutation: DEACTIVATE_TEMPLATE_ASSIGNMENT,
+        variables: { id },
+        refetchQueries: [
+          { query: GET_TEMPLATE_ASSIGNMENTS },
+          { query: GET_TEMPLATE_ASSIGNMENT, variables: { id } },
+        ],
+        awaitRefetchQueries: true,
+      })
+      .pipe(map((result) => result.data!.deactivateTemplateAssignment));
+  }
+
+  /**
+   * Delete a template assignment
+   */
+  deleteTemplateAssignment(id: string): Observable<boolean> {
+    return this.apollo
+      .mutate<{ deleteTemplateAssignment: boolean }>({
+        mutation: DELETE_TEMPLATE_ASSIGNMENT,
+        variables: { id },
+        refetchQueries: [{ query: GET_TEMPLATE_ASSIGNMENTS }],
+        awaitRefetchQueries: true,
+      })
+      .pipe(map((result) => result.data!.deleteTemplateAssignment));
+  }
+
+  /**
+   * Deactivate all template assignments for a specific operator
+   */
+  deactivateAllTemplateAssignmentsForOperator(
+    operatorId: string
+  ): Observable<boolean> {
+    return this.apollo
+      .mutate<{ deactivateAllTemplateAssignmentsForOperator: boolean }>({
+        mutation: DEACTIVATE_ALL_TEMPLATE_ASSIGNMENTS_FOR_OPERATOR,
+        variables: { operatorId },
+        refetchQueries: [
+          { query: GET_TEMPLATE_ASSIGNMENTS },
+          { query: GET_TEMPLATE_ASSIGNMENTS_BY_OPERATOR, variables: { operatorId } },
+        ],
+        awaitRefetchQueries: true,
+      })
+      .pipe(
+        map((result) => result.data!.deactivateAllTemplateAssignmentsForOperator)
+      );
+  }
+
+  /**
+   * Get all pattern groups (templates that can be assigned)
+   */
+  getAllPatternGroups(): Observable<PatternGroup[]> {
+    return this.apollo
+      .query<{ patternGroups: any[] }>({
+        query: GET_ALL_PATTERN_GROUPS,
+        fetchPolicy: 'network-only',
+      })
+      .pipe(map((result) => result.data?.patternGroups || []));
+  }
+
+  /**
+   * Update a pattern group (template)
+   * Updates the metadata and replaces all patterns
+   */
+  updatePatternGroup(
+    patternGroupId: string,
+    pattern: TemplatePattern
+  ): Observable<PatternGroup> {
+    // Convert UI pattern to backend input format
+    const input = this.convertPatternToPatternGroupInput(pattern);
+
+    return this.apollo
+      .mutate<{ updatePatternGroup: PatternGroup }>({
+        mutation: UPDATE_PATTERN_GROUP,
+        variables: { id: patternGroupId, input },
+        refetchQueries: [{ query: GET_ALL_PATTERN_GROUPS }],
+        awaitRefetchQueries: true,
+      })
+      .pipe(map((result) => result.data!.updatePatternGroup));
   }
 }

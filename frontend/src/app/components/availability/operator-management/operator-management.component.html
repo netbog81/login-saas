@@ -38,7 +38,7 @@
           <p *ngIf="operator.preferredDurations && operator.preferredDurations.length > 0">
             <strong>Durate preferite:</strong> {{ operator.preferredDurations.join(', ') }} min
           </p>
-          <p *ngIf="operator.macroCategory === OperatorMacroCategory.GYM_INSTRUCTOR">
+          <p *ngIf="operator.macroCategory === OperatorMacroCategory.GymInstructor">
             <strong>Max simultanei:</strong> {{ operator.maxConcurrentAppointments }}
           </p>
           <p>
@@ -114,9 +114,9 @@
             <select [(ngModel)]="editingOperator.macroCategory"
                     (change)="onMacroCategoryChange()"
                     class="form-control">
-              <option [value]="OperatorMacroCategory.PHYSIOTHERAPIST">{{ getMacroCategoryLabel(OperatorMacroCategory.PHYSIOTHERAPIST) }}</option>
-              <option [value]="OperatorMacroCategory.DOCTOR">{{ getMacroCategoryLabel(OperatorMacroCategory.DOCTOR) }}</option>
-              <option [value]="OperatorMacroCategory.GYM_INSTRUCTOR">{{ getMacroCategoryLabel(OperatorMacroCategory.GYM_INSTRUCTOR) }}</option>
+              <option [value]="OperatorMacroCategory.Physiotherapist">{{ getMacroCategoryLabel(OperatorMacroCategory.Physiotherapist) }}</option>
+              <option [value]="OperatorMacroCategory.Doctor">{{ getMacroCategoryLabel(OperatorMacroCategory.Doctor) }}</option>
+              <option [value]="OperatorMacroCategory.GymInstructor">{{ getMacroCategoryLabel(OperatorMacroCategory.GymInstructor) }}</option>
             </select>
           </div>
 

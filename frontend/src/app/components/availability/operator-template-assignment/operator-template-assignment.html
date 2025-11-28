@@ -49,10 +49,10 @@
         </div>
 
         <!-- Template Details -->
-        <div class="card-details" *ngIf="item.pattern">
+        <div class="card-details" *ngIf="item.assignment">
           <div class="detail-row">
             <span class="label">Template:</span>
-            <span class="value">{{ item.pattern.name }}</span>
+            <span class="value">{{ item.patternGroupName }}</span>
           </div>
           <div class="detail-row">
             <span class="label">Validità:</span>
@@ -66,7 +66,7 @@
         </div>
 
         <!-- No Template Message -->
-        <div class="no-template" *ngIf="!item.pattern">
+        <div class="no-template" *ngIf="!item.assignment">
           <p>Nessun template assegnato</p>
         </div>
 
@@ -75,14 +75,14 @@
           <button
             class="btn btn-sm btn-primary"
             (click)="openAssignModal(item)"
-            [title]="item.pattern ? 'Modifica assegnazione' : 'Assegna template'"
+            [title]="item.assignment ? 'Modifica assegnazione' : 'Assegna template'"
           >
-            {{ item.pattern ? 'Modifica' : 'Assegna' }}
+            {{ item.assignment ? 'Modifica' : 'Assegna' }}
           </button>
           <button
             class="btn btn-sm btn-danger"
             (click)="removeAssignment(item)"
-            *ngIf="item.pattern"
+            *ngIf="item.assignment"
             title="Rimuovi assegnazione"
           >
             Rimuovi
@@ -111,17 +111,30 @@
 
       <div class="modal-body">
         <div class="form-group">
-          <label for="templateSelect">Template *</label>
+          <label for="patternGroupSelect">Pattern Group *</label>
           <select
-            id="templateSelect"
+            id="patternGroupSelect"
             class="form-control"
-            [(ngModel)]="selectedTemplateName"
+            [(ngModel)]="selectedPatternGroupId"
           >
-            <option value="">Seleziona un template...</option>
-            <option *ngFor="let option of templateOptions" [value]="option.name">
-              {{ option.name }}
+            <option value="">Seleziona un pattern group...</option>
+            <option *ngFor="let pg of patternGroups" [value]="pg.id">
+              {{ pg.name }} ({{ pg.patternDuration }} giorni)
             </option>
           </select>
+        </div>
+
+        <div class="form-group">
+          <label for="patternStartDate">Data Inizio Pattern *</label>
+          <input
+            id="patternStartDate"
+            type="date"
+            class="form-control"
+            [(ngModel)]="assignPatternStartDate"
+          />
+          <small class="form-text">
+            Data di riferimento per l'inizio del ciclo del pattern
+          </small>
         </div>
 
         <div class="form-row">
@@ -146,9 +159,9 @@
           </div>
         </div>
 
-        <div class="info-message" *ngIf="currentOperator?.pattern">
+        <div class="info-message" *ngIf="currentOperator?.assignment">
           <strong>Nota:</strong> Questa operazione sostituirà l'assegnazione
-          esistente del template "{{ currentOperator?.pattern?.name }}".
+          esistente del pattern group "{{ currentOperator?.patternGroupName }}".
         </div>
       </div>
 

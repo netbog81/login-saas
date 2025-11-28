@@ -1,16 +1,17 @@
 // Enums
 export enum OperatorMacroCategory {
-  DOCTOR = 'DOCTOR',
-  PHYSIOTHERAPIST = 'PHYSIOTHERAPIST',
-  GYM_INSTRUCTOR = 'GYM_INSTRUCTOR',
+  Doctor = 'DOCTOR',
+  Physiotherapist = 'PHYSIOTHERAPIST',
+  GymInstructor = 'GYM_INSTRUCTOR',
 }
 
 export enum ExceptionType {
-  UNAVAILABLE = 'unavailable',
-  MODIFIED = 'modified',
-  HOLIDAY = 'holiday',
-  SICK = 'sick',
-  VACATION = 'vacation',
+  Unavailable = 'UNAVAILABLE',
+  Modified = 'MODIFIED',
+  Holiday = 'HOLIDAY',
+  Sick = 'SICK',
+  Vacation = 'VACATION',
+  PersonalLeave = 'PERSONAL_LEAVE',
 }
 
 // Entity Types
@@ -309,6 +310,10 @@ export interface AssignTemplateToOperatorInput {
 }
 
 // New entity types for separated pattern/assignment structure
+
+/**
+ * TemplatePattern - Individual day pattern within a PatternGroup
+ */
 export interface BackendTemplatePattern {
   id: string;
   name: string;
@@ -321,10 +326,27 @@ export interface BackendTemplatePattern {
   updatedAt: Date;
 }
 
-export interface BackendTemplateAssignment {
+/**
+ * PatternGroup - Collection of patterns forming a repeating schedule
+ */
+export interface PatternGroup {
+  id: string;
+  name: string;
+  description?: string;
+  patternDuration: number; // e.g., 7 for weekly, 14 for biweekly
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  patterns: BackendTemplatePattern[];
+}
+
+/**
+ * TemplateAssignment - Assignment of a PatternGroup to an Operator
+ */
+export interface TemplateAssignment {
   id: string;
   operatorId: string;
-  patternId: string;
+  patternGroupId: string;
   patternStartDate: Date;
   validFrom: Date;
   validUntil?: Date;
@@ -332,7 +354,14 @@ export interface BackendTemplateAssignment {
   isCurrent: boolean;
   createdAt: Date;
   updatedAt: Date;
+  operator?: Operator;
+  patternGroup?: PatternGroup;
 }
+
+/**
+ * @deprecated Use TemplateAssignment instead
+ */
+export interface BackendTemplateAssignment extends TemplateAssignment {}
 
 // UI-specific types for Template Builder
 
@@ -397,15 +426,18 @@ export const DAY_COLORS = {
 export const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 
 // Utility function to get readable macro category name
-export function getMacroCategoryLabel(macroCategory: OperatorMacroCategory): string {
+export function getMacroCategoryLabel(macroCategory: OperatorMacroCategory | string): string {
   switch (macroCategory) {
-    case OperatorMacroCategory.DOCTOR:
+    case OperatorMacroCategory.Doctor:
+    case 'DOCTOR':
       return 'Medico';
-    case OperatorMacroCategory.PHYSIOTHERAPIST:
+    case OperatorMacroCategory.Physiotherapist:
+    case 'PHYSIOTHERAPIST':
       return 'Fisioterapista';
-    case OperatorMacroCategory.GYM_INSTRUCTOR:
+    case OperatorMacroCategory.GymInstructor:
+    case 'GYM_INSTRUCTOR':
       return 'Istruttore Palestra';
     default:
-      return macroCategory;
+      return String(macroCategory);
   }
 }

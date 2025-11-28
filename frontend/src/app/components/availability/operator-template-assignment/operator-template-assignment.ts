@@ -3,25 +3,18 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OperatorService } from '../../../services/operator.service';
 import { TemplateService } from '../../../services/template.service';
-import { Operator, OperatorMacroCategory, getMacroCategoryLabel } from '../../../graphql/types';
-import { TemplatePattern } from '../../../graphql/ui-types';
-import { AvailabilityTemplate } from '../../../graphql/generated/types';
-import { catchError, finalize, forkJoin, map, of } from 'rxjs';
+import { Operator, OperatorMacroCategory } from '../../../graphql/generated/types';
+import { TemplateAssignment, PatternGroup, getMacroCategoryLabel } from '../../../graphql/types';
+import { catchError, finalize, forkJoin, of, switchMap } from 'rxjs';
 
-interface OperatorWithTemplate {
+interface OperatorWithAssignment {
   operator: Operator;
-  templates: Partial<AvailabilityTemplate>[];
-  pattern: TemplatePattern | null;
+  assignment: TemplateAssignment | null;
   status: 'active' | 'expiring' | 'none';
   validFrom?: string;
   validUntil?: string;
   daysUntilExpiration?: number;
-}
-
-interface TemplateOption {
-  name: string;
-  templates: Partial<AvailabilityTemplate>[];
-  pattern: TemplatePattern | null;
+  patternGroupName?: string;
 }
 
 @Component({
@@ -31,19 +24,20 @@ interface TemplateOption {
   styleUrl: './operator-template-assignment.scss',
 })
 export class OperatorTemplateAssignment implements OnInit {
-  operators: OperatorWithTemplate[] = [];
-  filteredOperators: OperatorWithTemplate[] = [];
-  templateOptions: TemplateOption[] = [];
+  operators: OperatorWithAssignment[] = [];
+  filteredOperators: OperatorWithAssignment[] = [];
+  patternGroups: PatternGroup[] = [];
 
   loading = false;
   error: string | null = null;
 
   searchTerm = '';
-  selectedOperator: OperatorWithTemplate | null = null;
+  selectedOperator: OperatorWithAssignment | null = null;
 
   showAssignModal = false;
-  currentOperator: OperatorWithTemplate | null = null;
-  selectedTemplateName: string = '';
+  currentOperator: OperatorWithAssignment | null = null;
+  selectedPatternGroupId: string = '';
+  assignPatternStartDate: string = '';
   assignValidFrom: string = '';
   assignValidUntil: string = '';
 
@@ -53,6 +47,7 @@ export class OperatorTemplateAssignment implements OnInit {
   ) {}
 
   ngOnInit() {
+    console.log('OperatorTemplateAssignment component initialized');
     this.loadData();
   }
 
@@ -62,82 +57,97 @@ export class OperatorTemplateAssignment implements OnInit {
 
     forkJoin({
       operators: this.operatorService.getOperators(),
-      templates: this.templateService.getAllTemplates(),
+      patternGroups: this.templateService.getAllPatternGroups(),
+      assignments: this.templateService.getTemplateAssignments(undefined, true), // Get all current assignments
     })
       .pipe(
         catchError((err) => {
+          console.error('Errore nel caricamento dei dati:', err);
           this.error = 'Errore nel caricamento dei dati: ' + err.message;
-          return of({ operators: [], templates: [] });
+          return of({ operators: [], patternGroups: [], assignments: [] });
         }),
         finalize(() => (this.loading = false))
       )
       .subscribe((data) => {
-        this.buildOperatorList(data.operators, data.templates);
-        this.buildTemplateOptions(data.templates);
+        console.log('Data loaded:', data);
+        this.patternGroups = data.patternGroups;
+        this.buildOperatorList(data.operators, data.assignments);
         this.applyFilters();
+        console.log('Operators:', this.operators.length, 'Filtered:', this.filteredOperators.length);
       });
   }
 
   private buildOperatorList(
     operators: Operator[],
-    allTemplates: Partial<AvailabilityTemplate>[]
+    assignments: TemplateAssignment[]
   ) {
     this.operators = operators.map((operator) => {
-      // Find templates for this operator (current ones)
-      const operatorTemplates = allTemplates.filter(
-        (t) => t.operatorId === operator.id && t.isCurrent
-      );
+      // Find current assignment for this operator
+      const assignment = assignments.find(
+        (a) => a.operatorId === operator.id && a.isCurrent
+      ) || null;
 
-      let pattern: TemplatePattern | null = null;
       let status: 'active' | 'expiring' | 'none' = 'none';
       let validFrom: string | undefined;
       let validUntil: string | undefined;
       let daysUntilExpiration: number | undefined;
+      let patternGroupName: string | undefined;
 
-      if (operatorTemplates.length > 0) {
-        pattern = this.templateService.convertBackendToPattern(operatorTemplates);
+      if (assignment) {
+        const fromDate = assignment.validFrom instanceof Date
+          ? assignment.validFrom
+          : new Date(assignment.validFrom);
+        validFrom = fromDate.toISOString().split('T')[0];
 
-        if (pattern) {
-          validFrom = pattern.validFrom;
-          validUntil = pattern.validUntil;
+        if (assignment.validUntil) {
+          const untilDate = assignment.validUntil instanceof Date
+            ? assignment.validUntil
+            : new Date(assignment.validUntil);
+          validUntil = untilDate.toISOString().split('T')[0];
+        }
 
-          // Calculate status
-          const now = new Date();
-          const fromDate = new Date(pattern.validFrom!);
+        patternGroupName = assignment.patternGroup?.name;
 
-          if (pattern.validUntil) {
-            const untilDate = new Date(pattern.validUntil);
-            const diffTime = untilDate.getTime() - now.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        // Calculate status
+        const now = new Date();
 
-            daysUntilExpiration = diffDays;
+        if (assignment.validUntil) {
+          const untilDate = assignment.validUntil instanceof Date
+            ? assignment.validUntil
+            : new Date(assignment.validUntil);
+          const diffTime = untilDate.getTime() - now.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-            if (diffDays <= 0) {
-              status = 'none'; // Expired
-            } else if (diffDays <= 15) {
-              status = 'expiring'; // Expiring soon
-            } else {
-              status = 'active'; // Active
-            }
+          daysUntilExpiration = diffDays;
+
+          if (diffDays <= 0) {
+            status = 'none'; // Expired
+          } else if (diffDays <= 15) {
+            status = 'expiring'; // Expiring soon
           } else {
-            // No end date, check if started
-            if (now >= fromDate) {
-              status = 'active';
-            } else {
-              status = 'none'; // Not yet started
-            }
+            status = 'active'; // Active
+          }
+        } else {
+          // No end date, check if started
+          const startDate = assignment.validFrom instanceof Date
+            ? assignment.validFrom
+            : new Date(assignment.validFrom);
+          if (now >= startDate) {
+            status = 'active';
+          } else {
+            status = 'none'; // Not yet started
           }
         }
       }
 
       return {
         operator,
-        templates: operatorTemplates,
-        pattern,
+        assignment,
         status,
         validFrom,
         validUntil,
         daysUntilExpiration,
+        patternGroupName,
       };
     });
 
@@ -146,27 +156,6 @@ export class OperatorTemplateAssignment implements OnInit {
       const statusOrder = { active: 0, expiring: 1, none: 2 };
       return statusOrder[a.status] - statusOrder[b.status];
     });
-  }
-
-  private buildTemplateOptions(allTemplates: Partial<AvailabilityTemplate>[]) {
-    const grouped = this.templateService.groupTemplatesByName(allTemplates);
-    this.templateOptions = [];
-
-    grouped.forEach((templates, name) => {
-      const currentTemplates = templates.filter((t) => t.isCurrent);
-      if (currentTemplates.length === 0) return;
-
-      const pattern = this.templateService.convertBackendToPattern(currentTemplates);
-
-      this.templateOptions.push({
-        name,
-        templates: currentTemplates,
-        pattern,
-      });
-    });
-
-    // Sort by name
-    this.templateOptions.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   applyFilters() {
@@ -186,14 +175,15 @@ export class OperatorTemplateAssignment implements OnInit {
     this.applyFilters();
   }
 
-  selectOperator(operator: OperatorWithTemplate) {
+  selectOperator(operator: OperatorWithAssignment) {
     this.selectedOperator =
       this.selectedOperator === operator ? null : operator;
   }
 
-  openAssignModal(operator: OperatorWithTemplate) {
+  openAssignModal(operator: OperatorWithAssignment) {
     this.currentOperator = operator;
-    this.selectedTemplateName = operator.pattern?.name || '';
+    this.selectedPatternGroupId = operator.assignment?.patternGroupId || '';
+    this.assignPatternStartDate = this.getTodayString();
     this.assignValidFrom = operator.validFrom || this.getTodayString();
     this.assignValidUntil = operator.validUntil || '';
     this.showAssignModal = true;
@@ -205,8 +195,8 @@ export class OperatorTemplateAssignment implements OnInit {
   }
 
   onAssignSave() {
-    if (!this.currentOperator || !this.selectedTemplateName) {
-      alert('Seleziona un template');
+    if (!this.currentOperator || !this.selectedPatternGroupId) {
+      alert('Seleziona un pattern group');
       return;
     }
 
@@ -215,40 +205,46 @@ export class OperatorTemplateAssignment implements OnInit {
       return;
     }
 
-    // Find the selected template
-    const templateOption = this.templateOptions.find(
-      (t) => t.name === this.selectedTemplateName
-    );
-
-    if (!templateOption || !templateOption.pattern) {
-      alert('Template non valido');
+    if (!this.assignPatternStartDate) {
+      alert('Inserisci la data di inizio del pattern');
       return;
     }
-
-    // Update pattern with operator ID and validity dates
-    const pattern: TemplatePattern = {
-      ...templateOption.pattern,
-      operatorId: this.currentOperator.operator.id,
-      validFrom: this.assignValidFrom,
-      validUntil: this.assignValidUntil || undefined,
-    };
 
     this.loading = true;
     this.error = null;
 
-    this.templateService
-      .createTemplateFromPattern(pattern)
+    // If there's an existing assignment, deactivate it first, then create new assignment
+    const deactivateObs$ = this.currentOperator.assignment
+      ? this.templateService.deactivateTemplateAssignment(this.currentOperator.assignment.id).pipe(
+          catchError((err) => {
+            console.error('Errore nella disattivazione:', err);
+            return of(null);
+          })
+        )
+      : of(null);
+
+    deactivateObs$
       .pipe(
-        catchError((err) => {
-          this.error = 'Errore nell\'assegnazione: ' + err.message;
-          return of([]);
-        }),
+        switchMap(() =>
+          this.templateService.assignTemplateToOperator({
+            operatorId: this.currentOperator!.operator.id,
+            patternGroupId: this.selectedPatternGroupId,
+            patternStartDate: this.assignPatternStartDate,
+            validFrom: this.assignValidFrom,
+            validUntil: this.assignValidUntil || undefined,
+          }).pipe(
+            catchError((err) => {
+              this.error = "Errore nell'assegnazione: " + err.message;
+              return of(null);
+            })
+          )
+        ),
         finalize(() => {
           this.loading = false;
         })
       )
-      .subscribe((templates) => {
-        if (templates.length > 0) {
+      .subscribe((assignment) => {
+        if (assignment) {
           this.showAssignModal = false;
           this.currentOperator = null;
           this.loadData(); // Reload to show updated assignments
@@ -259,10 +255,10 @@ export class OperatorTemplateAssignment implements OnInit {
   onAssignCancel() {
     this.showAssignModal = false;
     this.currentOperator = null;
-    this.selectedTemplateName = '';
+    this.selectedPatternGroupId = '';
   }
 
-  removeAssignment(operator: OperatorWithTemplate) {
+  removeAssignment(operator: OperatorWithAssignment) {
     if (
       !confirm(
         `Vuoi rimuovere l'assegnazione del template da ${operator.operator.name}?`
@@ -271,21 +267,28 @@ export class OperatorTemplateAssignment implements OnInit {
       return;
     }
 
+    if (!operator.assignment) {
+      return;
+    }
+
     this.loading = true;
     this.error = null;
 
-    // Delete all templates for this operator
-    const deleteObservables = operator.templates.map((template) =>
-      this.templateService.deleteTemplate(template.id!)
-    );
-
-    Promise.all(deleteObservables.map((obs) => obs.toPromise()))
-      .then(() => {
-        this.loadData();
-      })
-      .catch((err) => {
-        this.error = 'Errore nella rimozione: ' + err.message;
-        this.loading = false;
+    this.templateService
+      .deactivateTemplateAssignment(operator.assignment.id)
+      .pipe(
+        catchError((err) => {
+          this.error = 'Errore nella rimozione: ' + err.message;
+          return of(null);
+        }),
+        finalize(() => {
+          this.loading = false;
+        })
+      )
+      .subscribe((result) => {
+        if (result) {
+          this.loadData();
+        }
       });
   }
 
@@ -322,7 +325,7 @@ export class OperatorTemplateAssignment implements OnInit {
     }
   }
 
-  getValidityLabel(operator: OperatorWithTemplate): string {
+  getValidityLabel(operator: OperatorWithAssignment): string {
     if (!operator.validFrom) return 'N/A';
 
     const from = new Date(operator.validFrom).toLocaleDateString('it-IT');
@@ -333,7 +336,7 @@ export class OperatorTemplateAssignment implements OnInit {
     return `${from} - ${until}`;
   }
 
-  getExpirationWarning(operator: OperatorWithTemplate): string | null {
+  getExpirationWarning(operator: OperatorWithAssignment): string | null {
     if (operator.status === 'expiring' && operator.daysUntilExpiration) {
       return `Scade tra ${operator.daysUntilExpiration} giorn${
         operator.daysUntilExpiration > 1 ? 'i' : 'o'
@@ -342,7 +345,7 @@ export class OperatorTemplateAssignment implements OnInit {
     return null;
   }
 
-  trackByOperatorId(index: number, item: OperatorWithTemplate): string {
+  trackByOperatorId(index: number, item: OperatorWithAssignment): string {
     return item.operator.id;
   }
 

@@ -16,8 +16,8 @@ import {
   Service,
   CreateOperatorInput,
   UpdateOperatorInput,
-  getMacroCategoryLabel,
-} from '../../../graphql/types';
+} from '../../../graphql/generated/types';
+import { getMacroCategoryLabel } from '../../../graphql/types';
 
 @Component({
   selector: 'app-operator-management',
@@ -46,7 +46,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     email: '',
     phone: '',
     color: '#4A90E2',
-    macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+    macroCategory: OperatorMacroCategory.Physiotherapist,
     categoryId: undefined,
     preferredDurations: [],
     maxConcurrentAppointments: 1,
@@ -171,7 +171,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         email: '',
         phone: '',
         color: '#4A90E2',
-        macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+        macroCategory: OperatorMacroCategory.Physiotherapist,
         categoryId: undefined,
         preferredDurations: [],
         maxConcurrentAppointments: 1,
@@ -193,7 +193,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
       email: '',
       phone: '',
       color: '#4A90E2',
-      macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+      macroCategory: OperatorMacroCategory.Physiotherapist,
       categoryId: undefined,
       preferredDurations: [],
       maxConcurrentAppointments: 1,
@@ -283,7 +283,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         color: this.editingOperator.color,
         macroCategory:
           this.editingOperator.macroCategory ||
-          OperatorMacroCategory.PHYSIOTHERAPIST,
+          OperatorMacroCategory.Physiotherapist,
         categoryId: this.editingOperator.categoryId,
         preferredDurations:
           preferredDurations.length > 0 ? preferredDurations : undefined,

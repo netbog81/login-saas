@@ -1,5 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
-import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 import { PatternGroup } from './pattern-group.entity';
 
@@ -25,17 +25,17 @@ export class TemplateAssignment {
   patternGroupId: string;
 
   // Pattern start date for cyclic calculations
-  @Field()
-  @Column('date')
+  @Field(() => GraphQLISODateTime)
+  @Column('timestamp')
   patternStartDate: Date;
 
   // Validity period
-  @Field()
-  @Column('date')
+  @Field(() => GraphQLISODateTime)
+  @Column('timestamp')
   validFrom: Date;
 
-  @Field({ nullable: true })
-  @Column('date', { nullable: true })
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  @Column('timestamp', { nullable: true })
   validUntil?: Date;
 
   // Versioning

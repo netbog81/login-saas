@@ -33,8 +33,8 @@ enum AppointmentType {
 
 input AssignTemplateToOperatorInput {
   operatorId: ID!
+  patternGroupId: ID!
   patternStartDate: String!
-  templateName: String!
   validFrom: String!
   validUntil: String
 }
@@ -343,7 +343,7 @@ type Mutation {
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
-  updatePatternGroup(description: String, id: ID!, name: String, patternDuration: Int, patterns: [PatternInput!]): PatternGroup!
+  updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int): Service!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
@@ -562,4 +562,11 @@ input UpdateOperatorInput {
   preferredDurations: [Int!]
   surname: String
   userId: Int
+}
+
+input UpdatePatternGroupInput {
+  description: String
+  name: String
+  patternDuration: Float
+  patterns: [PatternInput!]
 }

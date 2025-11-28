@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TemplateBuilder } from '../template-builder/template-builder';
 import { TemplateService } from '../../../services/template.service';
-import { TemplatePattern } from '../../../graphql/ui-types';
 import { AvailabilityTemplate } from '../../../graphql/generated/types';
+import { TemplatePattern } from '../../../graphql/types';
 import { catchError, finalize, of } from 'rxjs';
 
 interface TemplateGroup {
@@ -12,6 +12,7 @@ interface TemplateGroup {
   templates: Partial<AvailabilityTemplate>[];
   pattern: TemplatePattern | null;
   operatorCount: number;
+  patternGroupId?: string; // ID of the pattern group for updates
 }
 
 @Component({
@@ -83,6 +84,7 @@ export class TemplateManagement implements OnInit {
         templates: currentTemplates,
         pattern,
         operatorCount: operatorIds.size,
+        patternGroupId: (currentTemplates[0] as any)?.patternGroupId, // Get pattern group ID for updates
       });
     });
 
@@ -230,22 +232,33 @@ export class TemplateManagement implements OnInit {
     this.loading = true;
     this.error = null;
 
-    // In edit mode, we need to delete the old pattern first
+    // In edit mode, update the existing pattern group
     if (this.isEditMode && this.editingGroup) {
-      // Delete all templates in the group
-      const deleteObservables = this.editingGroup.templates.map((template) =>
-        this.templateService.deleteTemplate(template.id!)
-      );
+      const patternGroupId = this.editingGroup.patternGroupId;
+      if (!patternGroupId) {
+        this.error = 'Errore: ID del pattern group non trovato';
+        this.loading = false;
+        return;
+      }
 
-      // Execute all deletions first
-      Promise.all(deleteObservables.map((obs) => obs.toPromise()))
-        .then(() => {
-          // After deletion, create the new pattern
-          this.createPattern(pattern);
-        })
-        .catch((err) => {
-          this.error = 'Errore durante l\'eliminazione del vecchio template: ' + err.message;
-          this.loading = false;
+      this.templateService
+        .updatePatternGroup(patternGroupId, pattern)
+        .pipe(
+          catchError((err) => {
+            const errorMsg = err?.error?.message || err?.message || 'Errore sconosciuto';
+            this.error = 'Errore nell\'aggiornamento: ' + errorMsg;
+            this.loading = false;
+            return of(null);
+          }),
+          finalize(() => {
+            this.loading = false;
+          })
+        )
+        .subscribe((result) => {
+          if (result) {
+            this.showBuilderModal = false;
+            this.loadTemplates(); // Reload templates to show updated data
+          }
         });
     } else {
       // Create mode - just create the new pattern

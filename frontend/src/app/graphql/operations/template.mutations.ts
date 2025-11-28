@@ -109,20 +109,8 @@ export const CREATE_TEMPLATE_PATTERN = gql`
 `;
 
 export const UPDATE_PATTERN_GROUP = gql`
-  mutation UpdatePatternGroup(
-    $id: ID!
-    $name: String
-    $description: String
-    $patternDuration: Int
-    $patterns: [PatternInput!]
-  ) {
-    updatePatternGroup(
-      id: $id
-      name: $name
-      description: $description
-      patternDuration: $patternDuration
-      patterns: $patterns
-    ) {
+  mutation UpdatePatternGroup($id: ID!, $input: UpdatePatternGroupInput!) {
+    updatePatternGroup(id: $id, input: $input) {
       id
       name
       description
@@ -184,7 +172,89 @@ export const ASSIGN_TEMPLATE_TO_OPERATOR = gql`
     assignTemplateToOperator(input: $input) {
       id
       operatorId
-      patternId
+      patternGroupId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+      operator {
+        id
+        name
+        surname
+      }
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        patterns {
+          id
+          name
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+    }
+  }
+`;
+
+export const UPDATE_TEMPLATE_ASSIGNMENT = gql`
+  mutation UpdateTemplateAssignment(
+    $id: ID!
+    $validFrom: String
+    $validUntil: String
+    $patternStartDate: String
+    $isCurrent: Boolean
+  ) {
+    updateTemplateAssignment(
+      id: $id
+      validFrom: $validFrom
+      validUntil: $validUntil
+      patternStartDate: $patternStartDate
+      isCurrent: $isCurrent
+    ) {
+      id
+      operatorId
+      patternGroupId
+      patternStartDate
+      validFrom
+      validUntil
+      version
+      isCurrent
+      createdAt
+      updatedAt
+      operator {
+        id
+        name
+        surname
+      }
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        patterns {
+          id
+          name
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+    }
+  }
+`;
+
+export const DEACTIVATE_TEMPLATE_ASSIGNMENT = gql`
+  mutation DeactivateTemplateAssignment($id: ID!) {
+    deactivateTemplateAssignment(id: $id) {
+      id
+      operatorId
+      patternGroupId
       patternStartDate
       validFrom
       validUntil
@@ -193,5 +263,17 @@ export const ASSIGN_TEMPLATE_TO_OPERATOR = gql`
       createdAt
       updatedAt
     }
+  }
+`;
+
+export const DELETE_TEMPLATE_ASSIGNMENT = gql`
+  mutation DeleteTemplateAssignment($id: ID!) {
+    deleteTemplateAssignment(id: $id)
+  }
+`;
+
+export const DEACTIVATE_ALL_TEMPLATE_ASSIGNMENTS_FOR_OPERATOR = gql`
+  mutation DeactivateAllTemplateAssignmentsForOperator($operatorId: ID!) {
+    deactivateAllTemplateAssignmentsForOperator(operatorId: $operatorId)
   }
 `;

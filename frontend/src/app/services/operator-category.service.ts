@@ -13,6 +13,8 @@ import {
 import {
   OperatorCategory,
   OperatorMacroCategory,
+} from '../graphql/generated/types';
+import {
   CreateOperatorCategoryInput,
   UpdateOperatorCategoryInput,
 } from '../graphql/types';

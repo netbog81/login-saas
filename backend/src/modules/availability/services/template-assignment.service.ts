@@ -17,7 +17,7 @@ export class TemplateAssignmentService {
 
     return this.assignmentRepo.find({
       where,
-      relations: ['operator', 'pattern', 'pattern.template'],
+      relations: ['operator', 'patternGroup', 'patternGroup.patterns'],
       order: { validFrom: 'DESC' },
     });
   }
@@ -25,7 +25,7 @@ export class TemplateAssignmentService {
   async findOne(id: string): Promise<TemplateAssignment> {
     const assignment = await this.assignmentRepo.findOne({
       where: { id },
-      relations: ['operator', 'pattern', 'pattern.template'],
+      relations: ['operator', 'patternGroup', 'patternGroup.patterns'],
     });
 
     if (!assignment) {
@@ -41,7 +41,7 @@ export class TemplateAssignmentService {
 
     return this.assignmentRepo.find({
       where,
-      relations: ['pattern', 'pattern.template'],
+      relations: ['patternGroup', 'patternGroup.patterns'],
       order: { validFrom: 'DESC' },
     });
   }
@@ -49,8 +49,8 @@ export class TemplateAssignmentService {
   async findCurrentByOperator(operatorId: string, date: Date): Promise<TemplateAssignment[]> {
     return this.assignmentRepo
       .createQueryBuilder('assignment')
-      .leftJoinAndSelect('assignment.pattern', 'pattern')
-      .leftJoinAndSelect('pattern.template', 'template')
+      .leftJoinAndSelect('assignment.patternGroup', 'patternGroup')
+      .leftJoinAndSelect('patternGroup.patterns', 'patterns')
       .where('assignment.operatorId = :operatorId', { operatorId })
       .andWhere('assignment.isCurrent = true')
       .andWhere('assignment.validFrom <= :date', { date })

@@ -5,6 +5,8 @@ import { OperatorCategoryService } from '../../../services/operator-category.ser
 import {
   OperatorCategory,
   OperatorMacroCategory,
+} from '../../../graphql/generated/types';
+import {
   CreateOperatorCategoryInput,
   UpdateOperatorCategoryInput,
   getMacroCategoryLabel,
@@ -34,7 +36,7 @@ export class OperatorCategoryManagementComponent implements OnInit {
   editingCategory: Partial<CreateOperatorCategoryInput> & {
     isActive?: boolean;
   } = {
-    macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+    macroCategory: OperatorMacroCategory.Physiotherapist,
     name: '',
     description: '',
   };
@@ -88,14 +90,14 @@ export class OperatorCategoryManagementComponent implements OnInit {
       this.editingCategory = {
         macroCategory: category.macroCategory,
         name: category.name,
-        description: category.description,
+        description: category.description ?? undefined,
         isActive: category.isActive,
       };
     } else {
       this.isEditMode = false;
       this.editingCategoryId = null;
       this.editingCategory = {
-        macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+        macroCategory: OperatorMacroCategory.Physiotherapist,
         name: '',
         description: '',
         isActive: true,
@@ -110,7 +112,7 @@ export class OperatorCategoryManagementComponent implements OnInit {
     this.isEditMode = false;
     this.editingCategoryId = null;
     this.editingCategory = {
-      macroCategory: OperatorMacroCategory.PHYSIOTHERAPIST,
+      macroCategory: OperatorMacroCategory.Physiotherapist,
       name: '',
       description: '',
     };

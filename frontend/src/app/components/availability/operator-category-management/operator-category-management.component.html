@@ -16,17 +16,17 @@
     <label>Filtra per Macro Categoria:</label>
     <select [(ngModel)]="filterMacroCategory" (change)="onFilterChange()" class="form-control">
       <option [value]="null">Tutte le categorie</option>
-      <option [value]="OperatorMacroCategory.PHYSIOTHERAPIST">
-        {{ getMacroCategoryLabel(OperatorMacroCategory.PHYSIOTHERAPIST) }}
-        ({{ getCategoryCount(OperatorMacroCategory.PHYSIOTHERAPIST) }})
+      <option [value]="OperatorMacroCategory.Physiotherapist">
+        {{ getMacroCategoryLabel(OperatorMacroCategory.Physiotherapist) }}
+        ({{ getCategoryCount(OperatorMacroCategory.Physiotherapist) }})
       </option>
-      <option [value]="OperatorMacroCategory.DOCTOR">
-        {{ getMacroCategoryLabel(OperatorMacroCategory.DOCTOR) }}
-        ({{ getCategoryCount(OperatorMacroCategory.DOCTOR) }})
+      <option [value]="OperatorMacroCategory.Doctor">
+        {{ getMacroCategoryLabel(OperatorMacroCategory.Doctor) }}
+        ({{ getCategoryCount(OperatorMacroCategory.Doctor) }})
       </option>
-      <option [value]="OperatorMacroCategory.GYM_INSTRUCTOR">
-        {{ getMacroCategoryLabel(OperatorMacroCategory.GYM_INSTRUCTOR) }}
-        ({{ getCategoryCount(OperatorMacroCategory.GYM_INSTRUCTOR) }})
+      <option [value]="OperatorMacroCategory.GymInstructor">
+        {{ getMacroCategoryLabel(OperatorMacroCategory.GymInstructor) }}
+        ({{ getCategoryCount(OperatorMacroCategory.GymInstructor) }})
       </option>
     </select>
   </div>
@@ -106,14 +106,14 @@
             class="form-control"
             [disabled]="isEditMode"
           >
-            <option [value]="OperatorMacroCategory.PHYSIOTHERAPIST">
-              {{ getMacroCategoryLabel(OperatorMacroCategory.PHYSIOTHERAPIST) }}
+            <option [value]="OperatorMacroCategory.Physiotherapist">
+              {{ getMacroCategoryLabel(OperatorMacroCategory.Physiotherapist) }}
             </option>
-            <option [value]="OperatorMacroCategory.DOCTOR">
-              {{ getMacroCategoryLabel(OperatorMacroCategory.DOCTOR) }}
+            <option [value]="OperatorMacroCategory.Doctor">
+              {{ getMacroCategoryLabel(OperatorMacroCategory.Doctor) }}
             </option>
-            <option [value]="OperatorMacroCategory.GYM_INSTRUCTOR">
-              {{ getMacroCategoryLabel(OperatorMacroCategory.GYM_INSTRUCTOR) }}
+            <option [value]="OperatorMacroCategory.GymInstructor">
+              {{ getMacroCategoryLabel(OperatorMacroCategory.GymInstructor) }}
             </option>
           </select>
           <small class="form-text" *ngIf="isEditMode">

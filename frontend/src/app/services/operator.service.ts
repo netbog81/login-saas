@@ -7,7 +7,7 @@ import {
   CreateOperatorInput,
   UpdateOperatorInput,
   DailyAvailability,
-} from '../graphql/types';
+} from '../graphql/generated/types';
 import {
   GET_OPERATORS,
   GET_OPERATOR,
@@ -35,12 +35,12 @@ export class OperatorService {
     onlyActive?: boolean
   ): Observable<Operator[]> {
     return this.apollo
-      .watchQuery<{ operators: any[] }>({
+      .query<{ operators: any[] }>({
         query: GET_OPERATORS,
         variables: { macroCategory, categoryId, onlyActive },
         fetchPolicy: 'network-only',
       })
-      .valueChanges.pipe(map((result) => (result.data?.operators || []) as Operator[]));
+      .pipe(map((result) => (result.data?.operators || []) as Operator[]));
   }
 
   /**
