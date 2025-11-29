@@ -21,6 +21,8 @@ import { GymSchedule } from './entities/gym-schedule.entity';
 import { Room } from './entities/room.entity';
 import { ServiceInstrument } from './entities/service-instrument.entity';
 import { AppointmentInstrument } from './entities/appointment-instrument.entity';
+import { AppointmentLog } from './entities/appointment-log.entity';
+import { Patient } from '../../entities/patient.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -38,6 +40,7 @@ import { HolidayService } from './services/holiday.service';
 import { AvailabilityExceptionService } from './services/availability-exception.service';
 import { PhysiotherapistAvailabilityService } from './services/physiotherapist-availability.service';
 import { GymAvailabilityService } from './services/gym-availability.service';
+import { AppointmentConflictService } from './services/appointment-conflict.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
@@ -53,6 +56,7 @@ import { RoomResolver } from './resolvers/room.resolver';
 import { TemplateAssignmentResolver } from './resolvers/template-assignment.resolver';
 import { PatternGroupResolver } from './resolvers/pattern-group.resolver';
 import { AvailabilityExceptionResolver } from './resolvers/availability-exception.resolver';
+import { AppointmentConflictResolver } from './resolvers/appointment-conflict.resolver';
 
 @Module({
   imports: [
@@ -76,6 +80,8 @@ import { AvailabilityExceptionResolver } from './resolvers/availability-exceptio
       Room,
       ServiceInstrument,
       AppointmentInstrument,
+      AppointmentLog,
+      Patient,
     ]),
   ],
   providers: [
@@ -95,6 +101,7 @@ import { AvailabilityExceptionResolver } from './resolvers/availability-exceptio
     AvailabilityExceptionService,
     PhysiotherapistAvailabilityService,
     GymAvailabilityService,
+    AppointmentConflictService,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -109,6 +116,7 @@ import { AvailabilityExceptionResolver } from './resolvers/availability-exceptio
     TemplateAssignmentResolver,
     PatternGroupResolver,
     AvailabilityExceptionResolver,
+    AppointmentConflictResolver,
   ],
   exports: [
     AvailabilityService,
@@ -126,6 +134,7 @@ import { AvailabilityExceptionResolver } from './resolvers/availability-exceptio
     AvailabilityExceptionService,
     PhysiotherapistAvailabilityService,
     GymAvailabilityService,
+    AppointmentConflictService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })

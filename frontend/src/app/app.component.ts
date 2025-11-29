@@ -31,6 +31,12 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
             routerLinkActive="active">
             Gestione Disponibilità
           </a>
+          <a
+            class="nav-item"
+            routerLink="/conflicts"
+            routerLinkActive="active">
+            Conflitti
+          </a>
         </div>
       </nav>
 

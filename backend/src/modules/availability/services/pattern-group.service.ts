@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PatternGroup } from '../entities/pattern-group.entity';
@@ -6,6 +6,15 @@ import { TemplatePattern } from '../entities/template-pattern.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
 import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
+import { AppointmentConflictService, ConflictCheckResult } from './appointment-conflict.service';
+
+/**
+ * Risultato dell'update con informazioni sui conflitti
+ */
+export interface PatternGroupUpdateResult {
+  patternGroup: PatternGroup;
+  conflicts: ConflictCheckResult;
+}
 
 @Injectable()
 export class PatternGroupService {
@@ -16,6 +25,8 @@ export class PatternGroupService {
     private patternRepo: Repository<TemplatePattern>,
     @InjectRepository(TemplateAssignment)
     private assignmentRepo: Repository<TemplateAssignment>,
+    @Inject(forwardRef(() => AppointmentConflictService))
+    private conflictService: AppointmentConflictService,
   ) {}
 
   async findAll(): Promise<PatternGroup[]> {
@@ -73,10 +84,27 @@ export class PatternGroupService {
     return this.findOne(savedGroup.id);
   }
 
+  /**
+   * Aggiorna un pattern group
+   * Verifica automaticamente i conflitti con appuntamenti esistenti
+   */
   async update(
     id: string,
     input: UpdatePatternGroupInput
   ): Promise<PatternGroup> {
+    const result = await this.updateWithConflictCheck(id, input);
+    return result.patternGroup;
+  }
+
+  /**
+   * Aggiorna un pattern group e ritorna info sui conflitti
+   * Usato dal resolver per comunicare i conflitti al frontend
+   */
+  async updateWithConflictCheck(
+    id: string,
+    input: UpdatePatternGroupInput,
+    markConflicts: boolean = true
+  ): Promise<PatternGroupUpdateResult> {
     const group = await this.findOne(id);
 
     if (input.name !== undefined) group.name = input.name;
@@ -116,7 +144,17 @@ export class PatternGroupService {
       await this.patternRepo.save(patterns);
     }
 
-    return this.findOne(id);
+    // Verifica conflitti con appuntamenti esistenti
+    const conflicts = await this.conflictService.checkConflictsOnTemplateChange(id);
+
+    // Se ci sono conflitti e markConflicts è true, marca gli appuntamenti
+    if (conflicts.hasConflicts && markConflicts) {
+      const appointmentIds = conflicts.conflicts.map(c => c.appointment.id);
+      await this.conflictService.markTemplateConflicts(appointmentIds);
+    }
+
+    const patternGroup = await this.findOne(id);
+    return { patternGroup, conflicts };
   }
 
   async delete(id: string): Promise<boolean> {

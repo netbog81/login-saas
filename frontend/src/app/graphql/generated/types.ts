@@ -14,6 +14,7 @@ export type Scalars = {
   Float: { input: number; output: number; }
   DateTime: { input: any; output: any; }
   JSON: { input: any; output: any; }
+  JSONObject: { input: any; output: any; }
 };
 
 export type AppointmentInstrument = {
@@ -30,7 +31,7 @@ export type AppointmentInstrument = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
-/** Status of the appointment */
+/** Status of the appointment (deprecated) */
 export enum AppointmentStatus {
   Cancelled = 'CANCELLED',
   Completed = 'COMPLETED',
@@ -58,15 +59,20 @@ export type AvailabilityAppointment = {
   __typename?: 'AvailabilityAppointment';
   appointmentDate: Scalars['DateTime']['output'];
   appointmentType: AppointmentType;
+  bookingStatus: BookingStatus;
   cancellationReason?: Maybe<Scalars['String']['output']>;
   clientEmail?: Maybe<Scalars['String']['output']>;
   clientName: Scalars['String']['output'];
   clientPhone?: Maybe<Scalars['String']['output']>;
+  closedAt?: Maybe<Scalars['DateTime']['output']>;
+  conflictDetectedAt?: Maybe<Scalars['DateTime']['output']>;
+  conflictReason?: Maybe<ConflictReason>;
   createdAt: Scalars['DateTime']['output'];
   createdBy?: Maybe<Scalars['ID']['output']>;
   endTime: Scalars['String']['output'];
   gymRoom?: Maybe<GymRoom>;
   gymRoomId?: Maybe<Scalars['ID']['output']>;
+  hasConflict: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   instrumentOrderMatters: Scalars['Boolean']['output'];
   instruments?: Maybe<Array<AppointmentInstrument>>;
@@ -74,11 +80,17 @@ export type AvailabilityAppointment = {
   notes?: Maybe<Scalars['String']['output']>;
   operator?: Maybe<Operator>;
   operatorId?: Maybe<Scalars['ID']['output']>;
+  operatorNotes?: Maybe<Scalars['String']['output']>;
   participantCount: Scalars['Int']['output'];
+  patientId?: Maybe<Scalars['Int']['output']>;
   service?: Maybe<Service>;
   serviceId?: Maybe<Scalars['ID']['output']>;
   startTime: Scalars['String']['output'];
-  status: AppointmentStatus;
+  /** @deprecated Use bookingStatus instead */
+  status?: Maybe<AppointmentStatus>;
+  treatmentCompletedAt?: Maybe<Scalars['DateTime']['output']>;
+  treatmentStartedAt?: Maybe<Scalars['DateTime']['output']>;
+  treatmentStatus?: Maybe<TreatmentStatus>;
   updatedAt: Scalars['DateTime']['output'];
 };
 
@@ -131,12 +143,42 @@ export type AvailabilityTemplate = {
   version: Scalars['Int']['output'];
 };
 
+/** Booking status of the appointment */
+export enum BookingStatus {
+  Cancelled = 'CANCELLED',
+  Confirmed = 'CONFIRMED',
+  NoShow = 'NO_SHOW',
+  Scheduled = 'SCHEDULED'
+}
+
 export type CheckPhysiotherapistAvailabilityInput = {
   customInstrumentSlots?: InputMaybe<Array<InstrumentSlotInput>>;
   date: Scalars['String']['input'];
   durationMinutes?: InputMaybe<Scalars['Int']['input']>;
   operatorId: Scalars['ID']['input'];
   serviceId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+/** Reason for availability conflict */
+export enum ConflictReason {
+  OperatorSick = 'OPERATOR_SICK',
+  OperatorUnavailable = 'OPERATOR_UNAVAILABLE',
+  OperatorVacation = 'OPERATOR_VACATION',
+  TemplateChange = 'TEMPLATE_CHANGE'
+}
+
+/** Action to resolve appointment conflict */
+export enum ConflictResolutionAction {
+  Cancel = 'CANCEL',
+  Keep = 'KEEP',
+  Reschedule = 'RESCHEDULE'
+}
+
+export type ConflictStatsOutput = {
+  __typename?: 'ConflictStatsOutput';
+  byOperator: Array<OperatorConflictCount>;
+  byReason: Scalars['JSONObject']['output'];
+  totalConflicts: Scalars['Int']['output'];
 };
 
 export type CreateAvailabilityTemplateInput = {
@@ -198,6 +240,17 @@ export enum ExceptionType {
   Unavailable = 'UNAVAILABLE',
   Vacation = 'VACATION'
 }
+
+export type GeneralSettings = {
+  __typename?: 'GeneralSettings';
+  category?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  key: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  value: Scalars['JSONObject']['output'];
+  valueType: Scalars['String']['output'];
+};
 
 export type GroupException = {
   __typename?: 'GroupException';
@@ -334,6 +387,7 @@ export type Mutation = {
   deleteAvailabilityTemplate: Scalars['Boolean']['output'];
   deleteException: Scalars['Boolean']['output'];
   deleteExceptionsByDateRange: Scalars['Int']['output'];
+  deleteGeneralSetting: Scalars['Boolean']['output'];
   deleteGroupException: Scalars['Boolean']['output'];
   deleteGymRoom: Scalars['Boolean']['output'];
   deleteGymSchedule: Scalars['Boolean']['output'];
@@ -349,12 +403,16 @@ export type Mutation = {
   deleteTemplatePattern: Scalars['Boolean']['output'];
   generateHolidaysForOperator: Scalars['Int']['output'];
   generateHolidaysForYear: Scalars['Int']['output'];
+  initializeDefaultSettings: Scalars['Boolean']['output'];
   rebuildAvailabilityCache: Scalars['Boolean']['output'];
   removeServiceFromOperator: Scalars['Boolean']['output'];
+  resolveAppointmentConflict: AvailabilityAppointment;
+  resolveMultipleConflicts: Array<AvailabilityAppointment>;
   setInstrumentStatus: Instrument;
   setPatternGroupActive: PatternGroup;
   updateAvailabilityTemplate: AvailabilityTemplate;
   updateException: AvailabilityException;
+  updateGeneralSetting: GeneralSettings;
   updateGymRoom: GymRoom;
   updateGymSchedule: GymSchedule;
   updateInstrument: Instrument;
@@ -363,10 +421,12 @@ export type Mutation = {
   updateOperatorCategory: OperatorCategory;
   updateOperatorService: OperatorService;
   updatePatternGroup: PatternGroup;
+  updatePatternGroupWithConflicts: PatternGroupUpdateOutput;
   updateRoom: Room;
   updateService: Service;
   updateTemplateAssignment: TemplateAssignment;
   updateTemplatePattern: TemplatePattern;
+  upsertGeneralSetting: GeneralSettings;
 };
 
 
@@ -543,6 +603,11 @@ export type MutationDeleteExceptionsByDateRangeArgs = {
 };
 
 
+export type MutationDeleteGeneralSettingArgs = {
+  key: Scalars['String']['input'];
+};
+
+
 export type MutationDeleteGroupExceptionArgs = {
   id: Scalars['ID']['input'];
 };
@@ -632,6 +697,25 @@ export type MutationRemoveServiceFromOperatorArgs = {
 };
 
 
+export type MutationResolveAppointmentConflictArgs = {
+  action: ConflictResolutionAction;
+  appointmentId: Scalars['ID']['input'];
+  newDate?: InputMaybe<Scalars['String']['input']>;
+  newEndTime?: InputMaybe<Scalars['String']['input']>;
+  newStartTime?: InputMaybe<Scalars['String']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  resolvedBy: Scalars['ID']['input'];
+};
+
+
+export type MutationResolveMultipleConflictsArgs = {
+  action: ConflictResolutionAction;
+  appointmentIds: Array<Scalars['ID']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  resolvedBy: Scalars['ID']['input'];
+};
+
+
 export type MutationSetInstrumentStatusArgs = {
   id: Scalars['ID']['input'];
   status: InstrumentStatus;
@@ -656,6 +740,12 @@ export type MutationUpdateExceptionArgs = {
   id: Scalars['ID']['input'];
   reason?: InputMaybe<Scalars['String']['input']>;
   startTime?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationUpdateGeneralSettingArgs = {
+  key: Scalars['String']['input'];
+  value: Scalars['JSONObject']['input'];
 };
 
 
@@ -733,6 +823,13 @@ export type MutationUpdatePatternGroupArgs = {
 };
 
 
+export type MutationUpdatePatternGroupWithConflictsArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdatePatternGroupInput;
+  markConflicts?: Scalars['Boolean']['input'];
+};
+
+
 export type MutationUpdateRoomArgs = {
   capacity?: InputMaybe<Scalars['Int']['input']>;
   color?: InputMaybe<Scalars['String']['input']>;
@@ -770,6 +867,15 @@ export type MutationUpdateTemplateAssignmentArgs = {
 export type MutationUpdateTemplatePatternArgs = {
   id: Scalars['ID']['input'];
   input: CreateTemplatePatternInput;
+};
+
+
+export type MutationUpsertGeneralSettingArgs = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  key: Scalars['String']['input'];
+  value: Scalars['JSONObject']['input'];
+  valueType?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type Operator = {
@@ -810,6 +916,13 @@ export type OperatorCategory = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type OperatorConflictCount = {
+  __typename?: 'OperatorConflictCount';
+  count: Scalars['Int']['output'];
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+};
+
 /** Macro category defining what an operator can do (use instruments, manage gym, etc.) */
 export enum OperatorMacroCategory {
   Doctor = 'DOCTOR',
@@ -837,6 +950,14 @@ export type PatternGroup = {
   patternDuration: Scalars['Int']['output'];
   patterns?: Maybe<Array<TemplatePattern>>;
   updatedAt: Scalars['DateTime']['output'];
+};
+
+export type PatternGroupUpdateOutput = {
+  __typename?: 'PatternGroupUpdateOutput';
+  conflictedAppointments: Array<AvailabilityAppointment>;
+  conflictsCount: Scalars['Int']['output'];
+  hasConflicts: Scalars['Boolean']['output'];
+  patternGroup: PatternGroup;
 };
 
 export type PatternInput = {
@@ -867,7 +988,13 @@ export type Query = {
   availableSlots: Array<AvailabilitySlot>;
   checkDuplicateOperator: Array<Operator>;
   checkSlotAvailability: Scalars['Boolean']['output'];
+  conflictStats: ConflictStatsOutput;
+  conflictedAppointments: Array<AvailabilityAppointment>;
+  conflictedAppointmentsCount: Scalars['Int']['output'];
   currentTemplateAssignments: Array<TemplateAssignment>;
+  generalSetting?: Maybe<GeneralSettings>;
+  generalSettings: Array<GeneralSettings>;
+  generalSettingsByCategory: Array<GeneralSettings>;
   groupExceptions: Array<GroupException>;
   gymAvailableSlots: Array<GymSlotOutput>;
   gymOperatorAtTime?: Maybe<GymSchedule>;
@@ -948,9 +1075,27 @@ export type QueryCheckSlotAvailabilityArgs = {
 };
 
 
+export type QueryConflictedAppointmentsArgs = {
+  conflictReason?: InputMaybe<ConflictReason>;
+  dateFrom?: InputMaybe<Scalars['String']['input']>;
+  dateTo?: InputMaybe<Scalars['String']['input']>;
+  operatorId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QueryCurrentTemplateAssignmentsArgs = {
   date?: InputMaybe<Scalars['String']['input']>;
   operatorId: Scalars['ID']['input'];
+};
+
+
+export type QueryGeneralSettingArgs = {
+  key: Scalars['String']['input'];
+};
+
+
+export type QueryGeneralSettingsByCategoryArgs = {
+  category: Scalars['String']['input'];
 };
 
 
@@ -1196,6 +1341,14 @@ export type TemplatePattern = {
   startTime: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
 };
+
+/** Treatment workflow status */
+export enum TreatmentStatus {
+  Closed = 'CLOSED',
+  InProgress = 'IN_PROGRESS',
+  OperatorCompleted = 'OPERATOR_COMPLETED',
+  Waiting = 'WAITING'
+}
 
 export type UpdateOperatorInput = {
   categoryId?: InputMaybe<Scalars['String']['input']>;

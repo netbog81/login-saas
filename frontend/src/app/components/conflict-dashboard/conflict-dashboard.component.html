@@ -1,0 +1,246 @@
+<div class="conflict-dashboard">
+  <!-- Header with Statistics -->
+  <div class="dashboard-header">
+    <h1>Dashboard Conflitti</h1>
+    <p class="subtitle">Gestione appuntamenti in conflitto con la disponibilità</p>
+
+    <div class="statistics">
+      <div class="stat-card highlight">
+        <div class="stat-value">{{ stats?.totalConflicts || 0 }}</div>
+        <div class="stat-label">Conflitti Totali</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-value">{{ getStatByReason('template_change') }}</div>
+        <div class="stat-label">Cambio Template</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-value">{{ getStatByReason('operator_sick') }}</div>
+        <div class="stat-label">Malattia</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-value">{{ getStatByReason('operator_vacation') }}</div>
+        <div class="stat-label">Ferie</div>
+      </div>
+
+      <div class="stat-card">
+        <button class="refresh-btn" (click)="refreshData()" [disabled]="loading" title="Aggiorna dati">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" [class.spinning]="loading">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Aggiorna
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-container">
+    <div class="filters">
+      <div class="filter-group">
+        <label>Operatore</label>
+        <select [(ngModel)]="selectedOperatorId">
+          <option value="">Tutti gli operatori</option>
+          <option *ngFor="let op of operators" [value]="op.id">
+            {{ op.name }} {{ op.surname }}
+          </option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Da</label>
+        <input type="date" [(ngModel)]="dateFrom">
+      </div>
+
+      <div class="filter-group">
+        <label>A</label>
+        <input type="date" [(ngModel)]="dateTo">
+      </div>
+
+      <div class="filter-group">
+        <label>Motivo</label>
+        <select [(ngModel)]="selectedReason">
+          <option value="">Tutti i motivi</option>
+          <option [value]="ConflictReason.TemplateChange">Cambio Template</option>
+          <option [value]="ConflictReason.OperatorSick">Malattia</option>
+          <option [value]="ConflictReason.OperatorVacation">Ferie</option>
+          <option [value]="ConflictReason.OperatorUnavailable">Non Disponibile</option>
+        </select>
+      </div>
+
+      <div class="filter-actions">
+        <button class="btn-primary" (click)="applyFilters()">Filtra</button>
+        <button class="btn-secondary" (click)="clearFilters()">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Message -->
+  <div class="error-banner" *ngIf="error">
+    <span>{{ error }}</span>
+    <button (click)="error = null">×</button>
+  </div>
+
+  <!-- Batch Actions -->
+  <div class="batch-actions" *ngIf="selectedConflicts.size > 0">
+    <span class="selected-count">{{ selectedConflicts.size }} selezionati</span>
+    <button class="btn-keep" (click)="resolveSelectedConflicts(ConflictResolutionAction.Keep)">
+      Mantieni Selezionati
+    </button>
+    <button class="btn-cancel" (click)="resolveSelectedConflicts(ConflictResolutionAction.Cancel)">
+      Cancella Selezionati
+    </button>
+  </div>
+
+  <!-- Conflicts Table -->
+  <div class="conflicts-container">
+    <div class="conflicts-table" *ngIf="!loading && conflicts.length > 0">
+      <table>
+        <thead>
+          <tr>
+            <th class="checkbox-col">
+              <input type="checkbox"
+                     [checked]="selectedConflicts.size === conflicts.length && conflicts.length > 0"
+                     (change)="toggleSelectAll()">
+            </th>
+            <th>Data</th>
+            <th>Orario</th>
+            <th>Cliente</th>
+            <th>Operatore</th>
+            <th>Servizio</th>
+            <th>Motivo Conflitto</th>
+            <th>Rilevato il</th>
+            <th>Azioni</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let conflict of conflicts" [class.selected]="isSelected(conflict.id)">
+            <td class="checkbox-col">
+              <input type="checkbox"
+                     [checked]="isSelected(conflict.id)"
+                     (change)="toggleConflictSelection(conflict.id)">
+            </td>
+            <td>{{ formatDate(conflict.appointmentDate) }}</td>
+            <td>{{ conflict.startTime }} - {{ conflict.endTime }}</td>
+            <td>
+              <div class="client-info">
+                <strong>{{ conflict.clientName }}</strong>
+                <span *ngIf="conflict.clientPhone">{{ conflict.clientPhone }}</span>
+              </div>
+            </td>
+            <td>
+              <div class="operator-badge" [style.background-color]="getOperatorColor(conflict)">
+                {{ getOperatorName(conflict) }}
+              </div>
+            </td>
+            <td>{{ conflict.service?.name || '-' }}</td>
+            <td>
+              <span class="conflict-reason" [attr.data-reason]="conflict.conflictReason">
+                {{ getConflictReasonLabel(conflict.conflictReason) }}
+              </span>
+            </td>
+            <td>{{ formatDate(conflict.conflictDetectedAt) }}</td>
+            <td class="actions-col">
+              <button class="btn-action btn-resolve" (click)="openResolveDialog(conflict)" title="Risolvi conflitto">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" *ngIf="loading">
+      <div class="spinner"></div>
+      <p>Caricamento conflitti...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="!loading && conflicts.length === 0">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#28a745">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <h3>Nessun conflitto trovato</h3>
+      <p>Non ci sono appuntamenti in conflitto con i criteri selezionati.</p>
+    </div>
+  </div>
+
+  <!-- Resolve Dialog -->
+  <div class="dialog-overlay" *ngIf="showResolveDialog" (click)="closeResolveDialog()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <div class="dialog-header">
+        <h2>Risolvi Conflitto</h2>
+        <button class="close-btn" (click)="closeResolveDialog()">×</button>
+      </div>
+
+      <div class="dialog-content" *ngIf="conflictToResolve">
+        <div class="conflict-info">
+          <div class="info-row">
+            <span class="label">Cliente:</span>
+            <span class="value">{{ conflictToResolve.clientName }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Data:</span>
+            <span class="value">{{ formatDate(conflictToResolve.appointmentDate) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Orario:</span>
+            <span class="value">{{ conflictToResolve.startTime }} - {{ conflictToResolve.endTime }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Operatore:</span>
+            <span class="value">{{ getOperatorName(conflictToResolve) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Motivo:</span>
+            <span class="value conflict-reason" [attr.data-reason]="conflictToResolve.conflictReason">
+              {{ getConflictReasonLabel(conflictToResolve.conflictReason) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="reschedule-section">
+          <h3>Riprogramma (opzionale)</h3>
+          <div class="reschedule-fields">
+            <div class="field">
+              <label>Nuova Data</label>
+              <input type="date" [(ngModel)]="newDate">
+            </div>
+            <div class="field">
+              <label>Inizio</label>
+              <input type="time" [(ngModel)]="newStartTime">
+            </div>
+            <div class="field">
+              <label>Fine</label>
+              <input type="time" [(ngModel)]="newEndTime">
+            </div>
+          </div>
+        </div>
+
+        <div class="notes-section">
+          <label>Note (opzionale)</label>
+          <textarea [(ngModel)]="resolutionNotes" placeholder="Aggiungi note sulla risoluzione..."></textarea>
+        </div>
+      </div>
+
+      <div class="dialog-actions">
+        <button class="btn-keep" (click)="resolveConflict(ConflictResolutionAction.Keep)">
+          Mantieni Appuntamento
+        </button>
+        <button class="btn-reschedule" (click)="resolveConflict(ConflictResolutionAction.Reschedule)"
+                [disabled]="!newDate || !newStartTime || !newEndTime">
+          Riprogramma
+        </button>
+        <button class="btn-cancel" (click)="resolveConflict(ConflictResolutionAction.Cancel)">
+          Cancella Appuntamento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

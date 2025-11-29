@@ -1,8 +1,27 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ObjectType, Field, Int } from '@nestjs/graphql';
 import { PatternGroup } from '../entities/pattern-group.entity';
 import { PatternGroupService } from '../services/pattern-group.service';
 import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
 import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
+import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+
+/**
+ * Output type per update con info conflitti
+ */
+@ObjectType()
+export class PatternGroupUpdateOutput {
+  @Field(() => PatternGroup)
+  patternGroup: PatternGroup;
+
+  @Field()
+  hasConflicts: boolean;
+
+  @Field(() => Int)
+  conflictsCount: number;
+
+  @Field(() => [AvailabilityAppointment])
+  conflictedAppointments: AvailabilityAppointment[];
+}
 
 @Resolver(() => PatternGroup)
 export class PatternGroupResolver {
@@ -33,6 +52,25 @@ export class PatternGroupResolver {
     @Args('input') input: UpdatePatternGroupInput,
   ): Promise<PatternGroup> {
     return this.patternGroupService.update(id, input);
+  }
+
+  /**
+   * Aggiorna pattern group e ritorna anche info sui conflitti
+   * Usato quando si vuole sapere quanti appuntamenti sono impattati
+   */
+  @Mutation(() => PatternGroupUpdateOutput, { name: 'updatePatternGroupWithConflicts' })
+  async updatePatternGroupWithConflicts(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: UpdatePatternGroupInput,
+    @Args('markConflicts', { defaultValue: true }) markConflicts: boolean,
+  ): Promise<PatternGroupUpdateOutput> {
+    const result = await this.patternGroupService.updateWithConflictCheck(id, input, markConflicts);
+    return {
+      patternGroup: result.patternGroup,
+      hasConflicts: result.conflicts.hasConflicts,
+      conflictsCount: result.conflicts.totalCount,
+      conflictedAppointments: result.conflicts.conflicts.map(c => c.appointment),
+    };
   }
 
   @Mutation(() => Boolean, { name: 'deletePatternGroup' })

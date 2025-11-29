@@ -15,6 +15,8 @@ import { Appointment } from './entities/appointment.entity';
 import { Availability } from './entities/availability.entity';
 // New availability management module
 import { AvailabilityModule } from './modules/availability/availability.module';
+// Settings module
+import { SettingsModule } from './modules/settings/settings.module';
 // Import new entities for availability management
 import { Operator } from './modules/availability/entities/operator.entity';
 import { OperatorCategory } from './modules/availability/entities/operator-category.entity';
@@ -35,6 +37,8 @@ import { GymSchedule } from './modules/availability/entities/gym-schedule.entity
 import { Room } from './modules/availability/entities/room.entity';
 import { ServiceInstrument } from './modules/availability/entities/service-instrument.entity';
 import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
+import { AppointmentLog } from './modules/availability/entities/appointment-log.entity';
+import { GeneralSettings } from './modules/settings/entities/general-settings.entity';
 
 @Module({
   imports: [
@@ -73,6 +77,8 @@ import { AppointmentInstrument } from './modules/availability/entities/appointme
         Room,
         ServiceInstrument,
         AppointmentInstrument,
+        AppointmentLog,
+        GeneralSettings,
       ],
       autoLoadEntities: false, // Disabled to prevent conflicts
       synchronize: false, // Disabled to prevent conflicts - use migrations instead
@@ -96,6 +102,8 @@ import { AppointmentInstrument } from './modules/availability/entities/appointme
     SeedModule,
     // New availability management module (separate from existing)
     AvailabilityModule,
+    // Settings module
+    SettingsModule,
   ],
 })
 export class AppModule {}
