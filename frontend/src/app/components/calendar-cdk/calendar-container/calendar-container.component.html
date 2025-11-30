@@ -34,10 +34,12 @@
       [allUsers]="allUsers"
       [selectedUsers]="selectedOperators"
       [collapsed]="sidebarCollapsed"
+      [selectedMacroCategory]="selectedMacroCategory"
       (userToggle)="onUserToggle($event)"
       (selectAll)="onSelectAllUsers()"
       (deselectAll)="onDeselectAllUsers()"
-      (toggleCollapse)="onToggleSidebar()">
+      (toggleCollapse)="onToggleSidebar()"
+      (macroCategoryChange)="onMacroCategoryChange($event)">
     </app-calendar-sidebar>
 
     <!-- Grid area -->

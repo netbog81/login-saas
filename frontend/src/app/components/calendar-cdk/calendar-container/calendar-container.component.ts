@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil, combineLatest, debounceTime } from 'rxjs';
+import { Subject, takeUntil, combineLatest, debounceTime, firstValueFrom } from 'rxjs';
 import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -8,6 +8,10 @@ import { ComponentPortal } from '@angular/cdk/portal';
 // Services
 import { CalendarStateService, CalendarConfig } from '../services/calendar-state.service';
 import { ApiService } from '../../../services/api.service';
+import { OperatorService } from '../../../services/operator.service';
+
+// GraphQL types
+import { Operator, OperatorMacroCategory } from '../../../graphql/generated/types';
 
 // Components
 import { CalendarHeaderComponent } from '../calendar-header/calendar-header.component';
@@ -84,9 +88,13 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Loading state
   isLoading: boolean = false;
 
+  // Category filter
+  selectedMacroCategory: OperatorMacroCategory | null = null;
+
   constructor(
     public stateService: CalendarStateService,
     private apiService: ApiService,
+    private operatorService: OperatorService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
@@ -181,13 +189,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     try {
       this.isLoading = true;
 
-      // Load users
-      const users = await this.apiService.getUsers().toPromise();
-      this.allUsers = users || [];
-
-      // Select all active users by default
-      const activeUsers = this.allUsers.filter(u => u.active);
-      this.stateService.setSelectedOperators(activeUsers);
+      // Load operators from GraphQL
+      await this.loadOperators();
 
       // Load patients
       const patients = await this.apiService.getPatients().toPromise();
@@ -200,6 +203,51 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       this.isLoading = false;
       this.cdr.markForCheck();
     }
+  }
+
+  private async loadOperators(): Promise<void> {
+    const operators = await firstValueFrom(
+      this.operatorService.getOperators(
+        this.selectedMacroCategory || undefined,
+        undefined,
+        true // onlyActive
+      )
+    );
+    this.allUsers = this.mapOperatorsToUsers(operators);
+
+    // Select all active users by default
+    const activeUsers = this.allUsers.filter(u => u.active);
+    this.stateService.setSelectedOperators(activeUsers);
+    this.cdr.markForCheck();
+  }
+
+  private mapOperatorsToUsers(operators: Operator[]): User[] {
+    return operators.map(op => ({
+      id: op.legacyUserId ?? this.hashUUID(op.id),
+      name: `${op.name} ${op.surname || ''}`.trim(),
+      type: this.translateCategory(op.macroCategory),
+      color: op.color || '#3498db',
+      active: op.isActive
+    }));
+  }
+
+  private translateCategory(cat: OperatorMacroCategory): string {
+    const labels: Record<OperatorMacroCategory, string> = {
+      [OperatorMacroCategory.Doctor]: 'Medico',
+      [OperatorMacroCategory.Physiotherapist]: 'Fisioterapista',
+      [OperatorMacroCategory.GymInstructor]: 'Istruttore Palestra'
+    };
+    return labels[cat] || cat;
+  }
+
+  private hashUUID(uuid: string): number {
+    // Convert first 8 chars of UUID to number
+    return parseInt(uuid.substring(0, 8), 16) % 2147483647;
+  }
+
+  async onMacroCategoryChange(category: OperatorMacroCategory | null): Promise<void> {
+    this.selectedMacroCategory = category;
+    await this.loadOperators();
   }
 
   private async loadAppointmentsForCurrentView(): Promise<void> {

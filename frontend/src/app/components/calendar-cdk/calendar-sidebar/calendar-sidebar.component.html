@@ -32,6 +32,16 @@
       </button>
     </div>
 
+    <!-- Category filter -->
+    <div class="category-filter">
+      <select [value]="selectedMacroCategory || ''"
+              (change)="onCategoryChange($any($event.target).value)">
+        <option *ngFor="let cat of categories" [value]="cat.value || ''">
+          {{ cat.label }}
+        </option>
+      </select>
+    </div>
+
     <!-- User list -->
     <div class="user-list">
       <div *ngFor="let user of allUsers"
