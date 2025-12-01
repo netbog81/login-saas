@@ -47,6 +47,10 @@ export const GET_OPERATORS = gql`
       isActive
       createdAt
       updatedAt
+      templateAssignments {
+        id
+        isCurrent
+      }
     }
   }
 `;

@@ -222,13 +222,19 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   private mapOperatorsToUsers(operators: Operator[]): User[] {
-    return operators.map(op => ({
-      id: op.legacyUserId ?? this.hashUUID(op.id),
-      name: `${op.name} ${op.surname || ''}`.trim(),
-      type: this.translateCategory(op.macroCategory),
-      color: op.color || '#3498db',
-      active: op.isActive
-    }));
+    return operators.map(op => {
+      const hasCurrentTemplate = op.templateAssignments?.some(ta => ta.isCurrent) ?? false;
+
+      return {
+        id: op.legacyUserId ?? this.hashUUID(op.id),
+        name: `${op.name} ${op.surname || ''}`.trim(),
+        type: this.translateCategory(op.macroCategory),
+        color: op.color || '#3498db',
+        active: op.isActive,
+        operatorId: op.id,
+        hasTemplate: hasCurrentTemplate
+      };
+    });
   }
 
   private translateCategory(cat: OperatorMacroCategory): string {
@@ -262,17 +268,16 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
         for (const user of this.selectedOperators) {
           const appointments = await this.apiService.getAppointmentsByDate(dateStr, user.id).toPromise();
-          const availabilities = await this.apiService.getAvailabilitiesByDate(dateStr, user.id).toPromise();
 
           if (!appointmentsMap.has(user.id)) {
             appointmentsMap.set(user.id, new Map());
           }
           appointmentsMap.get(user.id)!.set(dateStr, appointments || []);
 
-          if (!availabilitiesMap.has(user.id)) {
-            availabilitiesMap.set(user.id, new Map());
+          // Carica disponibilità per operatori con template
+          if (user.hasTemplate && user.operatorId) {
+            await this.loadAvailabilityForUser(user, dateStr, dateStr, availabilitiesMap);
           }
-          availabilitiesMap.get(user.id)!.set(dateStr, availabilities || []);
         }
       } else {
         // Weekly view
@@ -281,7 +286,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
         for (const user of this.selectedOperators) {
           const appointments = await this.apiService.getAppointmentsByDateRange(startDate, endDate, user.id).toPromise();
-          const availabilities = await this.apiService.getAvailabilitiesByDateRange(startDate, endDate, user.id).toPromise();
 
           if (!appointmentsMap.has(user.id)) {
             appointmentsMap.set(user.id, new Map());
@@ -296,17 +300,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
             userDateMap.get(apt.date)!.push(apt);
           });
 
-          // Group availabilities by date
-          if (!availabilitiesMap.has(user.id)) {
-            availabilitiesMap.set(user.id, new Map());
+          // Carica disponibilità per operatori con template
+          if (user.hasTemplate && user.operatorId) {
+            await this.loadAvailabilityForUser(user, startDate, endDate, availabilitiesMap);
           }
-          const userAvailMap = availabilitiesMap.get(user.id)!;
-          (availabilities || []).forEach(avail => {
-            if (!userAvailMap.has(avail.date)) {
-              userAvailMap.set(avail.date, []);
-            }
-            userAvailMap.get(avail.date)!.push(avail);
-          });
         }
       }
 
@@ -314,6 +311,45 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       this.stateService.setAvailabilities(availabilitiesMap);
     } catch (error) {
       console.error('Error loading appointments:', error);
+    }
+  }
+
+  private async loadAvailabilityForUser(
+    user: User,
+    startDate: string,
+    endDate: string,
+    availabilitiesMap: Map<number, Map<string, Availability[]>>
+  ): Promise<void> {
+    try {
+      const dailyAvailabilities = await firstValueFrom(
+        this.operatorService.getOperatorAvailability(user.operatorId!, startDate, endDate)
+      );
+
+      if (!availabilitiesMap.has(user.id)) {
+        availabilitiesMap.set(user.id, new Map());
+      }
+
+      const userDateMap = availabilitiesMap.get(user.id)!;
+
+      let slotCounter = 0;
+      for (const daily of dailyAvailabilities) {
+        if (daily.hasAvailability && daily.slots) {
+          const availabilities: Availability[] = daily.slots
+            .filter(slot => slot.isAvailable)
+            .map(slot => ({
+              id: user.id * 1000000 + (++slotCounter),
+              userId: user.id,
+              date: daily.date,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              available: true
+            }));
+
+          userDateMap.set(daily.date, availabilities);
+        }
+      }
+    } catch (error) {
+      console.error(`Error loading availability for user ${user.id}:`, error);
     }
   }
 

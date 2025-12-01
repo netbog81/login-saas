@@ -47,9 +47,10 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
   `,
   styles: [`
     .app-container {
-      min-height: 100vh;
+      height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
 
     .app-nav {
@@ -60,6 +61,8 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
       justify-content: space-between;
       align-items: center;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      flex-shrink: 0;
+      z-index: 100;
     }
 
     .nav-brand h1 {
@@ -110,6 +113,8 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
     .app-content {
       flex: 1;
       background: #f5f5f5;
+      overflow: auto;
+      min-height: 0;
     }
 
     @media (max-width: 768px) {

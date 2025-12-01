@@ -73,7 +73,10 @@ export class AvailabilityService {
     const availabilityByDate = new Map<string, AvailabilitySlot[]>();
 
     for (const slot of slots) {
-      const dateStr = slot.availableDate.toISOString().split('T')[0];
+      // Handle both Date object and string
+      const dateStr = slot.availableDate instanceof Date
+        ? slot.availableDate.toISOString().split('T')[0]
+        : String(slot.availableDate).split('T')[0];
 
       if (!availabilityByDate.has(dateStr)) {
         availabilityByDate.set(dateStr, []);
@@ -422,13 +425,13 @@ export class AvailabilityService {
       availableDate: Between(start, end)
     });
 
-    // Get current templates
-    const templates = await this.templateRepo.find({
+    // Get current template assignments for this operator
+    const assignments = await this.assignmentRepo.find({
       where: {
         operatorId,
         isCurrent: true,
-        validFrom: LessThanOrEqual(end),
-      }
+      },
+      relations: ['patternGroup', 'patternGroup.patterns']
     });
 
     // Get exceptions for the period
@@ -461,40 +464,46 @@ export class AvailabilityService {
         if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
           await this.cacheRepo.save({
             operatorId,
-            availableDate: current,
+            availableDate: new Date(current),
             startTime: exception.startTime,
             endTime: exception.endTime,
             totalCapacity: operator.maxConcurrentAppointments,
-            bookedCapacity: 0, // Will be updated separately
+            bookedCapacity: 0,
             source: 'exception',
             sourceId: exception.id
           });
         }
         // If unavailable, don't create cache entry
       } else {
-        // Apply templates
-        for (const template of templates) {
-          if (current >= template.validFrom &&
-              (!template.validUntil || current <= template.validUntil)) {
+        // Apply template assignments
+        for (const assignment of assignments) {
+          if (current >= assignment.validFrom &&
+              (!assignment.validUntil || current <= assignment.validUntil)) {
 
-            // Calculate pattern day
+            const patternGroup = assignment.patternGroup;
+            if (!patternGroup || !patternGroup.patterns) continue;
+
+            // Calculate pattern day using assignment's patternStartDate
             const patternDay = this.getPatternDay(
               current,
-              template.patternStartDate,
-              template.patternDuration
+              assignment.patternStartDate,
+              patternGroup.patternDuration
             );
 
-            if (patternDay === template.dayInPattern) {
-              await this.cacheRepo.save({
-                operatorId,
-                availableDate: current,
-                startTime: template.startTime,
-                endTime: template.endTime,
-                totalCapacity: operator.maxConcurrentAppointments,
-                bookedCapacity: 0, // Will be updated separately
-                source: 'template',
-                sourceId: template.id
-              });
+            // Find patterns matching this day
+            for (const pattern of patternGroup.patterns) {
+              if (pattern.dayInPattern === patternDay) {
+                await this.cacheRepo.save({
+                  operatorId,
+                  availableDate: new Date(current),
+                  startTime: pattern.startTime,
+                  endTime: pattern.endTime,
+                  totalCapacity: operator.maxConcurrentAppointments,
+                  bookedCapacity: 0,
+                  source: 'pattern',
+                  sourceId: pattern.id
+                });
+              }
             }
           }
         }
@@ -503,30 +512,45 @@ export class AvailabilityService {
       current.setDate(current.getDate() + 1);
     }
 
-    // Update booked capacity (would need to query appointments table)
-    // This is a simplified version - in production you'd update based on actual appointments
+    // Update booked capacity
     await this.updateBookedCapacity(operatorId, start, end);
   }
 
   private getPatternDay(date: Date, patternStart: Date, patternDuration: number): number {
-    const diffTime = Math.abs(date.getTime() - patternStart.getTime());
+    // Per pattern settimanali (7 giorni), allinea automaticamente al giorno della settimana
+    // dayInPattern=0 corrisponde a Lunedì, dayInPattern=6 a Domenica
+    if (patternDuration === 7) {
+      // getDay() restituisce 0=Domenica, 1=Lunedì, ..., 6=Sabato
+      // Convertiamo a 0=Lunedì, 1=Martedì, ..., 6=Domenica
+      const dayOfWeek = date.getDay();
+      return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    }
+
+    // Per pattern bisettimanali (14 giorni), usiamo la patternStartDate
+    // ma allineata al Lunedì della settimana di inizio
+    if (patternDuration === 14) {
+      // Trova il Lunedì della settimana della patternStartDate
+      const patternStartDay = patternStart.getDay();
+      const mondayOffset = patternStartDay === 0 ? -6 : 1 - patternStartDay;
+      const alignedStart = new Date(patternStart);
+      alignedStart.setDate(alignedStart.getDate() + mondayOffset);
+
+      const diffTime = date.getTime() - alignedStart.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return ((diffDays % patternDuration) + patternDuration) % patternDuration;
+    }
+
+    // Per altri pattern, calcola la differenza dalla patternStartDate
+    const diffTime = date.getTime() - patternStart.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays % patternDuration;
+    return ((diffDays % patternDuration) + patternDuration) % patternDuration;
   }
 
   private async ensureCacheUpdated(operatorId: string, startDate: string, endDate: string): Promise<void> {
-    // Check if cache exists for the period
-    const cacheCount = await this.cacheRepo.count({
-      where: {
-        operatorId,
-        availableDate: Between(new Date(startDate), new Date(endDate))
-      }
-    });
-
-    // If no cache entries, rebuild
-    if (cacheCount === 0) {
-      await this.rebuildCache(operatorId, startDate, endDate);
-    }
+    // Always rebuild cache for the requested range
+    // rebuildCache already clears existing entries for the range before rebuilding
+    // This ensures we always have fresh, complete data
+    await this.rebuildCache(operatorId, startDate, endDate);
   }
 
   private async updateBookedCapacity(operatorId: string, startDate: Date, endDate: Date): Promise<void> {

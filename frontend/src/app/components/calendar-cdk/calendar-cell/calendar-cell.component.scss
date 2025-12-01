@@ -16,6 +16,22 @@
     }
   }
 
+  // Cella non disponibile (operatore non lavora in questo orario)
+  &:not(.available) {
+    background-color: #f3f4f6; // grigio chiaro
+    cursor: not-allowed;
+    pointer-events: none;
+
+    // Pattern a righe diagonali per indicare indisponibilità
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 4px,
+      rgba(209, 213, 219, 0.5) 4px,
+      rgba(209, 213, 219, 0.5) 8px
+    );
+  }
+
   &.occupied {
     cursor: default;
     pointer-events: none;

@@ -74,7 +74,7 @@ export class OperatorService {
 
     return this.operatorRepo.find({
       where,
-      relations: ['category'],
+      relations: ['category', 'templateAssignments'],
       order: { name: 'ASC' },
     });
   }

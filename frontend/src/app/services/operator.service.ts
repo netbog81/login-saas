@@ -148,12 +148,12 @@ export class OperatorService {
     endDate: string
   ): Observable<DailyAvailability[]> {
     return this.apollo
-      .watchQuery<{ operatorAvailability: any[] }>({
+      .query<{ operatorAvailability: any[] }>({
         query: GET_OPERATOR_AVAILABILITY,
         variables: { operatorId, startDate, endDate },
         fetchPolicy: 'network-only', // Always fetch fresh availability data
       })
-      .valueChanges.pipe(
+      .pipe(
         map((result) => (result.data?.operatorAvailability || []) as DailyAvailability[])
       );
   }

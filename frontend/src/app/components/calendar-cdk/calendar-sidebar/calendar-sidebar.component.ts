@@ -62,4 +62,12 @@ export class CalendarSidebarComponent {
     const category = value ? value as OperatorMacroCategory : null;
     this.macroCategoryChange.emit(category);
   }
+
+  /**
+   * Verifica se un operatore non ha template assegnato.
+   * Usa il campo hasTemplate sul modello User.
+   */
+  hasNoTemplate(user: User): boolean {
+    return !user.hasTemplate;
+  }
 }

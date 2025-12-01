@@ -271,14 +271,30 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   }
 
   isCellAvailable(userId: number, date: string, timeSlot: string): boolean {
+    // Trova l'utente per verificare se ha template
+    const user = this.users.find(u => u.id === userId);
+
+    // Se l'utente non ha template assegnato, tutte le celle sono disponibili
+    if (!user?.hasTemplate) {
+      return true;
+    }
+
+    // L'utente ha un template, verifichiamo la disponibilità
     const userAvailabilities = this.availabilities.get(userId);
-    if (!userAvailabilities) return true;
+    if (!userAvailabilities) {
+      // Nessuna disponibilità caricata - non disponibile
+      return false;
+    }
 
     const dateAvailabilities = userAvailabilities.get(date);
-    if (!dateAvailabilities) return true;
+    if (!dateAvailabilities || dateAvailabilities.length === 0) {
+      // Nessuna disponibilità per questo giorno - non disponibile
+      return false;
+    }
 
     const slotMinutes = this.timeToMinutes(timeSlot);
 
+    // Verifica se lo slot è dentro uno degli intervalli disponibili
     for (const availability of dateAvailabilities) {
       const startMinutes = this.timeToMinutes(availability.startTime);
       const endMinutes = this.timeToMinutes(availability.endTime);
@@ -288,7 +304,8 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
       }
     }
 
-    return true;
+    // Lo slot non è dentro nessun intervallo disponibile - non disponibile
+    return false;
   }
 
   isCellOccupied(userId: number, date: string, timeSlot: string): boolean {
