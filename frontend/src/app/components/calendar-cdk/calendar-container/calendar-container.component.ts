@@ -266,7 +266,9 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       if (this.config.viewType === 'daily') {
         const dateStr = this.formatDate(this.currentDate);
 
-        for (const user of this.selectedOperators) {
+        // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
+        await Promise.all(this.selectedOperators.map(async (user) => {
+          // Carica appuntamenti
           const appointments = await this.apiService.getAppointmentsByDate(dateStr, user.id).toPromise();
 
           if (!appointmentsMap.has(user.id)) {
@@ -278,13 +280,15 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           if (user.hasTemplate && user.operatorId) {
             await this.loadAvailabilityForUser(user, dateStr, dateStr, availabilitiesMap);
           }
-        }
+        }));
       } else {
         // Weekly view
         const startDate = this.visibleDates[0];
         const endDate = this.visibleDates[this.visibleDates.length - 1];
 
-        for (const user of this.selectedOperators) {
+        // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
+        await Promise.all(this.selectedOperators.map(async (user) => {
+          // Carica appuntamenti
           const appointments = await this.apiService.getAppointmentsByDateRange(startDate, endDate, user.id).toPromise();
 
           if (!appointmentsMap.has(user.id)) {
@@ -304,7 +308,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           if (user.hasTemplate && user.operatorId) {
             await this.loadAvailabilityForUser(user, startDate, endDate, availabilitiesMap);
           }
-        }
+        }));
       }
 
       this.stateService.setAppointments(appointmentsMap);
