@@ -1,0 +1,277 @@
+<div class="instrumentation-management">
+  <!-- Header con filtro MacroCategoria -->
+  <div class="header">
+    <h2>Gestione Strumentazione</h2>
+    <div class="macro-category-filter">
+      <label>Tipo Operatore:</label>
+      <div class="filter-buttons">
+        <button
+          *ngFor="let macro of [OperatorMacroCategory.Doctor, OperatorMacroCategory.Physiotherapist, OperatorMacroCategory.GymInstructor]"
+          class="filter-btn"
+          [class.active]="selectedMacroCategory === macro"
+          (click)="selectedMacroCategory = macro; onMacroCategoryChange()">
+          {{ getMacroCategoryLabel(macro) }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading/Error states -->
+  <div *ngIf="loading && !showCategoryForm && !showInstrumentForm" class="loading">Caricamento...</div>
+  <div *ngIf="error && !showCategoryForm && !showInstrumentForm" class="error">{{ error }}</div>
+
+  <div class="content-sections">
+    <!-- Sezione Categorie -->
+    <section class="section categories-section">
+      <div class="section-header">
+        <h3>Categorie Strumenti</h3>
+        <button class="btn btn-primary btn-sm" (click)="openCategoryForm()">
+          + Nuova Categoria
+        </button>
+      </div>
+
+      <div class="categories-grid">
+        <div *ngFor="let category of categories"
+             class="category-card"
+             [class.inactive]="!category.isActive">
+
+          <div class="category-header">
+            <h4>{{ category.name }}</h4>
+            <span class="category-count">
+              {{ getActiveInstrumentCount(category) }}/{{ getCategoryInstrumentCount(category) }} attivi
+            </span>
+          </div>
+
+          <p *ngIf="category.description" class="category-description">
+            {{ category.description }}
+          </p>
+
+          <div class="category-status" *ngIf="!category.isActive">
+            <span class="status-badge inactive">Inattiva</span>
+          </div>
+
+          <div class="category-actions">
+            <button class="btn btn-sm" (click)="openCategoryForm(category)">Modifica</button>
+            <button class="btn btn-sm btn-danger" (click)="deleteCategory(category)">Elimina</button>
+          </div>
+        </div>
+
+        <div *ngIf="categories.length === 0" class="empty-state">
+          <p>Nessuna categoria trovata per {{ getMacroCategoryLabel(selectedMacroCategory) }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sezione Strumenti -->
+    <section class="section instruments-section">
+      <div class="section-header">
+        <h3>Strumenti</h3>
+        <div class="section-header-actions">
+          <div class="filters">
+            <select [(ngModel)]="selectedCategoryFilter" (change)="onCategoryFilterChange()" class="filter-select">
+              <option [ngValue]="null">Tutte le categorie</option>
+              <option *ngFor="let category of categories" [ngValue]="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+
+            <select [(ngModel)]="selectedStatusFilter" (change)="onStatusFilterChange()" class="filter-select">
+              <option [ngValue]="null">Tutti gli stati</option>
+              <option [ngValue]="InstrumentStatus.Active">Attivo</option>
+              <option [ngValue]="InstrumentStatus.Unavailable">Non disponibile</option>
+              <option [ngValue]="InstrumentStatus.Maintenance">In manutenzione</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" (click)="openInstrumentForm()" [disabled]="categories.length === 0">
+            + Nuovo Strumento
+          </button>
+        </div>
+      </div>
+
+      <div class="instruments-grid">
+        <div *ngFor="let instrument of instruments"
+             class="instrument-card"
+             [class.inactive]="!instrument.isActive"
+             [class.expired]="isVerificationExpired(instrument)"
+             [class.expiring-soon]="isVerificationExpiringSoon(instrument) && !isVerificationExpired(instrument)">
+
+          <div class="instrument-header">
+            <div class="instrument-name">
+              <div class="color-indicator" [style.background-color]="instrument.color || '#4A90E2'"></div>
+              <h4>{{ instrument.name }}</h4>
+            </div>
+            <span class="instrument-status" [class]="getStatusClass(instrument.status)">
+              {{ getStatusLabel(instrument.status) }}
+            </span>
+          </div>
+
+          <div class="instrument-details">
+            <p><strong>Categoria:</strong> {{ instrument.category.name }}</p>
+            <p *ngIf="instrument.brand"><strong>Marca:</strong> {{ instrument.brand }}</p>
+            <p *ngIf="instrument.model"><strong>Modello:</strong> {{ instrument.model }}</p>
+            <p *ngIf="instrument.verificationExpiry" [class.warning]="isVerificationExpiringSoon(instrument)">
+              <strong>Scadenza verifica:</strong> {{ formatDate(instrument.verificationExpiry) }}
+              <span *ngIf="isVerificationExpired(instrument)" class="expiry-badge expired">Scaduta</span>
+              <span *ngIf="isVerificationExpiringSoon(instrument) && !isVerificationExpired(instrument)" class="expiry-badge expiring">In scadenza</span>
+            </p>
+            <p>
+              <strong>Stato attivo:</strong>
+              <span [class]="instrument.isActive ? 'status-active' : 'status-inactive'">
+                {{ instrument.isActive ? 'Si' : 'No' }}
+              </span>
+            </p>
+          </div>
+
+          <div class="instrument-actions">
+            <button class="btn btn-sm" (click)="openInstrumentForm(instrument)">Modifica</button>
+
+            <!-- Quick status change dropdown -->
+            <div class="status-dropdown">
+              <select
+                [value]="instrument.status"
+                (change)="setInstrumentStatus(instrument, $any($event.target).value)"
+                class="status-select">
+                <option [value]="InstrumentStatus.Active">Attivo</option>
+                <option [value]="InstrumentStatus.Unavailable">Non disponibile</option>
+                <option [value]="InstrumentStatus.Maintenance">In manutenzione</option>
+              </select>
+            </div>
+
+            <button class="btn btn-sm btn-danger" (click)="deleteInstrument(instrument)">Elimina</button>
+          </div>
+        </div>
+
+        <div *ngIf="instruments.length === 0" class="empty-state">
+          <p *ngIf="categories.length === 0">Crea prima una categoria per aggiungere strumenti</p>
+          <p *ngIf="categories.length > 0">Nessuno strumento trovato</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Category Form Modal -->
+  <div *ngIf="showCategoryForm" class="modal-overlay" (click)="closeCategoryForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditingCategory ? 'Modifica Categoria' : 'Nuova Categoria' }}</h3>
+        <button class="close-btn" (click)="closeCategoryForm()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Nome *</label>
+          <input type="text" [(ngModel)]="editingCategory.name" class="form-control" placeholder="Es: Elettromedicali">
+        </div>
+
+        <div class="form-group">
+          <label>Descrizione</label>
+          <textarea [(ngModel)]="editingCategory.description" class="form-control" rows="3" placeholder="Descrizione opzionale"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo Operatore</label>
+          <select [(ngModel)]="editingCategory.macroCategory" class="form-control">
+            <option [value]="OperatorMacroCategory.Doctor">{{ getMacroCategoryLabel(OperatorMacroCategory.Doctor) }}</option>
+            <option [value]="OperatorMacroCategory.Physiotherapist">{{ getMacroCategoryLabel(OperatorMacroCategory.Physiotherapist) }}</option>
+            <option [value]="OperatorMacroCategory.GymInstructor">{{ getMacroCategoryLabel(OperatorMacroCategory.GymInstructor) }}</option>
+          </select>
+        </div>
+
+        <div class="form-group" *ngIf="isEditingCategory">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingCategory.isActive">
+            Categoria Attiva
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeCategoryForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveCategory()" [disabled]="loading">
+          {{ isEditingCategory ? 'Aggiorna' : 'Crea' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instrument Form Modal -->
+  <div *ngIf="showInstrumentForm" class="modal-overlay" (click)="closeInstrumentForm()">
+    <div class="modal modal-lg" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditingInstrument ? 'Modifica Strumento' : 'Nuovo Strumento' }}</h3>
+        <button class="close-btn" (click)="closeInstrumentForm()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>Nome *</label>
+            <input type="text" [(ngModel)]="editingInstrument.name" class="form-control" placeholder="Es: Laser Terapeutico">
+          </div>
+
+          <div class="form-group flex-1">
+            <label>Colore</label>
+            <input type="color" [(ngModel)]="editingInstrument.color" class="form-control form-control-color">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Categoria *</label>
+          <select [(ngModel)]="editingInstrument.categoryId" class="form-control">
+            <option value="" disabled>-- Seleziona categoria --</option>
+            <option *ngFor="let category of categories" [value]="category.id">
+              {{ category.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Marca</label>
+            <input type="text" [(ngModel)]="editingInstrument.brand" class="form-control" placeholder="Es: Zimmer">
+          </div>
+
+          <div class="form-group flex-1">
+            <label>Modello</label>
+            <input type="text" [(ngModel)]="editingInstrument.model" class="form-control" placeholder="Es: OptonPro">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Scadenza Verifica</label>
+            <input type="date" [(ngModel)]="verificationExpiryString" class="form-control">
+            <small class="form-text">Data della prossima verifica/calibrazione obbligatoria</small>
+          </div>
+
+          <div class="form-group flex-1" *ngIf="isEditingInstrument">
+            <label>Stato</label>
+            <select [(ngModel)]="editingInstrument.status" class="form-control">
+              <option [value]="InstrumentStatus.Active">Attivo</option>
+              <option [value]="InstrumentStatus.Unavailable">Non disponibile</option>
+              <option [value]="InstrumentStatus.Maintenance">In manutenzione</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group" *ngIf="isEditingInstrument">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingInstrument.isActive">
+            Strumento Attivo
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeInstrumentForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveInstrument()" [disabled]="loading">
+          {{ isEditingInstrument ? 'Aggiorna' : 'Crea' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

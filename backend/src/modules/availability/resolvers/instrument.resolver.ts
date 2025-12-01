@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, GraphQLISODateTime } from '@nestjs/graphql';
 import { Instrument } from '../entities/instrument.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
 import { InstrumentService } from '../services/instrument.service';
@@ -36,7 +36,7 @@ export class InstrumentResolver {
     @Args('name') name: string,
     @Args('brand', { nullable: true }) brand?: string,
     @Args('model', { nullable: true }) model?: string,
-    @Args('verificationExpiry', { nullable: true }) verificationExpiry?: Date,
+    @Args('verificationExpiry', { type: () => GraphQLISODateTime, nullable: true }) verificationExpiry?: Date,
     @Args('technicalData', { type: () => GraphQLJSON, nullable: true }) technicalData?: Record<string, any>,
     @Args('color', { nullable: true }) color?: string,
   ): Promise<Instrument> {
@@ -58,7 +58,7 @@ export class InstrumentResolver {
     @Args('categoryId', { type: () => ID, nullable: true }) categoryId?: string,
     @Args('brand', { nullable: true }) brand?: string,
     @Args('model', { nullable: true }) model?: string,
-    @Args('verificationExpiry', { nullable: true }) verificationExpiry?: Date,
+    @Args('verificationExpiry', { type: () => GraphQLISODateTime, nullable: true }) verificationExpiry?: Date,
     @Args('status', { type: () => InstrumentStatus, nullable: true }) status?: InstrumentStatus,
     @Args('technicalData', { type: () => GraphQLJSON, nullable: true }) technicalData?: Record<string, any>,
     @Args('color', { nullable: true }) color?: string,

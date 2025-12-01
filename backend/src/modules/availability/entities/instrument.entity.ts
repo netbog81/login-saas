@@ -34,7 +34,7 @@ export class Instrument {
   model?: string;
 
   @Field(() => GraphQLISODateTime, { nullable: true })
-  @Column({ type: 'date', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   verificationExpiry?: Date;
 
   @Field(() => InstrumentStatus)

@@ -8,9 +8,10 @@ import { ServiceManagementComponent } from '../service-management/service-manage
 import { TemplateManagement } from '../template-management/template-management';
 import { OperatorTemplateAssignment } from '../operator-template-assignment/operator-template-assignment';
 import { OperatorCategoryManagementComponent } from '../operator-category-management/operator-category-management.component';
+import { InstrumentationManagementComponent } from '../instrumentation-management/instrumentation-management.component';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 
-type TabType = 'operators' | 'categories' | 'services' | 'templates' | 'assignments' | 'calendar';
+type TabType = 'operators' | 'categories' | 'services' | 'templates' | 'assignments' | 'instrumentation' | 'calendar';
 
 @Component({
   selector: 'app-availability-dashboard',
@@ -23,7 +24,8 @@ type TabType = 'operators' | 'categories' | 'services' | 'templates' | 'assignme
     OperatorCategoryManagementComponent,
     ServiceManagementComponent,
     TemplateManagement,
-    OperatorTemplateAssignment
+    OperatorTemplateAssignment,
+    InstrumentationManagementComponent
   ],
   templateUrl: './availability-dashboard.component.html',
   styleUrls: ['./availability-dashboard.component.scss']

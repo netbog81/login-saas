@@ -60,7 +60,9 @@ export class InstrumentService {
       status: InstrumentStatus.ACTIVE,
       isActive: true,
     });
-    return this.instrumentRepo.save(instrument);
+    const saved = await this.instrumentRepo.save(instrument);
+    // Reload with category relation
+    return this.findOne(saved.id);
   }
 
   async update(
