@@ -517,32 +517,25 @@ export class AvailabilityService {
   }
 
   private getPatternDay(date: Date, patternStart: Date, patternDuration: number): number {
-    // Per pattern settimanali (7 giorni), allinea automaticamente al giorno della settimana
-    // dayInPattern=0 corrisponde a Lunedì, dayInPattern=6 a Domenica
-    if (patternDuration === 7) {
-      // getDay() restituisce 0=Domenica, 1=Lunedì, ..., 6=Sabato
-      // Convertiamo a 0=Lunedì, 1=Martedì, ..., 6=Domenica
-      const dayOfWeek = date.getDay();
-      return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    }
+    // Normalizza entrambe le date a mezzanotte locale per evitare problemi di timezone
+    // Questa logica è ora allineata con physiotherapist-availability.service.ts
+    const normalizedPatternStart = new Date(
+      patternStart.getFullYear(),
+      patternStart.getMonth(),
+      patternStart.getDate(),
+    );
+    const normalizedDate = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    );
 
-    // Per pattern bisettimanali (14 giorni), usiamo la patternStartDate
-    // ma allineata al Lunedì della settimana di inizio
-    if (patternDuration === 14) {
-      // Trova il Lunedì della settimana della patternStartDate
-      const patternStartDay = patternStart.getDay();
-      const mondayOffset = patternStartDay === 0 ? -6 : 1 - patternStartDay;
-      const alignedStart = new Date(patternStart);
-      alignedStart.setDate(alignedStart.getDate() + mondayOffset);
-
-      const diffTime = date.getTime() - alignedStart.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      return ((diffDays % patternDuration) + patternDuration) % patternDuration;
-    }
-
-    // Per altri pattern, calcola la differenza dalla patternStartDate
-    const diffTime = date.getTime() - patternStart.getTime();
+    // Calcola la differenza in giorni dalla patternStartDate
+    // Questa logica funziona per TUTTI i tipi di pattern (7, 14, o altri giorni)
+    const diffTime = normalizedDate.getTime() - normalizedPatternStart.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    // Formula che gestisce anche giorni negativi (date prima di patternStartDate)
     return ((diffDays % patternDuration) + patternDuration) % patternDuration;
   }
 

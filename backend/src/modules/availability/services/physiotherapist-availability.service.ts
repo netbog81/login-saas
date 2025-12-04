@@ -325,10 +325,23 @@ export class PhysiotherapistAvailabilityService {
       if (!patternGroup || !patternGroup.patterns) continue;
 
       // Calculate which day in the pattern cycle corresponds to the requested date
-      const patternStart = new Date(assignment.patternStartDate);
-      const diffTime = date.getTime() - patternStart.getTime();
+      // Normalize patternStartDate to local midnight to avoid timezone issues
+      const patternStartRaw = new Date(assignment.patternStartDate);
+      const patternStart = new Date(
+        patternStartRaw.getFullYear(),
+        patternStartRaw.getMonth(),
+        patternStartRaw.getDate(),
+      );
+      // Normalize request date to local midnight
+      const normalizedDate = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+      );
+      const diffTime = normalizedDate.getTime() - patternStart.getTime();
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      const dayInPattern = diffDays % patternGroup.patternDuration;
+      // Use formula that handles negative days correctly
+      const dayInPattern = ((diffDays % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
 
       // Check all patterns for this day
       const todayPatterns = patternGroup.patterns.filter(
