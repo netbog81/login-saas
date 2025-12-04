@@ -16,7 +16,7 @@ export class CalendarToolbarComponent {
   @Output() configChange = new EventEmitter<Partial<CalendarConfig>>();
   @Output() openWorkingHoursDialog = new EventEmitter<void>();
 
-  slotDurations = [5, 10, 15, 20, 30];
+  slotDurations = [5, 10, 15, 20, 30, 45, 60];
   zoomLevels = [
     { value: 0.5, label: '50%' },
     { value: 1, label: '100%' },
