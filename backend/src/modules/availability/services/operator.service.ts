@@ -133,7 +133,7 @@ export class OperatorService {
     // Crea operatore
     const operator = this.operatorRepo.create({
       ...input,
-      isActive: true, // Default attivo
+      isActive: input.isActive ?? true, // Default attivo se non specificato
       maxConcurrentAppointments: input.maxConcurrentAppointments || 1,
     });
 

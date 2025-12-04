@@ -1,5 +1,4 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
-import { Appointment } from './appointment.entity';
 import { Availability } from './availability.entity';
 
 @Entity('users')
@@ -19,9 +18,7 @@ export class User {
   @Column({ default: true })
   active: boolean;
 
-  @OneToMany(() => Appointment, appointment => appointment.user)
-  appointments: Appointment[];
-
+  // Legacy: la relazione appointments è stata spostata su Operator
   @OneToMany(() => Availability, availability => availability.user)
   availabilities: Availability[];
 }

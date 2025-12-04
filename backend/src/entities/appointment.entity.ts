@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from './user.entity';
+import { Operator } from '../modules/availability/entities/operator.entity';
 import { Patient } from './patient.entity';
 
 @Entity('appointments')
@@ -19,12 +19,12 @@ export class Appointment {
   @Column()
   endTime: string; // Formato HH:mm
 
-  @ManyToOne(() => User, user => user.appointments)
-  @JoinColumn({ name: 'userId' })
-  user: User;
+  @ManyToOne(() => Operator, { nullable: true })
+  @JoinColumn({ name: 'operatorId' })
+  operator: Operator;
 
-  @Column()
-  userId: number;
+  @Column({ type: 'uuid' })
+  operatorId: string;
 
   @ManyToOne(() => Patient, patient => patient.appointments, { nullable: true })
   @JoinColumn({ name: 'patientId' })

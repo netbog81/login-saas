@@ -185,6 +185,7 @@ input CreateOperatorInput {
   categoryId: String
   color: String
   email: String
+  isActive: Boolean
   legacyUserId: Int
   macroCategory: OperatorMacroCategory!
   maxConcurrentAppointments: Int

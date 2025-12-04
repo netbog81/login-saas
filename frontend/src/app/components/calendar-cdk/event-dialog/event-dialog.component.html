@@ -28,18 +28,18 @@
       </div>
 
       <div class="form-group">
-        <label for="userId">Operatore *</label>
+        <label for="operatorId">Operatore *</label>
         <select
-          id="userId"
-          [(ngModel)]="userId"
-          [class.error]="errors['userId']"
+          id="operatorId"
+          [(ngModel)]="operatorId"
+          [class.error]="errors['operatorId']"
           class="form-input">
-          <option [value]="0">Seleziona operatore</option>
-          <option *ngFor="let user of data.users" [value]="user.id">
+          <option value="">Seleziona operatore</option>
+          <option *ngFor="let user of data.users" [value]="user.operatorId">
             {{ user.name }}
           </option>
         </select>
-        <span class="error-message" *ngIf="errors['userId']">{{ errors['userId'] }}</span>
+        <span class="error-message" *ngIf="errors['operatorId']">{{ errors['operatorId'] }}</span>
       </div>
     </div>
 

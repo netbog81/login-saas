@@ -277,14 +277,14 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
       // Create new operator
       const input: CreateOperatorInput = {
         name: name!,
-        surname: this.editingOperator.surname?.trim(),
-        email: email,
-        phone: this.editingOperator.phone?.trim(),
+        surname: this.editingOperator.surname?.trim() || undefined,
+        email: email || undefined,
+        phone: this.editingOperator.phone?.trim() || undefined,
         color: this.editingOperator.color,
         macroCategory:
           this.editingOperator.macroCategory ||
           OperatorMacroCategory.Physiotherapist,
-        categoryId: this.editingOperator.categoryId,
+        categoryId: this.editingOperator.categoryId || undefined,
         preferredDurations:
           preferredDurations.length > 0 ? preferredDurations : undefined,
         maxConcurrentAppointments:
@@ -302,12 +302,40 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           console.error('Error creating operator - Full error object:', error);
           console.error('Error graphQLErrors:', error?.graphQLErrors);
           console.error('Error networkError:', error?.networkError);
+          // Log additional details for debugging validation errors
+          if (error?.networkError?.result) {
+            console.error('Error networkError.result:', error.networkError.result);
+          }
 
           let errorMsg = 'Errore sconosciuto';
 
-          // Check for GraphQL errors
+          // Check for GraphQL errors with extensions (validation errors)
           if (error?.graphQLErrors && error.graphQLErrors.length > 0) {
-            errorMsg = error.graphQLErrors.map((e: any) => e.message).join(', ');
+            const messages = error.graphQLErrors.map((e: any) => {
+              // Check for validation error details in extensions
+              if (e.extensions?.originalError?.message) {
+                const origMsg = e.extensions.originalError.message;
+                if (Array.isArray(origMsg)) {
+                  return origMsg.join(', ');
+                }
+                return origMsg;
+              }
+              return e.message;
+            });
+            errorMsg = messages.join(', ');
+          } else if (error?.networkError?.result?.errors) {
+            // Handle network errors with GraphQL error response
+            const messages = error.networkError.result.errors.map((e: any) => {
+              if (e.extensions?.originalError?.message) {
+                const origMsg = e.extensions.originalError.message;
+                if (Array.isArray(origMsg)) {
+                  return origMsg.join(', ');
+                }
+                return origMsg;
+              }
+              return e.message;
+            });
+            errorMsg = messages.join(', ');
           } else if (error?.networkError?.error?.errors) {
             errorMsg = error.networkError.error.errors.map((e: any) => e.message).join(', ');
           } else if (error?.error?.message) {

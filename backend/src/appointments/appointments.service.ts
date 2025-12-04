@@ -11,32 +11,32 @@ export class AppointmentsService {
     private appointmentsRepository: Repository<Appointment>,
   ) {}
 
-  async findByDateRange(startDate: string, endDate: string, userId?: number): Promise<Appointment[]> {
+  async findByDateRange(startDate: string, endDate: string, operatorId?: string): Promise<Appointment[]> {
     const where: any = {
       date: Between(startDate, endDate)
     };
 
-    if (userId) {
-      where.userId = userId;
+    if (operatorId) {
+      where.operatorId = operatorId;
     }
 
     return this.appointmentsRepository.find({
       where,
-      relations: ['user', 'patient'],
+      relations: ['operator', 'patient'],
       order: { date: 'ASC', startTime: 'ASC' }
     });
   }
 
-  async findByDate(date: string, userId?: number): Promise<Appointment[]> {
+  async findByDate(date: string, operatorId?: string): Promise<Appointment[]> {
     const where: any = { date };
 
-    if (userId) {
-      where.userId = userId;
+    if (operatorId) {
+      where.operatorId = operatorId;
     }
 
     return this.appointmentsRepository.find({
       where,
-      relations: ['user', 'patient'],
+      relations: ['operator', 'patient'],
       order: { startTime: 'ASC' }
     });
   }
@@ -44,7 +44,7 @@ export class AppointmentsService {
   findOne(id: number): Promise<Appointment> {
     return this.appointmentsRepository.findOne({
       where: { id },
-      relations: ['user', 'patient']
+      relations: ['operator', 'patient']
     });
   }
 
@@ -169,14 +169,14 @@ export class AppointmentsService {
   }
 
   async checkAvailability(
-    userId: number,
+    operatorId: string,
     date: string,
     startTime: string,
     endTime: string,
     excludeAppointmentId?: number
   ): Promise<boolean> {
     const where: any = {
-      userId,
+      operatorId,
       date
     };
 

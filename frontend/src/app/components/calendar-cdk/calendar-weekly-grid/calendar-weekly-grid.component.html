@@ -51,10 +51,10 @@
                   [date]="day.date"
                   [user]="user"
                   [slotHeight]="slotHeight"
-                  [isAvailable]="isCellAvailable(user.id, day.date, slot.time)"
-                  [isOccupied]="isCellOccupied(user.id, day.date, slot.time)"
-                  [isDragSelected]="isCellInDragSelection(user.id, day.date, slot.time)"
-                  [dragSelectionColor]="getUserColorForDrag(user.id)"
+                  [isAvailable]="isCellAvailable(user.operatorId!, day.date, slot.time)"
+                  [isOccupied]="isCellOccupied(user.operatorId!, day.date, slot.time)"
+                  [isDragSelected]="isCellInDragSelection(user.operatorId!, day.date, slot.time)"
+                  [dragSelectionColor]="getUserColorForDrag(user.operatorId!)"
                   (cellMouseDown)="onCellMouseDown($event)"
                   (cellMouseEnter)="onCellMouseEnter($event)"
                   (cellMouseUp)="onCellMouseUp($event)"
@@ -65,7 +65,7 @@
               <!-- Available slots layer (absolute positioned, below events) -->
               <div class="available-slots-container">
                 <app-available-slot-overlay
-                  *ngFor="let slotPos of getAvailableSlotsForDayAndUser(day.date, user.id)"
+                  *ngFor="let slotPos of getAvailableSlotsForDayAndUser(day.date, user.operatorId!)"
                   [operatorId]="slotPos.slot.operatorId"
                   [date]="slotPos.slot.date"
                   [startTime]="slotPos.slot.startTime"
@@ -81,7 +81,7 @@
               <!-- Events -->
               <div class="events-container">
                 <app-calendar-event
-                  *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.id)"
+                  *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.operatorId!)"
                   [appointment]="eventPos.appointment"
                   [user]="user"
                   [top]="eventPos.top"

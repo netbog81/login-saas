@@ -1,5 +1,5 @@
 import { InputType, Field, Int } from '@nestjs/graphql';
-import { IsNotEmpty, IsString, IsEmail, IsOptional, MaxLength, IsInt, Min, IsArray, IsEnum } from 'class-validator';
+import { IsNotEmpty, IsString, IsEmail, IsOptional, MaxLength, IsInt, Min, IsArray, IsEnum, IsBoolean } from 'class-validator';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 
 @InputType()
@@ -65,4 +65,9 @@ export class CreateOperatorInput {
   @IsOptional()
   @IsInt()
   legacyUserId?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean({ message: 'Operatore Attivo deve essere un valore booleano' })
+  isActive?: boolean;
 }

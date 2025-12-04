@@ -10,7 +10,7 @@ export interface EventDialogData {
   defaultDate?: string;
   defaultStartTime?: string;
   defaultEndTime?: string;
-  defaultUserId?: number;
+  defaultOperatorId?: string;
   users: User[];
   patients: Patient[];
   // Filtri pre-compilati dalla ricerca
@@ -43,7 +43,7 @@ export class EventDialogComponent implements OnInit {
   date: string = '';
   startTime: string = '';
   endTime: string = '';
-  userId: number = 0;
+  operatorId: string = '';
   patientId: number | null = null;
   notes: string = '';
 
@@ -64,7 +64,7 @@ export class EventDialogComponent implements OnInit {
       this.date = apt.date;
       this.startTime = apt.startTime;
       this.endTime = apt.endTime;
-      this.userId = apt.userId;
+      this.operatorId = apt.operatorId;
       this.patientId = apt.patientId || null;
       this.notes = apt.notes || '';
     } else {
@@ -72,7 +72,7 @@ export class EventDialogComponent implements OnInit {
       this.date = this.data.defaultDate || '';
       this.startTime = this.data.defaultStartTime || '';
       this.endTime = this.data.defaultEndTime || '';
-      this.userId = this.data.defaultUserId || (this.data.users[0]?.id || 0);
+      this.operatorId = this.data.defaultOperatorId || (this.data.users[0]?.operatorId || '');
     }
   }
 
@@ -97,7 +97,7 @@ export class EventDialogComponent implements OnInit {
       this.date &&
       this.startTime &&
       this.endTime &&
-      this.userId &&
+      this.operatorId &&
       (this.title || this.patientId)
     );
   }
@@ -151,8 +151,8 @@ export class EventDialogComponent implements OnInit {
       }
     }
 
-    if (!this.userId) {
-      this.errors['userId'] = 'Seleziona un operatore';
+    if (!this.operatorId) {
+      this.errors['operatorId'] = 'Seleziona un operatore';
     }
 
     if (!this.title && !this.patientId) {
@@ -173,7 +173,7 @@ export class EventDialogComponent implements OnInit {
       date: this.date,
       startTime: this.startTime,
       endTime: this.endTime,
-      userId: this.userId,
+      operatorId: this.operatorId,
       patientId: this.patientId || undefined,
       notes: this.notes || undefined
     };

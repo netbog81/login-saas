@@ -45,14 +45,14 @@ export class ApiService {
   }
 
   // Appointments
-  getAppointmentsByDate(date: string, userId?: number): Observable<Appointment[]> {
-    const params = userId ? `?date=${date}&userId=${userId}` : `?date=${date}`;
+  getAppointmentsByDate(date: string, operatorId?: string): Observable<Appointment[]> {
+    const params = operatorId ? `?date=${date}&operatorId=${operatorId}` : `?date=${date}`;
     return this.http.get<Appointment[]>(`${this.baseUrl}/appointments/by-date${params}`);
   }
 
-  getAppointmentsByDateRange(startDate: string, endDate: string, userId?: number): Observable<Appointment[]> {
-    const params = userId
-      ? `?startDate=${startDate}&endDate=${endDate}&userId=${userId}`
+  getAppointmentsByDateRange(startDate: string, endDate: string, operatorId?: string): Observable<Appointment[]> {
+    const params = operatorId
+      ? `?startDate=${startDate}&endDate=${endDate}&operatorId=${operatorId}`
       : `?startDate=${startDate}&endDate=${endDate}`;
     return this.http.get<Appointment[]>(`${this.baseUrl}/appointments${params}`);
   }
@@ -70,13 +70,13 @@ export class ApiService {
   }
 
   checkAvailability(
-    userId: number,
+    operatorId: string,
     date: string,
     startTime: string,
     endTime: string,
     excludeId?: number
   ): Observable<boolean> {
-    let params = `userId=${userId}&date=${date}&startTime=${startTime}&endTime=${endTime}`;
+    let params = `operatorId=${operatorId}&date=${date}&startTime=${startTime}&endTime=${endTime}`;
     if (excludeId) {
       params += `&excludeId=${excludeId}`;
     }

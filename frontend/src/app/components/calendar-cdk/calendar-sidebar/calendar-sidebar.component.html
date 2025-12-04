@@ -117,9 +117,9 @@
         <!-- Duration -->
         <div class="filter-group" [class.disabled]="!slotSearchEnabled">
           <label class="filter-label">Durata</label>
-          <select [value]="searchFilters.duration"
-                  (change)="onDurationChange(+$any($event.target).value)">
-            <option *ngFor="let dur of durations" [value]="dur.value">
+          <select [ngModel]="searchFilters.duration"
+                  (ngModelChange)="onDurationChange($event)">
+            <option *ngFor="let dur of durations" [ngValue]="dur.value">
               {{ dur.label }}
             </option>
           </select>

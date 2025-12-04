@@ -180,6 +180,7 @@ export interface CreateOperatorInput {
   maxConcurrentAppointments?: number;
   userId?: number;
   legacyUserId?: number;
+  isActive?: boolean;
 }
 
 export interface UpdateOperatorInput {

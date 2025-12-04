@@ -42,8 +42,8 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Input() timeSlots: TimeSlot[] = [];
   @Input() users: User[] = [];
   @Input() dates: string[] = [];
-  @Input() appointments: Map<number, Map<string, Appointment[]>> = new Map();
-  @Input() availabilities: Map<number, Map<string, Availability[]>> = new Map();
+  @Input() appointments: Map<string, Map<string, Appointment[]>> = new Map();
+  @Input() availabilities: Map<string, Map<string, Availability[]>> = new Map();
   @Input() slotDuration: number = 15;
   @Input() slotHeight: number = 60;
   @Input() startHour: number = 0;
@@ -70,8 +70,8 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Output() availableSlotDblClick = new EventEmitter<AvailableSlotClickEvent>();
 
   dayColumns: DayColumn[] = [];
-  eventPositions: Map<string, Map<number, EventPosition[]>> = new Map();
-  availableSlotPositions: Map<string, Map<number, AvailableSlotPosition[]>> = new Map(); // date -> userId -> positions
+  eventPositions: Map<string, Map<string, EventPosition[]>> = new Map();
+  availableSlotPositions: Map<string, Map<string, AvailableSlotPosition[]>> = new Map(); // date -> operatorId -> positions
   gridHeight: number = 0;
   showUserNames: boolean = true;
 
@@ -137,15 +137,15 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
         height
       };
 
-      // Store by date -> userId
+      // Store by date -> operatorId
       if (!this.availableSlotPositions.has(slot.date)) {
         this.availableSlotPositions.set(slot.date, new Map());
       }
       const dateMap = this.availableSlotPositions.get(slot.date)!;
-      if (!dateMap.has(user.id)) {
-        dateMap.set(user.id, []);
+      if (!dateMap.has(user.operatorId!)) {
+        dateMap.set(user.operatorId!, []);
       }
-      dateMap.get(user.id)!.push(position);
+      dateMap.get(user.operatorId!)!.push(position);
     }
   }
 
@@ -221,13 +221,14 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     }
 
     for (const day of this.dayColumns) {
-      const dateMap = new Map<number, EventPosition[]>();
+      const dateMap = new Map<string, EventPosition[]>();
 
       for (const user of this.users) {
-        const userAppointments = this.appointments.get(user.id);
-        if (!userAppointments) continue;
+        if (!user.operatorId) continue;
+        const operatorAppointments = this.appointments.get(user.operatorId);
+        if (!operatorAppointments) continue;
 
-        const dateAppointments = userAppointments.get(day.date);
+        const dateAppointments = operatorAppointments.get(day.date);
         if (!dateAppointments || dateAppointments.length === 0) continue;
 
         const positions: EventPosition[] = [];
@@ -285,7 +286,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
           }
         }
 
-        dateMap.set(user.id, positions);
+        dateMap.set(user.operatorId, positions);
       }
 
       this.eventPositions.set(day.date, dateMap);
@@ -322,9 +323,9 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     return hours * 60 + minutes;
   }
 
-  isCellAvailable(userId: number, date: string, timeSlot: string): boolean {
+  isCellAvailable(operatorId: string, date: string, timeSlot: string): boolean {
     // Trova l'utente per verificare se ha template
-    const user = this.users.find(u => u.id === userId);
+    const user = this.users.find(u => u.operatorId === operatorId);
 
     // Se l'utente non ha template assegnato, tutte le celle sono disponibili
     if (!user?.hasTemplate) {
@@ -332,13 +333,13 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     }
 
     // L'utente ha un template, verifichiamo la disponibilità
-    const userAvailabilities = this.availabilities.get(userId);
-    if (!userAvailabilities) {
+    const operatorAvailabilities = this.availabilities.get(operatorId);
+    if (!operatorAvailabilities) {
       // Nessuna disponibilità caricata - non disponibile
       return false;
     }
 
-    const dateAvailabilities = userAvailabilities.get(date);
+    const dateAvailabilities = operatorAvailabilities.get(date);
     if (!dateAvailabilities || dateAvailabilities.length === 0) {
       // Nessuna disponibilità per questo giorno - non disponibile
       return false;
@@ -360,11 +361,11 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     return false;
   }
 
-  isCellOccupied(userId: number, date: string, timeSlot: string): boolean {
-    const userAppointments = this.appointments.get(userId);
-    if (!userAppointments) return false;
+  isCellOccupied(operatorId: string, date: string, timeSlot: string): boolean {
+    const operatorAppointments = this.appointments.get(operatorId);
+    if (!operatorAppointments) return false;
 
-    const dateAppointments = userAppointments.get(date);
+    const dateAppointments = operatorAppointments.get(date);
     if (!dateAppointments) return false;
 
     const slotMinutes = this.timeToMinutes(timeSlot);
@@ -376,19 +377,19 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     });
   }
 
-  getEventsForDayAndUser(date: string, userId: number): EventPosition[] {
+  getEventsForDayAndUser(date: string, operatorId: string): EventPosition[] {
     const dateMap = this.eventPositions.get(date);
     if (!dateMap) return [];
-    return dateMap.get(userId) || [];
+    return dateMap.get(operatorId) || [];
   }
 
-  isCellInDragSelection(userId: number, date: string, time: string): boolean {
+  isCellInDragSelection(operatorId: string, date: string, time: string): boolean {
     if (!this.isDragging || !this.dragStartCell || !this.dragCurrentCell) {
       return false;
     }
 
     // Check if this cell is in the same column (user and date) as the drag
-    if (this.dragStartCell.userId !== userId || this.dragStartCell.date !== date) {
+    if (this.dragStartCell.operatorId !== operatorId || this.dragStartCell.date !== date) {
       return false;
     }
 
@@ -404,15 +405,15 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     return cellMinutes >= minTime && cellMinutes < maxTime;
   }
 
-  getUserColorForDrag(userId: number): string {
-    const user = this.users.find(u => u.id === userId);
+  getUserColorForDrag(operatorId: string): string {
+    const user = this.users.find(u => u.operatorId === operatorId);
     return user?.color || '#3b82f6';
   }
 
-  getAvailableSlotsForDayAndUser(date: string, userId: number): AvailableSlotPosition[] {
+  getAvailableSlotsForDayAndUser(date: string, operatorId: string): AvailableSlotPosition[] {
     const dateMap = this.availableSlotPositions.get(date);
     if (!dateMap) return [];
-    return dateMap.get(userId) || [];
+    return dateMap.get(operatorId) || [];
   }
 
   onCellMouseDown(event: CellEvent): void {

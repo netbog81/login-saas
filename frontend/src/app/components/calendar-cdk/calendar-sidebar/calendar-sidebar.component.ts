@@ -17,7 +17,7 @@ export class CalendarSidebarComponent {
   @Input() selectedUsers: User[] = [];
   @Input() collapsed: boolean = false;
   @Input() selectedMacroCategory: OperatorMacroCategory | null = null;
-  @Input() searchFilters: AppointmentSearchFilters = { duration: 30, withInstrument: false };
+  @Input() searchFilters: AppointmentSearchFilters = { duration: 45, withInstrument: false };
   @Input() instrumentCategories: InstrumentCategory[] = [];
   @Input() slotSearchEnabled: boolean = false;
 

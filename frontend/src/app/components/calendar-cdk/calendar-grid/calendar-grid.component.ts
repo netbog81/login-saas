@@ -35,8 +35,8 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   @Input() timeSlots: TimeSlot[] = [];
   @Input() users: User[] = [];
   @Input() date: string = ''; // YYYY-MM-DD
-  @Input() appointments: Map<number, Map<string, Appointment[]>> = new Map();
-  @Input() availabilities: Map<number, Map<string, Availability[]>> = new Map();
+  @Input() appointments: Map<string, Map<string, Appointment[]>> = new Map();
+  @Input() availabilities: Map<string, Map<string, Availability[]>> = new Map();
   @Input() slotDuration: number = 15;
   @Input() slotHeight: number = 60; // pixels
   @Input() startHour: number = 0;
@@ -60,8 +60,8 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   @Output() availableSlotClick = new EventEmitter<AvailableSlotClickEvent>();
   @Output() availableSlotDblClick = new EventEmitter<AvailableSlotClickEvent>();
 
-  eventPositions: Map<number, EventPosition[]> = new Map();
-  availableSlotPositions: Map<number, AvailableSlotPosition[]> = new Map();
+  eventPositions: Map<string, EventPosition[]> = new Map();
+  availableSlotPositions: Map<string, AvailableSlotPosition[]> = new Map();
   gridHeight: number = 0;
 
   ngOnInit(): void {
@@ -120,10 +120,10 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
         height
       };
 
-      if (!this.availableSlotPositions.has(user.id)) {
-        this.availableSlotPositions.set(user.id, []);
+      if (!this.availableSlotPositions.has(user.operatorId!)) {
+        this.availableSlotPositions.set(user.operatorId!, []);
       }
-      this.availableSlotPositions.get(user.id)!.push(position);
+      this.availableSlotPositions.get(user.operatorId!)!.push(position);
     }
 
   }
@@ -136,10 +136,11 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     this.eventPositions.clear();
 
     for (const user of this.users) {
-      const userAppointments = this.appointments.get(user.id);
-      if (!userAppointments) continue;
+      if (!user.operatorId) continue;
+      const operatorAppointments = this.appointments.get(user.operatorId);
+      if (!operatorAppointments) continue;
 
-      const dateAppointments = userAppointments.get(this.date);
+      const dateAppointments = operatorAppointments.get(this.date);
       if (!dateAppointments || dateAppointments.length === 0) continue;
 
       const positions: EventPosition[] = [];
@@ -203,7 +204,7 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
         }
       }
 
-      this.eventPositions.set(user.id, positions);
+      this.eventPositions.set(user.operatorId, positions);
     }
   }
 
@@ -237,9 +238,9 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     return hours * 60 + minutes;
   }
 
-  isCellAvailable(userId: number, date: string, timeSlot: string): boolean {
+  isCellAvailable(operatorId: string, date: string, timeSlot: string): boolean {
     // Trova l'utente per verificare se ha template
-    const user = this.users.find(u => u.id === userId);
+    const user = this.users.find(u => u.operatorId === operatorId);
 
     // Se l'utente non ha template assegnato, tutte le celle sono disponibili
     if (!user?.hasTemplate) {
@@ -247,13 +248,13 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     }
 
     // L'utente ha un template, verifichiamo la disponibilità
-    const userAvailabilities = this.availabilities.get(userId);
-    if (!userAvailabilities) {
+    const operatorAvailabilities = this.availabilities.get(operatorId);
+    if (!operatorAvailabilities) {
       // Nessuna disponibilità caricata - non disponibile
       return false;
     }
 
-    const dateAvailabilities = userAvailabilities.get(date);
+    const dateAvailabilities = operatorAvailabilities.get(date);
     if (!dateAvailabilities || dateAvailabilities.length === 0) {
       // Nessuna disponibilità per questo giorno - non disponibile
       return false;
@@ -275,11 +276,11 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     return false;
   }
 
-  isCellOccupied(userId: number, date: string, timeSlot: string): boolean {
-    const userAppointments = this.appointments.get(userId);
-    if (!userAppointments) return false;
+  isCellOccupied(operatorId: string, date: string, timeSlot: string): boolean {
+    const operatorAppointments = this.appointments.get(operatorId);
+    if (!operatorAppointments) return false;
 
-    const dateAppointments = userAppointments.get(date);
+    const dateAppointments = operatorAppointments.get(date);
     if (!dateAppointments) return false;
 
     const slotMinutes = this.timeToMinutes(timeSlot);
@@ -291,25 +292,25 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     });
   }
 
-  getEventsForUser(userId: number): EventPosition[] {
-    return this.eventPositions.get(userId) || [];
+  getEventsForUser(operatorId: string): EventPosition[] {
+    return this.eventPositions.get(operatorId) || [];
   }
 
-  getAvailableSlotsForUser(userId: number): AvailableSlotPosition[] {
-    return this.availableSlotPositions.get(userId) || [];
+  getAvailableSlotsForUser(operatorId: string): AvailableSlotPosition[] {
+    return this.availableSlotPositions.get(operatorId) || [];
   }
 
-  getUserById(userId: number): User | undefined {
-    return this.users.find(u => u.id === userId);
+  getUserByOperatorId(operatorId: string): User | undefined {
+    return this.users.find(u => u.operatorId === operatorId);
   }
 
-  isCellInDragSelection(userId: number, date: string, time: string): boolean {
+  isCellInDragSelection(operatorId: string, date: string, time: string): boolean {
     if (!this.isDragging || !this.dragStartCell || !this.dragCurrentCell) {
       return false;
     }
 
     // Check if this cell is in the same column (user) and date as the drag
-    if (this.dragStartCell.userId !== userId || this.dragStartCell.date !== date) {
+    if (this.dragStartCell.operatorId !== operatorId || this.dragStartCell.date !== date) {
       return false;
     }
 
@@ -325,8 +326,8 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     return cellMinutes >= minTime && cellMinutes < maxTime;
   }
 
-  getUserColorForDrag(userId: number): string {
-    const user = this.users.find(u => u.id === userId);
+  getUserColorForDrag(operatorId: string): string {
+    const user = this.users.find(u => u.operatorId === operatorId);
     return user?.color || '#3b82f6';
   }
 

@@ -1,5 +1,6 @@
 import { User } from './user.model';
 import { Patient } from './patient.model';
+import { Operator } from '../graphql/generated/types';
 
 export interface RepeatConfig {
   enabled: boolean;
@@ -17,8 +18,8 @@ export interface Appointment {
   date: string;
   startTime: string;
   endTime: string;
-  userId: number;
-  user?: User;
+  operatorId: string;
+  operator?: Operator;
   patientId?: number;
   patient?: Patient;
   notes?: string;

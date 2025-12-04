@@ -198,6 +198,7 @@ export type CreateOperatorInput = {
   categoryId?: InputMaybe<Scalars['String']['input']>;
   color?: InputMaybe<Scalars['String']['input']>;
   email?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
   legacyUserId?: InputMaybe<Scalars['Int']['input']>;
   macroCategory: OperatorMacroCategory;
   maxConcurrentAppointments?: InputMaybe<Scalars['Int']['input']>;

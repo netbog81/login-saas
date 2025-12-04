@@ -36,7 +36,7 @@ export interface DragOperation {
   appointmentId?: number;
   startSlot?: TimeSlot;
   endSlot?: TimeSlot;
-  userId?: number;
+  operatorId?: string;
   previewPosition?: { top: number; height: number };
 }
 
@@ -85,8 +85,8 @@ interface PersistedCalendarState {
 })
 export class CalendarStateService {
   // Storage configuration - ISO 27001 compliant
-  private readonly STORAGE_KEY = 'calendar-state-v1';
-  private readonly STORAGE_VERSION = 1;
+  private readonly STORAGE_KEY = 'calendar-state-v2';
+  private readonly STORAGE_VERSION = 2;
   private readonly MAX_STATE_AGE_MS = 8 * 60 * 60 * 1000; // 8 ore
   private readonly MAX_OPERATORS = 100; // Limite operatori per sicurezza
   private readonly MAX_STORAGE_SIZE = 50000; // 50KB max
@@ -109,12 +109,12 @@ export class CalendarStateService {
 
   private currentDateSubject = new BehaviorSubject<Date>(new Date());
   private selectedOperatorsSubject = new BehaviorSubject<User[]>([]);
-  private appointmentsSubject = new BehaviorSubject<Map<number, Map<string, Appointment[]>>>(new Map());
-  private availabilitiesSubject = new BehaviorSubject<Map<number, Map<string, Availability[]>>>(new Map());
+  private appointmentsSubject = new BehaviorSubject<Map<string, Map<string, Appointment[]>>>(new Map());
+  private availabilitiesSubject = new BehaviorSubject<Map<string, Map<string, Availability[]>>>(new Map());
   private dragOperationSubject = new BehaviorSubject<DragOperation>({ type: null });
   private sidebarCollapsedSubject = new BehaviorSubject<boolean>(false);
   private searchFiltersSubject = new BehaviorSubject<AppointmentSearchFilters>({
-    duration: 30,
+    duration: 45,
     withInstrument: false
   });
   private availableSlotsSubject = new BehaviorSubject<AvailableSlot[]>([]);
@@ -124,8 +124,8 @@ export class CalendarStateService {
   config$: Observable<CalendarConfig> = this.configSubject.asObservable();
   currentDate$: Observable<Date> = this.currentDateSubject.asObservable();
   selectedOperators$: Observable<User[]> = this.selectedOperatorsSubject.asObservable();
-  appointments$: Observable<Map<number, Map<string, Appointment[]>>> = this.appointmentsSubject.asObservable();
-  availabilities$: Observable<Map<number, Map<string, Availability[]>>> = this.availabilitiesSubject.asObservable();
+  appointments$: Observable<Map<string, Map<string, Appointment[]>>> = this.appointmentsSubject.asObservable();
+  availabilities$: Observable<Map<string, Map<string, Availability[]>>> = this.availabilitiesSubject.asObservable();
   dragOperation$: Observable<DragOperation> = this.dragOperationSubject.asObservable();
   sidebarCollapsed$: Observable<boolean> = this.sidebarCollapsedSubject.asObservable();
   searchFilters$: Observable<AppointmentSearchFilters> = this.searchFiltersSubject.asObservable();
@@ -265,23 +265,23 @@ export class CalendarStateService {
   }
 
   // Appointments
-  setAppointments(appointments: Map<number, Map<string, Appointment[]>>): void {
+  setAppointments(appointments: Map<string, Map<string, Appointment[]>>): void {
     this.appointmentsSubject.next(appointments);
   }
 
   addAppointment(appointment: Appointment): void {
     const current = new Map(this.appointmentsSubject.value);
 
-    if (!current.has(appointment.userId)) {
-      current.set(appointment.userId, new Map());
+    if (!current.has(appointment.operatorId)) {
+      current.set(appointment.operatorId, new Map());
     }
 
-    const userAppointments = current.get(appointment.userId)!;
-    if (!userAppointments.has(appointment.date)) {
-      userAppointments.set(appointment.date, []);
+    const operatorAppointments = current.get(appointment.operatorId)!;
+    if (!operatorAppointments.has(appointment.date)) {
+      operatorAppointments.set(appointment.date, []);
     }
 
-    userAppointments.get(appointment.date)!.push(appointment);
+    operatorAppointments.get(appointment.date)!.push(appointment);
     this.appointmentsSubject.next(current);
   }
 
@@ -289,7 +289,7 @@ export class CalendarStateService {
     const current = new Map(this.appointmentsSubject.value);
 
     // Remove old appointment
-    for (const [userId, dateMap] of current.entries()) {
+    for (const [operatorId, dateMap] of current.entries()) {
       for (const [date, appointments] of dateMap.entries()) {
         const index = appointments.findIndex(a => a.id === appointment.id);
         if (index >= 0) {
@@ -300,23 +300,23 @@ export class CalendarStateService {
     }
 
     // Add updated appointment
-    if (!current.has(appointment.userId)) {
-      current.set(appointment.userId, new Map());
+    if (!current.has(appointment.operatorId)) {
+      current.set(appointment.operatorId, new Map());
     }
 
-    const userAppointments = current.get(appointment.userId)!;
-    if (!userAppointments.has(appointment.date)) {
-      userAppointments.set(appointment.date, []);
+    const operatorAppointments = current.get(appointment.operatorId)!;
+    if (!operatorAppointments.has(appointment.date)) {
+      operatorAppointments.set(appointment.date, []);
     }
 
-    userAppointments.get(appointment.date)!.push(appointment);
+    operatorAppointments.get(appointment.date)!.push(appointment);
     this.appointmentsSubject.next(current);
   }
 
   removeAppointment(appointmentId: number): void {
     const current = new Map(this.appointmentsSubject.value);
 
-    for (const [userId, dateMap] of current.entries()) {
+    for (const [operatorId, dateMap] of current.entries()) {
       for (const [date, appointments] of dateMap.entries()) {
         const index = appointments.findIndex(a => a.id === appointmentId);
         if (index >= 0) {
@@ -328,11 +328,11 @@ export class CalendarStateService {
     }
   }
 
-  getAppointmentForSlot(userId: number, date: string, timeSlot: string): Appointment | null {
-    const userAppointments = this.appointmentsSubject.value.get(userId);
-    if (!userAppointments) return null;
+  getAppointmentForSlot(operatorId: string, date: string, timeSlot: string): Appointment | null {
+    const operatorAppointments = this.appointmentsSubject.value.get(operatorId);
+    if (!operatorAppointments) return null;
 
-    const dateAppointments = userAppointments.get(date);
+    const dateAppointments = operatorAppointments.get(date);
     if (!dateAppointments) return null;
 
     const slotMinutes = this.timeToMinutes(timeSlot);
@@ -345,7 +345,7 @@ export class CalendarStateService {
   }
 
   // Availabilities
-  setAvailabilities(availabilities: Map<number, Map<string, Availability[]>>): void {
+  setAvailabilities(availabilities: Map<string, Map<string, Availability[]>>): void {
     this.availabilitiesSubject.next(availabilities);
   }
 
@@ -506,7 +506,7 @@ export class CalendarStateService {
 
   resetSearchFilters(): void {
     this.searchFiltersSubject.next({
-      duration: 30,
+      duration: 45,
       withInstrument: false
     });
   }
@@ -720,7 +720,7 @@ export class CalendarStateService {
   private sanitizeFilters(filters: AppointmentSearchFilters): AppointmentSearchFilters {
     const validDurations = [15, 30, 45, 60] as const;
     return {
-      duration: validDurations.includes(filters.duration as any) ? filters.duration : 30,
+      duration: validDurations.includes(filters.duration as any) ? filters.duration : 45,
       withInstrument: Boolean(filters.withInstrument),
       instrumentCount: filters.instrumentCount === 2 ? 2 : (filters.instrumentCount === 1 ? 1 : undefined),
       instrumentPosition: ['first', 'second'].includes(filters.instrumentPosition || '')
@@ -740,7 +740,7 @@ export class CalendarStateService {
   public clearState(): void {
     this._selectedOperatorIds.clear();
     this.searchFiltersSubject.next({
-      duration: 30,
+      duration: 45,
       withInstrument: false
     });
     this.clearStorage();

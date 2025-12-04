@@ -4,7 +4,8 @@ import { TimeSlot } from '../services/calendar-state.service';
 import { User } from '../../../models/user.model';
 
 export interface CellEvent {
-  userId: number;
+  userId: number;  // Legacy ID for backward compatibility
+  operatorId: string;  // UUID for API calls
   date: string;
   timeSlot: TimeSlot;
   type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
@@ -70,6 +71,7 @@ export class CalendarCellComponent {
   private createCellEvent(type: CellEvent['type']): CellEvent {
     return {
       userId: this.user.id,
+      operatorId: this.user.operatorId || '',
       date: this.date,
       timeSlot: this.timeSlot,
       type

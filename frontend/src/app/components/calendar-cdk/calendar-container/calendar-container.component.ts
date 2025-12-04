@@ -64,8 +64,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   visibleDates: string[] = [];
   selectedOperators: User[] = [];
   allUsers: User[] = [];
-  appointments: Map<number, Map<string, Appointment[]>> = new Map();
-  availabilities: Map<number, Map<string, Availability[]>> = new Map();
+  appointments: Map<string, Map<string, Appointment[]>> = new Map();
+  availabilities: Map<string, Map<string, Availability[]>> = new Map();
   patients: Patient[] = [];
   sidebarCollapsed: boolean = false;
   timeSlots: any[] = [];
@@ -95,7 +95,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   selectedMacroCategory: OperatorMacroCategory | null = null;
 
   // Search filters
-  searchFilters: AppointmentSearchFilters = { duration: 30, withInstrument: false };
+  searchFilters: AppointmentSearchFilters = { duration: 45, withInstrument: false };
   instrumentCategories: InstrumentCategory[] = [];
   availableSlots: AvailableSlot[] = [];
   slotSearchEnabled: boolean = false;
@@ -357,24 +357,26 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     if (this.selectedOperators.length === 0) return;
 
     try {
-      const appointmentsMap = new Map<number, Map<string, Appointment[]>>();
-      const availabilitiesMap = new Map<number, Map<string, Availability[]>>();
+      const appointmentsMap = new Map<string, Map<string, Appointment[]>>();
+      const availabilitiesMap = new Map<string, Map<string, Availability[]>>();
 
       if (this.config.viewType === 'daily') {
         const dateStr = this.formatDate(this.currentDate);
 
         // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
         await Promise.all(this.selectedOperators.map(async (user) => {
-          // Carica appuntamenti
-          const appointments = await this.apiService.getAppointmentsByDate(dateStr, user.id).toPromise();
+          if (!user.operatorId) return;
 
-          if (!appointmentsMap.has(user.id)) {
-            appointmentsMap.set(user.id, new Map());
+          // Carica appuntamenti
+          const appointments = await this.apiService.getAppointmentsByDate(dateStr, user.operatorId).toPromise();
+
+          if (!appointmentsMap.has(user.operatorId)) {
+            appointmentsMap.set(user.operatorId, new Map());
           }
-          appointmentsMap.get(user.id)!.set(dateStr, appointments || []);
+          appointmentsMap.get(user.operatorId)!.set(dateStr, appointments || []);
 
           // Carica disponibilità per operatori con template
-          if (user.hasTemplate && user.operatorId) {
+          if (user.hasTemplate) {
             await this.loadAvailabilityForUser(user, dateStr, dateStr, availabilitiesMap);
           }
         }));
@@ -385,24 +387,26 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
         // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
         await Promise.all(this.selectedOperators.map(async (user) => {
-          // Carica appuntamenti
-          const appointments = await this.apiService.getAppointmentsByDateRange(startDate, endDate, user.id).toPromise();
+          if (!user.operatorId) return;
 
-          if (!appointmentsMap.has(user.id)) {
-            appointmentsMap.set(user.id, new Map());
+          // Carica appuntamenti
+          const appointments = await this.apiService.getAppointmentsByDateRange(startDate, endDate, user.operatorId).toPromise();
+
+          if (!appointmentsMap.has(user.operatorId)) {
+            appointmentsMap.set(user.operatorId, new Map());
           }
 
           // Group by date
-          const userDateMap = appointmentsMap.get(user.id)!;
+          const operatorDateMap = appointmentsMap.get(user.operatorId)!;
           (appointments || []).forEach(apt => {
-            if (!userDateMap.has(apt.date)) {
-              userDateMap.set(apt.date, []);
+            if (!operatorDateMap.has(apt.date)) {
+              operatorDateMap.set(apt.date, []);
             }
-            userDateMap.get(apt.date)!.push(apt);
+            operatorDateMap.get(apt.date)!.push(apt);
           });
 
           // Carica disponibilità per operatori con template
-          if (user.hasTemplate && user.operatorId) {
+          if (user.hasTemplate) {
             await this.loadAvailabilityForUser(user, startDate, endDate, availabilitiesMap);
           }
         }));
@@ -419,18 +423,20 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     user: User,
     startDate: string,
     endDate: string,
-    availabilitiesMap: Map<number, Map<string, Availability[]>>
+    availabilitiesMap: Map<string, Map<string, Availability[]>>
   ): Promise<void> {
+    if (!user.operatorId) return;
+
     try {
       const dailyAvailabilities = await firstValueFrom(
-        this.operatorService.getOperatorAvailability(user.operatorId!, startDate, endDate)
+        this.operatorService.getOperatorAvailability(user.operatorId, startDate, endDate)
       );
 
-      if (!availabilitiesMap.has(user.id)) {
-        availabilitiesMap.set(user.id, new Map());
+      if (!availabilitiesMap.has(user.operatorId)) {
+        availabilitiesMap.set(user.operatorId, new Map());
       }
 
-      const userDateMap = availabilitiesMap.get(user.id)!;
+      const operatorDateMap = availabilitiesMap.get(user.operatorId)!;
 
       let slotCounter = 0;
       for (const daily of dailyAvailabilities) {
@@ -439,18 +445,18 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
             .filter(slot => slot.isAvailable)
             .map(slot => ({
               id: user.id * 1000000 + (++slotCounter),
-              userId: user.id,
+              operatorId: user.operatorId!,
               date: daily.date,
               startTime: slot.startTime,
               endTime: slot.endTime,
               available: true
             }));
 
-          userDateMap.set(daily.date, availabilities);
+          operatorDateMap.set(daily.date, availabilities);
         }
       }
     } catch (error) {
-      console.error(`Error loading availability for user ${user.id}:`, error);
+      console.error(`Error loading availability for operator ${user.operatorId}:`, error);
     }
   }
 
@@ -528,11 +534,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       this.closeSummary();
     }
 
+    const user = this.getUserById(event.userId);
     this.openEventDialog({
       defaultDate: event.date,
       defaultStartTime: event.timeSlot.time,
       defaultEndTime: this.addMinutesToTime(event.timeSlot.time, this.config.slotDuration),
-      defaultUserId: event.userId,
+      defaultOperatorId: user?.operatorId,
       users: this.allUsers,
       patients: this.patients
     });
@@ -544,11 +551,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     const startTime = this.dragStartCell.timeSlot.time;
     const endTime = this.addMinutesToTime(this.dragCurrentCell.timeSlot.time, this.config.slotDuration);
 
+    const user = this.getUserById(this.dragStartCell.userId);
     this.openEventDialog({
       defaultDate: this.dragStartCell.date,
       defaultStartTime: startTime,
       defaultEndTime: endTime,
-      defaultUserId: this.dragStartCell.userId,
+      defaultOperatorId: user?.operatorId,
       users: this.allUsers,
       patients: this.patients
     });
@@ -801,7 +809,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     // Set component inputs
     const instance = componentRef.instance as AppointmentSummaryComponent;
     instance.appointment = appointment;
-    instance.user = this.getUserById(appointment.userId);
+    instance.user = this.getUserByOperatorId(appointment.operatorId);
 
     // Handle component outputs
     instance.action.subscribe((action: SummaryAction) => {
@@ -857,7 +865,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   shareAppointment(appointment: Appointment, method?: 'email' | 'whatsapp'): void {
-    const user = this.getUserById(appointment.userId);
+    const user = this.getUserByOperatorId(appointment.operatorId);
     const text = `Appuntamento: ${appointment.title}\nData: ${this.formatDateLocalized(new Date(appointment.date + 'T00:00:00'))}\nOra: ${appointment.startTime} - ${appointment.endTime}\nOperatore: ${user?.name || 'N/A'}${appointment.notes ? '\nNote: ' + appointment.notes : ''}`;
 
     if (method === 'whatsapp') {
@@ -872,6 +880,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   getUserById(userId: number): User | undefined {
     return this.allUsers.find(u => u.id === userId);
+  }
+
+  getUserByOperatorId(operatorId: string): User | undefined {
+    return this.allUsers.find(u => u.operatorId === operatorId);
   }
 
   private formatDateLocalized(date: Date): string {
@@ -1130,12 +1142,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   onAvailableSlotDblClick(event: AvailableSlotClickEvent): void {
     // Double click - apri dialog per creare appuntamento
-    const user = this.allUsers.find(u => u.operatorId === event.operatorId);
-    if (!user) {
-      console.error('User not found for operator:', event.operatorId);
-      return;
-    }
-
     // Calcola l'endTime basato sulla durata dei filtri di ricerca
     const endTime = this.addMinutesToTime(event.startTime, this.searchFilters.duration);
 
@@ -1143,7 +1149,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       defaultDate: event.date,
       defaultStartTime: event.startTime,
       defaultEndTime: endTime,
-      defaultUserId: user.id,
+      defaultOperatorId: event.operatorId,
       users: this.allUsers,
       patients: this.patients
     });
