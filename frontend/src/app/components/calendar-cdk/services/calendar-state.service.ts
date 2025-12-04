@@ -313,7 +313,7 @@ export class CalendarStateService {
     this.appointmentsSubject.next(current);
   }
 
-  removeAppointment(appointmentId: number): void {
+  removeAppointment(appointmentId: string | number): void {
     const current = new Map(this.appointmentsSubject.value);
 
     for (const [operatorId, dateMap] of current.entries()) {

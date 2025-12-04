@@ -6,6 +6,7 @@ import { GymRoom } from './gym-room.entity';
 import { AppointmentType } from './appointment-type.enum';
 import { AppointmentInstrument } from './appointment-instrument.entity';
 import { Patient } from '../../../entities/patient.entity';
+import GraphQLJSON from 'graphql-type-json';
 
 // ==================== ENUMS ====================
 
@@ -113,7 +114,7 @@ export class AvailabilityAppointment {
 
   // ==================== DATE/TIME ====================
 
-  @Field()
+  @Field(() => String, { description: 'Data appuntamento in formato YYYY-MM-DD' })
   @Column('date')
   appointmentDate: Date;
 
@@ -213,6 +214,38 @@ export class AvailabilityAppointment {
   @Field()
   @Column({ default: false })
   instrumentOrderMatters: boolean;
+
+  // ==================== RECURRING FIELDS ====================
+
+  /**
+   * Flag che indica se l'appuntamento fa parte di una serie ricorrente
+   */
+  @Field()
+  @Column({ default: false })
+  isRecurring: boolean;
+
+  /**
+   * UUID che raggruppa appuntamenti della stessa serie ricorrente
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  @Index('IDX_availability_appointments_recurring_group')
+  recurringGroupId?: string;
+
+  /**
+   * Configurazione della ricorrenza (solo per il primo appuntamento della serie)
+   * JSON: { type, interval, selectedDays, endType, occurrences, untilDate }
+   */
+  @Field(() => GraphQLJSON, { nullable: true })
+  @Column('jsonb', { nullable: true })
+  repeatConfig?: {
+    type: 'daily' | 'weekly' | 'monthly';
+    interval: number;
+    selectedDays?: number[];
+    endType: 'never' | 'after' | 'until';
+    occurrences?: number;
+    untilDate?: string;
+  };
 
   // ==================== NOTES ====================
 

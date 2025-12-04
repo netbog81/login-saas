@@ -102,4 +102,22 @@ export class AppointmentSummaryComponent {
     };
     return date.toLocaleDateString('it-IT', options);
   }
+
+  get hasInstruments(): boolean {
+    return !!(this.appointment.instruments && this.appointment.instruments.length > 0);
+  }
+
+  getInstrumentTimeRange(instrument: { startOffsetMinutes: number; endOffsetMinutes: number }): string {
+    const startTime = this.addMinutesToTime(this.appointment.startTime, instrument.startOffsetMinutes);
+    const endTime = this.addMinutesToTime(this.appointment.startTime, instrument.endOffsetMinutes);
+    return `${startTime} - ${endTime}`;
+  }
+
+  private addMinutesToTime(time: string, minutes: number): string {
+    const [hours, mins] = time.split(':').map(Number);
+    const totalMinutes = hours * 60 + mins + minutes;
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMins = totalMinutes % 60;
+    return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+  }
 }

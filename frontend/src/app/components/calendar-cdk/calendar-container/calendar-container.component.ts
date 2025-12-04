@@ -11,6 +11,7 @@ import { ApiService } from '../../../services/api.service';
 import { OperatorService } from '../../../services/operator.service';
 import { InstrumentService } from '../../../services/instrument.service';
 import { SettingsService } from '../../../services/settings.service';
+import { AvailabilityAppointmentService, AppointmentInstrumentInput } from '../../../services/availability-appointment.service';
 
 // GraphQL types
 import { Operator, OperatorMacroCategory, InstrumentCategory, InstrumentSlotInput } from '../../../graphql/generated/types';
@@ -35,6 +36,9 @@ import { Appointment } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Patient } from '../../../models/patient.model';
 import { Availability } from '../../../models/availability.model';
+
+// Utils
+import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
 
 @Component({
   selector: 'app-calendar-container',
@@ -106,6 +110,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     private operatorService: OperatorService,
     private instrumentService: InstrumentService,
     private settingsService: SettingsService,
+    private availabilityAppointmentService: AvailabilityAppointmentService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
@@ -360,57 +365,51 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       const appointmentsMap = new Map<string, Map<string, Appointment[]>>();
       const availabilitiesMap = new Map<string, Map<string, Availability[]>>();
 
-      if (this.config.viewType === 'daily') {
-        const dateStr = this.formatDate(this.currentDate);
+      // Determina le date da caricare
+      const startDate = this.config.viewType === 'daily'
+        ? this.formatDate(this.currentDate)
+        : this.visibleDates[0];
+      const endDate = this.config.viewType === 'daily'
+        ? this.formatDate(this.currentDate)
+        : this.visibleDates[this.visibleDates.length - 1];
 
-        // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
-        await Promise.all(this.selectedOperators.map(async (user) => {
-          if (!user.operatorId) return;
+      // Filtra operatori con operatorId valido
+      const operatorsWithId = this.selectedOperators.filter(u => u.operatorId);
 
-          // Carica appuntamenti
-          const appointments = await this.apiService.getAppointmentsByDate(dateStr, user.operatorId).toPromise();
+      if (operatorsWithId.length === 0) return;
 
-          if (!appointmentsMap.has(user.operatorId)) {
-            appointmentsMap.set(user.operatorId, new Map());
+      // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
+      await Promise.all(operatorsWithId.map(async (user) => {
+        // Carica appuntamenti da GraphQL (nuovo sistema unificato)
+        const gqlAppointments = await firstValueFrom(
+          this.availabilityAppointmentService.getAppointmentsByOperator(
+            user.operatorId!,
+            startDate,
+            endDate
+          )
+        );
+
+        // Converti in formato Appointment frontend
+        const appointments = gqlAppointments.map(mapAvailabilityAppointmentToAppointment);
+
+        if (!appointmentsMap.has(user.operatorId!)) {
+          appointmentsMap.set(user.operatorId!, new Map());
+        }
+
+        // Raggruppa per data
+        const operatorDateMap = appointmentsMap.get(user.operatorId!)!;
+        appointments.forEach(apt => {
+          if (!operatorDateMap.has(apt.date)) {
+            operatorDateMap.set(apt.date, []);
           }
-          appointmentsMap.get(user.operatorId)!.set(dateStr, appointments || []);
+          operatorDateMap.get(apt.date)!.push(apt);
+        });
 
-          // Carica disponibilità per operatori con template
-          if (user.hasTemplate) {
-            await this.loadAvailabilityForUser(user, dateStr, dateStr, availabilitiesMap);
-          }
-        }));
-      } else {
-        // Weekly view
-        const startDate = this.visibleDates[0];
-        const endDate = this.visibleDates[this.visibleDates.length - 1];
-
-        // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
-        await Promise.all(this.selectedOperators.map(async (user) => {
-          if (!user.operatorId) return;
-
-          // Carica appuntamenti
-          const appointments = await this.apiService.getAppointmentsByDateRange(startDate, endDate, user.operatorId).toPromise();
-
-          if (!appointmentsMap.has(user.operatorId)) {
-            appointmentsMap.set(user.operatorId, new Map());
-          }
-
-          // Group by date
-          const operatorDateMap = appointmentsMap.get(user.operatorId)!;
-          (appointments || []).forEach(apt => {
-            if (!operatorDateMap.has(apt.date)) {
-              operatorDateMap.set(apt.date, []);
-            }
-            operatorDateMap.get(apt.date)!.push(apt);
-          });
-
-          // Carica disponibilità per operatori con template
-          if (user.hasTemplate) {
-            await this.loadAvailabilityForUser(user, startDate, endDate, availabilitiesMap);
-          }
-        }));
-      }
+        // Carica disponibilità per operatori con template
+        if (user.hasTemplate) {
+          await this.loadAvailabilityForUser(user, startDate, endDate, availabilitiesMap);
+        }
+      }));
 
       this.stateService.setAppointments(appointmentsMap);
       this.stateService.setAvailabilities(availabilitiesMap);
@@ -584,17 +583,29 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     if (!action.newStartTime || !action.newEndTime) return;
 
     try {
+      if (typeof action.appointment.id === 'string') {
+        await firstValueFrom(
+          this.availabilityAppointmentService.updateAppointment(
+            action.appointment.id,
+            {
+              startTime: action.newStartTime,
+              endTime: action.newEndTime
+            }
+          )
+        );
+      }
+
       const updated: Appointment = {
         ...action.appointment,
         startTime: action.newStartTime,
         endTime: action.newEndTime
       };
-
-      await this.apiService.updateAppointment(updated.id, updated).toPromise();
       this.stateService.updateAppointment(updated);
     } catch (error) {
       console.error('Error updating appointment:', error);
       alert('Errore durante lo spostamento dell\'appuntamento');
+      // Ricarica per ripristinare lo stato corretto
+      await this.loadAppointmentsForCurrentView();
     }
   }
 
@@ -602,16 +613,27 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     if (!action.newEndTime) return;
 
     try {
+      if (typeof action.appointment.id === 'string') {
+        await firstValueFrom(
+          this.availabilityAppointmentService.updateAppointment(
+            action.appointment.id,
+            {
+              endTime: action.newEndTime
+            }
+          )
+        );
+      }
+
       const updated: Appointment = {
         ...action.appointment,
         endTime: action.newEndTime
       };
-
-      await this.apiService.updateAppointment(updated.id, updated).toPromise();
       this.stateService.updateAppointment(updated);
     } catch (error) {
       console.error('Error resizing appointment:', error);
       alert('Errore durante il ridimensionamento dell\'appuntamento');
+      // Ricarica per ripristinare lo stato corretto
+      await this.loadAppointmentsForCurrentView();
     }
   }
 
@@ -622,7 +644,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   // Dialog events
   openEventDialog(data: EventDialogData): void {
-    this.eventDialogData = data;
+    // Add instrument categories to dialog data
+    this.eventDialogData = {
+      ...data,
+      instrumentCategories: this.instrumentCategories
+    };
     this.showEventDialog = true;
   }
 
@@ -638,38 +664,114 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
 
     if (result.action === 'save' && result.appointment) {
-      await this.saveAppointment(result.appointment);
+      await this.saveAppointment(result.appointment, result.instruments, result.instrumentOrderMatters, result.repeatConfig);
     }
   }
 
-  private async saveAppointment(appointment: Appointment): Promise<void> {
+  /**
+   * Salva un appuntamento usando il sistema unificato GraphQL (AvailabilityAppointment)
+   * Tutti gli appuntamenti passano per questo sistema, con o senza strumenti
+   */
+  private async saveAppointment(
+    appointment: Appointment,
+    instruments?: AppointmentInstrumentInput[],
+    instrumentOrderMatters?: boolean,
+    repeatConfig?: any
+  ): Promise<void> {
     try {
-      if (appointment.id) {
-        // Update
-        const updated = await this.apiService.updateAppointment(appointment.id, appointment).toPromise();
-        this.stateService.updateAppointment(updated!);
+      const isUpdate = appointment.id && typeof appointment.id === 'string' && appointment.id.length > 10;
+
+      if (isUpdate) {
+        // Update appuntamento esistente (non supporta ricorrenza)
+        await firstValueFrom(
+          this.availabilityAppointmentService.updateAppointment(
+            appointment.id as string,
+            {
+              clientName: appointment.title,
+              patientId: appointment.patientId,
+              appointmentDate: appointment.date,
+              startTime: appointment.startTime,
+              endTime: appointment.endTime,
+              notes: appointment.notes,
+              instrumentOrderMatters: instrumentOrderMatters,
+              instruments: instruments
+            }
+          )
+        );
+        console.log('[Calendar] Updated appointment:', appointment.id);
       } else {
-        // Create (API returns array for recurring appointments)
-        const createdArray = await this.apiService.createAppointment(appointment).toPromise();
-        if (createdArray && createdArray.length > 0) {
-          // Add all created appointments (could be multiple if recurring)
-          createdArray.forEach(apt => this.stateService.addAppointment(apt));
+        // Crea nuovo appuntamento (supporta ricorrenza)
+        const created = await firstValueFrom(
+          this.availabilityAppointmentService.createAppointment({
+            operatorId: appointment.operatorId,
+            clientName: appointment.title,
+            patientId: appointment.patientId,
+            appointmentDate: appointment.date,
+            startTime: appointment.startTime,
+            endTime: appointment.endTime,
+            notes: appointment.notes,
+            instrumentOrderMatters: instrumentOrderMatters,
+            instruments: instruments,
+            repeatConfig: repeatConfig
+          })
+        );
+        console.log('[Calendar] Created appointment:', created.id, repeatConfig ? '(recurring)' : '');
+      }
+
+      // Ricarica gli appuntamenti per visualizzare le modifiche
+      // Questo triggererà automaticamente anche la ricerca slot disponibili
+      await this.loadAppointmentsForCurrentView();
+    } catch (error: any) {
+      console.error('Error saving appointment:', error);
+
+      // Estrai il messaggio di errore da GraphQL
+      let errorMessage = 'Errore durante il salvataggio dell\'appuntamento';
+
+      if (error?.graphQLErrors?.length > 0) {
+        // Errore GraphQL con messaggio specifico
+        errorMessage = error.graphQLErrors[0].message;
+      } else if (error?.message) {
+        // Messaggio di errore generico
+        const match = error.message.match(/CombinedGraphQLErrors: (.+)/);
+        if (match) {
+          errorMessage = match[1];
+        } else {
+          errorMessage = error.message;
         }
       }
-    } catch (error) {
-      console.error('Error saving appointment:', error);
-      alert('Errore durante il salvataggio dell\'appuntamento');
+
+      alert(errorMessage);
     }
   }
 
   private async deleteAppointment(appointment: Appointment): Promise<void> {
     try {
-      await this.apiService.deleteAppointment(appointment.id).toPromise();
+      // Usa GraphQL per eliminare l'appuntamento (sistema unificato)
+      if (typeof appointment.id === 'string') {
+        await firstValueFrom(
+          this.availabilityAppointmentService.deleteAppointment(appointment.id)
+        );
+      }
       this.stateService.removeAppointment(appointment.id);
       await this.loadAppointmentsForCurrentView();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting appointment:', error);
-      alert('Errore durante l\'eliminazione dell\'appuntamento');
+
+      // Estrai il messaggio di errore da GraphQL
+      let errorMessage = 'Errore durante l\'eliminazione dell\'appuntamento';
+
+      if (error?.graphQLErrors?.length > 0) {
+        errorMessage = error.graphQLErrors[0].message;
+      } else if (error?.message) {
+        const match = error.message.match(/CombinedGraphQLErrors: (.+)/);
+        if (match) {
+          errorMessage = match[1];
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      alert(errorMessage);
     }
   }
 
@@ -1145,13 +1247,27 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     // Calcola l'endTime basato sulla durata dei filtri di ricerca
     const endTime = this.addMinutesToTime(event.startTime, this.searchFilters.duration);
 
+    // Costruisci i searchFilters da passare al dialog
+    const dialogSearchFilters = this.slotSearchEnabled && this.searchFilters.withInstrument ? {
+      duration: this.searchFilters.duration,
+      withInstrument: this.searchFilters.withInstrument,
+      instrumentCount: this.searchFilters.instrumentCount,
+      instrumentCategoryId: this.searchFilters.instrumentCategoryId,
+      instrument2CategoryId: this.searchFilters.instrument2CategoryId,
+      instrumentPosition: this.searchFilters.instrumentPosition,
+      instrumentOrderMatters: this.searchFilters.instrumentOrderMatters,
+      // Includi anche gli strumenti suggeriti dallo slot
+      suggestedInstruments: event.availableInstruments
+    } : undefined;
+
     this.openEventDialog({
       defaultDate: event.date,
       defaultStartTime: event.startTime,
       defaultEndTime: endTime,
       defaultOperatorId: event.operatorId,
       users: this.allUsers,
-      patients: this.patients
+      patients: this.patients,
+      searchFilters: dialogSearchFilters
     });
   }
 }

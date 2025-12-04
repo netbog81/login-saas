@@ -208,4 +208,12 @@ export class CalendarEventComponent {
   get backgroundColor(): string {
     return this.user.color || '#3b82f6';
   }
+
+  get hasInstruments(): boolean {
+    return !!(this.appointment.instruments && this.appointment.instruments.length > 0);
+  }
+
+  get instrumentsCount(): number {
+    return this.appointment.instruments?.length || 0;
+  }
 }

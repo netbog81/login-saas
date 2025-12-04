@@ -15,6 +15,13 @@ type AppointmentInstrument {
   updatedAt: DateTime!
 }
 
+input AppointmentInstrumentInput {
+  endOffsetMinutes: Int!
+  instrumentCategoryId: String!
+  orderPosition: Int
+  startOffsetMinutes: Int!
+}
+
 """Status of the appointment (deprecated)"""
 enum AppointmentStatus {
   CANCELLED
@@ -40,7 +47,8 @@ input AssignTemplateToOperatorInput {
 }
 
 type AvailabilityAppointment {
-  appointmentDate: DateTime!
+  """Data appuntamento in formato YYYY-MM-DD"""
+  appointmentDate: String!
   appointmentType: AppointmentType!
   bookingStatus: BookingStatus!
   cancellationReason: String
@@ -59,6 +67,7 @@ type AvailabilityAppointment {
   id: ID!
   instrumentOrderMatters: Boolean!
   instruments: [AppointmentInstrument!]
+  isRecurring: Boolean!
   maxParticipants: Int
   notes: String
   operator: Operator
@@ -66,6 +75,8 @@ type AvailabilityAppointment {
   operatorNotes: String
   participantCount: Int!
   patientId: Int
+  recurringGroupId: ID
+  repeatConfig: JSON
   service: Service
   serviceId: ID
   startTime: String!
@@ -166,6 +177,24 @@ type ConflictStatsOutput {
   byOperator: [OperatorConflictCount!]!
   byReason: JSONObject!
   totalConflicts: Int!
+}
+
+input CreateAvailabilityAppointmentInput {
+  appointmentDate: String!
+  clientEmail: String
+  clientName: String!
+  clientPhone: String
+  endTime: String!
+  instrumentOrderMatters: Boolean
+  instruments: [AppointmentInstrumentInput!]
+  notes: String
+  operatorId: ID!
+  patientId: Int
+
+  """Configurazione per appuntamenti ricorrenti"""
+  repeatConfig: RepeatConfigInput
+  serviceId: ID
+  startTime: String!
 }
 
 input CreateAvailabilityTemplateInput {
@@ -358,6 +387,9 @@ scalar JSONObject
 type Mutation {
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
+  cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
+  confirmAvailabilityAppointment(id: ID!): AvailabilityAppointment!
+  createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
@@ -376,6 +408,7 @@ type Mutation {
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
+  deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
   deleteException(id: ID!): Boolean!
   deleteExceptionsByDateRange(endDate: String!, exceptionType: ExceptionType, operatorId: ID!, startDate: String!): Int!
@@ -396,12 +429,14 @@ type Mutation {
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
   initializeDefaultSettings: Boolean!
+  markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
+  updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
   updateGeneralSetting(key: String!, value: JSON!): GeneralSettings!
@@ -518,6 +553,9 @@ type PhysiotherapistSlotOutput {
 type Query {
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
+  availabilityAppointment(id: ID!): AvailabilityAppointment
+  availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
+  availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
   availabilityException(id: ID!): AvailabilityException
   availabilityExceptions(endDate: String, exceptionType: ExceptionType, operatorId: ID, startDate: String): [AvailabilityException!]!
   availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!
@@ -547,6 +585,7 @@ type Query {
   instrumentCategory(id: ID!): InstrumentCategory
   instruments(categoryId: ID, status: InstrumentStatus): [Instrument!]!
   isHoliday(date: String!): Boolean!
+  isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
   operator(id: ID!): Operator
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
   operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
@@ -565,6 +604,37 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+}
+
+"""Modalità di fine ricorrenza"""
+enum RecurringEndType {
+  AFTER
+  NEVER
+  UNTIL
+}
+
+"""Tipo di ricorrenza per appuntamenti"""
+enum RecurringType {
+  DAILY
+  MONTHLY
+  WEEKLY
+}
+
+input RepeatConfigInput {
+  endType: RecurringEndType!
+  interval: Int!
+
+  """Numero di occorrenze (se endType = AFTER)"""
+  occurrences: Int
+
+  """
+  Giorni della settimana (0=Dom, 1=Lun, ..., 6=Sab) per ricorrenza settimanale
+  """
+  selectedDays: [Int!]
+  type: RecurringType!
+
+  """Data di fine (se endType = UNTIL)"""
+  untilDate: String
 }
 
 type Room {
@@ -647,6 +717,22 @@ enum TreatmentStatus {
   IN_PROGRESS
   OPERATOR_COMPLETED
   WAITING
+}
+
+input UpdateAvailabilityAppointmentInput {
+  appointmentDate: String
+  bookingStatus: BookingStatus
+  cancellationReason: String
+  clientEmail: String
+  clientName: String
+  clientPhone: String
+  endTime: String
+  instrumentOrderMatters: Boolean
+  instruments: [AppointmentInstrumentInput!]
+  notes: String
+  operatorNotes: String
+  patientId: Int
+  startTime: String
 }
 
 input UpdateOperatorInput {

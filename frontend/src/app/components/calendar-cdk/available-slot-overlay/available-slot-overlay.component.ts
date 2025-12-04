@@ -6,6 +6,11 @@ export interface AvailableSlotClickEvent {
   date: string;
   startTime: string;
   endTime: string;
+  availableInstruments?: {
+    id: string;
+    name: string;
+    categoryId: string;
+  }[];
 }
 
 @Component({
@@ -83,6 +88,7 @@ export class AvailableSlotOverlayComponent {
   @Input() top: number = 0;
   @Input() height: number = 60;
   @Input() color: string = '#3b82f6';
+  @Input() availableInstruments?: { id: string; name: string; categoryId: string; }[];
 
   @Output() slotClick = new EventEmitter<AvailableSlotClickEvent>();
   @Output() slotDblClick = new EventEmitter<AvailableSlotClickEvent>();
@@ -109,7 +115,8 @@ export class AvailableSlotOverlayComponent {
       operatorId: this.operatorId,
       date: this.date,
       startTime: this.startTime,
-      endTime: this.endTime
+      endTime: this.endTime,
+      availableInstruments: this.availableInstruments
     };
   }
 }

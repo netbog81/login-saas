@@ -129,6 +129,24 @@
   line-height: 1.3;
 }
 
+.event-instruments {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.9;
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 2px 5px;
+  border-radius: 4px;
+  width: fit-content;
+  margin-top: 2px;
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
 .resize-handle {
   position: absolute;
   bottom: 0;

@@ -361,7 +361,9 @@ export class PhysiotherapistAvailabilityService {
       .createQueryBuilder('appointment')
       .where('appointment.operatorId = :operatorId', { operatorId })
       .andWhere('appointment.appointmentDate = :date', { date })
-      .andWhere('appointment.status != :cancelled', { cancelled: 'cancelled' })
+      .andWhere('appointment.bookingStatus NOT IN (:...excludedStatuses)', {
+        excludedStatuses: ['cancelled', 'no_show'],
+      })
       .andWhere(
         '(appointment.startTime < :endTime AND appointment.endTime > :startTime)',
         { startTime, endTime },
@@ -546,7 +548,9 @@ export class PhysiotherapistAvailabilityService {
       .innerJoin('ai.appointment', 'appointment')
       .where('ai.instrumentId = :instrumentId', { instrumentId })
       .andWhere('appointment.appointmentDate = :date', { date })
-      .andWhere('appointment.status != :cancelled', { cancelled: 'cancelled' })
+      .andWhere('appointment.bookingStatus NOT IN (:...excludedStatuses)', {
+        excludedStatuses: ['cancelled', 'no_show'],
+      })
       .getMany();
 
     for (const booking of bookings) {
@@ -626,7 +630,9 @@ export class PhysiotherapistAvailabilityService {
       .createQueryBuilder('appointment')
       .where('appointment.operatorId = :operatorId', { operatorId })
       .andWhere('appointment.appointmentDate = :date', { date })
-      .andWhere('appointment.status != :cancelled', { cancelled: 'cancelled' })
+      .andWhere('appointment.bookingStatus NOT IN (:...excludedStatuses)', {
+        excludedStatuses: ['cancelled', 'no_show'],
+      })
       .orderBy('appointment.startTime', 'ASC')
       .getMany();
 
