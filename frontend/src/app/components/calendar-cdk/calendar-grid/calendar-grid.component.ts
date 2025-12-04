@@ -3,7 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { CalendarCellComponent, CellEvent } from '../calendar-cell/calendar-cell.component';
 import { CalendarEventComponent, EventAction } from '../calendar-event/calendar-event.component';
-import { TimeSlot } from '../services/calendar-state.service';
+import { AvailableSlotOverlayComponent, type AvailableSlotClickEvent } from '../available-slot-overlay/available-slot-overlay.component';
+import { TimeSlot, AvailableSlot } from '../services/calendar-state.service';
 import { Appointment } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Availability } from '../../../models/availability.model';
@@ -16,10 +17,16 @@ interface EventPosition {
   width: number;
 }
 
+interface AvailableSlotPosition {
+  slot: AvailableSlot;
+  top: number;
+  height: number;
+}
+
 @Component({
   selector: 'app-calendar-grid',
   standalone: true,
-  imports: [CommonModule, ScrollingModule, CalendarCellComponent, CalendarEventComponent],
+  imports: [CommonModule, ScrollingModule, CalendarCellComponent, CalendarEventComponent, AvailableSlotOverlayComponent],
   templateUrl: './calendar-grid.component.html',
   styleUrls: ['./calendar-grid.component.scss']
 })
@@ -38,6 +45,7 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   @Input() dragStartCell: CellEvent | null = null;
   @Input() dragCurrentCell: CellEvent | null = null;
   @Input() isDragging: boolean = false;
+  @Input() searchAvailableSlots: AvailableSlot[] = [];
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
@@ -49,8 +57,11 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
   @Output() eventDelete = new EventEmitter<EventAction>();
+  @Output() availableSlotClick = new EventEmitter<AvailableSlotClickEvent>();
+  @Output() availableSlotDblClick = new EventEmitter<AvailableSlotClickEvent>();
 
   eventPositions: Map<number, EventPosition[]> = new Map();
+  availableSlotPositions: Map<number, AvailableSlotPosition[]> = new Map();
   gridHeight: number = 0;
 
   ngOnInit(): void {
@@ -75,8 +86,46 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
     }
+    // Recalculate available slot positions when slots or display params change
+    if (changes['searchAvailableSlots'] || changes['slotHeight'] || changes['startHour'] || changes['slotDuration']) {
+      this.calculateAvailableSlotPositions();
+    }
     // Adjust header for scrollbar whenever content changes
     setTimeout(() => this.adjustHeaderForScrollbar(), 0);
+  }
+
+  /**
+   * Calcola le posizioni degli slot disponibili per ogni utente
+   */
+  private calculateAvailableSlotPositions(): void {
+    this.availableSlotPositions.clear();
+
+    if (!this.searchAvailableSlots || this.searchAvailableSlots.length === 0) {
+      return;
+    }
+
+    // Raggruppa gli slot per operatorId
+    for (const slot of this.searchAvailableSlots) {
+      // Trova l'utente corrispondente all'operatorId
+      const user = this.users.find(u => u.operatorId === slot.operatorId);
+      if (!user) continue;
+
+      // Calcola posizione top e height
+      const top = this.calculateTopPosition(slot.startTime);
+      const height = this.calculateHeight(slot.startTime, slot.endTime);
+
+      const position: AvailableSlotPosition = {
+        slot,
+        top,
+        height
+      };
+
+      if (!this.availableSlotPositions.has(user.id)) {
+        this.availableSlotPositions.set(user.id, []);
+      }
+      this.availableSlotPositions.get(user.id)!.push(position);
+    }
+
   }
 
   private calculateGridHeight(): void {
@@ -246,6 +295,10 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     return this.eventPositions.get(userId) || [];
   }
 
+  getAvailableSlotsForUser(userId: number): AvailableSlotPosition[] {
+    return this.availableSlotPositions.get(userId) || [];
+  }
+
   getUserById(userId: number): User | undefined {
     return this.users.find(u => u.id === userId);
   }
@@ -276,6 +329,7 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
     const user = this.users.find(u => u.id === userId);
     return user?.color || '#3b82f6';
   }
+
 
   onCellMouseDown(event: CellEvent): void {
     this.cellMouseDown.emit(event);
@@ -315,6 +369,14 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
 
   onEventDelete(action: EventAction): void {
     this.eventDelete.emit(action);
+  }
+
+  onAvailableSlotClick(event: AvailableSlotClickEvent): void {
+    this.availableSlotClick.emit(event);
+  }
+
+  onAvailableSlotDblClick(event: AvailableSlotClickEvent): void {
+    this.availableSlotDblClick.emit(event);
   }
 
   private adjustHeaderForScrollbar(): void {

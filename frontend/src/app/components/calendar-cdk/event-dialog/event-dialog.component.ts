@@ -13,6 +13,13 @@ export interface EventDialogData {
   defaultUserId?: number;
   users: User[];
   patients: Patient[];
+  // Filtri pre-compilati dalla ricerca
+  searchFilters?: {
+    duration?: number;
+    withInstrument?: boolean;
+    instrumentCategoryId?: string | null;
+    instrumentPosition?: 'first' | 'second';
+  };
 }
 
 export interface EventDialogResult {

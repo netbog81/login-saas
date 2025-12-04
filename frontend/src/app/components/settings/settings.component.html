@@ -1,0 +1,211 @@
+<div class="settings-container">
+  <header class="settings-header">
+    <h1>Impostazioni Generali</h1>
+    <p class="subtitle">Configura le impostazioni di sistema per la gestione degli appuntamenti</p>
+  </header>
+
+  <!-- Loading state -->
+  <div *ngIf="loading" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Caricamento impostazioni...</p>
+  </div>
+
+  <!-- Error message -->
+  <div *ngIf="error" class="message error">
+    <span class="icon">!</span>
+    <span>{{ error }}</span>
+    <button type="button" class="close-btn" (click)="error = null">&times;</button>
+  </div>
+
+  <!-- Success message -->
+  <div *ngIf="successMessage" class="message success">
+    <span class="icon">&#10003;</span>
+    <span>{{ successMessage }}</span>
+    <button type="button" class="close-btn" (click)="successMessage = null">&times;</button>
+  </div>
+
+  <!-- Settings form -->
+  <div class="settings-content" *ngIf="!loading">
+    <section class="settings-section">
+      <h2>Appuntamenti</h2>
+      <p class="section-description">
+        Configura come vengono generati gli slot disponibili per gli appuntamenti.
+      </p>
+
+      <div class="form-group">
+        <label for="defaultSlotDuration">Durata Standard Trattamento</label>
+        <select
+          id="defaultSlotDuration"
+          [(ngModel)]="appointmentSettings.defaultSlotDuration"
+          class="form-control"
+        >
+          <option *ngFor="let duration of durationOptions" [ngValue]="duration">
+            {{ duration }} minuti
+          </option>
+        </select>
+        <small class="hint">
+          Definisce lo step (intervallo) tra gli slot disponibili quando si cerca un appuntamento.
+          Esempio: con 45 minuti, gli slot saranno 9:00, 9:45, 10:30, ecc.
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label>Priorita Durata</label>
+        <div class="radio-group">
+          <label *ngFor="let option of priorityOptions" class="radio-option">
+            <input
+              type="radio"
+              name="slotDurationPriority"
+              [value]="option.value"
+              [(ngModel)]="appointmentSettings.slotDurationPriority"
+            />
+            <span class="radio-label">{{ option.label }}</span>
+          </label>
+        </div>
+        <div class="priority-hints">
+          <small class="hint" *ngIf="appointmentSettings.slotDurationPriority === 'operator'">
+            <strong>Preferenza Operatore:</strong> Se l'operatore ha una durata preferita configurata,
+            verra usata quella. Altrimenti si usa la durata standard di sistema.
+          </small>
+          <small class="hint" *ngIf="appointmentSettings.slotDurationPriority === 'system'">
+            <strong>Impostazione Sistema:</strong> Usa sempre la durata standard di sistema,
+            ignorando le preferenze individuali degli operatori.
+          </small>
+        </div>
+      </div>
+    </section>
+
+    <!-- Calendar Section -->
+    <section class="settings-section">
+      <h2>Calendario</h2>
+      <p class="section-description">
+        Configura l'aspetto e il comportamento predefinito del calendario.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="calStartHour">Ora Inizio</label>
+          <select
+            id="calStartHour"
+            [(ngModel)]="calendarSettings.startHour"
+            class="form-control"
+          >
+            <option *ngFor="let hour of hourOptions" [ngValue]="hour">
+              {{ formatHour(hour) }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="calEndHour">Ora Fine</label>
+          <select
+            id="calEndHour"
+            [(ngModel)]="calendarSettings.endHour"
+            class="form-control"
+          >
+            <option *ngFor="let hour of hourOptions" [ngValue]="hour">
+              {{ formatHour(hour) }}
+            </option>
+          </select>
+        </div>
+      </div>
+      <small class="hint">
+        Definisce l'intervallo orario visualizzato nel calendario (default 7:00-21:00).
+      </small>
+
+      <div class="form-group">
+        <label for="calSlotDuration">Durata Slot Griglia</label>
+        <select
+          id="calSlotDuration"
+          [(ngModel)]="calendarSettings.slotDuration"
+          class="form-control"
+        >
+          <option *ngFor="let duration of calendarSlotOptions" [ngValue]="duration">
+            {{ duration }} minuti
+          </option>
+        </select>
+        <small class="hint">
+          Definisce la granularità della griglia del calendario.
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label for="calDefaultView">Vista Predefinita</label>
+        <select
+          id="calDefaultView"
+          [(ngModel)]="calendarSettings.defaultView"
+          class="form-control"
+        >
+          <option *ngFor="let view of viewOptions" [ngValue]="view.value">
+            {{ view.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="calendarSettings.showWorkingHoursOnly"
+          />
+          <span>Mostra solo orari lavorativi</span>
+        </label>
+        <small class="hint">
+          Se abilitato, mostra solo l'intervallo orario definito sopra.
+        </small>
+      </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="calendarSettings.showWeekend"
+          />
+          <span>Mostra weekend</span>
+        </label>
+        <small class="hint">
+          Se abilitato, mostra sabato e domenica nella vista settimanale.
+        </small>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="settings-actions">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        (click)="resetSettings()"
+        [disabled]="!hasChanges() || saving"
+      >
+        Annulla Modifiche
+      </button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        (click)="saveSettings()"
+        [disabled]="!hasChanges() || saving"
+      >
+        <span *ngIf="!saving">Salva Impostazioni</span>
+        <span *ngIf="saving">Salvataggio...</span>
+      </button>
+    </div>
+
+    <!-- Advanced section -->
+    <section class="settings-section advanced">
+      <h3>Azioni Avanzate</h3>
+      <div class="advanced-actions">
+        <button
+          type="button"
+          class="btn btn-outline"
+          (click)="initializeDefaults()"
+          [disabled]="loading"
+        >
+          Inizializza Impostazioni Predefinite
+        </button>
+        <small class="hint">
+          Crea le impostazioni predefinite se non esistono. Non sovrascrive i valori esistenti.
+        </small>
+      </div>
+    </section>
+  </div>
+</div>

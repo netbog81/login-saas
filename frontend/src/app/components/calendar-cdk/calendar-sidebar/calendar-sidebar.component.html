@@ -88,5 +88,145 @@
         <p>Nessun operatore disponibile</p>
       </div>
     </div>
+
+    <!-- Search Filters Section -->
+    <div class="filters-section">
+      <!-- Collapsible header -->
+      <div class="filters-header" (click)="toggleFiltersExpanded()">
+        <h3 class="filters-title">Ricerca Disponibilità</h3>
+        <svg *ngIf="filtersExpanded" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+        <svg *ngIf="!filtersExpanded" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+
+      <!-- Filters content -->
+      <div class="filters-content" *ngIf="filtersExpanded">
+        <!-- Toggle ricerca slot disponibili -->
+        <div class="filter-group toggle-main">
+          <label class="filter-checkbox toggle-search">
+            <input type="checkbox"
+                   [checked]="slotSearchEnabled"
+                   (change)="onSlotSearchToggle($any($event.target).checked)">
+            <span>Mostra slot disponibili</span>
+          </label>
+        </div>
+
+        <!-- Duration -->
+        <div class="filter-group" [class.disabled]="!slotSearchEnabled">
+          <label class="filter-label">Durata</label>
+          <select [value]="searchFilters.duration"
+                  (change)="onDurationChange(+$any($event.target).value)">
+            <option *ngFor="let dur of durations" [value]="dur.value">
+              {{ dur.label }}
+            </option>
+          </select>
+        </div>
+
+        <!-- With Instrument toggle -->
+        <div class="filter-group" *ngIf="canHaveInstrument && slotSearchEnabled">
+          <label class="filter-checkbox">
+            <input type="checkbox"
+                   [checked]="searchFilters.withInstrument"
+                   (change)="onWithInstrumentChange($any($event.target).checked)">
+            <span>Con strumento</span>
+          </label>
+        </div>
+
+        <!-- Instrument Count -->
+        <div class="filter-group" *ngIf="showInstrumentCount && slotSearchEnabled">
+          <label class="filter-label">Numero strumenti</label>
+          <div class="radio-group">
+            <label class="filter-radio">
+              <input type="radio"
+                     name="instrumentCount"
+                     [value]="1"
+                     [checked]="searchFilters.instrumentCount === 1"
+                     (change)="onInstrumentCountChange(1)">
+              <span>1 strumento</span>
+            </label>
+            <label class="filter-radio" *ngIf="canHaveTwoInstruments">
+              <input type="radio"
+                     name="instrumentCount"
+                     [value]="2"
+                     [checked]="searchFilters.instrumentCount === 2"
+                     (change)="onInstrumentCountChange(2)">
+              <span>2 strumenti</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Instrument Position (for 1 instrument with duration > 30) -->
+        <div class="filter-group" *ngIf="showInstrumentPosition && slotSearchEnabled">
+          <label class="filter-label">Posizione strumento</label>
+          <div class="radio-group vertical">
+            <label class="filter-radio">
+              <input type="radio"
+                     name="instrumentPosition"
+                     value="first"
+                     [checked]="searchFilters.instrumentPosition === 'first'"
+                     (change)="onInstrumentPositionChange('first')">
+              <span>{{ getPositionLabel('first') }}</span>
+            </label>
+            <label class="filter-radio">
+              <input type="radio"
+                     name="instrumentPosition"
+                     value="second"
+                     [checked]="searchFilters.instrumentPosition === 'second'"
+                     (change)="onInstrumentPositionChange('second')">
+              <span>{{ getPositionLabel('second') }}</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Instrument Order (for 2 instruments) -->
+        <div class="filter-group" *ngIf="showInstrumentOrder && slotSearchEnabled">
+          <label class="filter-checkbox">
+            <input type="checkbox"
+                   [checked]="searchFilters.instrumentOrderMatters"
+                   (change)="onInstrumentOrderChange($any($event.target).checked)">
+            <span>Ordine importante</span>
+          </label>
+          <p class="filter-hint">Se selezionato, gli strumenti devono essere disponibili in ordine specifico</p>
+        </div>
+
+        <!-- Instrument Category (1 strumento) -->
+        <div class="filter-group" *ngIf="showInstrumentCategory && slotSearchEnabled">
+          <label class="filter-label">Categoria strumento</label>
+          <select [value]="searchFilters.instrumentCategoryId || ''"
+                  (change)="onInstrumentCategoryChange($any($event.target).value)">
+            <option value="">Tutte le categorie</option>
+            <option *ngFor="let cat of instrumentCategories" [value]="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Two Instrument Categories (2 strumenti) -->
+        <div class="filter-group" *ngIf="showTwoInstrumentCategories && slotSearchEnabled">
+          <label class="filter-label">Strumento 1 (primi 30 min)</label>
+          <select [value]="searchFilters.instrumentCategoryId || ''"
+                  (change)="onInstrumentCategoryChange($any($event.target).value)">
+            <option value="">Tutte le categorie</option>
+            <option *ngFor="let cat of instrumentCategories" [value]="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="filter-group" *ngIf="showTwoInstrumentCategories && slotSearchEnabled">
+          <label class="filter-label">Strumento 2 (secondi 30 min)</label>
+          <select [value]="searchFilters.instrument2CategoryId || ''"
+                  (change)="onInstrument2CategoryChange($any($event.target).value)">
+            <option value="">Tutte le categorie</option>
+            <option *ngFor="let cat of instrumentCategories" [value]="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+        </div>
+      </div>
+    </div>
   </div>
 </div>

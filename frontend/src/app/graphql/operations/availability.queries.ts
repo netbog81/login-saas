@@ -40,3 +40,21 @@ export const CHECK_SLOT_AVAILABILITY = gql`
     )
   }
 `;
+
+export const GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS = gql`
+  query GetPhysiotherapistAvailableSlots($input: CheckPhysiotherapistAvailabilityInput!) {
+    physiotherapistAvailableSlots(input: $input) {
+      startTime
+      endTime
+      available
+      reason
+      suggestedInstruments {
+        instrumentCategoryId
+        categoryName
+        instrumentId
+        startOffsetMinutes
+        endOffsetMinutes
+      }
+    }
+  }
+`;

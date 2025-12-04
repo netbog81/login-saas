@@ -130,6 +130,15 @@ enum BookingStatus {
   SCHEDULED
 }
 
+type CalendarSettings {
+  defaultView: String!
+  endHour: Int!
+  showWeekend: Boolean!
+  showWorkingHoursOnly: Boolean!
+  slotDuration: Int!
+  startHour: Int!
+}
+
 input CheckPhysiotherapistAvailabilityInput {
   customInstrumentSlots: [InstrumentSlotInput!]
   date: String!
@@ -229,7 +238,7 @@ type GeneralSettings {
   id: ID!
   key: String!
   updatedAt: DateTime!
-  value: JSONObject!
+  value: JSON!
   valueType: String!
 }
 
@@ -394,7 +403,7 @@ type Mutation {
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
-  updateGeneralSetting(key: String!, value: JSONObject!): GeneralSettings!
+  updateGeneralSetting(key: String!, value: JSON!): GeneralSettings!
   updateGymRoom(color: String, id: ID!, isActive: Boolean, maxCapacity: Int, name: String, slotDuration: Int): GymRoom!
   updateGymSchedule(dayOfWeek: Int, endTime: String, id: ID!, isCurrent: Boolean, operatorId: ID, startTime: String, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
@@ -408,7 +417,7 @@ type Mutation {
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int): Service!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
-  upsertGeneralSetting(category: String, description: String, key: String!, value: JSONObject!, valueType: String): GeneralSettings!
+  upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 }
 
 type Operator {
@@ -513,6 +522,7 @@ type Query {
   availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!
   availableInstrumentsByCategory(categoryId: ID!): [Instrument!]!
   availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
+  calendarSettings: CalendarSettings!
   checkDuplicateOperator(name: String!, surname: String): [Operator!]!
   checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
   conflictStats: ConflictStatsOutput!

@@ -35,11 +35,16 @@
       [selectedUsers]="selectedOperators"
       [collapsed]="sidebarCollapsed"
       [selectedMacroCategory]="selectedMacroCategory"
+      [searchFilters]="searchFilters"
+      [instrumentCategories]="instrumentCategories"
+      [slotSearchEnabled]="slotSearchEnabled"
       (userToggle)="onUserToggle($event)"
       (selectAll)="onSelectAllUsers()"
       (deselectAll)="onDeselectAllUsers()"
       (toggleCollapse)="onToggleSidebar()"
-      (macroCategoryChange)="onMacroCategoryChange($event)">
+      (macroCategoryChange)="onMacroCategoryChange($event)"
+      (searchFiltersChange)="onSearchFiltersChange($event)"
+      (slotSearchToggle)="onSlotSearchToggle($event)">
     </app-calendar-sidebar>
 
     <!-- Grid area -->
@@ -64,6 +69,7 @@
         [dragStartCell]="dragStartCell"
         [dragCurrentCell]="dragCurrentCell"
         [isDragging]="isDragging"
+        [searchAvailableSlots]="availableSlots"
         (cellMouseDown)="onCellMouseDown($event)"
         (cellMouseEnter)="onCellMouseEnter($event)"
         (cellMouseUp)="onCellMouseUp($event)"
@@ -73,7 +79,9 @@
         (eventDragStart)="onEventDragStart($event)"
         (eventDragEnd)="onEventDragEnd($event)"
         (eventResize)="onEventResize($event)"
-        (eventDelete)="onEventDelete($event)">
+        (eventDelete)="onEventDelete($event)"
+        (availableSlotClick)="onAvailableSlotClick($event)"
+        (availableSlotDblClick)="onAvailableSlotDblClick($event)">
       </app-calendar-grid>
 
       <app-calendar-weekly-grid
@@ -91,6 +99,7 @@
         [startHour]="config.showWorkingHoursOnly ? config.workingHoursStart : config.startHour"
         [showWeekend]="config.showWeekend"
         [showWorkingHoursOnly]="config.showWorkingHoursOnly"
+        [searchAvailableSlots]="availableSlots"
         (cellMouseDown)="onCellMouseDown($event)"
         (cellMouseEnter)="onCellMouseEnter($event)"
         (cellMouseUp)="onCellMouseUp($event)"
@@ -100,7 +109,9 @@
         (eventDragStart)="onEventDragStart($event)"
         (eventDragEnd)="onEventDragEnd($event)"
         (eventResize)="onEventResize($event)"
-        (eventDelete)="onEventDelete($event)">
+        (eventDelete)="onEventDelete($event)"
+        (availableSlotClick)="onAvailableSlotClick($event)"
+        (availableSlotDblClick)="onAvailableSlotDblClick($event)">
       </app-calendar-weekly-grid>
 
       <!-- Empty state -->

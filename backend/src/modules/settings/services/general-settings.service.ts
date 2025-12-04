@@ -19,6 +19,16 @@ export const SETTINGS_KEYS = {
   APPOINTMENT_DEFAULT_DURATION: 'appointment.defaultDuration',
   APPOINTMENT_BUFFER_BEFORE: 'appointment.bufferBefore',
   APPOINTMENT_BUFFER_AFTER: 'appointment.bufferAfter',
+  APPOINTMENT_SLOT_DURATION_DEFAULT: 'appointment.defaultSlotDuration',
+  APPOINTMENT_SLOT_DURATION_PRIORITY: 'appointment.slotDurationPriority',
+
+  // Calendario
+  CALENDAR_START_HOUR: 'calendar.startHour',
+  CALENDAR_END_HOUR: 'calendar.endHour',
+  CALENDAR_SHOW_WORKING_HOURS_ONLY: 'calendar.showWorkingHoursOnly',
+  CALENDAR_SHOW_WEEKEND: 'calendar.showWeekend',
+  CALENDAR_SLOT_DURATION: 'calendar.slotDuration',
+  CALENDAR_DEFAULT_VIEW: 'calendar.defaultView',
 } as const;
 
 @Injectable()
@@ -159,6 +169,63 @@ export class GeneralSettingsService {
         description: 'Durata predefinita appuntamento in minuti',
         valueType: 'number',
         category: 'appointment'
+      },
+      {
+        key: SETTINGS_KEYS.APPOINTMENT_SLOT_DURATION_DEFAULT,
+        value: 45,
+        description: 'Durata standard slot per generazione appuntamenti (step in minuti)',
+        valueType: 'number',
+        category: 'appointment'
+      },
+      {
+        key: SETTINGS_KEYS.APPOINTMENT_SLOT_DURATION_PRIORITY,
+        value: 'operator',
+        description: 'Priorità durata slot: operator (usa preferenza operatore) o system (usa impostazione di sistema)',
+        valueType: 'string',
+        category: 'appointment'
+      },
+      // Calendario
+      {
+        key: SETTINGS_KEYS.CALENDAR_START_HOUR,
+        value: 7,
+        description: 'Ora inizio visualizzazione calendario',
+        valueType: 'number',
+        category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_END_HOUR,
+        value: 21,
+        description: 'Ora fine visualizzazione calendario',
+        valueType: 'number',
+        category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY,
+        value: true,
+        description: 'Mostra solo orari lavorativi nel calendario',
+        valueType: 'boolean',
+        category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_SHOW_WEEKEND,
+        value: true,
+        description: 'Mostra weekend nel calendario settimanale',
+        valueType: 'boolean',
+        category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_SLOT_DURATION,
+        value: 15,
+        description: 'Durata slot griglia calendario in minuti',
+        valueType: 'number',
+        category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_DEFAULT_VIEW,
+        value: 'daily',
+        description: 'Vista predefinita calendario: daily o weekly',
+        valueType: 'string',
+        category: 'calendar'
       }
     ];
 
@@ -191,6 +258,52 @@ export class GeneralSettingsService {
    */
   async isWhatsAppEnabled(): Promise<boolean> {
     return this.getValue<boolean>(SETTINGS_KEYS.WHATSAPP_ENABLED, false);
+  }
+
+  /**
+   * Helper: ottieni durata default slot per generazione appuntamenti
+   */
+  async getDefaultSlotDuration(): Promise<number> {
+    return this.getValue<number>(SETTINGS_KEYS.APPOINTMENT_SLOT_DURATION_DEFAULT, 45);
+  }
+
+  /**
+   * Helper: ottieni priorità durata slot (operator o system)
+   */
+  async getSlotDurationPriority(): Promise<'operator' | 'system'> {
+    return this.getValue<'operator' | 'system'>(SETTINGS_KEYS.APPOINTMENT_SLOT_DURATION_PRIORITY, 'operator');
+  }
+
+  // ==================== CALENDAR HELPERS ====================
+
+  /**
+   * Helper: ottieni configurazione completa calendario
+   */
+  async getCalendarSettings(): Promise<{
+    startHour: number;
+    endHour: number;
+    showWorkingHoursOnly: boolean;
+    showWeekend: boolean;
+    slotDuration: number;
+    defaultView: 'daily' | 'weekly';
+  }> {
+    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView] = await Promise.all([
+      this.getValue<number>(SETTINGS_KEYS.CALENDAR_START_HOUR, 7),
+      this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
+      this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY, true),
+      this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WEEKEND, true),
+      this.getValue<number>(SETTINGS_KEYS.CALENDAR_SLOT_DURATION, 15),
+      this.getValue<'daily' | 'weekly'>(SETTINGS_KEYS.CALENDAR_DEFAULT_VIEW, 'daily'),
+    ]);
+
+    return {
+      startHour,
+      endHour,
+      showWorkingHoursOnly,
+      showWeekend,
+      slotDuration,
+      defaultView,
+    };
   }
 
   // ==================== PRIVATE HELPERS ====================

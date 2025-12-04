@@ -6,12 +6,14 @@ import { OverlayModule } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 
 // Services
-import { CalendarStateService, CalendarConfig } from '../services/calendar-state.service';
+import { CalendarStateService, CalendarConfig, AppointmentSearchFilters, AvailableSlot } from '../services/calendar-state.service';
 import { ApiService } from '../../../services/api.service';
 import { OperatorService } from '../../../services/operator.service';
+import { InstrumentService } from '../../../services/instrument.service';
+import { SettingsService } from '../../../services/settings.service';
 
 // GraphQL types
-import { Operator, OperatorMacroCategory } from '../../../graphql/generated/types';
+import { Operator, OperatorMacroCategory, InstrumentCategory, InstrumentSlotInput } from '../../../graphql/generated/types';
 
 // Components
 import { CalendarHeaderComponent } from '../calendar-header/calendar-header.component';
@@ -26,6 +28,7 @@ import { UsersLegendComponent } from '../users-legend/users-legend.component';
 import { WorkingHoursDialogComponent, WorkingHoursDialogData, WorkingHoursDialogResult } from '../working-hours-dialog/working-hours-dialog.component';
 import { CellEvent } from '../calendar-cell/calendar-cell.component';
 import { EventAction } from '../calendar-event/calendar-event.component';
+import { AvailableSlotClickEvent } from '../available-slot-overlay/available-slot-overlay.component';
 
 // Models
 import { Appointment } from '../../../models/appointment.model';
@@ -91,10 +94,18 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Category filter
   selectedMacroCategory: OperatorMacroCategory | null = null;
 
+  // Search filters
+  searchFilters: AppointmentSearchFilters = { duration: 30, withInstrument: false };
+  instrumentCategories: InstrumentCategory[] = [];
+  availableSlots: AvailableSlot[] = [];
+  slotSearchEnabled: boolean = false;
+
   constructor(
     public stateService: CalendarStateService,
     private apiService: ApiService,
     private operatorService: OperatorService,
+    private instrumentService: InstrumentService,
+    private settingsService: SettingsService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
@@ -183,11 +194,68 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         this.sidebarCollapsed = collapsed;
         this.cdr.markForCheck();
       });
+
+    // Subscribe to search filters
+    this.stateService.searchFilters$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(filters => {
+        this.searchFilters = filters;
+        this.cdr.markForCheck();
+      });
+
+    // Subscribe to available slots
+    this.stateService.availableSlots$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(slots => {
+        this.availableSlots = slots;
+        this.cdr.markForCheck();
+      });
+
+    // Subscribe to slot search toggle
+    this.stateService.slotSearchEnabled$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(enabled => {
+        this.slotSearchEnabled = enabled;
+        this.cdr.markForCheck();
+      });
+
+    // Load instrument categories when selected operators change
+    this.stateService.selectedOperators$
+      .pipe(
+        debounceTime(100),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(operators => {
+        this.loadInstrumentCategoriesForOperators(operators);
+      });
+
+    // Search available slots when filters, operators, date, or toggle change
+    combineLatest([
+      this.stateService.searchFilters$,
+      this.stateService.selectedOperators$,
+      this.stateService.currentDate$,
+      this.stateService.config$,
+      this.stateService.slotSearchEnabled$
+    ])
+      .pipe(
+        debounceTime(150),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(([filters, operators, date, config, searchEnabled]) => {
+        if (searchEnabled) {
+          this.searchAvailableSlots(filters, operators, date, config);
+        } else {
+          this.stateService.clearAvailableSlots();
+        }
+      });
   }
 
   private async loadInitialData(): Promise<void> {
     try {
       this.isLoading = true;
+
+      // Load calendar settings from backend first
+      await this.loadCalendarSettings();
 
       // Load operators from GraphQL
       await this.loadOperators();
@@ -205,6 +273,15 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
   }
 
+  private async loadCalendarSettings(): Promise<void> {
+    try {
+      const settings = await firstValueFrom(this.settingsService.getCalendarSettings());
+      this.stateService.applyBackendSettings(settings);
+    } catch (error) {
+      console.warn('Error loading calendar settings, using defaults:', error);
+    }
+  }
+
   private async loadOperators(): Promise<void> {
     const operators = await firstValueFrom(
       this.operatorService.getOperators(
@@ -215,7 +292,26 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     );
     this.allUsers = this.mapOperatorsToUsers(operators);
 
-    // Select all active users by default
+    // Try to restore previously selected operators from storage
+    const storedIds = this.stateService.getStoredOperatorIds();
+
+    if (storedIds.length > 0) {
+      // Filter only operators that still exist and are active
+      const restoredOperators = this.allUsers.filter(
+        u => u.active && storedIds.includes(u.id)
+      );
+
+      if (restoredOperators.length > 0) {
+        console.log('[Calendar] Restored operator selection:', restoredOperators.length);
+        this.stateService.setSelectedOperators(restoredOperators);
+        this.cdr.markForCheck();
+        return;
+      } else {
+        console.log('[Calendar] Stored operators no longer valid, using defaults');
+      }
+    }
+
+    // Default: select all active users (only on first load or if stored selection is invalid)
     const activeUsers = this.allUsers.filter(u => u.active);
     this.stateService.setSelectedOperators(activeUsers);
     this.cdr.markForCheck();
@@ -229,6 +325,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         id: op.legacyUserId ?? this.hashUUID(op.id),
         name: `${op.name} ${op.surname || ''}`.trim(),
         type: this.translateCategory(op.macroCategory),
+        macroCategory: op.macroCategory,
         color: op.color || '#3498db',
         active: op.isActive,
         operatorId: op.id,
@@ -785,5 +882,270 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       day: 'numeric'
     };
     return date.toLocaleDateString('it-IT', options);
+  }
+
+  // ============================================
+  // Search Filters & Available Slots Methods
+  // ============================================
+
+  onSearchFiltersChange(filters: Partial<AppointmentSearchFilters>): void {
+    this.stateService.updateSearchFilters(filters);
+  }
+
+  onSlotSearchToggle(enabled: boolean): void {
+    this.stateService.setSlotSearchEnabled(enabled);
+  }
+
+  /**
+   * Carica le categorie strumenti disponibili per gli operatori selezionati
+   * Filtra in base alla macroCategory degli operatori
+   */
+  private async loadInstrumentCategoriesForOperators(operators: User[]): Promise<void> {
+    if (operators.length === 0) {
+      this.instrumentCategories = [];
+      return;
+    }
+
+    // Ottieni le macro-categorie uniche degli operatori selezionati
+    const macroCategories = new Set<OperatorMacroCategory>();
+    for (const op of operators) {
+      if (op.macroCategory) {
+        macroCategories.add(op.macroCategory);
+      }
+    }
+
+    // Se nessuna macro-categoria, carica tutte le categorie
+    if (macroCategories.size === 0) {
+      try {
+        const categories = await firstValueFrom(this.instrumentService.getInstrumentCategories());
+        this.instrumentCategories = categories.filter(c => c.isActive);
+        this.cdr.markForCheck();
+      } catch (error) {
+        console.error('Error loading instrument categories:', error);
+      }
+      return;
+    }
+
+    // Carica categorie per ogni macro-categoria
+    try {
+      const allCategories: InstrumentCategory[] = [];
+      for (const macroCategory of macroCategories) {
+        const categories = await firstValueFrom(
+          this.instrumentService.getInstrumentCategories(macroCategory)
+        );
+        allCategories.push(...categories.filter(c => c.isActive));
+      }
+
+      // Rimuovi duplicati
+      const uniqueCategories = allCategories.filter(
+        (cat, index, self) => self.findIndex(c => c.id === cat.id) === index
+      );
+
+      this.instrumentCategories = uniqueCategories;
+      this.cdr.markForCheck();
+    } catch (error) {
+      console.error('Error loading instrument categories:', error);
+    }
+  }
+
+  /**
+   * Cerca gli slot disponibili per gli operatori selezionati
+   */
+  private async searchAvailableSlots(
+    filters: AppointmentSearchFilters,
+    operators: User[],
+    currentDate: Date,
+    config: CalendarConfig
+  ): Promise<void> {
+    if (operators.length === 0) {
+      this.stateService.clearAvailableSlots();
+      return;
+    }
+
+    // Solo fisioterapisti con template possono avere slot disponibili
+    const physiotherapists = operators.filter(
+      op => op.hasTemplate && op.operatorId && op.macroCategory === OperatorMacroCategory.Physiotherapist
+    );
+
+    if (physiotherapists.length === 0) {
+      this.stateService.clearAvailableSlots();
+      return;
+    }
+
+    const availableSlots: AvailableSlot[] = [];
+
+    // Determina le date da cercare
+    const datesToSearch: string[] = config.viewType === 'daily'
+      ? [this.formatDate(currentDate)]
+      : this.visibleDates;
+
+    // Costruisci gli instrument slots in base ai filtri
+    const instrumentSlots = this.buildInstrumentSlots(filters);
+
+    // Cerca slot per ogni fisioterapista e data
+    const searchPromises: Promise<void>[] = [];
+
+    for (const physio of physiotherapists) {
+      for (const date of datesToSearch) {
+        searchPromises.push(
+          this.searchSlotsForOperator(physio, date, filters.duration, instrumentSlots, availableSlots)
+        );
+      }
+    }
+
+    try {
+      await Promise.all(searchPromises);
+      this.stateService.setAvailableSlots(availableSlots);
+    } catch (error) {
+      console.error('Error searching available slots:', error);
+      this.stateService.clearAvailableSlots();
+    }
+  }
+
+  /**
+   * Cerca slot disponibili per un singolo operatore e data
+   */
+  private async searchSlotsForOperator(
+    operator: User,
+    date: string,
+    duration: number,
+    instrumentSlots: InstrumentSlotInput[] | undefined,
+    results: AvailableSlot[]
+  ): Promise<void> {
+    try {
+      const slots = await firstValueFrom(
+        this.operatorService.getPhysiotherapistAvailableSlots({
+          operatorId: operator.operatorId!,
+          date,
+          durationMinutes: duration,
+          customInstrumentSlots: instrumentSlots
+        })
+      );
+
+      // Filtra solo slot disponibili e aggiungi ai risultati
+      for (const slot of slots) {
+        if (slot.available) {
+          results.push({
+            operatorId: operator.operatorId!,
+            date,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            color: operator.color,
+            availableInstruments: slot.suggestedInstruments?.map(s => ({
+              id: s.instrumentId || '',
+              name: s.categoryName,
+              categoryId: s.instrumentCategoryId
+            }))
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Error searching slots for operator ${operator.id}:`, error);
+    }
+  }
+
+  /**
+   * Costruisce gli InstrumentSlotInput in base ai filtri di ricerca
+   */
+  private buildInstrumentSlots(filters: AppointmentSearchFilters): InstrumentSlotInput[] | undefined {
+    if (!filters.withInstrument) {
+      return undefined;
+    }
+
+    const slots: InstrumentSlotInput[] = [];
+    const duration = filters.duration;
+
+    if (filters.instrumentCount === 1) {
+      // Un solo strumento
+      if (!filters.instrumentCategoryId) return undefined;
+
+      if (duration === 30) {
+        // Tutto il tempo con strumento
+        slots.push({
+          instrumentCategoryId: filters.instrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: 30
+        });
+      } else if (duration === 45 || duration === 60) {
+        // Posizione strumento
+        const instrumentDuration = 30;
+        if (filters.instrumentPosition === 'first') {
+          slots.push({
+            instrumentCategoryId: filters.instrumentCategoryId,
+            startOffsetMinutes: 0,
+            endOffsetMinutes: instrumentDuration
+          });
+        } else if (filters.instrumentPosition === 'second') {
+          slots.push({
+            instrumentCategoryId: filters.instrumentCategoryId,
+            startOffsetMinutes: duration - instrumentDuration,
+            endOffsetMinutes: duration
+          });
+        }
+      }
+    } else if (filters.instrumentCount === 2) {
+      // Due strumenti
+      if (!filters.instrumentCategoryId || !filters.instrument2CategoryId) return undefined;
+
+      const halfDuration = duration / 2;
+
+      if (filters.instrumentOrderMatters) {
+        // Ordine specifico
+        slots.push({
+          instrumentCategoryId: filters.instrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: halfDuration
+        });
+        slots.push({
+          instrumentCategoryId: filters.instrument2CategoryId,
+          startOffsetMinutes: halfDuration,
+          endOffsetMinutes: duration
+        });
+      } else {
+        // Ordine non importante - prova entrambe le combinazioni (il backend gestirà)
+        slots.push({
+          instrumentCategoryId: filters.instrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: halfDuration
+        });
+        slots.push({
+          instrumentCategoryId: filters.instrument2CategoryId,
+          startOffsetMinutes: halfDuration,
+          endOffsetMinutes: duration
+        });
+      }
+    }
+
+    return slots.length > 0 ? slots : undefined;
+  }
+
+  // ============================================
+  // Available Slot Click Handlers
+  // ============================================
+
+  onAvailableSlotClick(event: AvailableSlotClickEvent): void {
+    // Single click - potrebbe mostrare info sullo slot
+    console.log('[Calendar] Available slot clicked:', event);
+  }
+
+  onAvailableSlotDblClick(event: AvailableSlotClickEvent): void {
+    // Double click - apri dialog per creare appuntamento
+    const user = this.allUsers.find(u => u.operatorId === event.operatorId);
+    if (!user) {
+      console.error('User not found for operator:', event.operatorId);
+      return;
+    }
+
+    // Calcola l'endTime basato sulla durata dei filtri di ricerca
+    const endTime = this.addMinutesToTime(event.startTime, this.searchFilters.duration);
+
+    this.openEventDialog({
+      defaultDate: event.date,
+      defaultStartTime: event.startTime,
+      defaultEndTime: endTime,
+      defaultUserId: user.id,
+      users: this.allUsers,
+      patients: this.patients
+    });
   }
 }

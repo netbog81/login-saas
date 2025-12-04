@@ -80,7 +80,17 @@ export class AvailabilityResolver {
   async getPhysiotherapistAvailableSlots(
     @Args('input') input: CheckPhysiotherapistAvailabilityInput
   ): Promise<PhysiotherapistSlotOutput[]> {
-    const date = new Date(input.date);
+    // Fix timezone: parse date as local midnight to avoid UTC offset issues
+    // Input format: "YYYY-MM-DD"
+    const [year, month, day] = input.date.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // Local timezone
+
+    console.log('[AvailabilityResolver] getPhysiotherapistAvailableSlots:', {
+      inputDate: input.date,
+      parsedDate: date.toISOString(),
+      localDate: date.toLocaleDateString('it-IT'),
+      operatorId: input.operatorId,
+    });
 
     // Convert InstrumentSlotInput to InstrumentSlot (add placeholder categoryName)
     const customSlots = input.customInstrumentSlots?.map(slot => ({

@@ -1,7 +1,8 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { GeneralSettingsService } from '../services/general-settings.service';
 import { GeneralSettings } from '../entities/general-settings.entity';
-import { GraphQLJSONObject } from 'graphql-type-json';
+import { CalendarSettings } from '../types/calendar-settings.type';
+import { GraphQLJSON } from 'graphql-type-json';
 
 @Resolver(() => GeneralSettings)
 export class GeneralSettingsResolver {
@@ -39,6 +40,14 @@ export class GeneralSettingsResolver {
     return this.settingsService.findByKey(key);
   }
 
+  /**
+   * Ottieni impostazioni calendario come oggetto tipizzato
+   */
+  @Query(() => CalendarSettings, { name: 'calendarSettings' })
+  async getCalendarSettings(): Promise<CalendarSettings> {
+    return this.settingsService.getCalendarSettings();
+  }
+
   // ==================== MUTATIONS ====================
 
   /**
@@ -47,7 +56,7 @@ export class GeneralSettingsResolver {
   @Mutation(() => GeneralSettings, { name: 'updateGeneralSetting' })
   async updateSetting(
     @Args('key') key: string,
-    @Args('value', { type: () => GraphQLJSONObject }) value: any
+    @Args('value', { type: () => GraphQLJSON }) value: any
   ): Promise<GeneralSettings> {
     return this.settingsService.updateValue(key, value);
   }
@@ -58,7 +67,7 @@ export class GeneralSettingsResolver {
   @Mutation(() => GeneralSettings, { name: 'upsertGeneralSetting' })
   async upsertSetting(
     @Args('key') key: string,
-    @Args('value', { type: () => GraphQLJSONObject }) value: any,
+    @Args('value', { type: () => GraphQLJSON }) value: any,
     @Args('description', { nullable: true }) description?: string,
     @Args('valueType', { nullable: true }) valueType?: string,
     @Args('category', { nullable: true }) category?: string

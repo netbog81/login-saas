@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { SettingsModule } from '../settings/settings.module';
 
 // Entities
 import { Operator } from './entities/operator.entity';
@@ -60,6 +61,7 @@ import { AppointmentConflictResolver } from './resolvers/appointment-conflict.re
 
 @Module({
   imports: [
+    SettingsModule,
     TypeOrmModule.forFeature([
       Operator,
       OperatorCategory,

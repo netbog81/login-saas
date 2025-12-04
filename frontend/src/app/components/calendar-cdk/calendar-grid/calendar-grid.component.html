@@ -47,6 +47,22 @@
           </app-calendar-cell>
         </div>
 
+        <!-- Available slots layer (absolute positioned, below events) -->
+        <div class="available-slots-container">
+          <app-available-slot-overlay
+            *ngFor="let slotPos of getAvailableSlotsForUser(user.id)"
+            [operatorId]="slotPos.slot.operatorId"
+            [date]="slotPos.slot.date"
+            [startTime]="slotPos.slot.startTime"
+            [endTime]="slotPos.slot.endTime"
+            [top]="slotPos.top"
+            [height]="slotPos.height"
+            [color]="slotPos.slot.color"
+            (slotClick)="onAvailableSlotClick($event)"
+            (slotDblClick)="onAvailableSlotDblClick($event)">
+          </app-available-slot-overlay>
+        </div>
+
         <!-- Events layer (absolute positioned) -->
         <div class="events-container">
           <app-calendar-event

@@ -3,7 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { CalendarCellComponent, CellEvent } from '../calendar-cell/calendar-cell.component';
 import { CalendarEventComponent, EventAction } from '../calendar-event/calendar-event.component';
-import { TimeSlot } from '../services/calendar-state.service';
+import { AvailableSlotOverlayComponent, type AvailableSlotClickEvent } from '../available-slot-overlay/available-slot-overlay.component';
+import { TimeSlot, AvailableSlot } from '../services/calendar-state.service';
 import { Appointment } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Availability } from '../../../models/availability.model';
@@ -16,6 +17,12 @@ interface EventPosition {
   width: number;
 }
 
+interface AvailableSlotPosition {
+  slot: AvailableSlot;
+  top: number;
+  height: number;
+}
+
 interface DayColumn {
   date: string;
   dayName: string;
@@ -25,7 +32,7 @@ interface DayColumn {
 @Component({
   selector: 'app-calendar-weekly-grid',
   standalone: true,
-  imports: [CommonModule, ScrollingModule, CalendarCellComponent, CalendarEventComponent],
+  imports: [CommonModule, ScrollingModule, CalendarCellComponent, CalendarEventComponent, AvailableSlotOverlayComponent],
   templateUrl: './calendar-weekly-grid.component.html',
   styleUrl: './calendar-weekly-grid.component.scss'
 })
@@ -47,6 +54,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Input() dragStartCell: CellEvent | null = null;
   @Input() dragCurrentCell: CellEvent | null = null;
   @Input() isDragging: boolean = false;
+  @Input() searchAvailableSlots: AvailableSlot[] = [];
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
@@ -58,9 +66,12 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Output() eventDragEnd = new EventEmitter<EventAction>();
   @Output() eventResize = new EventEmitter<EventAction>();
   @Output() eventDelete = new EventEmitter<EventAction>();
+  @Output() availableSlotClick = new EventEmitter<AvailableSlotClickEvent>();
+  @Output() availableSlotDblClick = new EventEmitter<AvailableSlotClickEvent>();
 
   dayColumns: DayColumn[] = [];
   eventPositions: Map<string, Map<number, EventPosition[]>> = new Map();
+  availableSlotPositions: Map<string, Map<number, AvailableSlotPosition[]>> = new Map(); // date -> userId -> positions
   gridHeight: number = 0;
   showUserNames: boolean = true;
 
@@ -93,8 +104,49 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
     }
+    // Recalculate available slot positions when slots or display params change
+    if (changes['searchAvailableSlots'] || changes['slotHeight'] || changes['startHour'] || changes['slotDuration']) {
+      this.calculateAvailableSlotPositions();
+    }
     // Adjust header for scrollbar whenever content changes
     setTimeout(() => this.adjustHeaderForScrollbar(), 0);
+  }
+
+  /**
+   * Calcola le posizioni degli slot disponibili per ogni giorno/utente
+   */
+  private calculateAvailableSlotPositions(): void {
+    this.availableSlotPositions.clear();
+
+    if (!this.searchAvailableSlots || this.searchAvailableSlots.length === 0) {
+      return;
+    }
+
+    for (const slot of this.searchAvailableSlots) {
+      // Find user by operatorId
+      const user = this.users.find(u => u.operatorId === slot.operatorId);
+      if (!user) continue;
+
+      // Calculate top and height
+      const top = this.calculateTopPosition(slot.startTime);
+      const height = this.calculateHeight(slot.startTime, slot.endTime);
+
+      const position: AvailableSlotPosition = {
+        slot,
+        top,
+        height
+      };
+
+      // Store by date -> userId
+      if (!this.availableSlotPositions.has(slot.date)) {
+        this.availableSlotPositions.set(slot.date, new Map());
+      }
+      const dateMap = this.availableSlotPositions.get(slot.date)!;
+      if (!dateMap.has(user.id)) {
+        dateMap.set(user.id, []);
+      }
+      dateMap.get(user.id)!.push(position);
+    }
   }
 
   private buildDayColumns(): void {
@@ -357,6 +409,12 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     return user?.color || '#3b82f6';
   }
 
+  getAvailableSlotsForDayAndUser(date: string, userId: number): AvailableSlotPosition[] {
+    const dateMap = this.availableSlotPositions.get(date);
+    if (!dateMap) return [];
+    return dateMap.get(userId) || [];
+  }
+
   onCellMouseDown(event: CellEvent): void {
     this.cellMouseDown.emit(event);
   }
@@ -395,5 +453,13 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
 
   onEventDelete(action: EventAction): void {
     this.eventDelete.emit(action);
+  }
+
+  onAvailableSlotClick(event: AvailableSlotClickEvent): void {
+    this.availableSlotClick.emit(event);
+  }
+
+  onAvailableSlotDblClick(event: AvailableSlotClickEvent): void {
+    this.availableSlotDblClick.emit(event);
   }
 }

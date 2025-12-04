@@ -1,4 +1,4 @@
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
@@ -11,6 +11,7 @@ import { AppointmentInstrument } from '../entities/appointment-instrument.entity
 import { Service } from '../entities/service.entity';
 import { ServiceInstrument } from '../entities/service-instrument.entity';
 import { HolidayService } from './holiday.service';
+import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 
 export interface InstrumentSlot {
   instrumentCategoryId: string;
@@ -63,6 +64,7 @@ export class PhysiotherapistAvailabilityService {
     @InjectRepository(ServiceInstrument)
     private serviceInstrumentRepo: Repository<ServiceInstrument>,
     private holidayService: HolidayService,
+    private settingsService: GeneralSettingsService,
   ) {}
 
   /**
@@ -326,7 +328,7 @@ export class PhysiotherapistAvailabilityService {
       const patternStart = new Date(assignment.patternStartDate);
       const diffTime = date.getTime() - patternStart.getTime();
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      const dayInPattern = (diffDays % patternGroup.patternDuration) + 1;
+      const dayInPattern = diffDays % patternGroup.patternDuration;
 
       // Check all patterns for this day
       const todayPatterns = patternGroup.patterns.filter(
@@ -334,7 +336,10 @@ export class PhysiotherapistAvailabilityService {
       );
 
       for (const pattern of todayPatterns) {
-        if (pattern.startTime <= startTime && pattern.endTime >= endTime) {
+        // Normalize time formats: DB stores "HH:MM:SS", code uses "HH:MM"
+        const patternStart = pattern.startTime.substring(0, 5);
+        const patternEnd = pattern.endTime.substring(0, 5);
+        if (patternStart <= startTime && patternEnd >= endTime) {
           return { available: true };
         }
       }
@@ -583,7 +588,112 @@ export class PhysiotherapistAvailabilityService {
   }
 
   /**
-   * Get available slots for an operator on a given date
+   * Helper: Convert minutes to time string
+   */
+  private minutesToTime(minutes: number): string {
+    const hours = Math.floor(minutes / 60) % 24;
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Calculate the slot step duration based on operator preferences and system settings.
+   * Priority:
+   * 1. If system priority is 'system', use system default
+   * 2. Otherwise use operator's preferredDurations[0] if set
+   * 3. Fallback to system default (45 min)
+   */
+  private async calculateSlotStep(operator: Operator): Promise<number> {
+    const priority = await this.settingsService.getSlotDurationPriority();
+    const defaultDuration = await this.settingsService.getDefaultSlotDuration();
+    const operatorDuration = operator.preferredDurations?.[0];
+
+    if (priority === 'system') {
+      return defaultDuration;
+    }
+
+    return operatorDuration || defaultDuration;
+  }
+
+  /**
+   * Get all appointments for an operator on a given date (for gap calculation)
+   */
+  private async getOperatorAppointmentsForDate(
+    operatorId: string,
+    date: Date,
+  ): Promise<{ startTime: string; endTime: string }[]> {
+    const appointments = await this.appointmentRepo
+      .createQueryBuilder('appointment')
+      .where('appointment.operatorId = :operatorId', { operatorId })
+      .andWhere('appointment.appointmentDate = :date', { date })
+      .andWhere('appointment.status != :cancelled', { cancelled: 'cancelled' })
+      .orderBy('appointment.startTime', 'ASC')
+      .getMany();
+
+    return appointments.map(apt => ({
+      startTime: apt.startTime,
+      endTime: apt.endTime,
+    }));
+  }
+
+  /**
+   * Calculate free time blocks within a pattern, considering existing appointments.
+   * Returns an array of free blocks (start/end in minutes).
+   */
+  private calculateFreeBlocks(
+    patternStartMinutes: number,
+    patternEndMinutes: number,
+    appointments: { startTime: string; endTime: string }[],
+  ): { startMinutes: number; endMinutes: number }[] {
+    const freeBlocks: { startMinutes: number; endMinutes: number }[] = [];
+    let currentStart = patternStartMinutes;
+
+    // Sort appointments by start time and filter those within the pattern
+    const relevantAppointments = appointments
+      .map(apt => ({
+        startMinutes: this.timeToMinutes(apt.startTime),
+        endMinutes: this.timeToMinutes(apt.endTime),
+      }))
+      .filter(apt =>
+        apt.startMinutes < patternEndMinutes && apt.endMinutes > patternStartMinutes
+      )
+      .sort((a, b) => a.startMinutes - b.startMinutes);
+
+    for (const apt of relevantAppointments) {
+      // Clamp appointment to pattern boundaries
+      const aptStart = Math.max(apt.startMinutes, patternStartMinutes);
+      const aptEnd = Math.min(apt.endMinutes, patternEndMinutes);
+
+      if (currentStart < aptStart) {
+        // There's a free block before this appointment
+        freeBlocks.push({
+          startMinutes: currentStart,
+          endMinutes: aptStart,
+        });
+      }
+
+      // Move current start to after this appointment
+      currentStart = Math.max(currentStart, aptEnd);
+    }
+
+    // Add final block if there's time remaining
+    if (currentStart < patternEndMinutes) {
+      freeBlocks.push({
+        startMinutes: currentStart,
+        endMinutes: patternEndMinutes,
+      });
+    }
+
+    return freeBlocks;
+  }
+
+  /**
+   * Get available slots for an operator on a given date.
+   *
+   * Uses dynamic step based on operator preferences and system settings:
+   * - Slots are generated at intervals of the preferred duration (step)
+   * - After an appointment ends, slots restart from where it ends (no realignment)
+   * - Gaps smaller than the requested duration are skipped
    */
   async getAvailableSlots(
     operatorId: string,
@@ -593,6 +703,15 @@ export class PhysiotherapistAvailabilityService {
     customInstrumentSlots?: InstrumentSlot[],
   ): Promise<AvailabilitySlot[]> {
     const slots: AvailabilitySlot[] = [];
+
+    // Get operator to determine step duration
+    const operator = await this.operatorRepo.findOne({ where: { id: operatorId } });
+    if (!operator) {
+      return slots;
+    }
+
+    // Calculate dynamic step based on operator/system preferences
+    const slotStep = await this.calculateSlotStep(operator);
 
     // Get working hours from template
     const assignments = await this.assignmentRepo
@@ -622,51 +741,120 @@ export class PhysiotherapistAvailabilityService {
       return slots; // Cannot determine duration, return empty slots
     }
 
-    // Check each 15-minute slot during working hours
+    // Get existing appointments for this operator on this date
+    const existingAppointments = await this.getOperatorAppointmentsForDate(operatorId, date);
+
+    // Generate slots for each assignment pattern
     for (const assignment of assignments) {
       const patternGroup = assignment.patternGroup;
       if (!patternGroup || !patternGroup.patterns) continue;
 
       // Calculate which day in the pattern cycle corresponds to the requested date
-      const patternStart = new Date(assignment.patternStartDate);
-      const diffTime = date.getTime() - patternStart.getTime();
+      // Normalize patternStartDate to local midnight to avoid timezone issues
+      const patternStartRaw = new Date(assignment.patternStartDate);
+      const patternStart = new Date(
+        patternStartRaw.getFullYear(),
+        patternStartRaw.getMonth(),
+        patternStartRaw.getDate(),
+      );
+      // Normalize request date to local midnight
+      const requestDate = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+      );
+      const diffTime = requestDate.getTime() - patternStart.getTime();
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      const dayInPattern = (diffDays % patternGroup.patternDuration) + 1;
+      const dayInPattern = ((diffDays % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
+
+      console.log('[getAvailableSlots] Pattern calculation:', {
+        operatorId,
+        requestedDate: date.toISOString(),
+        patternStartDate: assignment.patternStartDate,
+        patternStartNormalized: patternStart.toISOString(),
+        requestDateNormalized: requestDate.toISOString(),
+        diffDays,
+        patternDuration: patternGroup.patternDuration,
+        dayInPattern,
+        availablePatternDays: patternGroup.patterns.map(p => p.dayInPattern).join(','),
+      });
 
       // Get all patterns for this day in the cycle
       const todayPatterns = patternGroup.patterns.filter(
         p => p.dayInPattern === dayInPattern
       );
 
+      console.log('[getAvailableSlots] Patterns for today:', {
+        dayInPattern,
+        patternsFound: todayPatterns.length,
+        patterns: todayPatterns.map(p => `${p.startTime}-${p.endTime}`).join(', '),
+      });
+
       for (const pattern of todayPatterns) {
-        let currentTime = pattern.startTime;
+        const patternStartMinutes = this.timeToMinutes(pattern.startTime);
+        const patternEndMinutes = this.timeToMinutes(pattern.endTime);
 
-        while (this.timeToMinutes(currentTime) + finalDuration <= this.timeToMinutes(pattern.endTime)) {
-          const result = await this.checkAvailability({
-            operatorId,
-            date,
-            startTime: currentTime,
-            durationMinutes: finalDuration,
-            serviceId,
-            customInstrumentSlots,
-          });
+        // Calculate free blocks considering existing appointments
+        const freeBlocks = this.calculateFreeBlocks(
+          patternStartMinutes,
+          patternEndMinutes,
+          existingAppointments,
+        );
 
-          const startDate = new Date(date);
-          const [hours, mins] = currentTime.split(':').map(Number);
-          startDate.setHours(hours, mins, 0, 0);
+        console.log('[getAvailableSlots] Free blocks for pattern:', {
+          pattern: `${pattern.startTime}-${pattern.endTime}`,
+          existingAppointments: existingAppointments.length,
+          freeBlocks: freeBlocks.map(b => `${this.minutesToTime(b.startMinutes)}-${this.minutesToTime(b.endMinutes)}`).join(', '),
+          slotStep,
+          effectiveStep: Math.max(slotStep, finalDuration),
+          finalDuration,
+        });
 
-          const endDate = new Date(startDate);
-          endDate.setMinutes(endDate.getMinutes() + finalDuration);
+        // Generate slots within each free block
+        // Step equals requested duration to show all possible slots
+        // This allows multiple shorter appointments within operator's preferred slot
+        const effectiveStep = finalDuration;
 
-          slots.push({
-            startTime: startDate,
-            endTime: endDate,
-            available: result.available,
-            reason: result.reason,
-            instrumentSlots: result.suggestedInstruments,
-          });
+        for (const block of freeBlocks) {
+          let currentMinutes = block.startMinutes;
 
-          currentTime = this.addMinutesToTime(currentTime, 15); // 15-minute intervals
+          // Generate slots with step, starting from block start
+          // IMPORTANT: The loop condition already ensures the slot fits within the free block
+          // But we also verify via checkAvailability to ensure it respects pattern boundaries
+          while (currentMinutes + finalDuration <= block.endMinutes) {
+            const currentTime = this.minutesToTime(currentMinutes);
+
+            const result = await this.checkAvailability({
+              operatorId,
+              date,
+              startTime: currentTime,
+              durationMinutes: finalDuration,
+              serviceId,
+              customInstrumentSlots,
+            });
+
+            // Only add slots that pass availability check
+            // This filters out slots that would cross pattern boundaries (e.g., lunch breaks)
+            if (result.available) {
+              const startDate = new Date(date);
+              const [hours, mins] = currentTime.split(':').map(Number);
+              startDate.setHours(hours, mins, 0, 0);
+
+              const endDate = new Date(startDate);
+              endDate.setMinutes(endDate.getMinutes() + finalDuration);
+
+              slots.push({
+                startTime: startDate,
+                endTime: endDate,
+                available: true,
+                reason: result.reason,
+                instrumentSlots: result.suggestedInstruments,
+              });
+            }
+
+            // Advance by effective step (never less than duration)
+            currentMinutes += effectiveStep;
+          }
         }
       }
     }

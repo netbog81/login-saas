@@ -37,6 +37,12 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
             routerLinkActive="active">
             Conflitti
           </a>
+          <a
+            class="nav-item"
+            routerLink="/settings"
+            routerLinkActive="active">
+            Impostazioni
+          </a>
         </div>
       </nav>
 

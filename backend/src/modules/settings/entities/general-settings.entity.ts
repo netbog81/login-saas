@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, UpdateDateColumn } from 'typeorm';
 import { ObjectType, Field, ID } from '@nestjs/graphql';
-import { GraphQLJSONObject } from 'graphql-type-json';
+import { GraphQLJSON } from 'graphql-type-json';
 
 /**
  * GeneralSettings - Impostazioni generali del sistema
@@ -29,7 +29,7 @@ export class GeneralSettings {
   /**
    * Valore dell'impostazione (JSON per flessibilità)
    */
-  @Field(() => GraphQLJSONObject)
+  @Field(() => GraphQLJSON)
   @Column('jsonb')
   value: any;
 

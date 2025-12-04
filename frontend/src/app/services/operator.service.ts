@@ -7,6 +7,8 @@ import {
   CreateOperatorInput,
   UpdateOperatorInput,
   DailyAvailability,
+  PhysiotherapistSlotOutput,
+  CheckPhysiotherapistAvailabilityInput,
 } from '../graphql/generated/types';
 import {
   GET_OPERATORS,
@@ -14,6 +16,9 @@ import {
   GET_OPERATOR_AVAILABILITY,
   CHECK_DUPLICATE_OPERATOR,
 } from '../graphql/operations/operator.queries';
+import {
+  GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
+} from '../graphql/operations/availability.queries';
 import {
   CREATE_OPERATOR,
   UPDATE_OPERATOR,
@@ -170,6 +175,24 @@ export class OperatorService {
       })
       .pipe(
         map((result) => (result.data?.checkDuplicateOperator || []) as Operator[])
+      );
+  }
+
+  /**
+   * Ottiene gli slot disponibili per un fisioterapista con supporto strumenti
+   * @param input Parametri per la ricerca degli slot
+   */
+  getPhysiotherapistAvailableSlots(
+    input: CheckPhysiotherapistAvailabilityInput
+  ): Observable<PhysiotherapistSlotOutput[]> {
+    return this.apollo
+      .query<{ physiotherapistAvailableSlots: PhysiotherapistSlotOutput[] }>({
+        query: GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
+        variables: { input },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(
+        map((result) => result.data?.physiotherapistAvailableSlots || [])
       );
   }
 }
