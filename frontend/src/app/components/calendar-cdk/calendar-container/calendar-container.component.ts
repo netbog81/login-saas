@@ -754,6 +754,17 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       }
       this.stateService.removeAppointment(appointment.id);
       await this.loadAppointmentsForCurrentView();
+
+      // Se la ricerca slot è attiva, forza il refresh degli slot disponibili
+      // (lo slot liberato dalla cancellazione potrebbe ora essere disponibile)
+      if (this.slotSearchEnabled) {
+        await this.searchAvailableSlots(
+          this.searchFilters,
+          this.selectedOperators,
+          this.currentDate,
+          this.config
+        );
+      }
     } catch (error: any) {
       console.error('Error deleting appointment:', error);
 
