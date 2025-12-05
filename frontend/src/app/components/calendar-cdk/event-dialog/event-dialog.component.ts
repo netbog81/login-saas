@@ -472,11 +472,12 @@ export class EventDialogComponent implements OnInit {
     const instruments = this.buildInstrumentData();
 
     // Costruisci la config di ricorrenza se abilitata
+    // Nota: type e endType devono essere UPPERCASE per GraphQL (DAILY, WEEKLY, MONTHLY, NEVER, AFTER, UNTIL)
     const repeatConfig = this.repeatEnabled && !this.isEditMode ? {
-      type: this.repeatConfig.type,
+      type: this.repeatConfig.type.toUpperCase() as RecurringType,
       interval: this.repeatConfig.interval,
       selectedDays: this.repeatConfig.type === 'weekly' ? this.repeatConfig.selectedDays : undefined,
-      endType: this.repeatConfig.endType,
+      endType: this.repeatConfig.endType.toUpperCase() as RecurringEndType,
       occurrences: this.repeatConfig.endType === 'after' ? this.repeatConfig.occurrences : undefined,
       untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
     } : undefined;
