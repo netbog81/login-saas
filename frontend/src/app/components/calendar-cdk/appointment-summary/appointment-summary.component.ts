@@ -107,10 +107,56 @@ export class AppointmentSummaryComponent {
     return !!(this.appointment.instruments && this.appointment.instruments.length > 0);
   }
 
+  get instrumentOrderMatters(): boolean {
+    return this.appointment.instrumentOrderMatters ?? false;
+  }
+
+  get sortedInstruments(): any[] {
+    if (!this.appointment.instruments) return [];
+    // Ordina per startOffsetMinutes per mostrare in ordine temporale
+    return [...this.appointment.instruments].sort((a, b) => a.startOffsetMinutes - b.startOffsetMinutes);
+  }
+
   getInstrumentTimeRange(instrument: { startOffsetMinutes: number; endOffsetMinutes: number }): string {
     const startTime = this.addMinutesToTime(this.appointment.startTime, instrument.startOffsetMinutes);
     const endTime = this.addMinutesToTime(this.appointment.startTime, instrument.endOffsetMinutes);
     return `${startTime} - ${endTime}`;
+  }
+
+  /**
+   * Restituisce la posizione dello strumento nell'appuntamento
+   * Es: "Primi 30 min", "Ultimi 30 min", "Min 15-45"
+   */
+  getInstrumentPosition(instrument: { startOffsetMinutes: number; endOffsetMinutes: number }): string {
+    const duration = this.getDurationMinutes();
+    const start = instrument.startOffsetMinutes;
+    const end = instrument.endOffsetMinutes;
+
+    if (start === 0 && end === duration) {
+      return 'Intero appuntamento';
+    } else if (start === 0) {
+      return `Primi ${end} min`;
+    } else if (end === duration) {
+      return `Ultimi ${duration - start} min`;
+    } else {
+      return `Min ${start}-${end}`;
+    }
+  }
+
+  /**
+   * Restituisce l'etichetta dell'ordine dello strumento
+   * Es: "1° strumento", "2° strumento"
+   */
+  getInstrumentOrderLabel(index: number): string {
+    const total = this.appointment.instruments?.length || 0;
+    if (total === 1) return '';
+    return `${index + 1}° strumento`;
+  }
+
+  private getDurationMinutes(): number {
+    const [startHour, startMin] = this.appointment.startTime.split(':').map(Number);
+    const [endHour, endMin] = this.appointment.endTime.split(':').map(Number);
+    return (endHour * 60 + endMin) - (startHour * 60 + startMin);
   }
 
   private addMinutesToTime(time: string, minutes: number): string {

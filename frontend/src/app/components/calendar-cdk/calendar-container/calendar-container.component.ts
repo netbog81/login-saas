@@ -719,8 +719,18 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       }
 
       // Ricarica gli appuntamenti per visualizzare le modifiche
-      // Questo triggererà automaticamente anche la ricerca slot disponibili
       await this.loadAppointmentsForCurrentView();
+
+      // Se la ricerca slot è attiva, forza il refresh degli slot disponibili
+      // (lo slot occupato dal nuovo appuntamento non sarà più disponibile)
+      if (this.slotSearchEnabled) {
+        await this.searchAvailableSlots(
+          this.searchFilters,
+          this.selectedOperators,
+          this.currentDate,
+          this.config
+        );
+      }
     } catch (error: any) {
       console.error('Error saving appointment:', error);
 
@@ -1105,26 +1115,74 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       : this.visibleDates;
 
     // Costruisci gli instrument slots in base ai filtri
-    const instrumentSlots = this.buildInstrumentSlots(filters);
+    // Se ci sono 2 strumenti e l'ordine NON importa, prova entrambe le combinazioni
+    const instrumentSlotsCombinations = this.buildInstrumentSlotsCombinations(filters);
 
-    // Cerca slot per ogni fisioterapista e data
+    // Cerca slot per ogni fisioterapista, data e combinazione strumenti
     const searchPromises: Promise<void>[] = [];
 
     for (const physio of physiotherapists) {
       for (const date of datesToSearch) {
-        searchPromises.push(
-          this.searchSlotsForOperator(physio, date, filters.duration, instrumentSlots, availableSlots)
-        );
+        for (const instrumentSlots of instrumentSlotsCombinations) {
+          searchPromises.push(
+            this.searchSlotsForOperator(physio, date, filters.duration, instrumentSlots, availableSlots)
+          );
+        }
       }
     }
 
     try {
       await Promise.all(searchPromises);
-      this.stateService.setAvailableSlots(availableSlots);
+      // Rimuovi duplicati (stesso operatore, data, startTime)
+      const uniqueSlots = this.removeDuplicateSlots(availableSlots);
+      this.stateService.setAvailableSlots(uniqueSlots);
     } catch (error) {
       console.error('Error searching available slots:', error);
       this.stateService.clearAvailableSlots();
     }
+  }
+
+  /**
+   * Rimuove slot duplicati (stesso operatore, data, orario)
+   */
+  private removeDuplicateSlots(slots: AvailableSlot[]): AvailableSlot[] {
+    const seen = new Set<string>();
+    return slots.filter(slot => {
+      const key = `${slot.operatorId}-${slot.date}-${slot.startTime}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  /**
+   * Costruisce le combinazioni di instrument slots da cercare.
+   * Se ci sono 2 strumenti e l'ordine NON importa, restituisce entrambe le combinazioni.
+   */
+  private buildInstrumentSlotsCombinations(filters: AppointmentSearchFilters): (InstrumentSlotInput[] | undefined)[] {
+    // Se non ci sono strumenti o c'è un solo strumento, restituisci una sola combinazione
+    if (!filters.withInstrument || filters.instrumentCount !== 2 || filters.instrumentOrderMatters) {
+      return [this.buildInstrumentSlots(filters)];
+    }
+
+    // 2 strumenti con ordine NON importante: prova entrambe le combinazioni
+    const combinations: (InstrumentSlotInput[] | undefined)[] = [];
+
+    // Combinazione 1: ordine originale (A-B)
+    combinations.push(this.buildInstrumentSlots(filters));
+
+    // Combinazione 2: ordine invertito (B-A)
+    const invertedFilters = {
+      ...filters,
+      instrumentCategoryId: filters.instrument2CategoryId,
+      instrument2CategoryId: filters.instrumentCategoryId,
+      instrumentOrderMatters: true // Forza ordine specifico per questa ricerca
+    };
+    combinations.push(this.buildInstrumentSlots(invertedFilters));
+
+    return combinations;
   }
 
   /**
@@ -1212,31 +1270,45 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       // Due strumenti
       if (!filters.instrumentCategoryId || !filters.instrument2CategoryId) return undefined;
 
-      const halfDuration = duration / 2;
+      // Per durata 45 minuti: usa blocchi da 30 min con overlap (0-30 e 15-45)
+      // Per durata 60 minuti: usa blocchi da 30 min senza overlap (0-30 e 30-60)
+      const instrumentDuration = 30;  // Ogni strumento occupa 30 minuti
+      const slot1Start = 0;
+      const slot1End = instrumentDuration;
+      let slot2Start: number;
+      const slot2End = duration;
+
+      if (duration === 45) {
+        // Overlap: strumento 2 inizia a metà del primo (15 minuti)
+        slot2Start = 15;
+      } else {
+        // No overlap: strumento 2 inizia dopo il primo
+        slot2Start = instrumentDuration;
+      }
 
       if (filters.instrumentOrderMatters) {
         // Ordine specifico
         slots.push({
           instrumentCategoryId: filters.instrumentCategoryId,
-          startOffsetMinutes: 0,
-          endOffsetMinutes: halfDuration
+          startOffsetMinutes: slot1Start,
+          endOffsetMinutes: slot1End
         });
         slots.push({
           instrumentCategoryId: filters.instrument2CategoryId,
-          startOffsetMinutes: halfDuration,
-          endOffsetMinutes: duration
+          startOffsetMinutes: slot2Start,
+          endOffsetMinutes: slot2End
         });
       } else {
         // Ordine non importante - prova entrambe le combinazioni (il backend gestirà)
         slots.push({
           instrumentCategoryId: filters.instrumentCategoryId,
-          startOffsetMinutes: 0,
-          endOffsetMinutes: halfDuration
+          startOffsetMinutes: slot1Start,
+          endOffsetMinutes: slot1End
         });
         slots.push({
           instrumentCategoryId: filters.instrument2CategoryId,
-          startOffsetMinutes: halfDuration,
-          endOffsetMinutes: duration
+          startOffsetMinutes: slot2Start,
+          endOffsetMinutes: slot2End
         });
       }
     }

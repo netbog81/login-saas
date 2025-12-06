@@ -429,21 +429,16 @@ export class AvailabilityAppointmentService {
       .andWhere('a.bookingStatus NOT IN (:...excludedStatuses)', {
         excludedStatuses: [BookingStatus.CANCELLED, BookingStatus.NO_SHOW],
       })
-      // Controlla sovrapposizione degli offset temporali
+      // Controlla sovrapposizione usando tempi assoluti (startTime + offset)
+      // Due slot si sovrappongono se: inizio_esistente < fine_nuovo AND inizio_nuovo < fine_esistente
       .andWhere(`
-        (
-          (ai."startOffsetMinutes" < :endOffset AND :startOffset < ai."endOffsetMinutes")
-          OR
-          (
-            EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."startOffsetMinutes"
-            <
-            EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :endOffset
-            AND
-            EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :startOffset
-            <
-            EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."endOffsetMinutes"
-          )
-        )
+        EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."startOffsetMinutes"
+        <
+        EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :endOffset
+        AND
+        EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :startOffset
+        <
+        EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."endOffsetMinutes"
       `, {
         startOffset: startOffsetMinutes,
         endOffset: endOffsetMinutes,
@@ -542,23 +537,16 @@ export class AvailabilityAppointmentService {
       .andWhere('a.bookingStatus NOT IN (:...excludedStatuses)', {
         excludedStatuses: [BookingStatus.CANCELLED, BookingStatus.NO_SHOW],
       })
-      // Controlla sovrapposizione degli offset temporali
-      // Due slot si sovrappongono se: start1 < end2 AND start2 < end1
+      // Controlla sovrapposizione usando tempi assoluti (startTime + offset)
+      // Due slot si sovrappongono se: inizio_esistente < fine_nuovo AND inizio_nuovo < fine_esistente
       .andWhere(`
-        (
-          (ai."startOffsetMinutes" < :endOffset AND :startOffset < ai."endOffsetMinutes")
-          OR
-          (
-            -- Considera anche lo startTime dell'appuntamento per confrontare slot assoluti
-            EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."startOffsetMinutes"
-            <
-            EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :endOffset
-            AND
-            EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :startOffset
-            <
-            EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."endOffsetMinutes"
-          )
-        )
+        EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."startOffsetMinutes"
+        <
+        EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :endOffset
+        AND
+        EXTRACT(HOUR FROM :appointmentStartTime::time) * 60 + EXTRACT(MINUTE FROM :appointmentStartTime::time) + :startOffset
+        <
+        EXTRACT(HOUR FROM a."startTime"::time) * 60 + EXTRACT(MINUTE FROM a."startTime"::time) + ai."endOffsetMinutes"
       `, {
         startOffset: startOffsetMinutes,
         endOffset: endOffsetMinutes,
@@ -611,7 +599,7 @@ export class AvailabilityAppointmentService {
         appointmentDate: Between(new Date(startDate), new Date(endDate)),
         bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
       },
-      relations: ['operator', 'service', 'instruments', 'instruments.instrument'],
+      relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
     });
   }
@@ -635,7 +623,7 @@ export class AvailabilityAppointmentService {
 
     return this.appointmentRepo.find({
       where: whereCondition,
-      relations: ['operator', 'service', 'instruments', 'instruments.instrument'],
+      relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
     });
   }
