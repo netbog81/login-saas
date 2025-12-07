@@ -30,6 +30,7 @@ export class CalendarSidebarComponent {
   @Output() slotSearchToggle = new EventEmitter<boolean>();
 
   // UI state
+  operatorsExpanded = true;
   filtersExpanded = true;
 
   // Durate disponibili
@@ -88,7 +89,11 @@ export class CalendarSidebarComponent {
     return !user.hasTemplate;
   }
 
-  // ============ SEARCH FILTERS ============
+  // ============ PANEL TOGGLES ============
+
+  toggleOperatorsExpanded(): void {
+    this.operatorsExpanded = !this.operatorsExpanded;
+  }
 
   toggleFiltersExpanded(): void {
     this.filtersExpanded = !this.filtersExpanded;
