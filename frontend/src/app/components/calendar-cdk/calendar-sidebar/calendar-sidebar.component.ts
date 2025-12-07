@@ -32,6 +32,7 @@ export class CalendarSidebarComponent {
   // UI state
   operatorsExpanded = true;
   filtersExpanded = true;
+  treatmentsExpanded = false;
 
   // Durate disponibili
   durations = [
@@ -97,6 +98,10 @@ export class CalendarSidebarComponent {
 
   toggleFiltersExpanded(): void {
     this.filtersExpanded = !this.filtersExpanded;
+  }
+
+  toggleTreatmentsExpanded(): void {
+    this.treatmentsExpanded = !this.treatmentsExpanded;
   }
 
   // Computed properties per visibilità condizionale dei filtri

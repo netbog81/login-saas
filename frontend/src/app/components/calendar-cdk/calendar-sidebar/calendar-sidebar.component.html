@@ -240,5 +240,27 @@
         </div>
       </div>
     </div>
+
+    <!-- PANNELLO 3: TRATTAMENTI IN CORSO -->
+    <div class="collapsible-panel">
+      <!-- Panel header -->
+      <div class="panel-header" (click)="toggleTreatmentsExpanded()">
+        <h3 class="panel-title">Trattamenti in corso</h3>
+        <svg *ngIf="treatmentsExpanded" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+        <svg *ngIf="!treatmentsExpanded" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+
+      <!-- Panel content -->
+      <div class="panel-content treatments-content" *ngIf="treatmentsExpanded">
+        <!-- Placeholder - contenuto da implementare -->
+        <div class="empty-state">
+          <p>Nessun trattamento in corso</p>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
