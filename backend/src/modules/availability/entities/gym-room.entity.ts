@@ -25,6 +25,20 @@ export class GymRoom {
   @Column({ length: 7, nullable: true })
   color?: string;
 
+  /**
+   * Orario di apertura di default della palestra (HH:mm)
+   */
+  @Field({ nullable: true })
+  @Column('time', { nullable: true })
+  defaultStartTime?: string;
+
+  /**
+   * Orario di chiusura di default della palestra (HH:mm)
+   */
+  @Field({ nullable: true })
+  @Column('time', { nullable: true })
+  defaultEndTime?: string;
+
   @Field()
   @Column({ default: true })
   isActive: boolean;
@@ -41,4 +55,8 @@ export class GymRoom {
   @Field(() => [GymSchedule], { nullable: true })
   @OneToMany(() => GymSchedule, schedule => schedule.gymRoom)
   schedules?: GymSchedule[];
+
+  // Le relazioni con GymPatternGroup e GymException sono definite
+  // solo dal lato ManyToOne per evitare dipendenze circolari.
+  // Per recuperarle, usare le query dedicate nei rispettivi service.
 }

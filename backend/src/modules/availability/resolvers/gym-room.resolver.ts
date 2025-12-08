@@ -27,12 +27,16 @@ export class GymRoomResolver {
     @Args('maxCapacity', { type: () => Int, nullable: true }) maxCapacity?: number,
     @Args('slotDuration', { type: () => Int, nullable: true }) slotDuration?: number,
     @Args('color', { nullable: true }) color?: string,
+    @Args('defaultStartTime', { nullable: true }) defaultStartTime?: string,
+    @Args('defaultEndTime', { nullable: true }) defaultEndTime?: string,
   ): Promise<GymRoom> {
     return this.gymRoomService.create({
       name,
       maxCapacity,
       slotDuration,
       color,
+      defaultStartTime,
+      defaultEndTime,
     });
   }
 
@@ -44,6 +48,8 @@ export class GymRoomResolver {
     @Args('slotDuration', { type: () => Int, nullable: true }) slotDuration?: number,
     @Args('color', { nullable: true }) color?: string,
     @Args('isActive', { nullable: true }) isActive?: boolean,
+    @Args('defaultStartTime', { nullable: true }) defaultStartTime?: string,
+    @Args('defaultEndTime', { nullable: true }) defaultEndTime?: string,
   ): Promise<GymRoom> {
     return this.gymRoomService.update(id, {
       ...(name !== undefined && { name }),
@@ -51,6 +57,8 @@ export class GymRoomResolver {
       ...(slotDuration !== undefined && { slotDuration }),
       ...(color !== undefined && { color }),
       ...(isActive !== undefined && { isActive }),
+      ...(defaultStartTime !== undefined && { defaultStartTime }),
+      ...(defaultEndTime !== undefined && { defaultEndTime }),
     });
   }
 

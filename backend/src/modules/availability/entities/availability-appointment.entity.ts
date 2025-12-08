@@ -189,6 +189,29 @@ export class AvailabilityAppointment {
   @Column('timestamp', { nullable: true })
   conflictDetectedAt?: Date;
 
+  // ==================== SUBSTITUTION FIELDS ====================
+
+  /**
+   * Operatore originale da template (se diverso dall'operatore attuale)
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  originalOperatorId?: string;
+
+  /**
+   * Flag che indica se c'è stata una sostituzione operatore
+   */
+  @Field()
+  @Column({ default: false })
+  isSubstitution: boolean;
+
+  /**
+   * Motivo della sostituzione (facoltativo)
+   */
+  @Field({ nullable: true })
+  @Column('text', { nullable: true })
+  substitutionReason?: string;
+
   // ==================== GYM/PARTICIPANT FIELDS ====================
 
   @Field(() => Int)
@@ -332,4 +355,12 @@ export class AvailabilityAppointment {
   @ManyToOne(() => Patient, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'patientId' })
   patient?: Patient;
+
+  /**
+   * Relazione con l'operatore originale (in caso di sostituzione)
+   */
+  @Field(() => Operator, { nullable: true })
+  @ManyToOne(() => Operator, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'originalOperatorId' })
+  originalOperator?: Operator;
 }

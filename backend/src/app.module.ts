@@ -34,6 +34,9 @@ import { InstrumentCategory } from './modules/availability/entities/instrument-c
 import { Instrument } from './modules/availability/entities/instrument.entity';
 import { GymRoom } from './modules/availability/entities/gym-room.entity';
 import { GymSchedule } from './modules/availability/entities/gym-schedule.entity';
+import { GymPatternGroup } from './modules/availability/entities/gym-pattern-group.entity';
+import { GymTemplatePattern } from './modules/availability/entities/gym-template-pattern.entity';
+import { GymException } from './modules/availability/entities/gym-exception.entity';
 import { Room } from './modules/availability/entities/room.entity';
 import { ServiceInstrument } from './modules/availability/entities/service-instrument.entity';
 import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
@@ -74,6 +77,9 @@ import { GeneralSettings } from './modules/settings/entities/general-settings.en
         Instrument,
         GymRoom,
         GymSchedule,
+        GymPatternGroup,
+        GymTemplatePattern,
+        GymException,
         Room,
         ServiceInstrument,
         AppointmentInstrument,

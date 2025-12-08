@@ -19,6 +19,9 @@ import { InstrumentCategory } from './entities/instrument-category.entity';
 import { Instrument } from './entities/instrument.entity';
 import { GymRoom } from './entities/gym-room.entity';
 import { GymSchedule } from './entities/gym-schedule.entity';
+import { GymPatternGroup } from './entities/gym-pattern-group.entity';
+import { GymTemplatePattern } from './entities/gym-template-pattern.entity';
+import { GymException } from './entities/gym-exception.entity';
 import { Room } from './entities/room.entity';
 import { ServiceInstrument } from './entities/service-instrument.entity';
 import { AppointmentInstrument } from './entities/appointment-instrument.entity';
@@ -41,6 +44,8 @@ import { HolidayService } from './services/holiday.service';
 import { AvailabilityExceptionService } from './services/availability-exception.service';
 import { PhysiotherapistAvailabilityService } from './services/physiotherapist-availability.service';
 import { GymAvailabilityService } from './services/gym-availability.service';
+import { GymPatternGroupService } from './services/gym-pattern-group.service';
+import { GymExceptionService } from './services/gym-exception.service';
 import { AppointmentConflictService } from './services/appointment-conflict.service';
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 
@@ -60,6 +65,8 @@ import { PatternGroupResolver } from './resolvers/pattern-group.resolver';
 import { AvailabilityExceptionResolver } from './resolvers/availability-exception.resolver';
 import { AppointmentConflictResolver } from './resolvers/appointment-conflict.resolver';
 import { AvailabilityAppointmentResolver } from './resolvers/availability-appointment.resolver';
+import { GymPatternGroupResolver } from './resolvers/gym-pattern-group.resolver';
+import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
 
 @Module({
   imports: [
@@ -81,6 +88,9 @@ import { AvailabilityAppointmentResolver } from './resolvers/availability-appoin
       Instrument,
       GymRoom,
       GymSchedule,
+      GymPatternGroup,
+      GymTemplatePattern,
+      GymException,
       Room,
       ServiceInstrument,
       AppointmentInstrument,
@@ -105,6 +115,8 @@ import { AvailabilityAppointmentResolver } from './resolvers/availability-appoin
     AvailabilityExceptionService,
     PhysiotherapistAvailabilityService,
     GymAvailabilityService,
+    GymPatternGroupService,
+    GymExceptionService,
     AppointmentConflictService,
     AvailabilityAppointmentService,
     // Resolvers
@@ -123,6 +135,8 @@ import { AvailabilityAppointmentResolver } from './resolvers/availability-appoin
     AvailabilityExceptionResolver,
     AppointmentConflictResolver,
     AvailabilityAppointmentResolver,
+    GymPatternGroupResolver,
+    GymExceptionResolver,
   ],
   exports: [
     AvailabilityService,
@@ -140,6 +154,8 @@ import { AvailabilityAppointmentResolver } from './resolvers/availability-appoin
     AvailabilityExceptionService,
     PhysiotherapistAvailabilityService,
     GymAvailabilityService,
+    GymPatternGroupService,
+    GymExceptionService,
     AppointmentConflictService,
     AvailabilityAppointmentService,
     TypeOrmModule, // Export TypeORM features for use in other modules

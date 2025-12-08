@@ -1,0 +1,293 @@
+<div class="gym-template-editor">
+  <!-- No Gym Selected -->
+  <div *ngIf="!gymRoom" class="no-gym-selected">
+    <p>Seleziona una palestra per gestire i template orari.</p>
+  </div>
+
+  <ng-container *ngIf="gymRoom">
+    <!-- Error Message -->
+    <div *ngIf="error" class="error-message">
+      {{ error }}
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="loading" class="loading">Caricamento...</div>
+
+    <!-- ==================== LIST VIEW ==================== -->
+    <ng-container *ngIf="viewMode === 'list' && !loading">
+      <!-- List Header -->
+      <div class="list-header">
+        <div class="header-left">
+          <h2>Template Orari - {{ gymRoom.name }}</h2>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-primary" (click)="openCreateTemplateForm()">
+            + Nuovo Template
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="patternGroups.length === 0" class="empty-state">
+        <p>Nessun template configurato per questa palestra.</p>
+        <button class="btn btn-primary" (click)="openCreateTemplateForm()">
+          Crea il primo template
+        </button>
+      </div>
+
+      <!-- Templates Grid -->
+      <div *ngIf="patternGroups.length > 0" class="templates-grid">
+        <div *ngFor="let template of patternGroups" class="template-card" [class.active]="template.isCurrent">
+          <div class="card-header">
+            <h3 class="card-title">{{ template.name }}</h3>
+            <span *ngIf="template.isCurrent" class="active-badge">Attivo</span>
+          </div>
+          <div class="card-body">
+            <div class="card-info">
+              <span class="info-item">
+                <strong>{{ getPatternCount(template) }}</strong> fasce orarie
+              </span>
+              <span class="info-item">
+                <strong>{{ getOperatorCount(template) }}</strong> operatori
+              </span>
+            </div>
+            <div class="card-meta">
+              <span class="meta-item" *ngIf="template.validFrom">
+                Dal: {{ template.validFrom | date:'dd/MM/yyyy' }}
+              </span>
+              <span class="meta-item" *ngIf="template.validUntil">
+                Al: {{ template.validUntil | date:'dd/MM/yyyy' }}
+              </span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-sm btn-primary" (click)="openEditor(template)">
+              Modifica
+            </button>
+            <button class="btn btn-sm btn-secondary" (click)="selectedPatternGroup = template; duplicateTemplate()">
+              Duplica
+            </button>
+            <button *ngIf="!template.isCurrent"
+                    class="btn btn-sm btn-success"
+                    (click)="selectedPatternGroup = template; activateTemplate()">
+              Attiva
+            </button>
+            <button *ngIf="template.isCurrent"
+                    class="btn btn-sm btn-warning"
+                    (click)="selectedPatternGroup = template; deactivateTemplate()">
+              Disattiva
+            </button>
+            <button *ngIf="!template.isCurrent"
+                    class="btn btn-sm btn-danger"
+                    (click)="selectedPatternGroup = template; deleteTemplate()">
+              Elimina
+            </button>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <!-- ==================== EDITOR VIEW ==================== -->
+    <ng-container *ngIf="viewMode === 'editor' && selectedPatternGroup && !loading">
+      <!-- Editor Header -->
+      <div class="editor-header">
+        <div class="header-left">
+          <button class="btn btn-link back-btn" (click)="backToList()">
+            ← Torna alla lista
+          </button>
+          <h2 class="editable-title" (click)="openRenameForm()" title="Clicca per rinominare">
+            {{ selectedPatternGroup.name }}
+            <span class="edit-icon">✎</span>
+          </h2>
+          <span *ngIf="selectedPatternGroup.isCurrent" class="active-badge">Attivo</span>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-sm btn-primary" (click)="backToList()">
+            ✓ Fine
+          </button>
+          <button class="btn btn-sm"
+                  [class.btn-success]="!selectedPatternGroup.isCurrent"
+                  [disabled]="selectedPatternGroup.isCurrent"
+                  (click)="activateTemplate()">
+            {{ selectedPatternGroup.isCurrent ? 'Template Attivo' : 'Attiva Template' }}
+          </button>
+          <button class="btn btn-sm btn-secondary" (click)="duplicateTemplate()">
+            Duplica
+          </button>
+          <button *ngIf="!selectedPatternGroup.isCurrent"
+                  class="btn btn-sm btn-danger"
+                  (click)="deleteTemplate()">
+            Elimina
+          </button>
+          <button *ngIf="selectedPatternGroup.isCurrent"
+                  class="btn btn-sm btn-warning"
+                  (click)="deactivateTemplate()"
+                  title="Disattiva questo template per poterlo eliminare">
+            Disattiva
+          </button>
+        </div>
+      </div>
+
+      <!-- Operators Panel and Week Grid wrapped in cdkDropListGroup -->
+      <div cdkDropListGroup>
+        <!-- Operators Panel -->
+        <div class="operators-panel">
+          <h4>Operatori Disponibili</h4>
+          <div class="operators-list" cdkDropList [cdkDropListSortingDisabled]="true">
+            <div *ngFor="let operator of operators"
+                 class="operator-chip"
+                 cdkDrag
+                 [cdkDragData]="operator"
+                 [style.background-color]="operator.color || '#4A90E2'">
+              {{ operator.name }} {{ operator.surname }}
+            </div>
+            <div *ngIf="operators.length === 0" class="no-operators">
+              Nessun istruttore palestra configurato
+            </div>
+          </div>
+          <p class="hint">Trascina un operatore sulla griglia per assegnarlo, oppure clicca su una cella per aggiungere manualmente</p>
+        </div>
+
+        <!-- Week Grid -->
+        <div class="week-grid">
+          <table>
+            <thead>
+              <tr>
+                <th class="time-column">Ora</th>
+                <th *ngFor="let day of days" class="day-column">{{ day.short }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let slot of timeSlots">
+                <td class="time-cell">{{ slot.label }}</td>
+                <td *ngFor="let day of days"
+                    class="grid-cell"
+                    cdkDropList
+                    (cdkDropListDropped)="onOperatorDrop($event, day.index, slot.time)"
+                    (click)="openPatternForm(day.index, slot.time)">
+                <ng-container *ngIf="getPatternAtTime(day.index, slot.time) as pattern">
+                  <div *ngIf="isPatternStart(pattern, slot.time)"
+                       class="pattern-block"
+                       [ngStyle]="getPatternStyle(pattern, slot.time)"
+                       (click)="editPattern(pattern, day.index); $event.stopPropagation()">
+                    <span class="operator-name">{{ pattern.operator.name }}</span>
+                    <span class="time-range">{{ pattern.startTime }} - {{ pattern.endTime }}</span>
+                    <button class="delete-btn" (click)="deletePattern(pattern); $event.stopPropagation()">×</button>
+                  </div>
+                </ng-container>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div><!-- close cdkDropListGroup -->
+    </ng-container>
+  </ng-container>
+
+  <!-- Pattern Form Modal -->
+  <div *ngIf="showPatternForm" class="modal-overlay" (click)="closePatternForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ editingPattern.id ? 'Modifica' : 'Nuova' }} Fascia Oraria</h3>
+        <button class="close-btn" (click)="closePatternForm()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Giorno</label>
+          <select [(ngModel)]="editingPattern.dayInPattern" class="form-control">
+            <option *ngFor="let day of days" [ngValue]="day.index">{{ day.name }}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Operatore *</label>
+          <select [(ngModel)]="editingPattern.operatorId" class="form-control">
+            <option value="">-- Seleziona operatore --</option>
+            <option *ngFor="let op of operators" [value]="op.id">
+              {{ op.name }} {{ op.surname }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Ora Inizio</label>
+            <input type="time" [(ngModel)]="editingPattern.startTime" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Ora Fine</label>
+            <input type="time" [(ngModel)]="editingPattern.endTime" class="form-control">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closePatternForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="savePattern()" [disabled]="loading">
+          {{ loading ? 'Salvataggio...' : 'Salva' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Template Modal -->
+  <div *ngIf="showCreateTemplateForm" class="modal-overlay" (click)="closeCreateTemplateForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Nuovo Template</h3>
+        <button class="close-btn" (click)="closeCreateTemplateForm()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Nome Template *</label>
+          <input type="text"
+                 [(ngModel)]="newTemplateName"
+                 class="form-control"
+                 placeholder="es. Template Settimanale">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeCreateTemplateForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="createTemplate()" [disabled]="loading">
+          {{ loading ? 'Creazione...' : 'Crea' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Template Modal -->
+  <div *ngIf="showRenameForm" class="modal-overlay" (click)="closeRenameForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Rinomina Template</h3>
+        <button class="close-btn" (click)="closeRenameForm()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Nome Template *</label>
+          <input type="text"
+                 [(ngModel)]="renameTemplateName"
+                 class="form-control"
+                 placeholder="Inserisci nuovo nome">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeRenameForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="renameTemplate()" [disabled]="loading">
+          {{ loading ? 'Salvataggio...' : 'Salva' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

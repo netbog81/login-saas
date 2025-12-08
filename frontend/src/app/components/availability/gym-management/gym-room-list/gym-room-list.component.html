@@ -1,0 +1,153 @@
+<div class="gym-room-list">
+  <!-- Header -->
+  <div class="section-header">
+    <h2>Sale Palestra</h2>
+    <button class="btn btn-primary" (click)="openForm()">
+      + Nuova Palestra
+    </button>
+  </div>
+
+  <!-- Error Message -->
+  <div *ngIf="error" class="error-message">
+    {{ error }}
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading && gymRooms.length === 0" class="loading">
+    Caricamento palestre...
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading && gymRooms.length === 0" class="empty-state">
+    <p>Nessuna palestra configurata.</p>
+    <p>Crea la prima palestra per iniziare a gestire gli orari.</p>
+  </div>
+
+  <!-- Gym Rooms Grid -->
+  <div class="gym-rooms-grid" *ngIf="gymRooms.length > 0">
+    <div *ngFor="let room of gymRooms"
+         class="gym-room-card"
+         [class.selected]="selectedGymRoom?.id === room.id"
+         [class.inactive]="!room.isActive"
+         (click)="selectGymRoom(room)">
+
+      <div class="card-header" [style.border-left-color]="room.color || '#4A90E2'">
+        <h3>{{ room.name }}</h3>
+        <span *ngIf="!room.isActive" class="badge inactive">Inattiva</span>
+      </div>
+
+      <div class="card-body">
+        <div class="info-row">
+          <span class="label">Capacità max:</span>
+          <span class="value">{{ room.maxCapacity }} persone</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Durata slot:</span>
+          <span class="value">{{ room.slotDuration }} minuti</span>
+        </div>
+        <div class="info-row" *ngIf="room.defaultStartTime && room.defaultEndTime">
+          <span class="label">Orario default:</span>
+          <span class="value">{{ room.defaultStartTime }} - {{ room.defaultEndTime }}</span>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button class="btn btn-sm" (click)="onOpenTemplate(room); $event.stopPropagation()">
+          Template
+        </button>
+        <button class="btn btn-sm" (click)="onOpenExceptions(room); $event.stopPropagation()">
+          Eccezioni
+        </button>
+        <button class="btn btn-sm btn-secondary" (click)="openForm(room); $event.stopPropagation()">
+          Modifica
+        </button>
+        <button class="btn btn-sm btn-danger" (click)="deleteGymRoom(room); $event.stopPropagation()">
+          Elimina
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Form -->
+  <div *ngIf="showForm" class="modal-overlay" (click)="closeForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditMode ? 'Modifica Palestra' : 'Nuova Palestra' }}</h3>
+        <button class="close-btn" (click)="closeForm()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">
+          {{ error }}
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Nome *</label>
+            <input type="text"
+                   [(ngModel)]="editingGymRoom.name"
+                   class="form-control"
+                   placeholder="es. Palestra 1">
+          </div>
+          <div class="form-group">
+            <label>Colore</label>
+            <input type="color"
+                   [(ngModel)]="editingGymRoom.color"
+                   class="form-control color-input">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Capacità massima</label>
+            <input type="number"
+                   [(ngModel)]="editingGymRoom.maxCapacity"
+                   class="form-control"
+                   min="1"
+                   placeholder="4">
+          </div>
+          <div class="form-group">
+            <label>Durata slot (minuti)</label>
+            <input type="number"
+                   [(ngModel)]="editingGymRoom.slotDuration"
+                   class="form-control"
+                   min="15"
+                   step="15"
+                   placeholder="60">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Orario apertura default</label>
+            <input type="time"
+                   [(ngModel)]="editingGymRoom.defaultStartTime"
+                   class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Orario chiusura default</label>
+            <input type="time"
+                   [(ngModel)]="editingGymRoom.defaultEndTime"
+                   class="form-control">
+          </div>
+        </div>
+
+        <div class="form-row" *ngIf="isEditMode">
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="editingGymRoom.isActive">
+              Palestra attiva
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveGymRoom()" [disabled]="loading">
+          {{ loading ? 'Salvataggio...' : (isEditMode ? 'Aggiorna' : 'Crea') }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

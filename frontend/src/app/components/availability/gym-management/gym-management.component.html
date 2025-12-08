@@ -1,0 +1,56 @@
+<div class="gym-management">
+  <!-- Sub-tabs Navigation -->
+  <div class="gym-tabs-container">
+    <div class="gym-tabs">
+      <button class="gym-tab"
+              [class.active]="activeTab === 'rooms'"
+              (click)="setActiveTab('rooms')">
+        Sale Palestra
+      </button>
+      <button class="gym-tab"
+              [class.active]="activeTab === 'templates'"
+              (click)="setActiveTab('templates')">
+        Template Orari
+      </button>
+      <button class="gym-tab"
+              [class.active]="activeTab === 'exceptions'"
+              (click)="setActiveTab('exceptions')">
+        Eccezioni
+      </button>
+    </div>
+
+    <!-- Gym Room Selector (visible in templates and exceptions tabs) -->
+    <div class="gym-selector" *ngIf="activeTab !== 'rooms' && gymRooms.length > 0">
+      <label>Palestra:</label>
+      <select [(ngModel)]="selectedGymRoom" [compareWith]="compareGymRooms">
+        <option *ngFor="let room of gymRooms" [ngValue]="room">
+          {{ room.name }}
+        </option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Tab Content -->
+  <div class="gym-tab-content">
+    <!-- Sale Palestra -->
+    <app-gym-room-list
+      *ngIf="activeTab === 'rooms'"
+      (gymRoomSelected)="onGymRoomSelect($event)"
+      (gymRoomsLoaded)="onGymRoomsLoaded($event)"
+      (openTemplate)="openTemplateEditor($event)"
+      (openExceptions)="openExceptionManager($event)">
+    </app-gym-room-list>
+
+    <!-- Template Orari -->
+    <app-gym-template-editor
+      *ngIf="activeTab === 'templates'"
+      [gymRoom]="selectedGymRoom">
+    </app-gym-template-editor>
+
+    <!-- Eccezioni -->
+    <app-gym-exception-manager
+      *ngIf="activeTab === 'exceptions'"
+      [gymRoom]="selectedGymRoom">
+    </app-gym-exception-manager>
+  </div>
+</div>

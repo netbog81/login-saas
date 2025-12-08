@@ -3,19 +3,29 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GymRoom } from '../entities/gym-room.entity';
 import { GymSchedule } from '../entities/gym-schedule.entity';
-import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
+import { GymPatternGroupService } from './gym-pattern-group.service';
+import { GymExceptionService } from './gym-exception.service';
+import { GymTemplatePattern } from '../entities/gym-template-pattern.entity';
 
 export interface GymSlot {
   startTime: Date;
   endTime: Date;
+  startTimeStr: string;
+  endTimeStr: string;
   available: boolean;
   currentBookings: number;
   maxCapacity: number;
+  remainingCapacity: number;
   operatorId?: string;
   operatorName?: string;
+  isSubstitute?: boolean;
+  originalOperatorId?: string;
+  originalOperatorName?: string;
   reason?: string;
+  isClosed?: boolean;
 }
 
 export interface GymAvailabilityParams {
@@ -30,8 +40,13 @@ export interface GymAvailabilityResult {
   reason?: string;
   currentBookings: number;
   maxCapacity: number;
+  remainingCapacity: number;
   operatorId?: string;
   operatorName?: string;
+  isSubstitute?: boolean;
+  originalOperatorId?: string;
+  originalOperatorName?: string;
+  isClosed?: boolean;
 }
 
 @Injectable()
@@ -45,10 +60,12 @@ export class GymAvailabilityService {
     private appointmentRepo: Repository<AvailabilityAppointment>,
     @InjectRepository(AvailabilityException)
     private exceptionRepo: Repository<AvailabilityException>,
+    private gymPatternGroupService: GymPatternGroupService,
+    private gymExceptionService: GymExceptionService,
   ) {}
 
   /**
-   * Check if a gym slot is available
+   * Check if a gym slot is available - usando il nuovo sistema di template
    */
   async checkAvailability(params: GymAvailabilityParams): Promise<GymAvailabilityResult> {
     const { gymRoomId, date, startTime, durationMinutes } = params;
@@ -61,54 +78,102 @@ export class GymAvailabilityService {
         reason: 'Sala palestra non trovata o non attiva',
         currentBookings: 0,
         maxCapacity: 0,
+        remainingCapacity: 0,
       };
     }
 
     const slotDuration = durationMinutes || room.slotDuration;
-    const dayOfWeek = date.getDay();
 
-    // 2. Check if there's an operator assigned for this time
-    const schedule = await this.findOperatorSchedule(gymRoomId, dayOfWeek, startTime);
-    if (!schedule) {
+    // 2. Controlla se c'è un'eccezione di chiusura per la palestra
+    const closureException = await this.gymExceptionService.hasException(gymRoomId, date, startTime);
+    if (closureException && closureException.exceptionType === 'closed') {
       return {
         available: false,
-        reason: 'Nessun istruttore assegnato per questo orario',
+        reason: closureException.reason || 'Palestra chiusa',
         currentBookings: 0,
         maxCapacity: room.maxCapacity,
+        remainingCapacity: 0,
+        isClosed: true,
       };
     }
 
-    // 3. Check if operator has exceptions (vacation, sick, etc.)
-    const operatorException = await this.exceptionRepo.findOne({
-      where: {
-        operatorId: schedule.operatorId,
-        exceptionDate: date,
-      },
-    });
+    // 3. Cerca l'operatore assegnato dal NUOVO sistema di template
+    const templateOperator = await this.gymPatternGroupService.getOperatorForTimeSlot(gymRoomId, date, startTime);
 
-    if (operatorException) {
-      // If modified hours, check if appointment fits
-      if (operatorException.startTime && operatorException.endTime) {
-        const endTime = this.addMinutesToTime(startTime, slotDuration);
-        if (startTime < operatorException.startTime || endTime > operatorException.endTime) {
+    // Se non c'è un operatore nel nuovo sistema, prova il vecchio sistema (GymSchedule)
+    let operatorId: string | undefined;
+    let operatorName: string | undefined;
+    let isSubstitute = false;
+    let originalOperatorId: string | undefined;
+    let originalOperatorName: string | undefined;
+
+    if (templateOperator) {
+      // Controlla eccezioni per l'operatore e ottieni l'operatore effettivo
+      const effectiveOperator = await this.gymExceptionService.getEffectiveOperator(
+        gymRoomId,
+        templateOperator.id,
+        date,
+        startTime
+      );
+
+      operatorId = effectiveOperator.operator.id;
+      operatorName = `${effectiveOperator.operator.name}${effectiveOperator.operator.surname ? ' ' + effectiveOperator.operator.surname : ''}`;
+      isSubstitute = effectiveOperator.isSubstitute;
+
+      if (isSubstitute && effectiveOperator.originalOperatorId) {
+        originalOperatorId = effectiveOperator.originalOperatorId;
+        originalOperatorName = `${templateOperator.name}${templateOperator.surname ? ' ' + templateOperator.surname : ''}`;
+      }
+    } else {
+      // Fallback al vecchio sistema GymSchedule
+      const schedule = await this.findOperatorScheduleLegacy(gymRoomId, date.getDay(), startTime);
+
+      if (!schedule) {
+        return {
+          available: false,
+          reason: 'Nessun istruttore assegnato per questo orario',
+          currentBookings: 0,
+          maxCapacity: room.maxCapacity,
+          remainingCapacity: 0,
+        };
+      }
+
+      operatorId = schedule.operatorId;
+      operatorName = schedule.operator?.name;
+
+      // Controlla eccezioni vecchio sistema
+      const operatorException = await this.exceptionRepo.findOne({
+        where: {
+          operatorId: schedule.operatorId,
+          exceptionDate: date,
+        },
+      });
+
+      if (operatorException) {
+        if (operatorException.startTime && operatorException.endTime) {
+          const endTime = this.addMinutesToTime(startTime, slotDuration);
+          if (startTime < operatorException.startTime || endTime > operatorException.endTime) {
+            return {
+              available: false,
+              reason: `Istruttore non disponibile: ${operatorException.reason || operatorException.exceptionType}`,
+              currentBookings: 0,
+              maxCapacity: room.maxCapacity,
+              remainingCapacity: 0,
+              operatorId,
+              operatorName,
+            };
+          }
+        } else {
           return {
             available: false,
             reason: `Istruttore non disponibile: ${operatorException.reason || operatorException.exceptionType}`,
             currentBookings: 0,
             maxCapacity: room.maxCapacity,
-            operatorId: schedule.operatorId,
-            operatorName: schedule.operator?.name,
+            remainingCapacity: 0,
+            operatorId,
+            operatorName,
           };
         }
-      } else {
-        return {
-          available: false,
-          reason: `Istruttore non disponibile: ${operatorException.reason || operatorException.exceptionType}`,
-          currentBookings: 0,
-          maxCapacity: room.maxCapacity,
-          operatorId: schedule.operatorId,
-          operatorName: schedule.operator?.name,
-        };
       }
     }
 
@@ -117,14 +182,20 @@ export class GymAvailabilityService {
     const currentBookings = await this.countBookingsInSlot(gymRoomId, date, startTime, endTime);
 
     // 5. Check capacity
+    const remainingCapacity = Math.max(0, room.maxCapacity - currentBookings);
+
     if (currentBookings >= room.maxCapacity) {
       return {
         available: false,
         reason: `Capacità massima raggiunta (${currentBookings}/${room.maxCapacity})`,
         currentBookings,
         maxCapacity: room.maxCapacity,
-        operatorId: schedule.operatorId,
-        operatorName: schedule.operator?.name,
+        remainingCapacity: 0,
+        operatorId,
+        operatorName,
+        isSubstitute,
+        originalOperatorId,
+        originalOperatorName,
       };
     }
 
@@ -132,15 +203,19 @@ export class GymAvailabilityService {
       available: true,
       currentBookings,
       maxCapacity: room.maxCapacity,
-      operatorId: schedule.operatorId,
-      operatorName: schedule.operator?.name,
+      remainingCapacity,
+      operatorId,
+      operatorName,
+      isSubstitute,
+      originalOperatorId,
+      originalOperatorName,
     };
   }
 
   /**
-   * Find the operator schedule for a specific time
+   * Find the operator schedule using legacy GymSchedule system
    */
-  private async findOperatorSchedule(
+  private async findOperatorScheduleLegacy(
     gymRoomId: string,
     dayOfWeek: number,
     time: string,
@@ -170,7 +245,9 @@ export class GymAvailabilityService {
       .where('appointment.gymRoomId = :gymRoomId', { gymRoomId })
       .andWhere('appointment.appointmentDate = :date', { date })
       .andWhere('appointment.appointmentType = :type', { type: AppointmentType.GYM })
-      .andWhere('appointment.status != :cancelled', { cancelled: 'cancelled' })
+      .andWhere('appointment.bookingStatus NOT IN (:...excludedStatuses)', {
+        excludedStatuses: [BookingStatus.CANCELLED, BookingStatus.NO_SHOW]
+      })
       .andWhere(
         '(appointment.startTime < :endTime AND appointment.endTime > :startTime)',
         { startTime, endTime },
@@ -179,7 +256,7 @@ export class GymAvailabilityService {
   }
 
   /**
-   * Get all available slots for a gym room on a date
+   * Get all available slots for a gym room on a date - usando il nuovo sistema di template
    */
   async getAvailableSlots(gymRoomId: string, date: Date): Promise<GymSlot[]> {
     const slots: GymSlot[] = [];
@@ -190,27 +267,47 @@ export class GymAvailabilityService {
       return slots;
     }
 
-    const dayOfWeek = date.getDay();
+    // Controlla eccezione di chiusura per l'intera giornata
+    const dayException = await this.gymExceptionService.hasException(gymRoomId, date);
+    if (dayException && dayException.exceptionType === 'closed' && !dayException.startTime) {
+      // Palestra chiusa tutto il giorno
+      return slots;
+    }
 
-    // Get all schedules for this room and day
-    const schedules = await this.scheduleRepo.find({
-      where: {
-        gymRoomId,
-        dayOfWeek,
-        isCurrent: true,
-      },
-      relations: ['operator'],
-      order: { startTime: 'ASC' },
-    });
+    // Prova prima il nuovo sistema di template
+    const templatePatterns = await this.gymPatternGroupService.getPatternsForDay(gymRoomId, date);
 
-    // For each schedule, generate slots
-    for (const schedule of schedules) {
-      let currentTime = schedule.startTime;
-      const endTime = schedule.endTime;
+    if (templatePatterns.length > 0) {
+      // Usa il nuovo sistema
+      return this.generateSlotsFromTemplatePatterns(room, date, templatePatterns);
+    }
+
+    // Fallback al vecchio sistema GymSchedule
+    return this.generateSlotsFromLegacySchedule(room, date);
+  }
+
+  /**
+   * Genera slot dal nuovo sistema di template pattern
+   */
+  private async generateSlotsFromTemplatePatterns(
+    room: GymRoom,
+    date: Date,
+    patterns: GymTemplatePattern[]
+  ): Promise<GymSlot[]> {
+    const slots: GymSlot[] = [];
+
+    // Ordina i pattern per orario
+    const sortedPatterns = [...patterns].sort((a, b) =>
+      a.startTime.localeCompare(b.startTime)
+    );
+
+    for (const pattern of sortedPatterns) {
+      let currentTime = pattern.startTime;
+      const endTime = pattern.endTime;
 
       while (this.timeToMinutes(currentTime) + room.slotDuration <= this.timeToMinutes(endTime)) {
         const result = await this.checkAvailability({
-          gymRoomId,
+          gymRoomId: room.id,
           date,
           startTime: currentTime,
           durationMinutes: room.slotDuration,
@@ -223,15 +320,84 @@ export class GymAvailabilityService {
         const endDate = new Date(startDate);
         endDate.setMinutes(endDate.getMinutes() + room.slotDuration);
 
+        const slotEndTime = this.addMinutesToTime(currentTime, room.slotDuration);
+
         slots.push({
           startTime: startDate,
           endTime: endDate,
+          startTimeStr: currentTime,
+          endTimeStr: slotEndTime,
           available: result.available,
           currentBookings: result.currentBookings,
           maxCapacity: result.maxCapacity,
+          remainingCapacity: result.remainingCapacity,
+          operatorId: result.operatorId,
+          operatorName: result.operatorName,
+          isSubstitute: result.isSubstitute,
+          originalOperatorId: result.originalOperatorId,
+          originalOperatorName: result.originalOperatorName,
+          reason: result.reason,
+          isClosed: result.isClosed,
+        });
+
+        currentTime = this.addMinutesToTime(currentTime, room.slotDuration);
+      }
+    }
+
+    return slots;
+  }
+
+  /**
+   * Genera slot dal vecchio sistema GymSchedule (legacy)
+   */
+  private async generateSlotsFromLegacySchedule(room: GymRoom, date: Date): Promise<GymSlot[]> {
+    const slots: GymSlot[] = [];
+    const dayOfWeek = date.getDay();
+
+    const schedules = await this.scheduleRepo.find({
+      where: {
+        gymRoomId: room.id,
+        dayOfWeek,
+        isCurrent: true,
+      },
+      relations: ['operator'],
+      order: { startTime: 'ASC' },
+    });
+
+    for (const schedule of schedules) {
+      let currentTime = schedule.startTime;
+      const endTime = schedule.endTime;
+
+      while (this.timeToMinutes(currentTime) + room.slotDuration <= this.timeToMinutes(endTime)) {
+        const result = await this.checkAvailability({
+          gymRoomId: room.id,
+          date,
+          startTime: currentTime,
+          durationMinutes: room.slotDuration,
+        });
+
+        const startDate = new Date(date);
+        const [hours, mins] = currentTime.split(':').map(Number);
+        startDate.setHours(hours, mins, 0, 0);
+
+        const endDate = new Date(startDate);
+        endDate.setMinutes(endDate.getMinutes() + room.slotDuration);
+
+        const slotEndTime = this.addMinutesToTime(currentTime, room.slotDuration);
+
+        slots.push({
+          startTime: startDate,
+          endTime: endDate,
+          startTimeStr: currentTime,
+          endTimeStr: slotEndTime,
+          available: result.available,
+          currentBookings: result.currentBookings,
+          maxCapacity: result.maxCapacity,
+          remainingCapacity: result.remainingCapacity,
           operatorId: result.operatorId,
           operatorName: result.operatorName,
           reason: result.reason,
+          isClosed: result.isClosed,
         });
 
         currentTime = this.addMinutesToTime(currentTime, room.slotDuration);
@@ -250,7 +416,35 @@ export class GymAvailabilityService {
     startTime: string,
   ): Promise<number> {
     const result = await this.checkAvailability({ gymRoomId, date, startTime });
-    return Math.max(0, result.maxCapacity - result.currentBookings);
+    return result.remainingCapacity;
+  }
+
+  /**
+   * Ottieni gli appuntamenti per uno slot specifico
+   */
+  async getAppointmentsForSlot(
+    gymRoomId: string,
+    date: Date,
+    startTime: string,
+    endTime: string
+  ): Promise<AvailabilityAppointment[]> {
+    return this.appointmentRepo
+      .createQueryBuilder('appointment')
+      .leftJoinAndSelect('appointment.operator', 'operator')
+      .leftJoinAndSelect('appointment.originalOperator', 'originalOperator')
+      .leftJoinAndSelect('appointment.patient', 'patient')
+      .where('appointment.gymRoomId = :gymRoomId', { gymRoomId })
+      .andWhere('appointment.appointmentDate = :date', { date })
+      .andWhere('appointment.appointmentType = :type', { type: AppointmentType.GYM })
+      .andWhere('appointment.bookingStatus NOT IN (:...excludedStatuses)', {
+        excludedStatuses: [BookingStatus.CANCELLED, BookingStatus.NO_SHOW]
+      })
+      .andWhere(
+        '(appointment.startTime < :endTime AND appointment.endTime > :startTime)',
+        { startTime, endTime },
+      )
+      .orderBy('appointment.startTime', 'ASC')
+      .getMany();
   }
 
   /**

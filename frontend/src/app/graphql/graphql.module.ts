@@ -45,6 +45,11 @@ export function createApollo(httpLink: HttpLink) {
                 return incoming;
               },
             },
+            availabilityAppointmentsByOperator: {
+              merge(existing = [], incoming) {
+                return incoming;
+              },
+            },
           },
         },
         Operator: {

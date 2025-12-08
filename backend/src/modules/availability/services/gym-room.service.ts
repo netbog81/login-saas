@@ -35,6 +35,8 @@ export class GymRoomService {
     maxCapacity?: number;
     slotDuration?: number;
     color?: string;
+    defaultStartTime?: string;
+    defaultEndTime?: string;
   }): Promise<GymRoom> {
     const room = this.gymRoomRepo.create({
       ...data,
@@ -47,7 +49,7 @@ export class GymRoomService {
 
   async update(
     id: string,
-    data: Partial<Pick<GymRoom, 'name' | 'maxCapacity' | 'slotDuration' | 'color' | 'isActive'>>,
+    data: Partial<Pick<GymRoom, 'name' | 'maxCapacity' | 'slotDuration' | 'color' | 'isActive' | 'defaultStartTime' | 'defaultEndTime'>>,
   ): Promise<GymRoom> {
     await this.gymRoomRepo.update(id, data);
     return this.findOne(id);

@@ -62,6 +62,11 @@
         Strumentazione
       </button>
       <button class="tab"
+              [class.active]="activeTab === 'gyms'"
+              (click)="setActiveTab('gyms')">
+        Palestre
+      </button>
+      <button class="tab"
               [class.active]="activeTab === 'calendar'"
               (click)="setActiveTab('calendar')">
         Calendario
@@ -77,6 +82,7 @@
     <app-template-management *ngIf="activeTab === 'templates'"></app-template-management>
     <app-operator-template-assignment *ngIf="activeTab === 'assignments'"></app-operator-template-assignment>
     <app-instrumentation-management *ngIf="activeTab === 'instrumentation'"></app-instrumentation-management>
+    <app-gym-management *ngIf="activeTab === 'gyms'"></app-gym-management>
 
     <div *ngIf="activeTab === 'calendar'" class="coming-soon">
       <h3>Integrazione Calendario</h3>

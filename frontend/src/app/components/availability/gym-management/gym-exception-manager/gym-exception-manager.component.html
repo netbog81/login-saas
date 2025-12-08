@@ -1,0 +1,169 @@
+<div class="gym-exception-manager">
+  <!-- No Gym Selected -->
+  <div *ngIf="!gymRoom" class="no-gym-selected">
+    <p>Seleziona una palestra per gestire le eccezioni.</p>
+  </div>
+
+  <ng-container *ngIf="gymRoom">
+    <!-- Header -->
+    <div class="manager-header">
+      <h2>Eccezioni - {{ gymRoom.name }}</h2>
+      <button class="btn btn-primary" (click)="openForm()">
+        + Nuova Eccezione
+      </button>
+    </div>
+
+    <!-- Date Range Filter -->
+    <div class="date-filter">
+      <div class="filter-group">
+        <label>Da:</label>
+        <input type="date" [(ngModel)]="startDate" (change)="onDateRangeChange()" class="form-control">
+      </div>
+      <div class="filter-group">
+        <label>A:</label>
+        <input type="date" [(ngModel)]="endDate" (change)="onDateRangeChange()" class="form-control">
+      </div>
+    </div>
+
+    <!-- Error Message -->
+    <div *ngIf="error" class="error-message">
+      {{ error }}
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="loading && exceptions.length === 0" class="loading">
+      Caricamento eccezioni...
+    </div>
+
+    <!-- Empty State -->
+    <div *ngIf="!loading && exceptions.length === 0" class="empty-state">
+      <p>Nessuna eccezione configurata per questo periodo.</p>
+      <p>Le eccezioni permettono di gestire chiusure, assenze e modifiche agli orari.</p>
+    </div>
+
+    <!-- Exceptions List -->
+    <div class="exceptions-list" *ngIf="exceptions.length > 0">
+      <div *ngFor="let exception of exceptions"
+           class="exception-card"
+           [class]="getExceptionTypeClass(exception.exceptionType)">
+
+        <div class="exception-header">
+          <span class="exception-date">{{ formatDate(exception.exceptionDate) }}</span>
+          <span class="exception-type">{{ formatExceptionType(exception.exceptionType) }}</span>
+        </div>
+
+        <div class="exception-body">
+          <!-- Time range if specified -->
+          <div class="info-row" *ngIf="exception.startTime && exception.endTime">
+            <span class="label">Orario:</span>
+            <span class="value">{{ exception.startTime }} - {{ exception.endTime }}</span>
+          </div>
+          <div class="info-row" *ngIf="!exception.startTime && !exception.endTime && exception.exceptionType === GymExceptionType.CLOSED">
+            <span class="value full-day">Tutto il giorno</span>
+          </div>
+
+          <!-- Operator if specified -->
+          <div class="info-row" *ngIf="exception.operator">
+            <span class="label">Operatore:</span>
+            <span class="value">{{ exception.operator.name }} {{ exception.operator.surname }}</span>
+          </div>
+
+          <!-- Substitute if specified -->
+          <div class="info-row" *ngIf="exception.substituteOperator">
+            <span class="label">Sostituto:</span>
+            <span class="value">{{ exception.substituteOperator.name }} {{ exception.substituteOperator.surname }}</span>
+          </div>
+
+          <!-- Reason if specified -->
+          <div class="info-row" *ngIf="exception.reason">
+            <span class="label">Motivo:</span>
+            <span class="value reason">{{ exception.reason }}</span>
+          </div>
+        </div>
+
+        <div class="exception-actions">
+          <button class="btn btn-sm btn-secondary" (click)="openForm(exception)">
+            Modifica
+          </button>
+          <button class="btn btn-sm btn-danger" (click)="deleteException(exception)">
+            Elimina
+          </button>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+
+  <!-- Exception Form Modal -->
+  <div *ngIf="showForm" class="modal-overlay" (click)="closeForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditMode ? 'Modifica' : 'Nuova' }} Eccezione</h3>
+        <button class="close-btn" (click)="closeForm()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error-message">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Tipo Eccezione *</label>
+          <select [(ngModel)]="editingException.exceptionType" class="form-control">
+            <option *ngFor="let opt of exceptionTypeOptions" [value]="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Data *</label>
+          <input type="date" [(ngModel)]="editingException.exceptionDate" class="form-control">
+        </div>
+
+        <div class="form-row" *ngIf="showTimeFields()">
+          <div class="form-group">
+            <label>Ora Inizio (opzionale)</label>
+            <input type="time" [(ngModel)]="editingException.startTime" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Ora Fine (opzionale)</label>
+            <input type="time" [(ngModel)]="editingException.endTime" class="form-control">
+          </div>
+        </div>
+
+        <div class="form-group" *ngIf="showOperatorField()">
+          <label>Operatore Assente</label>
+          <select [(ngModel)]="editingException.operatorId" class="form-control">
+            <option value="">-- Tutti gli operatori --</option>
+            <option *ngFor="let op of operators" [value]="op.id">
+              {{ op.name }} {{ op.surname }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group" *ngIf="showSubstituteField()">
+          <label>Operatore Sostituto</label>
+          <select [(ngModel)]="editingException.substituteOperatorId" class="form-control">
+            <option value="">-- Nessun sostituto --</option>
+            <option *ngFor="let op of operators" [value]="op.id">
+              {{ op.name }} {{ op.surname }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Motivo (opzionale)</label>
+          <textarea [(ngModel)]="editingException.reason"
+                    class="form-control"
+                    rows="3"
+                    placeholder="es. Ferie, Manutenzione, Festività..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveException()" [disabled]="loading">
+          {{ loading ? 'Salvataggio...' : 'Salva' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

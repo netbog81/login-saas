@@ -68,11 +68,14 @@ type AvailabilityAppointment {
   instrumentOrderMatters: Boolean!
   instruments: [AppointmentInstrument!]
   isRecurring: Boolean!
+  isSubstitution: Boolean!
   maxParticipants: Int
   notes: String
   operator: Operator
   operatorId: ID
   operatorNotes: String
+  originalOperator: Operator
+  originalOperatorId: ID
   participantCount: Int!
   patientId: Int
   recurringGroupId: ID
@@ -81,6 +84,7 @@ type AvailabilityAppointment {
   serviceId: ID
   startTime: String!
   status: AppointmentStatus @deprecated(reason: "Use bookingStatus instead")
+  substitutionReason: String
   treatmentCompletedAt: DateTime
   treatmentStartedAt: DateTime
   treatmentStatus: TreatmentStatus
@@ -210,6 +214,35 @@ input CreateAvailabilityTemplateInput {
   validUntil: String
 }
 
+input CreateGymExceptionInput {
+  endTime: String
+  exceptionDate: String!
+  exceptionType: GymExceptionType!
+  gymRoomId: ID!
+  operatorId: ID
+  reason: String
+  startTime: String
+  substituteOperatorId: ID
+}
+
+input CreateGymPatternGroupInput {
+  description: String
+  gymRoomId: ID!
+  name: String!
+  patternDuration: Int = 7
+  patternStartDate: String!
+  patterns: [CreateGymTemplatePatternInput!]!
+  validFrom: String!
+  validUntil: String
+}
+
+input CreateGymTemplatePatternInput {
+  dayInPattern: Int!
+  endTime: String!
+  operatorId: ID!
+  startTime: String!
+}
+
 input CreateOperatorInput {
   categoryId: String
   color: String
@@ -284,9 +317,54 @@ type GroupException {
   reason: String
 }
 
+type GymException {
+  createdAt: DateTime!
+  createdBy: ID
+  endTime: String
+  exceptionDate: String!
+  exceptionType: GymExceptionType!
+  gymRoom: GymRoom!
+  gymRoomId: ID!
+  id: ID!
+  operator: Operator
+  operatorId: ID
+  reason: String
+  startTime: String
+  substituteOperator: Operator
+  substituteOperatorId: ID
+  updatedAt: DateTime!
+}
+
+"""Tipo di eccezione per la palestra"""
+enum GymExceptionType {
+  CLOSED
+  MODIFIED_HOURS
+  OPERATOR_ABSENT
+}
+
+type GymPatternGroup {
+  createdAt: DateTime!
+  description: String
+  gymRoom: GymRoom!
+  gymRoomId: ID!
+  id: ID!
+  isActive: Boolean!
+  isCurrent: Boolean!
+  name: String!
+  patternDuration: Int!
+  patternStartDate: String!
+  patterns: [GymTemplatePattern!]
+  updatedAt: DateTime!
+  validFrom: String!
+  validUntil: String
+  version: Int!
+}
+
 type GymRoom {
   color: String
   createdAt: DateTime!
+  defaultEndTime: String
+  defaultStartTime: String
   id: ID!
   isActive: Boolean!
   maxCapacity: Int!
@@ -318,6 +396,19 @@ type GymSlotOutput {
   operatorName: String
   startTime: String!
   totalCapacity: Int!
+}
+
+type GymTemplatePattern {
+  createdAt: DateTime!
+  dayInPattern: Int!
+  endTime: String!
+  gymPatternGroupId: ID!
+  id: ID!
+  operator: Operator!
+  operatorId: ID!
+  patternGroup: GymPatternGroup!
+  startTime: String!
+  updatedAt: DateTime!
 }
 
 type HolidayInfo {
@@ -385,6 +476,7 @@ The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](
 scalar JSONObject
 
 type Mutation {
+  activateGymPatternGroup(id: ID!): GymPatternGroup!
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
@@ -394,7 +486,9 @@ type Mutation {
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
-  createGymRoom(color: String, maxCapacity: Int, name: String!, slotDuration: Int): GymRoom!
+  createGymException(input: CreateGymExceptionInput!): GymException!
+  createGymPatternGroup(input: CreateGymPatternGroupInput!): GymPatternGroup!
+  createGymRoom(color: String, defaultEndTime: String, defaultStartTime: String, maxCapacity: Int, name: String!, slotDuration: Int): GymRoom!
   createGymSchedule(dayOfWeek: Int!, endTime: String!, gymRoomId: ID!, operatorId: ID!, startTime: String!, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   createInstrument(brand: String, categoryId: ID!, color: String, model: String, name: String!, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
@@ -407,6 +501,7 @@ type Mutation {
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
+  deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
@@ -414,6 +509,8 @@ type Mutation {
   deleteExceptionsByDateRange(endDate: String!, exceptionType: ExceptionType, operatorId: ID!, startDate: String!): Int!
   deleteGeneralSetting(key: String!): Boolean!
   deleteGroupException(id: ID!): Boolean!
+  deleteGymException(id: ID!): Boolean!
+  deleteGymPatternGroup(id: ID!): Boolean!
   deleteGymRoom(id: ID!): Boolean!
   deleteGymSchedule(id: ID!): Boolean!
   deleteHolidaysForYear(year: Int!): Int!
@@ -426,6 +523,7 @@ type Mutation {
   deleteService(id: ID!): Boolean!
   deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
+  duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
   initializeDefaultSettings: Boolean!
@@ -440,7 +538,9 @@ type Mutation {
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
   updateGeneralSetting(key: String!, value: JSON!): GeneralSettings!
-  updateGymRoom(color: String, id: ID!, isActive: Boolean, maxCapacity: Int, name: String, slotDuration: Int): GymRoom!
+  updateGymException(id: ID!, input: UpdateGymExceptionInput!): GymException!
+  updateGymPatternGroup(id: ID!, input: UpdateGymPatternGroupInput!): GymPatternGroup!
+  updateGymRoom(color: String, defaultEndTime: String, defaultStartTime: String, id: ID!, isActive: Boolean, maxCapacity: Int, name: String, slotDuration: Int): GymRoom!
   updateGymSchedule(dayOfWeek: Int, endTime: String, id: ID!, isCurrent: Boolean, operatorId: ID, startTime: String, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   updateInstrumentCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): InstrumentCategory!
@@ -567,13 +667,19 @@ type Query {
   conflictStats: ConflictStatsOutput!
   conflictedAppointments(conflictReason: ConflictReason, dateFrom: String, dateTo: String, operatorId: ID): [AvailabilityAppointment!]!
   conflictedAppointmentsCount: Int!
+  currentGymPatternGroup(gymRoomId: ID!): GymPatternGroup
   currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
   generalSetting(key: String!): GeneralSettings
   generalSettings: [GeneralSettings!]!
   generalSettingsByCategory(category: String!): [GeneralSettings!]!
   groupExceptions: [GroupException!]!
   gymAvailableSlots(date: String!, gymRoomId: ID!): [GymSlotOutput!]!
+  gymException(id: ID!): GymException
+  gymExceptions(endDate: String!, gymRoomId: ID!, startDate: String!): [GymException!]!
+  gymExceptionsByDate(date: String!, gymRoomId: ID!): [GymException!]!
   gymOperatorAtTime(dayOfWeek: Int!, gymRoomId: ID!, time: String!): GymSchedule
+  gymPatternGroup(id: ID!): GymPatternGroup
+  gymPatternGroups(gymRoomId: ID): [GymPatternGroup!]!
   gymRoom(id: ID!): GymRoom
   gymRooms(onlyActive: Boolean = false): [GymRoom!]!
   gymSchedule(id: ID!): GymSchedule
@@ -733,6 +839,27 @@ input UpdateAvailabilityAppointmentInput {
   operatorNotes: String
   patientId: Int
   startTime: String
+}
+
+input UpdateGymExceptionInput {
+  endTime: String
+  exceptionDate: String
+  exceptionType: GymExceptionType
+  operatorId: ID
+  reason: String
+  startTime: String
+  substituteOperatorId: ID
+}
+
+input UpdateGymPatternGroupInput {
+  description: String
+  isActive: Boolean
+  name: String
+  patternDuration: Int
+  patternStartDate: String
+  patterns: [CreateGymTemplatePatternInput!]
+  validFrom: String
+  validUntil: String
 }
 
 input UpdateOperatorInput {
