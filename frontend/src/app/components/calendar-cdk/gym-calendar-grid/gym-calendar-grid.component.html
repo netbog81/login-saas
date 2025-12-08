@@ -1,0 +1,82 @@
+<div class="gym-calendar-grid">
+  <!-- Header con nomi delle GymRoom -->
+  <div class="grid-header" [style.padding-right.px]="scrollbarWidth">
+    <div class="time-column-header">Ora</div>
+    <div class="gym-room-header"
+         *ngFor="let gymRoom of gymRooms; trackBy: trackByGymRoom"
+         [style.background-color]="getGymRoomColor(gymRoom)"
+         [title]="'Capacità max: ' + gymRoom.maxCapacity">
+      <span class="gym-room-name">{{ gymRoom.name }}</span>
+      <span class="gym-room-capacity">max {{ gymRoom.maxCapacity }}</span>
+    </div>
+  </div>
+
+  <!-- Body con time slots e colonne per ogni GymRoom -->
+  <div class="grid-body" #gridBody [style.height.px]="gridHeight">
+    <!-- Time column -->
+    <div class="time-column">
+      <div class="time-slot"
+           *ngFor="let slot of timeSlots; trackBy: trackByTimeSlot"
+           [style.height.px]="slotHeight">
+        <span class="time-label">{{ slot.time }}</span>
+      </div>
+    </div>
+
+    <!-- Colonne per ogni GymRoom -->
+    <div class="gym-room-column"
+         *ngFor="let gymRoom of gymRooms; trackBy: trackByGymRoom"
+         [attr.data-gym-room-id]="gymRoom.id">
+
+      <!-- Celle per ogni time slot -->
+      <div class="gym-slot"
+           *ngFor="let slot of timeSlots; trackBy: trackByTimeSlot"
+           [class]="getSlotClass(gymRoom.id, slot.time)"
+           [class.has-template]="hasTemplate(gymRoom.id, slot.time)"
+           [style.height.px]="slotHeight"
+           (click)="onSlotClick(gymRoom, slot.time, $event)"
+           (dblclick)="onSlotDblClick(gymRoom, slot.time, $event)">
+
+        <!-- Contenuto slot -->
+        <ng-container *ngIf="hasTemplate(gymRoom.id, slot.time)">
+          <!-- Indicatore capacità -->
+          <div class="slot-capacity">
+            <span class="capacity-text">{{ getCapacityText(gymRoom.id, slot.time) }}</span>
+          </div>
+
+          <!-- Nome operatore (piccolo) -->
+          <div class="slot-operator" *ngIf="getOperatorName(gymRoom.id, slot.time)">
+            {{ getOperatorName(gymRoom.id, slot.time) }}
+          </div>
+
+          <!-- Appuntamenti nello slot -->
+          <div class="slot-appointments" *ngIf="getSlotAppointments(gymRoom.id, slot.time).length > 0">
+            <div class="mini-appointment"
+                 *ngFor="let apt of getSlotAppointments(gymRoom.id, slot.time); trackBy: trackByAppointment"
+                 [title]="apt.clientName + (apt.notes ? ' - ' + apt.notes : '')"
+                 (click)="onAppointmentClick(apt, $event)">
+              <span class="apt-name">{{ apt.clientName }}</span>
+            </div>
+          </div>
+        </ng-container>
+
+        <!-- Slot senza template -->
+        <ng-container *ngIf="!hasTemplate(gymRoom.id, slot.time)">
+          <div class="no-template-indicator">-</div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div class="empty-state" *ngIf="gymRooms.length === 0">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 6.5h11v11h-11z"></path>
+      <path d="M6.5 6.5L2 2"></path>
+      <path d="M17.5 6.5L22 2"></path>
+      <path d="M17.5 17.5L22 22"></path>
+      <path d="M6.5 17.5L2 22"></path>
+    </svg>
+    <h3>Nessuna palestra configurata</h3>
+    <p>Configura le palestre nella sezione Impostazioni</p>
+  </div>
+</div>

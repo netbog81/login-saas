@@ -302,8 +302,9 @@ export class GymAvailabilityService {
     );
 
     for (const pattern of sortedPatterns) {
-      let currentTime = pattern.startTime;
-      const endTime = pattern.endTime;
+      // Normalize times to HH:MM format (remove seconds if present from DB)
+      let currentTime = this.normalizeTime(pattern.startTime);
+      const endTime = this.normalizeTime(pattern.endTime);
 
       while (this.timeToMinutes(currentTime) + room.slotDuration <= this.timeToMinutes(endTime)) {
         const result = await this.checkAvailability({
@@ -365,8 +366,9 @@ export class GymAvailabilityService {
     });
 
     for (const schedule of schedules) {
-      let currentTime = schedule.startTime;
-      const endTime = schedule.endTime;
+      // Normalize times to HH:MM format (remove seconds if present from DB)
+      let currentTime = this.normalizeTime(schedule.startTime);
+      const endTime = this.normalizeTime(schedule.endTime);
 
       while (this.timeToMinutes(currentTime) + room.slotDuration <= this.timeToMinutes(endTime)) {
         const result = await this.checkAvailability({
@@ -464,5 +466,44 @@ export class GymAvailabilityService {
   private timeToMinutes(time: string): number {
     const [hours, mins] = time.split(':').map(Number);
     return hours * 60 + mins;
+  }
+
+  /**
+   * Helper: Normalize time string to HH:MM format (remove seconds if present)
+   */
+  private normalizeTime(time: string): string {
+    const parts = time.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+  }
+
+  /**
+   * Get available slots with capacity info for GraphQL GymSlotInfo type
+   * Usato dal resolver per la query gymRoomAvailableSlots
+   */
+  async getAvailableSlotsWithCapacity(gymRoomId: string, dateStr: string): Promise<{
+    startTime: string;
+    endTime: string;
+    operator?: { id: string; name: string; surname?: string };
+    currentCount: number;
+    maxCapacity: number;
+    isAvailable: boolean;
+    isClosed: boolean;
+  }[]> {
+    const date = new Date(dateStr);
+    const slots = await this.getAvailableSlots(gymRoomId, date);
+
+    return slots.map(slot => ({
+      startTime: slot.startTimeStr,
+      endTime: slot.endTimeStr,
+      operator: slot.operatorId ? {
+        id: slot.operatorId,
+        name: slot.operatorName?.split(' ')[0] || '',
+        surname: slot.operatorName?.split(' ').slice(1).join(' ') || undefined,
+      } : undefined,
+      currentCount: slot.currentBookings,
+      maxCapacity: slot.maxCapacity,
+      isAvailable: slot.available,
+      isClosed: slot.isClosed || false,
+    }));
   }
 }

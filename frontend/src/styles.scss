@@ -96,3 +96,14 @@ body {
   opacity: 1 !important;
   visibility: visible !important;
 }
+
+/* Gym slot summary overlay specific styles */
+.gym-slot-summary-overlay {
+  z-index: 2000 !important;
+}
+
+.gym-slot-summary-overlay .gym-slot-summary {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}

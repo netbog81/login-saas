@@ -44,6 +44,10 @@ export class CalendarToolbarComponent {
     this.configChange.emit({ showOperatorsLegend: !this.config.showOperatorsLegend });
   }
 
+  onViewModeChange(mode: 'operators' | 'gyms'): void {
+    this.configChange.emit({ viewMode: mode });
+  }
+
   onWorkingHoursSettings(): void {
     this.openWorkingHoursDialog.emit();
   }

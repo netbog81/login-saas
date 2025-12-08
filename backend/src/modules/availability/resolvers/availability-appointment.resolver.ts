@@ -3,11 +3,15 @@ import { AvailabilityAppointment } from '../entities/availability-appointment.en
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
 import { CreateAvailabilityAppointmentInput } from '../dto/create-availability-appointment.input';
 import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-appointment.input';
+import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
+import { GymSlotInfo } from '../dto/gym-slot-info.type';
+import { GymAvailabilityService } from '../services/gym-availability.service';
 
 @Resolver(() => AvailabilityAppointment)
 export class AvailabilityAppointmentResolver {
   constructor(
     private readonly appointmentService: AvailabilityAppointmentService,
+    private readonly gymAvailabilityService: GymAvailabilityService,
   ) {}
 
   /**
@@ -126,5 +130,54 @@ export class AvailabilityAppointmentResolver {
       endOffsetMinutes,
       excludeAppointmentId,
     );
+  }
+
+  // ==========================================
+  // QUERY E MUTATION PER APPUNTAMENTI PALESTRA
+  // ==========================================
+
+  /**
+   * Query: Ottiene appuntamenti per una GymRoom in una data specifica
+   */
+  @Query(() => [AvailabilityAppointment], { name: 'gymRoomAppointments' })
+  async getGymRoomAppointments(
+    @Args('gymRoomId', { type: () => ID }) gymRoomId: string,
+    @Args('date') date: string,
+  ): Promise<AvailabilityAppointment[]> {
+    return this.appointmentService.findByGymRoomAndDate(gymRoomId, date);
+  }
+
+  /**
+   * Query: Ottiene appuntamenti per più GymRoom in un range di date
+   */
+  @Query(() => [AvailabilityAppointment], { name: 'gymRoomsAppointments' })
+  async getGymRoomsAppointments(
+    @Args('gymRoomIds', { type: () => [ID] }) gymRoomIds: string[],
+    @Args('startDate') startDate: string,
+    @Args('endDate') endDate: string,
+  ): Promise<AvailabilityAppointment[]> {
+    return this.appointmentService.findByGymRoomsAndDateRange(gymRoomIds, startDate, endDate);
+  }
+
+  /**
+   * Query: Ottiene gli slot disponibili per una GymRoom in una data
+   * Ritorna informazioni su capacità e disponibilità per ogni slot
+   */
+  @Query(() => [GymSlotInfo], { name: 'gymRoomAvailableSlots' })
+  async getGymRoomAvailableSlots(
+    @Args('gymRoomId', { type: () => ID }) gymRoomId: string,
+    @Args('date') date: string,
+  ): Promise<GymSlotInfo[]> {
+    return this.gymAvailabilityService.getAvailableSlotsWithCapacity(gymRoomId, date);
+  }
+
+  /**
+   * Mutation: Crea un appuntamento palestra con validazione capacità
+   */
+  @Mutation(() => AvailabilityAppointment, { name: 'createGymAppointment' })
+  async createGymAppointment(
+    @Args('input') input: CreateGymAppointmentInput,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.createGymAppointment(input);
   }
 }

@@ -1,0 +1,294 @@
+.gym-calendar-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #ffffff;
+}
+
+// Header
+.grid-header {
+  display: flex;
+  border-bottom: 2px solid #e5e7eb;
+  background-color: #f9fafb;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.time-column-header {
+  min-width: 60px;
+  max-width: 60px;
+  padding: 12px 8px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+  border-right: 1px solid #e5e7eb;
+}
+
+.gym-room-header {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 12px;
+  text-align: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+.gym-room-name {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gym-room-capacity {
+  display: block;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+// Body
+.grid-body {
+  display: flex;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  position: relative;
+}
+
+// Time column
+.time-column {
+  min-width: 60px;
+  max-width: 60px;
+  background-color: #f9fafb;
+  border-right: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.time-slot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  border-bottom: 1px solid #f3f4f6;
+  padding-top: 2px;
+}
+
+.time-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+// GymRoom columns
+.gym-room-column {
+  flex: 1;
+  min-width: 120px;
+  border-right: 1px solid #e5e7eb;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+// Gym slots
+.gym-slot {
+  border-bottom: 1px solid #f3f4f6;
+  padding: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+
+  &:hover {
+    background-color: #f9fafb;
+  }
+
+  // Stati dello slot
+  &.slot-available {
+    background-color: #ecfdf5;
+    border-left: 3px solid #10b981;
+
+    &:hover {
+      background-color: #d1fae5;
+    }
+  }
+
+  &.slot-partial {
+    background-color: #fef3c7;
+    border-left: 3px solid #f59e0b;
+
+    &:hover {
+      background-color: #fde68a;
+    }
+  }
+
+  &.slot-full {
+    background-color: #fee2e2;
+    border-left: 3px solid #ef4444;
+    cursor: not-allowed;
+
+    &:hover {
+      background-color: #fecaca;
+    }
+  }
+
+  &.slot-closed {
+    background-color: #f3f4f6;
+    border-left: 3px solid #9ca3af;
+    cursor: not-allowed;
+
+    .slot-capacity .capacity-text {
+      color: #6b7280;
+      font-style: italic;
+    }
+  }
+
+  &.slot-no-template {
+    background-color: #ffffff;
+    border-left: 3px solid transparent;
+    cursor: default;
+
+    &:hover {
+      background-color: #f9fafb;
+    }
+  }
+}
+
+// Capacità nello slot
+.slot-capacity {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+.capacity-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+// Nome operatore
+.slot-operator {
+  font-size: 10px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  margin-top: 2px;
+}
+
+// Appuntamenti mini
+.slot-appointments {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mini-appointment {
+  background-color: #3b82f6;
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: #2563eb;
+  }
+}
+
+.apt-name {
+  font-weight: 500;
+}
+
+// Slot senza template
+.no-template-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #d1d5db;
+  font-size: 12px;
+}
+
+// Empty state
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: #6b7280;
+
+  svg {
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #374151;
+    margin: 0 0 8px;
+  }
+
+  p {
+    font-size: 14px;
+    margin: 0;
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .gym-room-header {
+    min-width: 100px;
+    padding: 8px;
+  }
+
+  .gym-room-name {
+    font-size: 12px;
+  }
+
+  .gym-room-capacity {
+    font-size: 10px;
+  }
+
+  .time-column-header,
+  .time-column {
+    min-width: 50px;
+    max-width: 50px;
+  }
+
+  .gym-room-column {
+    min-width: 100px;
+  }
+
+  .capacity-text {
+    font-size: 11px;
+    padding: 1px 4px;
+  }
+}

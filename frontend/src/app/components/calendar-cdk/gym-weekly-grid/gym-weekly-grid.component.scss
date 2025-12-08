@@ -1,0 +1,274 @@
+.gym-weekly-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #ffffff;
+}
+
+// Header
+.grid-header {
+  display: flex;
+  border-bottom: 2px solid #e5e7eb;
+  background-color: #f9fafb;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.time-column-header {
+  min-width: 50px;
+  max-width: 50px;
+  padding: 8px 4px;
+  font-weight: 600;
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.day-header-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 2px solid #e5e7eb;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+.day-header {
+  padding: 6px 4px;
+  text-align: center;
+  background-color: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+
+  &.today {
+    background-color: #dbeafe;
+  }
+}
+
+.day-name {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.day-number {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.gym-headers {
+  display: flex;
+}
+
+.gym-room-header {
+  flex: 1;
+  min-width: 60px;
+  padding: 4px 2px;
+  text-align: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+.gym-room-name {
+  display: block;
+  font-weight: 600;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// Body
+.grid-body {
+  display: flex;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  position: relative;
+}
+
+// Time column
+.time-column {
+  min-width: 50px;
+  max-width: 50px;
+  background-color: #f9fafb;
+  border-right: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.time-slot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  border-bottom: 1px solid #f3f4f6;
+  padding-top: 2px;
+}
+
+.time-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+// Day column groups
+.day-column-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  border-right: 2px solid #e5e7eb;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+// GymRoom columns
+.gym-room-column {
+  flex: 1;
+  min-width: 60px;
+  border-right: 1px solid #e5e7eb;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+// Gym slots (compact for weekly view)
+.gym-slot {
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+
+  &:hover {
+    background-color: #f9fafb;
+  }
+
+  // Stati dello slot
+  &.slot-available {
+    background-color: #ecfdf5;
+
+    &:hover {
+      background-color: #d1fae5;
+    }
+  }
+
+  &.slot-partial {
+    background-color: #fef3c7;
+
+    &:hover {
+      background-color: #fde68a;
+    }
+  }
+
+  &.slot-full {
+    background-color: #fee2e2;
+    cursor: not-allowed;
+
+    &:hover {
+      background-color: #fecaca;
+    }
+  }
+
+  &.slot-closed {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
+  }
+
+  &.slot-no-template {
+    background-color: #ffffff;
+    cursor: default;
+
+    &:hover {
+      background-color: #f9fafb;
+    }
+  }
+}
+
+// Capacity badge (compact)
+.capacity-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: #374151;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 1px 3px;
+  border-radius: 3px;
+
+  &.full {
+    color: #dc2626;
+  }
+}
+
+.no-template {
+  font-size: 10px;
+  color: #d1d5db;
+}
+
+// Empty state
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #6b7280;
+
+  svg {
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #374151;
+    margin: 0 0 6px;
+  }
+
+  p {
+    font-size: 13px;
+    margin: 0;
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .time-column-header,
+  .time-column {
+    min-width: 40px;
+    max-width: 40px;
+  }
+
+  .gym-room-column {
+    min-width: 50px;
+  }
+
+  .gym-room-name {
+    font-size: 9px;
+  }
+
+  .capacity-badge {
+    font-size: 8px;
+    padding: 0 2px;
+  }
+}

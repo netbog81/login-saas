@@ -62,6 +62,27 @@
   background-color: #d1d5db;
 }
 
+// View mode toggle (Operatori/Palestre)
+.view-mode-toggle {
+  .btn-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    &.active {
+      background-color: #10b981;
+
+      svg {
+        stroke: #ffffff;
+      }
+    }
+  }
+}
+
 .toolbar-checkbox {
   display: flex;
   align-items: center;

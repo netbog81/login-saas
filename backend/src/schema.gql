@@ -214,6 +214,20 @@ input CreateAvailabilityTemplateInput {
   validUntil: String
 }
 
+input CreateGymAppointmentInput {
+  appointmentDate: String!
+  clientEmail: String
+  clientName: String!
+  clientPhone: String
+  endTime: String!
+  gymRoomId: ID!
+  isRecurring: Boolean
+  notes: String
+  patientId: Int
+  repeatConfig: JSON
+  startTime: String!
+}
+
 input CreateGymExceptionInput {
   endTime: String
   exceptionDate: String!
@@ -390,6 +404,22 @@ type GymSchedule {
   validUntil: DateTime
 }
 
+type GymSlotInfo {
+  currentCount: Int!
+  endTime: String!
+  isAvailable: Boolean!
+  isClosed: Boolean!
+  maxCapacity: Int!
+  operator: GymSlotOperatorInfo
+  startTime: String!
+}
+
+type GymSlotOperatorInfo {
+  id: ID!
+  name: String!
+  surname: String
+}
+
 type GymSlotOutput {
   availableCapacity: Int!
   endTime: String!
@@ -486,6 +516,7 @@ type Mutation {
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
+  createGymAppointment(input: CreateGymAppointmentInput!): AvailabilityAppointment!
   createGymException(input: CreateGymExceptionInput!): GymException!
   createGymPatternGroup(input: CreateGymPatternGroupInput!): GymPatternGroup!
   createGymRoom(color: String, defaultEndTime: String, defaultStartTime: String, maxCapacity: Int, name: String!, slotDuration: Int): GymRoom!
@@ -681,7 +712,10 @@ type Query {
   gymPatternGroup(id: ID!): GymPatternGroup
   gymPatternGroups(gymRoomId: ID): [GymPatternGroup!]!
   gymRoom(id: ID!): GymRoom
+  gymRoomAppointments(date: String!, gymRoomId: ID!): [AvailabilityAppointment!]!
+  gymRoomAvailableSlots(date: String!, gymRoomId: ID!): [GymSlotInfo!]!
   gymRooms(onlyActive: Boolean = false): [GymRoom!]!
+  gymRoomsAppointments(endDate: String!, gymRoomIds: [ID!]!, startDate: String!): [AvailabilityAppointment!]!
   gymSchedule(id: ID!): GymSchedule
   gymSchedules(gymRoomId: ID, operatorId: ID): [GymSchedule!]!
   gymSchedulesByRoomAndDay(dayOfWeek: Int!, gymRoomId: ID!): [GymSchedule!]!

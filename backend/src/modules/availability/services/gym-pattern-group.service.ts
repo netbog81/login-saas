@@ -300,32 +300,67 @@ export class GymPatternGroupService {
   async getPatternsForDay(gymRoomId: string, date: Date): Promise<GymTemplatePattern[]> {
     const group = await this.findCurrentByGymRoom(gymRoomId);
     if (!group || !group.patterns) {
+      console.log(`[GymPatternGroup] No group or patterns for gymRoomId: ${gymRoomId}`);
       return [];
     }
 
-    const dayInPattern = this.getPatternDay(date, group.patternStartDate, group.patternDuration);
-    return group.patterns.filter(p => p.dayInPattern === dayInPattern);
+    // Ensure patternStartDate is a Date object (may come as string from DB)
+    const patternStartDate = group.patternStartDate instanceof Date
+      ? group.patternStartDate
+      : new Date(group.patternStartDate);
+
+    const dayInPattern = this.getPatternDay(date, patternStartDate, group.patternDuration);
+
+    console.log(`[GymPatternGroup] getPatternsForDay:`, {
+      gymRoomId,
+      date: date.toISOString(),
+      patternStartDate: patternStartDate.toISOString(),
+      patternDuration: group.patternDuration,
+      dayInPattern,
+      totalPatterns: group.patterns.length,
+      patternDaysInGroup: [...new Set(group.patterns.map(p => p.dayInPattern))],
+    });
+
+    const matchingPatterns = group.patterns.filter(p => p.dayInPattern === dayInPattern);
+    console.log(`[GymPatternGroup] Matching patterns: ${matchingPatterns.length}`, matchingPatterns.map(p => ({
+      dayInPattern: p.dayInPattern,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      operatorId: p.operatorId,
+    })));
+
+    return matchingPatterns;
   }
 
   /**
-   * Calcola il giorno nel ciclo del pattern
+   * Calcola il giorno nel ciclo del pattern basandosi sul giorno della settimana
+   * dayInPattern: 0 = Lunedì, 1 = Martedì, ..., 6 = Domenica
+   *
+   * NOTA: Ignora patternStartDate e usa direttamente il giorno della settimana
+   * per garantire coerenza con l'editor template dove 0=Lunedì
    */
   getPatternDay(date: Date, patternStartDate: Date, patternDuration: number = 7): number {
-    const normalizedStart = new Date(
-      patternStartDate.getFullYear(),
-      patternStartDate.getMonth(),
-      patternStartDate.getDate()
-    );
     const normalizedDate = new Date(
       date.getFullYear(),
       date.getMonth(),
       date.getDate()
     );
 
-    const diffTime = normalizedDate.getTime() - normalizedStart.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    // JavaScript: 0=Dom, 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab
+    // Pattern: 0=Lun, 1=Mar, 2=Mer, 3=Gio, 4=Ven, 5=Sab, 6=Dom
+    const jsDayOfWeek = normalizedDate.getDay(); // 0-6 (Dom-Sab)
+    // Converti: Lun=0, Mar=1, Mer=2, Gio=3, Ven=4, Sab=5, Dom=6
+    const dayInPattern = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
 
-    return ((diffDays % patternDuration) + patternDuration) % patternDuration;
+    console.log(`[GymPatternGroup] getPatternDay:`, {
+      requestedDate: normalizedDate.toISOString().split('T')[0],
+      jsDayOfWeek,
+      jsDayName: ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'][jsDayOfWeek],
+      resultDayInPattern: dayInPattern,
+      patternDayName: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'][dayInPattern],
+    });
+
+    return dayInPattern;
   }
 
   /**
@@ -349,9 +384,22 @@ export class GymPatternGroupService {
 
   /**
    * Verifica se un orario è all'interno di un range
+   * Normalizza gli orari a HH:MM per evitare problemi di confronto con secondi
    */
   private isTimeInRange(time: string, startTime: string, endTime: string): boolean {
-    return time >= startTime && time < endTime;
+    const normalizedTime = this.normalizeTime(time);
+    const normalizedStart = this.normalizeTime(startTime);
+    const normalizedEnd = this.normalizeTime(endTime);
+    return normalizedTime >= normalizedStart && normalizedTime < normalizedEnd;
+  }
+
+  /**
+   * Normalizza il formato dell'orario a HH:MM (rimuove i secondi se presenti)
+   */
+  private normalizeTime(time: string): string {
+    if (!time) return time;
+    const parts = time.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
   }
 
   /**

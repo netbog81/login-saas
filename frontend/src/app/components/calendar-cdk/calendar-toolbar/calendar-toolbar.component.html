@@ -25,6 +25,36 @@
     </div>
   </div>
 
+  <!-- View Mode Toggle (Operatori/Palestre) -->
+  <div class="toolbar-group">
+    <label class="toolbar-label">Vista:</label>
+    <div class="btn-group view-mode-toggle">
+      <button class="btn-option"
+              [class.active]="config.viewMode === 'operators'"
+              (click)="onViewModeChange('operators')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        Operatori
+      </button>
+      <button class="btn-option"
+              [class.active]="config.viewMode === 'gyms'"
+              (click)="onViewModeChange('gyms')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6.5 6.5h11v11h-11z"></path>
+          <path d="M6.5 6.5L2 2"></path>
+          <path d="M17.5 6.5L22 2"></path>
+          <path d="M17.5 17.5L22 22"></path>
+          <path d="M6.5 17.5L2 22"></path>
+        </svg>
+        Palestre
+      </button>
+    </div>
+  </div>
+
   <!-- Divider -->
   <div class="toolbar-divider"></div>
 

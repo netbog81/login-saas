@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not, Between, LessThanOrEqual, MoreThanOrEqual, DataSource, EntityManager } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +8,10 @@ import { Instrument } from '../entities/instrument.entity';
 import { InstrumentCategory } from '../entities/instrument-category.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
 import { RecurringType, RecurringEndType } from '../dto/create-availability-appointment.input';
+import { GymRoom } from '../entities/gym-room.entity';
+import { AppointmentType } from '../entities/appointment-type.enum';
+import { GymPatternGroupService } from './gym-pattern-group.service';
+import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 
 export interface RepeatConfigInput {
   type: RecurringType;
@@ -68,7 +72,11 @@ export class AvailabilityAppointmentService {
     private instrumentRepo: Repository<Instrument>,
     @InjectRepository(InstrumentCategory)
     private instrumentCategoryRepo: Repository<InstrumentCategory>,
+    @InjectRepository(GymRoom)
+    private gymRoomRepo: Repository<GymRoom>,
     private dataSource: DataSource,
+    @Inject(forwardRef(() => GymPatternGroupService))
+    private gymPatternGroupService: GymPatternGroupService,
   ) {}
 
   /**
@@ -739,5 +747,288 @@ export class AvailabilityAppointmentService {
 
     const count = await query.getCount();
     return count === 0;
+  }
+
+  // ==========================================
+  // METODI PER APPUNTAMENTI PALESTRA (GYM)
+  // ==========================================
+
+  /**
+   * Trova appuntamenti per una GymRoom in una data specifica
+   */
+  async findByGymRoomAndDate(
+    gymRoomId: string,
+    date: string,
+  ): Promise<AvailabilityAppointment[]> {
+    return this.appointmentRepo.find({
+      where: {
+        gymRoomId,
+        appointmentDate: new Date(date),
+        appointmentType: AppointmentType.GYM,
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+      },
+      relations: ['operator', 'gymRoom'],
+      order: { startTime: 'ASC' },
+    });
+  }
+
+  /**
+   * Trova appuntamenti per più GymRoom in un range di date
+   */
+  async findByGymRoomsAndDateRange(
+    gymRoomIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<AvailabilityAppointment[]> {
+    if (gymRoomIds.length === 0) {
+      return [];
+    }
+
+    return this.appointmentRepo.find({
+      where: {
+        gymRoomId: In(gymRoomIds),
+        appointmentDate: Between(new Date(startDate), new Date(endDate)),
+        appointmentType: AppointmentType.GYM,
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+      },
+      relations: ['operator', 'gymRoom'],
+      order: { appointmentDate: 'ASC', startTime: 'ASC' },
+    });
+  }
+
+  /**
+   * Conta gli appuntamenti in uno slot specifico (per controllo capacità)
+   */
+  async countAppointmentsInSlot(
+    gymRoomId: string,
+    date: string,
+    startTime: string,
+    endTime: string,
+  ): Promise<number> {
+    return this.appointmentRepo.count({
+      where: {
+        gymRoomId,
+        appointmentDate: new Date(date),
+        startTime,
+        endTime,
+        appointmentType: AppointmentType.GYM,
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+      },
+    });
+  }
+
+  /**
+   * Crea un appuntamento palestra con validazione capacità
+   */
+  async createGymAppointment(input: CreateGymAppointmentInput): Promise<AvailabilityAppointment> {
+    const { repeatConfig, ...appointmentData } = input;
+
+    // 1. Verifica che la GymRoom esista
+    const gymRoom = await this.gymRoomRepo.findOne({
+      where: { id: input.gymRoomId, isActive: true },
+    });
+
+    if (!gymRoom) {
+      throw new NotFoundException(`GymRoom con ID ${input.gymRoomId} non trovata o non attiva`);
+    }
+
+    // 2. Verifica capacità disponibile
+    const currentCount = await this.countAppointmentsInSlot(
+      input.gymRoomId,
+      input.appointmentDate,
+      input.startTime,
+      input.endTime,
+    );
+
+    if (currentCount >= gymRoom.maxCapacity) {
+      throw new ConflictException(
+        `Capacità massima raggiunta per questo slot (${currentCount}/${gymRoom.maxCapacity})`
+      );
+    }
+
+    // 3. Ottieni operatore dal template
+    const operator = await this.gymPatternGroupService.getOperatorForTimeSlot(
+      input.gymRoomId,
+      new Date(input.appointmentDate),
+      input.startTime,
+    );
+
+    if (!operator) {
+      throw new BadRequestException(
+        `Nessun operatore assegnato per questo slot. Verificare i template della palestra.`
+      );
+    }
+
+    // 4. Se ricorrente, crea appuntamenti multipli
+    if (repeatConfig) {
+      return this.createRecurringGymAppointments(
+        { ...appointmentData, operatorId: operator.id },
+        gymRoom,
+        repeatConfig,
+      );
+    }
+
+    // 5. Crea singolo appuntamento
+    return this.createSingleGymAppointment(
+      { ...appointmentData, operatorId: operator.id },
+      gymRoom,
+    );
+  }
+
+  /**
+   * Crea un singolo appuntamento palestra
+   */
+  private async createSingleGymAppointment(
+    data: Omit<CreateGymAppointmentInput, 'repeatConfig'> & { operatorId: string },
+    gymRoom: GymRoom,
+    isRecurring: boolean = false,
+    recurringGroupId?: string,
+    repeatConfig?: RepeatConfigInput,
+  ): Promise<AvailabilityAppointment> {
+    const appointment = this.appointmentRepo.create({
+      operatorId: data.operatorId,
+      gymRoomId: data.gymRoomId,
+      appointmentType: AppointmentType.GYM,
+      clientName: data.clientName,
+      clientEmail: data.clientEmail,
+      clientPhone: data.clientPhone,
+      patientId: data.patientId,
+      appointmentDate: new Date(data.appointmentDate),
+      startTime: data.startTime,
+      endTime: data.endTime,
+      notes: data.notes,
+      bookingStatus: BookingStatus.SCHEDULED,
+      hasConflict: false,
+      participantCount: 1,
+      maxParticipants: gymRoom.maxCapacity,
+      isRecurring,
+      recurringGroupId,
+      repeatConfig: repeatConfig ? {
+        type: repeatConfig.type,
+        interval: repeatConfig.interval,
+        selectedDays: repeatConfig.selectedDays,
+        endType: repeatConfig.endType,
+        occurrences: repeatConfig.occurrences,
+        untilDate: repeatConfig.untilDate,
+      } : undefined,
+    });
+
+    const savedAppointment = await this.appointmentRepo.save(appointment);
+
+    return this.appointmentRepo.findOne({
+      where: { id: savedAppointment.id },
+      relations: ['operator', 'gymRoom'],
+    });
+  }
+
+  /**
+   * Crea appuntamenti palestra ricorrenti
+   */
+  private async createRecurringGymAppointments(
+    baseData: Omit<CreateGymAppointmentInput, 'repeatConfig'> & { operatorId: string },
+    gymRoom: GymRoom,
+    repeatConfig: RepeatConfigInput,
+  ): Promise<AvailabilityAppointment> {
+    // Calcola tutte le date della ricorrenza
+    const dates = this.calculateRecurringDates(baseData.appointmentDate, repeatConfig);
+
+    if (dates.length === 0) {
+      throw new BadRequestException('Nessuna data valida per la ricorrenza');
+    }
+
+    // Genera un ID di gruppo per collegare tutti gli appuntamenti
+    const recurringGroupId = uuidv4();
+
+    let firstAppointment: AvailabilityAppointment | null = null;
+    let skippedCount = 0;
+
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+
+      try {
+        // Verifica capacità per questa data
+        const currentCount = await this.countAppointmentsInSlot(
+          baseData.gymRoomId,
+          date,
+          baseData.startTime,
+          baseData.endTime,
+        );
+
+        if (currentCount >= gymRoom.maxCapacity) {
+          skippedCount++;
+          continue; // Salta questa data se pieno
+        }
+
+        // Verifica operatore per questa data
+        const operator = await this.gymPatternGroupService.getOperatorForTimeSlot(
+          baseData.gymRoomId,
+          new Date(date),
+          baseData.startTime,
+        );
+
+        if (!operator) {
+          skippedCount++;
+          continue; // Salta se non c'è operatore
+        }
+
+        const appointment = await this.createSingleGymAppointment(
+          { ...baseData, appointmentDate: date, operatorId: operator.id },
+          gymRoom,
+          true,
+          recurringGroupId,
+          i === 0 ? repeatConfig : undefined,
+        );
+
+        if (i === 0) {
+          firstAppointment = appointment;
+        }
+      } catch (error) {
+        console.warn(`Impossibile creare appuntamento palestra ricorrente per ${date}:`, error.message);
+        skippedCount++;
+      }
+    }
+
+    if (!firstAppointment) {
+      throw new BadRequestException(
+        `Impossibile creare appuntamenti ricorrenti. ${skippedCount} date saltate per capacità piena o mancanza operatore.`
+      );
+    }
+
+    return firstAppointment;
+  }
+
+  /**
+   * Ottiene gli appuntamenti raggruppati per slot per una GymRoom
+   * Utile per visualizzare la capacità occupata in ogni slot
+   */
+  async getGymRoomSlotsWithOccupancy(
+    gymRoomId: string,
+    date: string,
+  ): Promise<{ startTime: string; endTime: string; appointments: AvailabilityAppointment[]; count: number }[]> {
+    const appointments = await this.findByGymRoomAndDate(gymRoomId, date);
+
+    // Raggruppa per slot (startTime + endTime)
+    const slotMap = new Map<string, AvailabilityAppointment[]>();
+
+    for (const apt of appointments) {
+      const key = `${apt.startTime}-${apt.endTime}`;
+      if (!slotMap.has(key)) {
+        slotMap.set(key, []);
+      }
+      slotMap.get(key)!.push(apt);
+    }
+
+    // Converti in array
+    return Array.from(slotMap.entries())
+      .map(([key, apps]) => {
+        const [startTime, endTime] = key.split('-');
+        return {
+          startTime,
+          endTime,
+          appointments: apps,
+          count: apps.length,
+        };
+      })
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
   }
 }

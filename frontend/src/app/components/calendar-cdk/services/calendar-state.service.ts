@@ -17,6 +17,7 @@ export interface CalendarConfig {
   endHour: number; // 0-23
   zoom: number; // 1-3
   viewType: 'daily' | 'weekly';
+  viewMode: 'operators' | 'gyms'; // Vista operatori o palestre
   showWorkingHoursOnly: boolean;
   workingHoursStart: number; // 0-23
   workingHoursEnd: number; // 0-23
@@ -75,6 +76,7 @@ interface PersistedCalendarState {
   slotSearchEnabled: boolean;         // Toggle ricerca slot disponibili
   config: {
     viewType: 'daily' | 'weekly';
+    viewMode?: 'operators' | 'gyms';  // Vista operatori o palestre
     showWeekend: boolean;
     showWorkingHoursOnly: boolean;
   };
@@ -100,6 +102,7 @@ export class CalendarStateService {
     endHour: 24,
     zoom: 1,
     viewType: 'daily',
+    viewMode: 'operators',
     showWorkingHoursOnly: false,
     workingHoursStart: 8,
     workingHoursEnd: 20,
@@ -639,6 +642,7 @@ export class CalendarStateService {
         this.configSubject.next({
           ...this.configSubject.value,
           viewType: validated.config.viewType,
+          viewMode: validated.config.viewMode || 'operators',
           showWeekend: validated.config.showWeekend,
           showWorkingHoursOnly: validated.config.showWorkingHoursOnly,
         });
@@ -679,6 +683,7 @@ export class CalendarStateService {
         slotSearchEnabled: this.slotSearchEnabledSubject.value,
         config: {
           viewType: this.configSubject.value.viewType || 'daily',
+          viewMode: this.configSubject.value.viewMode || 'operators',
           showWeekend: Boolean(this.configSubject.value.showWeekend),
           showWorkingHoursOnly: Boolean(this.configSubject.value.showWorkingHoursOnly),
         }

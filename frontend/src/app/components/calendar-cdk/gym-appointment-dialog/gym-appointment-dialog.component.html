@@ -1,0 +1,117 @@
+<div class="gym-appointment-dialog">
+  <div class="dialog-header">
+    <h2>{{ isEditMode ? 'Modifica Appuntamento' : 'Nuovo Appuntamento Palestra' }}</h2>
+    <button class="btn-close" (click)="onCancel()" title="Chiudi">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+
+  <div class="dialog-body">
+    <!-- Slot info summary -->
+    <div class="slot-summary">
+      <div class="slot-info-row">
+        <span class="label">Palestra:</span>
+        <span class="value gym-name" [style.color]="data.gymRoom.color">{{ data.gymRoom.name }}</span>
+      </div>
+      <div class="slot-info-row">
+        <span class="label">Data:</span>
+        <span class="value">{{ formatDate(data.date) }}</span>
+      </div>
+      <div class="slot-info-row">
+        <span class="label">Orario:</span>
+        <span class="value">{{ data.startTime }} - {{ data.endTime }}</span>
+      </div>
+      <div class="slot-info-row">
+        <span class="label">Istruttore:</span>
+        <span class="value">{{ operatorName }}</span>
+      </div>
+      <div class="slot-info-row">
+        <span class="label">Posti disponibili:</span>
+        <span class="value capacity" [class.low]="remainingCapacity <= 2">
+          {{ remainingCapacity }} / {{ data.slotInfo.maxCapacity }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Form fields -->
+    <div class="form-section">
+      <h3>Dati partecipante</h3>
+
+      <!-- Patient search -->
+      <div class="form-group">
+        <label>Cerca paziente esistente:</label>
+        <div class="patient-search-container">
+          <input type="text"
+                 [(ngModel)]="patientSearch"
+                 (input)="onPatientSearchChange()"
+                 (focus)="showPatientDropdown = filteredPatients.length > 0"
+                 placeholder="Cerca per nome o telefono..."
+                 class="form-control">
+          <div class="patient-dropdown" *ngIf="showPatientDropdown">
+            <div class="patient-item"
+                 *ngFor="let patient of filteredPatients"
+                 (click)="selectPatient(patient)">
+              <span class="patient-name">{{ patient.name }} {{ patient.surname }}</span>
+              <span class="patient-phone" *ngIf="patient.phone">{{ patient.phone }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Client name -->
+      <div class="form-group" [class.has-error]="errors['clientName']">
+        <label>Nome cliente *</label>
+        <div class="input-with-clear">
+          <input type="text"
+                 [(ngModel)]="clientName"
+                 placeholder="Nome e cognome"
+                 class="form-control"
+                 [class.error]="errors['clientName']">
+          <button *ngIf="selectedPatientId" class="btn-clear" (click)="clearPatient()" title="Rimuovi paziente">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <span class="error-message" *ngIf="errors['clientName']">{{ errors['clientName'] }}</span>
+        <span class="linked-patient" *ngIf="selectedPatientId">Collegato a paziente #{{ selectedPatientId }}</span>
+      </div>
+
+      <!-- Phone -->
+      <div class="form-group">
+        <label>Telefono</label>
+        <input type="tel"
+               [(ngModel)]="clientPhone"
+               placeholder="Numero di telefono"
+               class="form-control">
+      </div>
+
+      <!-- Email -->
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email"
+               [(ngModel)]="clientEmail"
+               placeholder="Indirizzo email"
+               class="form-control">
+      </div>
+
+      <!-- Notes -->
+      <div class="form-group">
+        <label>Note</label>
+        <textarea [(ngModel)]="notes"
+                  placeholder="Note aggiuntive..."
+                  class="form-control"
+                  rows="3"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="dialog-footer">
+    <button class="btn btn-secondary" (click)="onCancel()">Annulla</button>
+    <button class="btn btn-primary" (click)="onSave()">{{ isEditMode ? 'Salva modifiche' : 'Prenota' }}</button>
+  </div>
+</div>

@@ -12,6 +12,7 @@ import { OperatorService } from '../../../services/operator.service';
 import { InstrumentService } from '../../../services/instrument.service';
 import { SettingsService } from '../../../services/settings.service';
 import { AvailabilityAppointmentService, AppointmentInstrumentInput } from '../../../services/availability-appointment.service';
+import { GymRoomService, GymRoom, GymSlotInfo, GymAppointment } from '../../../services/gym-room.service';
 
 // GraphQL types
 import { Operator, OperatorMacroCategory, InstrumentCategory, InstrumentSlotInput } from '../../../graphql/generated/types';
@@ -22,11 +23,15 @@ import { CalendarSidebarComponent } from '../calendar-sidebar/calendar-sidebar.c
 import { CalendarToolbarComponent } from '../calendar-toolbar/calendar-toolbar.component';
 import { CalendarGridComponent } from '../calendar-grid/calendar-grid.component';
 import { CalendarWeeklyGridComponent } from '../calendar-weekly-grid/calendar-weekly-grid.component';
+import { GymCalendarGridComponent, GymSlotClickEvent } from '../gym-calendar-grid/gym-calendar-grid.component';
+import { GymWeeklyGridComponent } from '../gym-weekly-grid/gym-weekly-grid.component';
 import { EventDialogComponent, EventDialogData, EventDialogResult } from '../event-dialog/event-dialog.component';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { AppointmentSummaryComponent, SummaryAction } from '../appointment-summary/appointment-summary.component';
+import { GymSlotSummaryComponent, GymSlotSummaryAction } from '../gym-slot-summary/gym-slot-summary.component';
 import { UsersLegendComponent } from '../users-legend/users-legend.component';
 import { WorkingHoursDialogComponent, WorkingHoursDialogData, WorkingHoursDialogResult } from '../working-hours-dialog/working-hours-dialog.component';
+import { GymAppointmentDialogComponent, GymAppointmentDialogData, GymAppointmentDialogResult } from '../gym-appointment-dialog/gym-appointment-dialog.component';
 import { CellEvent } from '../calendar-cell/calendar-cell.component';
 import { EventAction } from '../calendar-event/calendar-event.component';
 import { AvailableSlotClickEvent } from '../available-slot-overlay/available-slot-overlay.component';
@@ -51,10 +56,14 @@ import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointm
     CalendarToolbarComponent,
     CalendarGridComponent,
     CalendarWeeklyGridComponent,
+    GymCalendarGridComponent,
+    GymWeeklyGridComponent,
     EventDialogComponent,
     ConfirmDialogComponent,
     UsersLegendComponent,
-    WorkingHoursDialogComponent
+    WorkingHoursDialogComponent,
+    GymAppointmentDialogComponent,
+    GymSlotSummaryComponent
   ],
   templateUrl: './calendar-container.component.html',
   styleUrls: ['./calendar-container.component.scss']
@@ -73,6 +82,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   patients: Patient[] = [];
   sidebarCollapsed: boolean = false;
   timeSlots: any[] = [];
+  gymTimeSlots: any[] = []; // TimeSlots specifici per palestre (60 min)
 
   // Dialog state
   showEventDialog: boolean = false;
@@ -81,11 +91,22 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   appointmentToDelete: Appointment | null = null;
   showWorkingHoursDialog: boolean = false;
   workingHoursDialogData!: WorkingHoursDialogData;
+  showGymAppointmentDialog: boolean = false;
+  gymAppointmentDialogData!: GymAppointmentDialogData;
 
   // Summary overlay
   summaryOverlayRef: OverlayRef | null = null;
   currentSummaryAppointment: Appointment | null = null;
   isSummaryOpen: boolean = false;
+
+  // Gym slot summary overlay
+  gymSlotSummaryOverlayRef: OverlayRef | null = null;
+  isGymSlotSummaryOpen: boolean = false;
+  currentGymSlotData: { gymRoom: GymRoom; slotInfo: GymSlotInfo; date: string; appointments: GymAppointment[] } | null = null;
+
+  // Gym appointment delete confirmation
+  showGymDeleteConfirmDialog: boolean = false;
+  gymAppointmentToDelete: GymAppointment | null = null;
 
   // Drag state
   dragStartCell: CellEvent | null = null;
@@ -104,6 +125,15 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   availableSlots: AvailableSlot[] = [];
   slotSearchEnabled: boolean = false;
 
+  // Gym view state
+  gymRooms: GymRoom[] = [];
+  // Vista giornaliera: gymRoomId -> slots
+  gymSlotsInfo: Map<string, GymSlotInfo[]> = new Map();
+  gymAppointments: Map<string, GymAppointment[]> = new Map();
+  // Vista settimanale: date -> gymRoomId -> slots
+  gymWeeklySlotsInfo: Map<string, Map<string, GymSlotInfo[]>> = new Map();
+  gymWeeklyAppointments: Map<string, Map<string, GymAppointment[]>> = new Map();
+
   constructor(
     public stateService: CalendarStateService,
     private apiService: ApiService,
@@ -111,6 +141,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     private instrumentService: InstrumentService,
     private settingsService: SettingsService,
     private availabilityAppointmentService: AvailabilityAppointmentService,
+    private gymRoomService: GymRoomService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
@@ -151,6 +182,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       .subscribe(view => {
         this.visibleDates = view.visibleDates;
         this.timeSlots = view.timeSlots;
+        // Genera timeSlots specifici per palestre con slotDuration di 60 minuti
+        this.gymTimeSlots = this.generateGymTimeSlots();
         this.cdr.markForCheck();
       });
 
@@ -164,7 +197,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         debounceTime(50), // Small debounce to group rapid changes
         takeUntil(this.destroy$)
       )
-      .subscribe(() => {
+      .subscribe(([config, date, operators]) => {
         this.loadAppointmentsForCurrentView();
       });
 
@@ -359,6 +392,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   private async loadAppointmentsForCurrentView(): Promise<void> {
+    // Se siamo in modalità palestre, carica i dati delle palestre invece degli operatori
+    if (this.config?.viewMode === 'gyms') {
+      await this.loadGymDataForCurrentView();
+      return;
+    }
+
     if (this.selectedOperators.length === 0) return;
 
     try {
@@ -457,6 +496,429 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     } catch (error) {
       console.error(`Error loading availability for operator ${user.operatorId}:`, error);
     }
+  }
+
+  // ==========================================
+  // METODI PER VISTA PALESTRE (GYM VIEW)
+  // ==========================================
+
+  /**
+   * Carica i dati delle palestre per la vista corrente
+   */
+  private async loadGymDataForCurrentView(): Promise<void> {
+    this.isLoading = true;
+    this.cdr.markForCheck();
+
+    try {
+      // Carica le palestre se non ancora caricate
+      if (this.gymRooms.length === 0) {
+        await this.loadGymRooms();
+      }
+
+      if (this.gymRooms.length === 0) {
+        this.isLoading = false;
+        this.cdr.markForCheck();
+        return;
+      }
+
+      if (this.config.viewType === 'daily') {
+        await this.loadGymDailyData();
+      } else {
+        await this.loadGymWeeklyData();
+      }
+
+      this.isLoading = false;
+      this.cdr.markForCheck();
+    } catch (error) {
+      console.error('Error loading gym data:', error);
+      this.isLoading = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  /**
+   * Carica i dati delle palestre per vista giornaliera
+   */
+  private async loadGymDailyData(): Promise<void> {
+    const date = this.formatDate(this.currentDate);
+    const slotsMap = new Map<string, GymSlotInfo[]>();
+    const appointmentsMap = new Map<string, GymAppointment[]>();
+
+    await Promise.all(this.gymRooms.map(async (gymRoom) => {
+      try {
+        const slots = await firstValueFrom(
+          this.gymRoomService.getAvailableSlots(gymRoom.id, date)
+        );
+        slotsMap.set(gymRoom.id, slots);
+
+        const appointments = await firstValueFrom(
+          this.gymRoomService.getAppointments(gymRoom.id, date)
+        );
+        appointmentsMap.set(gymRoom.id, appointments);
+      } catch (error) {
+        console.error(`Error loading gym data for room ${gymRoom.id}:`, error);
+        slotsMap.set(gymRoom.id, []);
+        appointmentsMap.set(gymRoom.id, []);
+      }
+    }));
+
+    this.gymSlotsInfo = slotsMap;
+    this.gymAppointments = appointmentsMap;
+  }
+
+  /**
+   * Carica i dati delle palestre per vista settimanale
+   */
+  private async loadGymWeeklyData(): Promise<void> {
+    const weeklySlotsMap = new Map<string, Map<string, GymSlotInfo[]>>();
+    const weeklyAppointmentsMap = new Map<string, Map<string, GymAppointment[]>>();
+
+    // Per ogni data visibile
+    await Promise.all(this.visibleDates.map(async (date) => {
+      const dateSlotsMap = new Map<string, GymSlotInfo[]>();
+      const dateAppointmentsMap = new Map<string, GymAppointment[]>();
+
+      // Per ogni palestra
+      await Promise.all(this.gymRooms.map(async (gymRoom) => {
+        try {
+          const slots = await firstValueFrom(
+            this.gymRoomService.getAvailableSlots(gymRoom.id, date)
+          );
+          dateSlotsMap.set(gymRoom.id, slots);
+
+          const appointments = await firstValueFrom(
+            this.gymRoomService.getAppointments(gymRoom.id, date)
+          );
+          dateAppointmentsMap.set(gymRoom.id, appointments);
+        } catch (error) {
+          console.error(`Error loading gym data for room ${gymRoom.id} on ${date}:`, error);
+          dateSlotsMap.set(gymRoom.id, []);
+          dateAppointmentsMap.set(gymRoom.id, []);
+        }
+      }));
+
+      weeklySlotsMap.set(date, dateSlotsMap);
+      weeklyAppointmentsMap.set(date, dateAppointmentsMap);
+    }));
+
+    this.gymWeeklySlotsInfo = weeklySlotsMap;
+    this.gymWeeklyAppointments = weeklyAppointmentsMap;
+  }
+
+  /**
+   * Carica le palestre attive
+   */
+  private async loadGymRooms(): Promise<void> {
+    try {
+      this.gymRooms = await firstValueFrom(this.gymRoomService.getAll(true));
+      this.cdr.markForCheck();
+    } catch (error) {
+      console.error('Error loading gym rooms:', error);
+      this.gymRooms = [];
+    }
+  }
+
+  /**
+   * Gestisce il click su uno slot della palestra - mostra il riepilogo
+   */
+  onGymSlotClick(event: GymSlotClickEvent): void {
+    // Se lo slot non ha template, non fare nulla
+    if (!event.slotInfo) {
+      return;
+    }
+
+    // Ottieni gli appuntamenti per questo slot
+    const appointments = this.getGymSlotAppointments(event.gymRoom.id, event.date, event.startTime);
+
+    // Mostra il summary overlay
+    this.showGymSlotSummary(event, appointments);
+  }
+
+  /**
+   * Ottiene gli appuntamenti per uno slot specifico della palestra
+   */
+  private getGymSlotAppointments(gymRoomId: string, date: string, startTime: string): GymAppointment[] {
+    if (this.config.viewType === 'daily') {
+      const roomAppointments = this.gymAppointments.get(gymRoomId) || [];
+      return roomAppointments.filter(apt => this.normalizeTime(apt.startTime) === this.normalizeTime(startTime));
+    } else {
+      const dateAppointments = this.gymWeeklyAppointments.get(date);
+      if (!dateAppointments) return [];
+      const roomAppointments = dateAppointments.get(gymRoomId) || [];
+      return roomAppointments.filter(apt => this.normalizeTime(apt.startTime) === this.normalizeTime(startTime));
+    }
+  }
+
+  /**
+   * Normalizza il formato dell'orario a HH:MM
+   */
+  private normalizeTime(time: string): string {
+    if (!time) return time;
+    const parts = time.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+  }
+
+  /**
+   * Mostra il summary overlay per uno slot della palestra
+   */
+  private showGymSlotSummary(event: GymSlotClickEvent, appointments: GymAppointment[]): void {
+    // Chiudi summary esistente se aperto
+    if (this.isGymSlotSummaryOpen) {
+      this.closeGymSlotSummary();
+    }
+
+    // Ottieni l'elemento cliccato per posizionare l'overlay
+    const target = event.mouseEvent?.target as HTMLElement;
+    if (!target) {
+      return;
+    }
+
+    const slotElement = target.closest('.gym-slot, .gym-time-slot, .slot-cell') as HTMLElement;
+    if (!slotElement) {
+      return;
+    }
+
+    // Crea l'overlay con posizionamento flessibile
+    const positionStrategy = this.overlay
+      .position()
+      .flexibleConnectedTo(slotElement)
+      .withPositions([
+        // Prova a mostrare a destra
+        {
+          originX: 'end',
+          originY: 'center',
+          overlayX: 'start',
+          overlayY: 'center',
+          offsetX: 8
+        },
+        // Se non c'è spazio a destra, mostra a sinistra
+        {
+          originX: 'start',
+          originY: 'center',
+          overlayX: 'end',
+          overlayY: 'center',
+          offsetX: -8
+        },
+        // Se non c'è spazio orizzontale, mostra sotto
+        {
+          originX: 'center',
+          originY: 'bottom',
+          overlayX: 'center',
+          overlayY: 'top',
+          offsetY: 8
+        },
+        // Se non c'è spazio sotto, mostra sopra
+        {
+          originX: 'center',
+          originY: 'top',
+          overlayX: 'center',
+          overlayY: 'bottom',
+          offsetY: -8
+        }
+      ]);
+
+    const overlayConfig = new OverlayConfig({
+      positionStrategy,
+      hasBackdrop: false,
+      scrollStrategy: this.overlay.scrollStrategies.reposition(),
+      panelClass: 'gym-slot-summary-overlay'
+    });
+
+    this.gymSlotSummaryOverlayRef = this.overlay.create(overlayConfig);
+
+    try {
+      // Crea il component portal
+      const portal = new ComponentPortal(GymSlotSummaryComponent, this.viewContainerRef);
+      const componentRef = this.gymSlotSummaryOverlayRef.attach(portal);
+
+      // Imposta gli input del componente
+      const instance = componentRef.instance as GymSlotSummaryComponent;
+      instance.gymRoom = event.gymRoom;
+      instance.slotInfo = event.slotInfo;
+      instance.appointments = appointments;
+      instance.date = event.date;
+
+      // Gestisci gli output
+      instance.action.subscribe((action: GymSlotSummaryAction) => {
+        this.handleGymSlotSummaryAction(action);
+      });
+
+      instance.clickOutside.subscribe(() => {
+        this.closeGymSlotSummary();
+      });
+
+      this.currentGymSlotData = {
+        gymRoom: event.gymRoom,
+        slotInfo: event.slotInfo,
+        date: event.date,
+        appointments
+      };
+      this.isGymSlotSummaryOpen = true;
+
+      // Forza aggiornamento posizione dopo il rendering
+      setTimeout(() => {
+        this.gymSlotSummaryOverlayRef?.updatePosition();
+      }, 0);
+    } catch (error) {
+      console.error('Error creating gym slot summary overlay:', error);
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Chiude il summary overlay della palestra
+   */
+  closeGymSlotSummary(): void {
+    if (this.gymSlotSummaryOverlayRef) {
+      this.gymSlotSummaryOverlayRef.dispose();
+      this.gymSlotSummaryOverlayRef = null;
+    }
+    this.currentGymSlotData = null;
+    this.isGymSlotSummaryOpen = false;
+  }
+
+  /**
+   * Gestisce le azioni dal summary della palestra
+   */
+  private handleGymSlotSummaryAction(action: GymSlotSummaryAction): void {
+    switch (action.type) {
+      case 'edit':
+        if (action.appointment) {
+          this.closeGymSlotSummary();
+          this.openGymAppointmentEditDialog(action.appointment, action.gymRoom!, action.slotInfo!, action.date!);
+        }
+        break;
+      case 'delete':
+        if (action.appointment) {
+          this.closeGymSlotSummary();
+          this.gymAppointmentToDelete = action.appointment;
+          this.showGymDeleteConfirmDialog = true;
+        }
+        break;
+      case 'add':
+        if (action.gymRoom && action.slotInfo && action.date) {
+          this.closeGymSlotSummary();
+          this.gymAppointmentDialogData = {
+            gymRoom: action.gymRoom,
+            date: action.date,
+            startTime: action.slotInfo.startTime,
+            endTime: action.slotInfo.endTime,
+            slotInfo: action.slotInfo,
+            patients: this.patients
+          };
+          this.showGymAppointmentDialog = true;
+        }
+        break;
+      case 'close':
+        this.closeGymSlotSummary();
+        break;
+    }
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Apre il dialog per modificare un appuntamento palestra
+   */
+  private openGymAppointmentEditDialog(
+    appointment: GymAppointment,
+    gymRoom: GymRoom,
+    slotInfo: GymSlotInfo,
+    date: string
+  ): void {
+    this.gymAppointmentDialogData = {
+      gymRoom,
+      date,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      slotInfo,
+      patients: this.patients,
+      appointment // Passa l'appuntamento per modalità edit
+    };
+    this.showGymAppointmentDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Conferma eliminazione appuntamento palestra
+   */
+  async onGymDeleteConfirm(): Promise<void> {
+    this.showGymDeleteConfirmDialog = false;
+    if (this.gymAppointmentToDelete) {
+      try {
+        await firstValueFrom(this.gymRoomService.deleteAppointment(this.gymAppointmentToDelete.id));
+        await this.loadGymDataForCurrentView();
+      } catch (error) {
+        console.error('Error deleting gym appointment:', error);
+        alert('Errore durante l\'eliminazione dell\'appuntamento');
+      }
+      this.gymAppointmentToDelete = null;
+    }
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Annulla eliminazione appuntamento palestra
+   */
+  onGymDeleteCancel(): void {
+    this.showGymDeleteConfirmDialog = false;
+    this.gymAppointmentToDelete = null;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Gestisce il doppio click su uno slot della palestra per creare appuntamento
+   */
+  onGymSlotDblClick(event: GymSlotClickEvent): void {
+    if (!event.slotInfo.isAvailable || event.slotInfo.isClosed) {
+      return;
+    }
+
+    // Apri dialog per creare appuntamento palestra
+    this.gymAppointmentDialogData = {
+      gymRoom: event.gymRoom,
+      date: event.date,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      slotInfo: event.slotInfo,
+      patients: this.patients
+    };
+    this.showGymAppointmentDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Gestisce il risultato del dialog appuntamento palestra
+   */
+  async onGymAppointmentDialogResult(result: GymAppointmentDialogResult): Promise<void> {
+    this.showGymAppointmentDialog = false;
+
+    if (result.action === 'save' && result.input) {
+      try {
+        await firstValueFrom(this.gymRoomService.createAppointment(result.input));
+        await this.loadGymDataForCurrentView();
+      } catch (error) {
+        console.error('Error creating gym appointment:', error);
+        alert('Errore durante la creazione dell\'appuntamento');
+      }
+    } else if (result.action === 'update' && result.updateInput && result.appointmentId) {
+      try {
+        await firstValueFrom(this.gymRoomService.updateAppointment(result.appointmentId, result.updateInput));
+        await this.loadGymDataForCurrentView();
+      } catch (error) {
+        console.error('Error updating gym appointment:', error);
+        alert('Errore durante l\'aggiornamento dell\'appuntamento');
+      }
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Gestisce il click su un appuntamento della palestra
+   */
+  onGymAppointmentClick(_event: { appointment: GymAppointment; mouseEvent?: MouseEvent }): void {
+    // Click su appuntamento singolo - gestito tramite il summary dello slot
   }
 
   // Header events
@@ -842,6 +1304,36 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     const newHours = Math.floor(totalMinutes / 60) % 24;
     const newMins = totalMinutes % 60;
     return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Genera timeSlots specifici per la vista palestre con slotDuration di 60 minuti
+   */
+  private generateGymTimeSlots(): any[] {
+    const slots: any[] = [];
+    const gymSlotDuration = 60; // Palestre sempre con slot da 60 minuti
+
+    const effectiveStartHour = this.config.showWorkingHoursOnly
+      ? this.config.workingHoursStart
+      : this.config.startHour;
+    const effectiveEndHour = this.config.showWorkingHoursOnly
+      ? this.config.workingHoursEnd
+      : this.config.endHour;
+
+    const startMinutes = effectiveStartHour * 60;
+    const endMinutes = effectiveEndHour * 60;
+
+    let index = 0;
+    for (let minutes = startMinutes; minutes < endMinutes; minutes += gymSlotDuration) {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      const time = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+
+      slots.push({ time, date: '', index });
+      index++;
+    }
+
+    return slots;
   }
 
   get slotHeight(): number {
@@ -1320,9 +1812,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Available Slot Click Handlers
   // ============================================
 
-  onAvailableSlotClick(event: AvailableSlotClickEvent): void {
-    // Single click - potrebbe mostrare info sullo slot
-    console.log('[Calendar] Available slot clicked:', event);
+  onAvailableSlotClick(_event: AvailableSlotClickEvent): void {
+    // Single click - potrebbe mostrare info sullo slot (non implementato)
   }
 
   onAvailableSlotDblClick(event: AvailableSlotClickEvent): void {

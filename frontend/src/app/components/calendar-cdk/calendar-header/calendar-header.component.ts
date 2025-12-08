@@ -11,6 +11,7 @@ import { CommonModule } from '@angular/common';
 export class CalendarHeaderComponent {
   @Input() currentDate!: Date;
   @Input() viewType: 'daily' | 'weekly' = 'daily';
+  @Input() viewMode: 'operators' | 'gyms' = 'operators';
   @Input() visibleDates: string[] = [];
 
   @Output() navigateToday = new EventEmitter<void>();
