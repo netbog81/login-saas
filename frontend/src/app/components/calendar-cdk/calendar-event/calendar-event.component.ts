@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, HostBinding, ElementRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, HostBinding, ElementRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DragDropModule, CdkDragEnd, CdkDragStart, CdkDragMove } from '@angular/cdk/drag-drop';
 import { Appointment } from '../../../models/appointment.model';
@@ -17,7 +17,8 @@ export interface EventAction {
   standalone: true,
   imports: [CommonModule, DragDropModule],
   templateUrl: './calendar-event.component.html',
-  styleUrls: ['./calendar-event.component.scss']
+  styleUrls: ['./calendar-event.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CalendarEventComponent {
   @Input() appointment!: Appointment;

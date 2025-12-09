@@ -134,6 +134,13 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   gymWeeklySlotsInfo: Map<string, Map<string, GymSlotInfo[]>> = new Map();
   gymWeeklyAppointments: Map<string, Map<string, GymAppointment[]>> = new Map();
 
+  // Cache per ottimizzazione performance transizione vista
+  // Cache key format: `${operatorId}-${startDate}-${endDate}`
+  private operatorAppointmentsCache: Map<string, {
+    appointments: Appointment[];
+    timestamp: number;
+  }> = new Map();
+
   constructor(
     public stateService: CalendarStateService,
     private apiService: ApiService,
@@ -198,7 +205,17 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         takeUntil(this.destroy$)
       )
       .subscribe(([config, date, operators]) => {
+        // Quick Win: Mostra loading state immediatamente per feedback visivo
+        this.isLoading = true;
+        this.cdr.markForCheck();
+
         this.loadAppointmentsForCurrentView();
+
+        // Pre-carica dati operatori in background quando su vista palestre
+        // Questo permette transizione veloce gyms -> operators
+        if (config.viewMode === 'gyms' && operators.length > 0) {
+          this.preloadOperatorDataInBackground(operators);
+        }
       });
 
     // Subscribe to selected operators
@@ -392,13 +409,20 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   private async loadAppointmentsForCurrentView(): Promise<void> {
+    // Salva il viewMode corrente per verificare che non sia cambiato durante il caricamento
+    const currentViewMode = this.config?.viewMode;
+
     // Se siamo in modalità palestre, carica i dati delle palestre invece degli operatori
-    if (this.config?.viewMode === 'gyms') {
+    if (currentViewMode === 'gyms') {
       await this.loadGymDataForCurrentView();
       return;
     }
 
-    if (this.selectedOperators.length === 0) return;
+    if (this.selectedOperators.length === 0) {
+      this.isLoading = false;
+      this.cdr.markForCheck();
+      return;
+    }
 
     try {
       const appointmentsMap = new Map<string, Map<string, Appointment[]>>();
@@ -415,21 +439,33 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       // Filtra operatori con operatorId valido
       const operatorsWithId = this.selectedOperators.filter(u => u.operatorId);
 
-      if (operatorsWithId.length === 0) return;
+      if (operatorsWithId.length === 0) {
+        this.isLoading = false;
+        this.cdr.markForCheck();
+        return;
+      }
 
       // Carica appuntamenti e disponibilità in PARALLELO per tutti gli operatori
       await Promise.all(operatorsWithId.map(async (user) => {
-        // Carica appuntamenti da GraphQL (nuovo sistema unificato)
-        const gqlAppointments = await firstValueFrom(
-          this.availabilityAppointmentService.getAppointmentsByOperator(
-            user.operatorId!,
-            startDate,
-            endDate
-          )
-        );
+        // Prova prima dalla cache
+        let appointments = this.getCachedOperatorAppointments(user.operatorId!, startDate, endDate);
 
-        // Converti in formato Appointment frontend
-        const appointments = gqlAppointments.map(mapAvailabilityAppointmentToAppointment);
+        if (!appointments) {
+          // Cache miss: carica da API
+          const gqlAppointments = await firstValueFrom(
+            this.availabilityAppointmentService.getAppointmentsByOperator(
+              user.operatorId!,
+              startDate,
+              endDate
+            )
+          );
+
+          // Converti in formato Appointment frontend
+          appointments = gqlAppointments.map(mapAvailabilityAppointmentToAppointment);
+
+          // Salva in cache per prossime richieste
+          this.setCachedOperatorAppointments(user.operatorId!, startDate, endDate, appointments);
+        }
 
         if (!appointmentsMap.has(user.operatorId!)) {
           appointmentsMap.set(user.operatorId!, new Map());
@@ -450,10 +486,20 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         }
       }));
 
+      // Quick Win: Verifica che il viewMode non sia cambiato durante il caricamento
+      // Se l'utente ha cambiato vista, scarta i risultati
+      if (this.config?.viewMode !== currentViewMode) {
+        return;
+      }
+
       this.stateService.setAppointments(appointmentsMap);
       this.stateService.setAvailabilities(availabilitiesMap);
+      this.isLoading = false;
+      this.cdr.markForCheck();
     } catch (error) {
       console.error('Error loading appointments:', error);
+      this.isLoading = false;
+      this.cdr.markForCheck();
     }
   }
 
@@ -496,6 +542,85 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     } catch (error) {
       console.error(`Error loading availability for operator ${user.operatorId}:`, error);
     }
+  }
+
+  // ==========================================
+  // CACHE MANAGEMENT - Ottimizzazione transizione vista
+  // ==========================================
+
+  /**
+   * Genera la chiave cache per un operatore e range di date
+   */
+  private getOperatorCacheKey(operatorId: string, startDate: string, endDate: string): string {
+    return `${operatorId}-${startDate}-${endDate}`;
+  }
+
+  /**
+   * Ottiene gli appuntamenti dalla cache se disponibili
+   */
+  private getCachedOperatorAppointments(operatorId: string, startDate: string, endDate: string): Appointment[] | null {
+    const cacheKey = this.getOperatorCacheKey(operatorId, startDate, endDate);
+    const cached = this.operatorAppointmentsCache.get(cacheKey);
+    return cached?.appointments || null;
+  }
+
+  /**
+   * Salva gli appuntamenti nella cache
+   */
+  private setCachedOperatorAppointments(operatorId: string, startDate: string, endDate: string, appointments: Appointment[]): void {
+    const cacheKey = this.getOperatorCacheKey(operatorId, startDate, endDate);
+    this.operatorAppointmentsCache.set(cacheKey, {
+      appointments,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Invalida tutta la cache degli appuntamenti operatori
+   * Chiamato dopo create/update/delete di appuntamenti
+   */
+  private invalidateOperatorCache(): void {
+    this.operatorAppointmentsCache.clear();
+  }
+
+  /**
+   * Pre-carica i dati degli operatori in background quando l'utente è su vista palestre.
+   * Questo permette una transizione veloce quando passa a vista operatori.
+   */
+  private preloadOperatorDataInBackground(operators: User[]): void {
+    const startDate = this.config.viewType === 'daily'
+      ? this.formatDate(this.currentDate)
+      : this.visibleDates[0];
+    const endDate = this.config.viewType === 'daily'
+      ? this.formatDate(this.currentDate)
+      : this.visibleDates[this.visibleDates.length - 1];
+
+    // Pre-carica solo operatori con operatorId che non sono già in cache
+    const operatorsToPreload = operators.filter(u => {
+      if (!u.operatorId) return false;
+      const cacheKey = this.getOperatorCacheKey(u.operatorId, startDate, endDate);
+      return !this.operatorAppointmentsCache.has(cacheKey);
+    });
+
+    if (operatorsToPreload.length === 0) return;
+
+    // Carica in background senza bloccare l'UI
+    operatorsToPreload.forEach(user => {
+      this.availabilityAppointmentService.getAppointmentsByOperator(
+        user.operatorId!,
+        startDate,
+        endDate
+      ).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (gqlAppointments) => {
+          const appointments = gqlAppointments.map(mapAvailabilityAppointmentToAppointment);
+          this.setCachedOperatorAppointments(user.operatorId!, startDate, endDate, appointments);
+        },
+        error: (err) => {
+          // Ignora errori nel pre-caricamento - non è critico
+          console.warn(`[Cache] Preload failed for operator ${user.operatorId}:`, err);
+        }
+      });
+    });
   }
 
   // ==========================================
@@ -1180,6 +1305,9 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         console.log('[Calendar] Created appointment:', created.id, repeatConfig ? '(recurring)' : '');
       }
 
+      // Invalida la cache degli appuntamenti operatori dopo modifica
+      this.invalidateOperatorCache();
+
       // Ricarica gli appuntamenti per visualizzare le modifiche
       await this.loadAppointmentsForCurrentView();
 
@@ -1224,6 +1352,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           this.availabilityAppointmentService.deleteAppointment(appointment.id)
         );
       }
+
+      // Invalida la cache degli appuntamenti operatori dopo eliminazione
+      this.invalidateOperatorCache();
+
       this.stateService.removeAppointment(appointment.id);
       await this.loadAppointmentsForCurrentView();
 

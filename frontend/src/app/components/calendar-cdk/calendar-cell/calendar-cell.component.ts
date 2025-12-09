@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, HostBinding, HostListener } from '@angular/core';
+import { Component, Input, Output, EventEmitter, HostBinding, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TimeSlot } from '../services/calendar-state.service';
 import { User } from '../../../models/user.model';
@@ -16,7 +16,8 @@ export interface CellEvent {
   standalone: true,
   imports: [CommonModule],
   templateUrl: './calendar-cell.component.html',
-  styleUrls: ['./calendar-cell.component.scss']
+  styleUrls: ['./calendar-cell.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CalendarCellComponent {
   @Input() timeSlot!: TimeSlot;

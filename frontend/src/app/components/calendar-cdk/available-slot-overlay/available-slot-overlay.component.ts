@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, HostBinding, HostListener } from '@angular/core';
+import { Component, Input, Output, EventEmitter, HostBinding, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export interface AvailableSlotClickEvent {
@@ -78,7 +78,8 @@ export interface AvailableSlotClickEvent {
       flex-direction: row;
       gap: 4px;
     }
-  `]
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AvailableSlotOverlayComponent {
   @Input() operatorId: string = '';

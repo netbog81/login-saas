@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { TimeSlot } from '../services/calendar-state.service';
@@ -21,10 +21,13 @@ export interface GymSlotClickEvent {
   standalone: true,
   imports: [CommonModule, ScrollingModule],
   templateUrl: './gym-calendar-grid.component.html',
-  styleUrls: ['./gym-calendar-grid.component.scss']
+  styleUrls: ['./gym-calendar-grid.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GymCalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
+
+  constructor(private cdr: ChangeDetectorRef) {}
 
   @Input() timeSlots: TimeSlot[] = [];
   @Input() gymRooms: GymRoom[] = [];

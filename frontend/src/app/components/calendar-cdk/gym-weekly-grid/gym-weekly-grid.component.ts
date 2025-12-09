@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { TimeSlot } from '../services/calendar-state.service';
@@ -24,10 +24,13 @@ interface DayColumn {
   standalone: true,
   imports: [CommonModule, ScrollingModule],
   templateUrl: './gym-weekly-grid.component.html',
-  styleUrls: ['./gym-weekly-grid.component.scss']
+  styleUrls: ['./gym-weekly-grid.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit {
   @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
+
+  constructor(private cdr: ChangeDetectorRef) {}
 
   @Input() timeSlots: TimeSlot[] = [];
   @Input() gymRooms: GymRoom[] = [];

@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { CalendarCellComponent, CellEvent } from '../calendar-cell/calendar-cell.component';
@@ -34,10 +34,13 @@ interface DayColumn {
   standalone: true,
   imports: [CommonModule, ScrollingModule, CalendarCellComponent, CalendarEventComponent, AvailableSlotOverlayComponent],
   templateUrl: './calendar-weekly-grid.component.html',
-  styleUrl: './calendar-weekly-grid.component.scss'
+  styleUrl: './calendar-weekly-grid.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit {
   @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
+
+  constructor(private cdr: ChangeDetectorRef) {}
 
   @Input() timeSlots: TimeSlot[] = [];
   @Input() users: User[] = [];
@@ -75,6 +78,11 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   gridHeight: number = 0;
   showUserNames: boolean = true;
 
+  // Cache per memoization dei calcoli delle celle
+  private cellAvailabilityCache: Map<string, boolean> = new Map();
+  private cellOccupiedCache: Map<string, boolean> = new Map();
+  private userColorCache: Map<string, string> = new Map();
+
   ngOnInit(): void {
     this.buildDayColumns();
     this.calculateEventPositions();
@@ -93,6 +101,17 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    // Invalida cache quando cambiano i dati rilevanti
+    if (changes['availabilities'] || changes['dates'] || changes['users']) {
+      this.cellAvailabilityCache.clear();
+    }
+    if (changes['appointments'] || changes['dates']) {
+      this.cellOccupiedCache.clear();
+    }
+    if (changes['users']) {
+      this.userColorCache.clear();
+    }
+
     if (changes['dates'] || changes['showWeekend']) {
       this.buildDayColumns();
       // Recalculate event positions when dates change since the columns have changed
@@ -324,6 +343,18 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   }
 
   isCellAvailable(operatorId: string, date: string, timeSlot: string): boolean {
+    // Memoization: usa cache per evitare ricalcoli
+    const cacheKey = `${operatorId}-${date}-${timeSlot}`;
+    if (this.cellAvailabilityCache.has(cacheKey)) {
+      return this.cellAvailabilityCache.get(cacheKey)!;
+    }
+
+    const result = this.calculateCellAvailability(operatorId, date, timeSlot);
+    this.cellAvailabilityCache.set(cacheKey, result);
+    return result;
+  }
+
+  private calculateCellAvailability(operatorId: string, date: string, timeSlot: string): boolean {
     // Trova l'utente per verificare se ha template
     const user = this.users.find(u => u.operatorId === operatorId);
 
@@ -362,6 +393,18 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   }
 
   isCellOccupied(operatorId: string, date: string, timeSlot: string): boolean {
+    // Memoization: usa cache per evitare ricalcoli
+    const cacheKey = `${operatorId}-${date}-${timeSlot}`;
+    if (this.cellOccupiedCache.has(cacheKey)) {
+      return this.cellOccupiedCache.get(cacheKey)!;
+    }
+
+    const result = this.calculateCellOccupied(operatorId, date, timeSlot);
+    this.cellOccupiedCache.set(cacheKey, result);
+    return result;
+  }
+
+  private calculateCellOccupied(operatorId: string, date: string, timeSlot: string): boolean {
     const operatorAppointments = this.appointments.get(operatorId);
     if (!operatorAppointments) return false;
 
@@ -406,8 +449,15 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   }
 
   getUserColorForDrag(operatorId: string): string {
+    // Memoization: usa cache per evitare find ripetuti
+    if (this.userColorCache.has(operatorId)) {
+      return this.userColorCache.get(operatorId)!;
+    }
+
     const user = this.users.find(u => u.operatorId === operatorId);
-    return user?.color || '#3b82f6';
+    const color = user?.color || '#3b82f6';
+    this.userColorCache.set(operatorId, color);
+    return color;
   }
 
   getAvailableSlotsForDayAndUser(date: string, operatorId: string): AvailableSlotPosition[] {
@@ -462,5 +512,26 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
 
   onAvailableSlotDblClick(event: AvailableSlotClickEvent): void {
     this.availableSlotDblClick.emit(event);
+  }
+
+  // TrackBy functions per ottimizzare *ngFor
+  trackByDay(index: number, day: DayColumn): string {
+    return day.date;
+  }
+
+  trackByUser(index: number, user: User): string {
+    return user.operatorId || index.toString();
+  }
+
+  trackByTimeSlot(index: number, slot: TimeSlot): string {
+    return slot.time;
+  }
+
+  trackByEventPosition(index: number, eventPos: EventPosition): string {
+    return String(eventPos.appointment.id);
+  }
+
+  trackBySlotPosition(index: number, slotPos: AvailableSlotPosition): string {
+    return `${slotPos.slot.operatorId}-${slotPos.slot.date}-${slotPos.slot.startTime}`;
   }
 }

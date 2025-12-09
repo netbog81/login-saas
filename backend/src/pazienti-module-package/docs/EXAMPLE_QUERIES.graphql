@@ -1,0 +1,609 @@
+# ===================================================================
+# EXAMPLE GRAPHQL QUERIES - Pazienti Module
+# ===================================================================
+# Copy and paste these queries into GraphQL Playground to test
+# Replace ID values with actual IDs from your database
+# ===================================================================
+
+# ===================================================================
+# QUERIES (READ OPERATIONS)
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Get all patients with pagination
+# -------------------------------------------------------------------
+query GetAllPatients {
+  patients(limit: 10, offset: 0) {
+    id
+    name
+    surname
+    fullName
+    phone
+    email
+    age
+    statoAnagrafica
+    statoPrivacy
+    hasContattoTelefonico
+    isAnagraficaMinima
+    canCreateAppuntamento
+    cancellationsByYear
+    noShowsByYear
+    createdAt
+    updatedAt
+  }
+}
+
+# -------------------------------------------------------------------
+# Get single patient by ID with all fields
+# -------------------------------------------------------------------
+query GetPatientComplete {
+  patient(id: 1) {
+    # Basic Info
+    id
+    name
+    surname
+    fullName
+    codiceFiscale
+    dataNascita
+    age
+    comuneNascita
+    nazioneNascita
+    genere
+    statoCivile
+    tipoPaziente
+
+    # Contacts
+    phone
+    cellulare
+    email
+    pec
+
+    # Address
+    indirizzoResidenza
+    comuneResidenza
+    provinciaResidenza
+    cap
+
+    # Medical
+    tesseraSanitaria
+    medicoCurante
+    notes
+    allergie
+    farmaci
+    patologieCroniche
+
+    # Fiscal
+    nomeFatturazione
+    indirizzoFatturazione
+    partitaIva
+    codiceFiscaleFatturazione
+    codiceSdi
+    assicurazione
+    numeroPolizzaAssicurativa
+
+    # Workflow
+    statoAnagrafica
+    statoPrivacy
+    origine
+
+    # Privacy & GDPR
+    consensoGdpr
+    dataConsensoGdpr
+    consensoMarketing
+    dataConsensoMarketing
+    consensoComunicazioneTerzi
+    dataConsensoTerzi
+    documentiPrivacy
+    dataUltimaModificaPrivacy
+    richiestaCancellazione
+    dataRichiestaCancellazione
+    dataAnonimizzazione
+    conservazioneFino
+
+    # Tracking
+    cancellationsByYear
+    noShowsByYear
+
+    # Computed Fields
+    hasContattoTelefonico
+    isAnagraficaMinima
+    canCreateAppuntamento
+    isPrivacyCompleta
+    hasAllConsensi
+
+    # Timestamps
+    createdAt
+    updatedAt
+  }
+}
+
+# -------------------------------------------------------------------
+# Search patients by surname
+# -------------------------------------------------------------------
+query SearchBySurname {
+  searchPatients(searchInput: {
+    surname: "Rossi"
+    limit: 20
+    offset: 0
+    sortBy: "surname"
+    sortOrder: ASC
+  }) {
+    id
+    fullName
+    phone
+    email
+    statoAnagrafica
+  }
+}
+
+# -------------------------------------------------------------------
+# Search patients with multiple filters
+# -------------------------------------------------------------------
+query AdvancedSearch {
+  searchPatients(searchInput: {
+    statoAnagrafica: COMPLETA
+    statoPrivacy: DIGITALE
+    consensoGdpr: true
+    minAge: 18
+    maxAge: 65
+    limit: 50
+    sortBy: "dataNascita"
+    sortOrder: DESC
+  }) {
+    id
+    fullName
+    age
+    phone
+    statoAnagrafica
+    statoPrivacy
+  }
+}
+
+# -------------------------------------------------------------------
+# Find patient by Italian Tax Code (Codice Fiscale)
+# -------------------------------------------------------------------
+query FindByCodiceFiscale {
+  patientByCodiceFiscale(codiceFiscale: "RSSMRA85M01H501Z") {
+    id
+    fullName
+    codiceFiscale
+    dataNascita
+    age
+    phone
+    email
+  }
+}
+
+# -------------------------------------------------------------------
+# Find patient by email
+# -------------------------------------------------------------------
+query FindByEmail {
+  patientByEmail(email: "mario.rossi@example.com") {
+    id
+    fullName
+    email
+    phone
+    statoAnagrafica
+  }
+}
+
+# -------------------------------------------------------------------
+# Find patients by phone (partial match)
+# -------------------------------------------------------------------
+query FindByPhone {
+  patientsByPhone(phone: "+39 333") {
+    id
+    fullName
+    phone
+    cellulare
+  }
+}
+
+# -------------------------------------------------------------------
+# Get patients by status
+# -------------------------------------------------------------------
+query GetPatientsByStatus {
+  patientsByStatus(status: "bozza") {
+    id
+    fullName
+    statoAnagrafica
+    statoPrivacy
+    createdAt
+  }
+}
+
+# -------------------------------------------------------------------
+# Get patients requiring privacy document update
+# -------------------------------------------------------------------
+query PatientsRequiringPrivacyUpdate {
+  patientsRequiringPrivacyUpdate {
+    id
+    fullName
+    phone
+    email
+    statoPrivacy
+    dataUltimaModificaPrivacy
+  }
+}
+
+# -------------------------------------------------------------------
+# Get total patients count
+# -------------------------------------------------------------------
+query GetPatientsCount {
+  patientsCount
+}
+
+# ===================================================================
+# MUTATIONS (WRITE OPERATIONS)
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Create minimal patient (required fields only)
+# -------------------------------------------------------------------
+mutation CreateMinimalPatient {
+  createPatient(createPatientInput: {
+    name: "Mario"
+    surname: "Rossi"
+    genere: MASCHIO
+  }) {
+    id
+    fullName
+    statoAnagrafica
+    statoPrivacy
+    createdAt
+  }
+}
+
+# -------------------------------------------------------------------
+# Create complete patient with all data
+# -------------------------------------------------------------------
+mutation CreateCompletePatient {
+  createPatient(createPatientInput: {
+    # Basic Info
+    name: "Giulia"
+    surname: "Verdi"
+    genere: FEMMINA
+    codiceFiscale: "VRDGLI85M45F205Z"
+    dataNascita: "1985-08-05"
+    comuneNascita: "Roma"
+    nazioneNascita: "Italia"
+    statoCivile: CONIUGATO
+    tipoPaziente: ADULTO_AUTONOMO
+
+    # Contacts
+    phone: "+39 333 123 4567"
+    cellulare: "+39 345 678 9012"
+    email: "giulia.verdi@example.com"
+    pec: "giulia.verdi@pec.it"
+
+    # Address
+    indirizzoResidenza: "Via Roma 123"
+    comuneResidenza: "Milano"
+    provinciaResidenza: "MI"
+    cap: "20100"
+
+    # Medical
+    tesseraSanitaria: "123456789012345"
+    medicoCurante: "Dr. Mario Bianchi"
+    notes: "Paziente con follow-up mensile"
+    allergie: "Penicillina"
+    farmaci: "Aspirina 100mg"
+    patologieCroniche: "Ipertensione"
+
+    # Fiscal
+    nomeFatturazione: "Giulia Verdi"
+    indirizzoFatturazione: "Via Roma 123, 20100 Milano"
+    codiceSdi: "ABCDEFG"
+
+    # Workflow
+    statoAnagrafica: COMPLETA
+    statoPrivacy: DIGITALE
+    origine: "ONLINE"
+
+    # Privacy
+    consensoGdpr: true
+    consensoMarketing: false
+    consensoComunicazioneTerzi: false
+
+    # Tracking
+    cancellationsByYear: { "2024": 1 }
+    noShowsByYear: {}
+  }) {
+    id
+    fullName
+    age
+    statoAnagrafica
+    hasContattoTelefonico
+    isAnagraficaMinima
+    canCreateAppuntamento
+  }
+}
+
+# -------------------------------------------------------------------
+# Update patient basic information
+# -------------------------------------------------------------------
+mutation UpdatePatientInfo {
+  updatePatient(
+    id: 1
+    updatePatientInput: {
+      phone: "+39 333 999 8888"
+      email: "newemail@example.com"
+      notes: "Aggiornato contatto telefonico"
+    }
+  ) {
+    id
+    fullName
+    phone
+    email
+    notes
+    updatedAt
+  }
+}
+
+# -------------------------------------------------------------------
+# Update patient anagrafica status
+# -------------------------------------------------------------------
+mutation UpdateAnagraficaStatus {
+  updatePatientStatus(id: 1, status: "completa") {
+    id
+    fullName
+    statoAnagrafica
+    canCreateAppuntamento
+  }
+}
+
+# -------------------------------------------------------------------
+# Update patient privacy status
+# -------------------------------------------------------------------
+mutation UpdatePrivacyStatus {
+  updatePatientPrivacyStatus(id: 1, status: "digitale") {
+    id
+    fullName
+    statoPrivacy
+    isPrivacyCompleta
+  }
+}
+
+# -------------------------------------------------------------------
+# Grant GDPR consents
+# -------------------------------------------------------------------
+mutation GrantGdprConsent {
+  grantGdprConsent(
+    id: 1
+    consensoGdpr: true
+    consensoMarketing: false
+    consensoTerzi: false
+  ) {
+    id
+    fullName
+    consensoGdpr
+    consensoMarketing
+    consensoComunicazioneTerzi
+    dataConsensoGdpr
+    hasAllConsensi
+  }
+}
+
+# -------------------------------------------------------------------
+# Increment appointment cancellations counter
+# -------------------------------------------------------------------
+mutation IncrementCancellations {
+  incrementCancellations(id: 1) {
+    id
+    fullName
+    cancellationsByYear
+  }
+}
+
+# -------------------------------------------------------------------
+# Increment no-show counter
+# -------------------------------------------------------------------
+mutation IncrementNoShows {
+  incrementNoShows(id: 1) {
+    id
+    fullName
+    noShowsByYear
+  }
+}
+
+# -------------------------------------------------------------------
+# Request patient data deletion (GDPR Right to be Forgotten)
+# -------------------------------------------------------------------
+mutation RequestDeletion {
+  requestPatientDeletion(id: 1) {
+    id
+    fullName
+    richiestaCancellazione
+    dataRichiestaCancellazione
+  }
+}
+
+# -------------------------------------------------------------------
+# Anonymize patient data (IRREVERSIBLE!)
+# -------------------------------------------------------------------
+mutation AnonymizePatient {
+  anonymizePatient(id: 1) {
+    id
+    name
+    surname
+    fullName
+    codiceFiscale
+    phone
+    email
+    dataAnonimizzazione
+  }
+}
+
+# -------------------------------------------------------------------
+# Delete patient (performs anonymization)
+# -------------------------------------------------------------------
+mutation DeletePatient {
+  deletePatient(id: 1)
+}
+
+# ===================================================================
+# COMPLEX QUERIES (Use Cases)
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Use Case: Find patients ready for appointment creation
+# -------------------------------------------------------------------
+query PatientsReadyForAppointments {
+  searchPatients(searchInput: {
+    statoAnagrafica: COMPLETA
+    limit: 50
+  }) {
+    id
+    fullName
+    phone
+    email
+    canCreateAppuntamento
+    statoPrivacy
+  }
+}
+
+# -------------------------------------------------------------------
+# Use Case: Find patients with incomplete privacy documents
+# -------------------------------------------------------------------
+query IncompletePrivacy {
+  searchPatients(searchInput: {
+    statoPrivacy: NON_ACQUISITA
+    statoAnagrafica: COMPLETA
+    limit: 100
+  }) {
+    id
+    fullName
+    phone
+    email
+    statoPrivacy
+    dataUltimaModificaPrivacy
+  }
+}
+
+# -------------------------------------------------------------------
+# Use Case: Find patients with high cancellation rate
+# -------------------------------------------------------------------
+query HighCancellationPatients {
+  patients(limit: 100) {
+    id
+    fullName
+    phone
+    cancellationsByYear
+    noShowsByYear
+  }
+}
+# Note: You'll need to filter results client-side for cancellationsByYear["2025"] > 3
+
+# -------------------------------------------------------------------
+# Use Case: Find elderly patients (age > 65)
+# -------------------------------------------------------------------
+query ElderlyPatients {
+  searchPatients(searchInput: {
+    minAge: 65
+    limit: 100
+    sortBy: "dataNascita"
+    sortOrder: ASC
+  }) {
+    id
+    fullName
+    age
+    phone
+    tipoPaziente
+    medicoCurante
+    patologieCroniche
+  }
+}
+
+# -------------------------------------------------------------------
+# Use Case: Find minors (age < 18)
+# -------------------------------------------------------------------
+query MinorPatients {
+  searchPatients(searchInput: {
+    maxAge: 17
+    tipoPaziente: MINORENNE
+    limit: 100
+  }) {
+    id
+    fullName
+    age
+    phone
+    tipoPaziente
+  }
+}
+
+# -------------------------------------------------------------------
+# Use Case: Patients without email (for communication planning)
+# -------------------------------------------------------------------
+query PatientsWithoutEmail {
+  searchPatients(searchInput: {
+    limit: 100
+  }) {
+    id
+    fullName
+    phone
+    email
+  }
+}
+# Note: Filter client-side for email == null
+
+# -------------------------------------------------------------------
+# Use Case: Patients with pending GDPR deletion requests
+# -------------------------------------------------------------------
+query PendingDeletionRequests {
+  searchPatients(searchInput: {
+    richiestaCancellazione: true
+    limit: 50
+  }) {
+    id
+    fullName
+    richiestaCancellazione
+    dataRichiestaCancellazione
+    conservazioneFino
+  }
+}
+
+# ===================================================================
+# BATCH OPERATIONS (Multiple mutations)
+# ===================================================================
+
+# -------------------------------------------------------------------
+# Create multiple patients in one request
+# -------------------------------------------------------------------
+mutation CreateMultiplePatients {
+  patient1: createPatient(createPatientInput: {
+    name: "Paolo"
+    surname: "Neri"
+    genere: MASCHIO
+    phone: "+39 333 111 2222"
+  }) {
+    id
+    fullName
+  }
+
+  patient2: createPatient(createPatientInput: {
+    name: "Laura"
+    surname: "Blu"
+    genere: FEMMINA
+    phone: "+39 345 333 4444"
+  }) {
+    id
+    fullName
+  }
+
+  patient3: createPatient(createPatientInput: {
+    name: "Marco"
+    surname: "Gialli"
+    genere: MASCHIO
+    phone: "+39 320 555 6666"
+  }) {
+    id
+    fullName
+  }
+}
+
+# ===================================================================
+# END OF EXAMPLES
+# ===================================================================
+# For more complex queries, consult the GraphQL schema documentation
+# or use GraphQL Playground's built-in schema explorer
+# ===================================================================

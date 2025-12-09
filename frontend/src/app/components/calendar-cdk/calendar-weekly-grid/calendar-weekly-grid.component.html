@@ -5,13 +5,13 @@
       <div class="time-column-header-space"></div>
       <div class="days-headers-container" [class.enable-scroll]="enableHorizontalScroll">
         <!-- Day headers with user sub-columns -->
-        <div *ngFor="let day of dayColumns" class="day-column-header">
+        <div *ngFor="let day of dayColumns; trackBy: trackByDay" class="day-column-header">
           <div class="day-header-title">
             <span class="day-name">{{ day.dayName }}</span>
             <span class="day-number">{{ day.dayNumber }}</span>
           </div>
           <div class="users-sub-headers">
-            <div *ngFor="let user of users"
+            <div *ngFor="let user of users; trackBy: trackByUser"
                  class="user-sub-header"
                  [style.backgroundColor]="user.color">
               <span class="user-name" *ngIf="showUserNames">{{ user.name }}</span>
@@ -29,7 +29,7 @@
         <!-- Time column (sticky) -->
         <div class="time-column">
           <div class="time-slots">
-            <div *ngFor="let slot of timeSlots"
+            <div *ngFor="let slot of timeSlots; trackBy: trackByTimeSlot"
                  class="time-slot"
                  [style.height.px]="slotHeight">
               <span class="time-label">{{ slot.time }}</span>
@@ -40,13 +40,13 @@
         <!-- Days wrapper to ensure proper flex distribution -->
         <div class="days-columns-wrapper">
           <!-- Day columns with user sub-columns -->
-          <div *ngFor="let day of dayColumns" class="day-column">
-            <div *ngFor="let user of users"
+          <div *ngFor="let day of dayColumns; trackBy: trackByDay" class="day-column">
+            <div *ngFor="let user of users; trackBy: trackByUser"
                  class="user-sub-column">
               <!-- Cells -->
               <div class="cells-container">
                 <app-calendar-cell
-                  *ngFor="let slot of timeSlots"
+                  *ngFor="let slot of timeSlots; trackBy: trackByTimeSlot"
                   [timeSlot]="slot"
                   [date]="day.date"
                   [user]="user"
@@ -65,7 +65,7 @@
               <!-- Available slots layer (absolute positioned, below events) -->
               <div class="available-slots-container">
                 <app-available-slot-overlay
-                  *ngFor="let slotPos of getAvailableSlotsForDayAndUser(day.date, user.operatorId!)"
+                  *ngFor="let slotPos of getAvailableSlotsForDayAndUser(day.date, user.operatorId!); trackBy: trackBySlotPosition"
                   [operatorId]="slotPos.slot.operatorId"
                   [date]="slotPos.slot.date"
                   [startTime]="slotPos.slot.startTime"
@@ -82,7 +82,7 @@
               <!-- Events -->
               <div class="events-container">
                 <app-calendar-event
-                  *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.operatorId!)"
+                  *ngFor="let eventPos of getEventsForDayAndUser(day.date, user.operatorId!); trackBy: trackByEventPosition"
                   [appointment]="eventPos.appointment"
                   [user]="user"
                   [top]="eventPos.top"
