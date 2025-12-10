@@ -13,6 +13,7 @@ import { InstrumentService } from '../../../services/instrument.service';
 import { SettingsService } from '../../../services/settings.service';
 import { AvailabilityAppointmentService, AppointmentInstrumentInput } from '../../../services/availability-appointment.service';
 import { GymRoomService, GymRoom, GymSlotInfo, GymAppointment } from '../../../services/gym-room.service';
+import { PatientService } from '../../../services/patient.service';
 
 // GraphQL types
 import { Operator, OperatorMacroCategory, InstrumentCategory, InstrumentSlotInput } from '../../../graphql/generated/types';
@@ -149,6 +150,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     private settingsService: SettingsService,
     private availabilityAppointmentService: AvailabilityAppointmentService,
     private gymRoomService: GymRoomService,
+    private patientService: PatientService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
@@ -315,8 +317,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       // Load operators from GraphQL
       await this.loadOperators();
 
-      // Load patients
-      const patients = await this.apiService.getPatients().toPromise();
+      // Load patients via GraphQL
+      const patients = await firstValueFrom(this.patientService.getPatients());
       this.patients = patients || [];
 
       this.isLoading = false;
