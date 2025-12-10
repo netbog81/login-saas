@@ -61,7 +61,19 @@ export class GymAppointmentDialogComponent implements OnInit {
       this.clientPhone = apt.clientPhone || '';
       this.clientEmail = apt.clientEmail || '';
       this.notes = apt.notes || '';
-      this.selectedPatientId = apt.patientId || null;
+      // Forza conversione a number (GraphQL ID può essere stringa)
+      this.selectedPatientId = apt.patientId ? Number(apt.patientId) : null;
+
+      // Se c'è un paziente associato, cerca i suoi dati nella lista
+      if (this.selectedPatientId) {
+        const patient = this.data.patients?.find(p => p.id == this.selectedPatientId);
+        if (patient) {
+          // Aggiorna i campi con i dati aggiornati del paziente
+          this.clientName = `${patient.nome} ${patient.cognome}`;
+          this.clientPhone = patient.cellulare || patient.telefono || apt.clientPhone || '';
+          this.clientEmail = patient.email || apt.clientEmail || '';
+        }
+      }
     }
   }
 
@@ -105,7 +117,8 @@ export class GymAppointmentDialogComponent implements OnInit {
   }
 
   selectPatient(patient: Patient): void {
-    this.selectedPatientId = patient.id;
+    // Forza conversione a number (GraphQL ID può essere stringa)
+    this.selectedPatientId = Number(patient.id);
     this.clientName = `${patient.nome} ${patient.cognome}`;
     this.clientPhone = patient.cellulare || patient.telefono || '';
     this.clientEmail = patient.email || '';
@@ -139,7 +152,8 @@ export class GymAppointmentDialogComponent implements OnInit {
         clientName: this.clientName.trim(),
         clientPhone: this.clientPhone.trim() || undefined,
         clientEmail: this.clientEmail.trim() || undefined,
-        patientId: this.selectedPatientId || undefined,
+        // Forza conversione a Int per GraphQL
+        patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
         notes: this.notes.trim() || undefined
       };
 
@@ -158,7 +172,8 @@ export class GymAppointmentDialogComponent implements OnInit {
         clientName: this.clientName.trim(),
         clientPhone: this.clientPhone.trim() || undefined,
         clientEmail: this.clientEmail.trim() || undefined,
-        patientId: this.selectedPatientId || undefined,
+        // Forza conversione a Int per GraphQL
+        patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
         notes: this.notes.trim() || undefined
       };
 

@@ -14,7 +14,9 @@ export interface Patient {
 
   // Anagrafica base
   dataNascita?: Date | string;
+  // GraphQL enum key names (what gets sent/received via GraphQL)
   genere?: 'MASCHIO' | 'FEMMINA' | 'ALTRO' | 'NON_SPECIFICATO';
+  tipoPaziente?: 'ADULTO_AUTONOMO' | 'MINORENNE' | 'DISABILE_CON_TUTORE' | 'ANZIANO_CON_TUTORE';
   indirizzo?: string;
   citta?: string;
   cap?: string;
@@ -23,7 +25,7 @@ export interface Patient {
   consensoPrivacy?: boolean;
   consensoMarketing?: boolean;
 
-  // Stati
+  // Stati - GraphQL enum key names
   statoAnagrafica?: 'BOZZA' | 'PARZIALE' | 'COMPLETA' | 'DA_VERIFICARE';
   statoPrivacy?: 'NON_ACQUISITA' | 'CARTACEA' | 'DIGITALE' | 'MISTA';
 

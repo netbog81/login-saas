@@ -211,6 +211,15 @@ textarea.form-input {
     color: #1f2937;
     margin: 0 0 16px 0;
   }
+
+  .new-patient-error {
+    background-color: #fee2e2;
+    color: #991b1b;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
 }
 
 .form-actions-inline {

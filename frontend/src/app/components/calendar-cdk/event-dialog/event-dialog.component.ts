@@ -1,10 +1,12 @@
 import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { Appointment, AppointmentInstrument, RepeatConfig, RecurringType, RecurringEndType } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Patient } from '../../../models/patient.model';
 import { InstrumentCategory } from '../../../graphql/generated/types';
+import { PatientService } from '../../../services/patient.service';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -68,6 +70,10 @@ export class EventDialogComponent implements OnInit {
   patientSearch: string = '';
   showNewPatientForm: boolean = false;
   newPatient: Partial<Patient> = {};
+  newPatientError: string = '';
+  savingNewPatient: boolean = false;
+
+  constructor(private patientService: PatientService) {}
 
   // Instrument management
   instrumentsEnabled: boolean = false;
@@ -106,7 +112,7 @@ export class EventDialogComponent implements OnInit {
       this.startTime = apt.startTime;
       this.endTime = apt.endTime;
       this.operatorId = apt.operatorId;
-      this.patientId = apt.patientId || null;
+      this.patientId = apt.patientId ? Number(apt.patientId) : null;  // Forza conversione a number
       this.notes = apt.notes || '';
 
       // Load existing instruments
@@ -167,7 +173,9 @@ export class EventDialogComponent implements OnInit {
   }
 
   get selectedPatient(): Patient | undefined {
-    return this.data.patients.find(p => p.id === this.patientId);
+    if (!this.patientId) return undefined;
+    // Usa == per gestire confronto stringa/numero (GraphQL ID può essere stringa)
+    return this.data.patients.find(p => p.id == this.patientId);
   }
 
   get canSave(): boolean {
@@ -394,6 +402,7 @@ export class EventDialogComponent implements OnInit {
 
   onPatientSelect(patientId: number | null): void {
     this.patientId = patientId;
+    this.patientSearch = '';  // Chiude il dropdown di ricerca
     if (patientId) {
       const patient = this.data.patients.find(p => p.id === patientId);
       if (patient) {
@@ -408,14 +417,59 @@ export class EventDialogComponent implements OnInit {
       nome: '',
       cognome: '',
       telefono: '',
+      cellulare: '',
       email: '',
-      notes: ''
+      notes: '',
+      genere: 'NON_SPECIFICATO',  // GraphQL enum key name (required)
+      tipoPaziente: 'ADULTO_AUTONOMO'  // GraphQL enum key name (required)
     };
   }
 
   onCancelNewPatient(): void {
     this.showNewPatientForm = false;
     this.newPatient = {};
+    this.newPatientError = '';
+  }
+
+  async onSaveNewPatient(): Promise<void> {
+    if (this.savingNewPatient) return;
+
+    const nome = this.newPatient.nome?.trim();
+    const cognome = this.newPatient.cognome?.trim();
+
+    if (!nome || !cognome) {
+      this.newPatientError = 'Nome e cognome sono obbligatori';
+      return;
+    }
+
+    // Validazione contatti: backend richiede almeno un contatto
+    const telefono = this.newPatient.telefono?.trim();
+    const cellulare = this.newPatient.cellulare?.trim();
+    const email = this.newPatient.email?.trim();
+
+    if (!telefono && !cellulare && !email) {
+      this.newPatientError = 'Almeno un contatto (telefono, cellulare o email) è obbligatorio';
+      return;
+    }
+
+    this.savingNewPatient = true;
+    this.newPatientError = '';
+
+    try {
+      const created = await firstValueFrom(this.patientService.createPatient(this.newPatient));
+      // Add to patients list (create new array to avoid immutability issues with Apollo cache)
+      this.data.patients = [...this.data.patients, created];
+      // Select the new patient - forza conversione a number (GraphQL ID può essere string)
+      this.onPatientSelect(Number(created.id));
+      // Close form
+      this.showNewPatientForm = false;
+      this.newPatient = {};
+    } catch (error) {
+      console.error('Error creating patient:', error);
+      this.newPatientError = 'Errore nella creazione del paziente';
+    } finally {
+      this.savingNewPatient = false;
+    }
   }
 
   validate(): boolean {
@@ -464,7 +518,7 @@ export class EventDialogComponent implements OnInit {
       startTime: this.startTime,
       endTime: this.endTime,
       operatorId: this.operatorId,
-      patientId: this.patientId || undefined,
+      patientId: this.patientId ? Number(this.patientId) : undefined,  // Forza conversione a Int per GraphQL
       notes: this.notes || undefined
     };
 

@@ -36,9 +36,12 @@ async function bootstrap() {
   });
 
   // Abilita validation pipe globale
+  // NOTA: whitelist disabilitato per compatibilità con GraphQL InputTypes
+  // che non hanno decoratori class-validator ma solo @Field()
+  // La validazione avviene nel service con validatePazienteData()
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
+    whitelist: false,  // Non rimuovere campi - GraphQL InputTypes non hanno decoratori class-validator
+    forbidNonWhitelisted: false,
     transform: true,
   }));
 

@@ -63,7 +63,7 @@ export class PatientService {
     return this.apollo
       .mutate<{ createPatient: Patient }>({
         mutation: CREATE_PATIENT,
-        variables: { input: patient },
+        variables: { createPatientInput: patient },
         refetchQueries: [{ query: GET_PATIENTS }],
       })
       .pipe(
@@ -83,7 +83,7 @@ export class PatientService {
     return this.apollo
       .mutate<{ updatePatient: Patient }>({
         mutation: UPDATE_PATIENT,
-        variables: { id: String(id), input: patient },
+        variables: { id: String(id), updatePatientInput: patient },
       })
       .pipe(
         map((result) => {

@@ -8,10 +8,12 @@ import {
   IsDateString,
   Length,
   IsBoolean,
+  IsInt,
+  IsObject,
 } from 'class-validator';
 
 // IMPORT DAGLI ENUM CONDIVISI
-import { Genere, StatoCivile, TipoPaziente } from '../enums/pazienti-enums';
+import { Genere, StatoCivile, TipoPaziente, StatoAnagrafica, StatoPrivacy } from '../enums/pazienti-enums';
 
 export class CreatePazienteDto {
   @IsString()
@@ -48,9 +50,9 @@ export class CreatePazienteDto {
   @Length(1, 100)
   luogoNascitaEstero?: string;
 
-  @IsOptional()
+  @IsNotEmpty({ message: 'Genere richiesto' })
   @IsEnum(Genere, { message: 'Genere non valido' })
-  genere?: Genere;
+  genere: Genere;
 
   @IsOptional()
   @IsEnum(StatoCivile, { message: 'Stato civile non valido' })
@@ -115,9 +117,9 @@ export class CreatePazienteDto {
 
   // DATI SANITARI
 
-  @IsOptional()
+  @IsNotEmpty({ message: 'Tipo paziente richiesto' })
   @IsEnum(TipoPaziente, { message: 'Tipo paziente non valido' })
-  tipoPaziente?: TipoPaziente;
+  tipoPaziente: TipoPaziente;
 
   @IsOptional()
   @IsString()
@@ -145,6 +147,14 @@ export class CreatePazienteDto {
 
   @IsOptional()
   @IsBoolean()
+  consensoPrivacy?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  dataConsensoPrivacy?: string;
+
+  @IsOptional()
+  @IsBoolean()
   consensoMarketing?: boolean;
 
   @IsOptional()
@@ -155,11 +165,47 @@ export class CreatePazienteDto {
   @IsBoolean()
   modalitaConsensoPerTrattamento?: boolean;
 
+  // WORKFLOW STATES
+
+  @IsOptional()
+  @IsEnum(StatoAnagrafica, { message: 'Stato anagrafica non valido' })
+  statoAnagrafica?: StatoAnagrafica;
+
+  @IsOptional()
+  @IsEnum(StatoPrivacy, { message: 'Stato privacy non valido' })
+  statoPrivacy?: StatoPrivacy;
+
+  // TRACKING FIELDS
+
+  @IsOptional()
+  @IsObject()
+  cancellationsByYear?: Record<string, number>;
+
+  @IsOptional()
+  @IsObject()
+  noShowsByYear?: Record<string, number>;
+
+  // CONVENZIONI
+
+  @IsOptional()
+  @IsInt()
+  convenzioneId?: number;
+
+  // AMMINISTRATIVO
+
+  @IsOptional()
+  @IsString()
+  codicePaziente?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  attivo?: boolean;
+
   // NOTE
 
   @IsOptional()
   @IsString()
-  note?: string;
+  notes?: string;  // Allineato con GraphQL input (era 'note')
 
   @IsOptional()
   @IsString()

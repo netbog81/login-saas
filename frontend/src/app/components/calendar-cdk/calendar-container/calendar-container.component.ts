@@ -1024,17 +1024,19 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       try {
         await firstValueFrom(this.gymRoomService.createAppointment(result.input));
         await this.loadGymDataForCurrentView();
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error creating gym appointment:', error);
-        alert('Errore durante la creazione dell\'appuntamento');
+        const errorMessage = this.extractErrorMessage(error) || 'Errore durante la creazione dell\'appuntamento';
+        alert(errorMessage);
       }
     } else if (result.action === 'update' && result.updateInput && result.appointmentId) {
       try {
         await firstValueFrom(this.gymRoomService.updateAppointment(result.appointmentId, result.updateInput));
         await this.loadGymDataForCurrentView();
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error updating gym appointment:', error);
-        alert('Errore durante l\'aggiornamento dell\'appuntamento');
+        const errorMessage = this.extractErrorMessage(error) || 'Errore durante l\'aggiornamento dell\'appuntamento';
+        alert(errorMessage);
       }
     }
 
@@ -1977,5 +1979,22 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       patients: this.patients,
       searchFilters: dialogSearchFilters
     });
+  }
+
+  /**
+   * Estrae il messaggio di errore da un errore GraphQL o generico
+   */
+  private extractErrorMessage(error: any): string | null {
+    if (error?.graphQLErrors?.length > 0) {
+      return error.graphQLErrors[0].message;
+    }
+    if (error?.message) {
+      const match = error.message.match(/CombinedGraphQLErrors: (.+)/);
+      if (match) {
+        return match[1];
+      }
+      return error.message;
+    }
+    return null;
   }
 }

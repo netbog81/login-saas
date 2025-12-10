@@ -18,6 +18,12 @@ export const GET_PATIENTS = gql`
       notes
       nomeCompleto
       hasContattoTelefonico
+      statoAnagrafica
+      statoPrivacy
+      consensoPrivacy
+      consensoMarketing
+      createdAt
+      updatedAt
     }
   }
 `;

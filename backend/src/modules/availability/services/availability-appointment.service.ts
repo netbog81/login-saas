@@ -846,7 +846,27 @@ export class AvailabilityAppointmentService {
       );
     }
 
-    // 3. Ottieni operatore dal template
+    // 3. Verifica se il paziente è già prenotato in questo slot
+    if (input.patientId) {
+      const existingAppointment = await this.appointmentRepo.findOne({
+        where: {
+          gymRoomId: input.gymRoomId,
+          appointmentDate: new Date(input.appointmentDate),
+          startTime: input.startTime,
+          endTime: input.endTime,
+          patientId: input.patientId,
+          bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+        },
+      });
+
+      if (existingAppointment) {
+        throw new ConflictException(
+          'Questo paziente è già prenotato in questo slot orario'
+        );
+      }
+    }
+
+    // 4. Ottieni operatore dal template (rinumerato da 3)
     const operator = await this.gymPatternGroupService.getOperatorForTimeSlot(
       input.gymRoomId,
       new Date(input.appointmentDate),

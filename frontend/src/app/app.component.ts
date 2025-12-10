@@ -27,9 +27,15 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
           </a>
           <a
             class="nav-item"
+            routerLink="/patients"
+            routerLinkActive="active">
+            Gestione Pazienti
+          </a>
+          <a
+            class="nav-item"
             routerLink="/availability"
             routerLinkActive="active">
-            Gestione Disponibilità
+            Disponibilità
           </a>
           <a
             class="nav-item"

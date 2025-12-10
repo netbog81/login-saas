@@ -415,7 +415,8 @@ export class PazientiService {
       }
     }
 
-    // Converti date string in Date objects
+    // Converti date string in Date objects e sanitizza stringhe vuote
+    // PostgreSQL tratta '' come valore non-NULL, causando violazioni di unicità
     const pazienteData = {
       ...createDto,
       dataNascita: createDto.dataNascita
@@ -423,6 +424,15 @@ export class PazientiService {
         : undefined,
       nazioneNascita: createDto.nazioneNascita || 'Italia',
       nazioneResidenza: createDto.nazioneResidenza || 'Italia',
+      // Sanitizza campi con vincoli unique: stringhe vuote -> undefined
+      email: createDto.email?.trim() || undefined,
+      codiceFiscale: createDto.codiceFiscale?.trim() || undefined,
+      // Sanitizza altri campi opzionali per coerenza
+      telefono: createDto.telefono?.trim() || undefined,
+      cellulare: createDto.cellulare?.trim() || undefined,
+      pec: createDto.pec?.trim() || undefined,
+      fax: createDto.fax?.trim() || undefined,
+      notes: createDto.notes?.trim() || undefined,
     };
 
     const paziente = this.pazientiRepository.create(pazienteData);
@@ -933,8 +943,12 @@ export class PazientiService {
   private async validatePazienteData(
     createDto: CreatePazienteDto,
   ): Promise<void> {
-    // Verifica che abbia almeno un contatto
-    if (!createDto.telefono && !createDto.cellulare && !createDto.email) {
+    // Verifica che abbia almeno un contatto (ignora stringhe vuote)
+    const telefono = createDto.telefono?.trim();
+    const cellulare = createDto.cellulare?.trim();
+    const email = createDto.email?.trim();
+
+    if (!telefono && !cellulare && !email) {
       throw new BadRequestException(
         'Almeno un contatto (telefono, cellulare o email) è obbligatorio',
       );
@@ -958,10 +972,25 @@ export class PazientiService {
 
   private async generateCodicePaziente(): Promise<string> {
     const anno = new Date().getFullYear().toString().slice(-2);
-    const count = await this.pazientiRepository.count();
-    const progressivo = (count + 1).toString().padStart(6, '0');
+    const prefix = `PAZ${anno}`;
 
-    return `PAZ${anno}${progressivo}`;
+    // Trova l'ultimo codice paziente per quest'anno per evitare duplicati
+    const lastPatient = await this.pazientiRepository
+      .createQueryBuilder('paziente')
+      .where('paziente.codicePaziente LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('paziente.codicePaziente', 'DESC')
+      .getOne();
+
+    let progressivo = 1;
+    if (lastPatient?.codicePaziente) {
+      // Estrae il numero progressivo dall'ultimo codice (es. PAZ25000123 -> 123)
+      const lastNumber = parseInt(lastPatient.codicePaziente.slice(-6), 10);
+      if (!isNaN(lastNumber)) {
+        progressivo = lastNumber + 1;
+      }
+    }
+
+    return `${prefix}${progressivo.toString().padStart(6, '0')}`;
   }
 
   //////// inizio mia map to response dto

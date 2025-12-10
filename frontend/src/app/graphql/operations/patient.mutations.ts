@@ -1,8 +1,8 @@
 import { gql } from '@apollo/client/core';
 
 export const CREATE_PATIENT = gql`
-  mutation CreatePatient($input: CreatePatientInput!) {
-    createPatient(input: $input) {
+  mutation CreatePatient($createPatientInput: CreatePatientInput!) {
+    createPatient(createPatientInput: $createPatientInput) {
       id
       nome
       cognome
@@ -16,8 +16,8 @@ export const CREATE_PATIENT = gql`
 `;
 
 export const UPDATE_PATIENT = gql`
-  mutation UpdatePatient($id: ID!, $input: UpdatePatientInput!) {
-    updatePatient(id: $id, input: $input) {
+  mutation UpdatePatient($id: ID!, $updatePatientInput: UpdatePatientInput!) {
+    updatePatient(id: $id, updatePatientInput: $updatePatientInput) {
       id
       nome
       cognome

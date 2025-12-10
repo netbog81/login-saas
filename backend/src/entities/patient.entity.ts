@@ -1,5 +1,5 @@
 import { Appointment } from './appointment.entity';
-import { GraphQLJSONObject } from 'graphql-type-json';
+import { GraphQLJSONObject } from 'graphql-type-json';                                                                                                                                                                                                                                                                                                                                                                                
 // src/pazienti/entities/paziente.entity.ts
 import {
   Entity,
