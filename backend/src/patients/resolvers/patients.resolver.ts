@@ -10,8 +10,8 @@ import {
   SearchPatientInput,
   PaginationInfo,
 } from '../inputs';
-import { PazientiService } from '../services/pazienti.service';
-import { Paziente } from '../entities/paziente.entity';
+import { PazientiService } from '../services/patients.service';
+import { Patient } from '../../entities/patient.entity';
 
 // Response type for paginated search results
 @Resolver()
@@ -36,7 +36,7 @@ export class PatientsResolver {
   async getPatients(
     @Args('limit', { type: () => Int, nullable: true, defaultValue: 20 }) limit?: number,
     @Args('offset', { type: () => Int, nullable: true, defaultValue: 0 }) offset?: number,
-  ): Promise<Paziente[]> {
+  ): Promise<Patient[]> {
     return this.pazientiService.findAll({ limit, offset });
   }
 
@@ -50,7 +50,7 @@ export class PatientsResolver {
   })
   async getPatient(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
-  ): Promise<Paziente | null> {
+  ): Promise<Patient | null> {
     return this.pazientiService.findOne(id);
   }
 
@@ -63,7 +63,7 @@ export class PatientsResolver {
   })
   async searchPatients(
     @Args('searchInput', { type: () => SearchPatientInput }) searchInput: SearchPatientInput,
-  ): Promise<Paziente[]> {
+  ): Promise<Patient[]> {
     return this.pazientiService.search(searchInput);
   }
 
@@ -77,7 +77,7 @@ export class PatientsResolver {
   })
   async getPatientByCodiceFiscale(
     @Args('codiceFiscale', { type: () => String }) codiceFiscale: string,
-  ): Promise<Paziente | null> {
+  ): Promise<Patient | null> {
     return this.pazientiService.findByCodiceFiscale(codiceFiscale);
   }
 
@@ -91,7 +91,7 @@ export class PatientsResolver {
   })
   async getPatientByEmail(
     @Args('email', { type: () => String }) email: string,
-  ): Promise<Paziente | null> {
+  ): Promise<Patient | null> {
     return this.pazientiService.findByEmail(email);
   }
 
@@ -104,7 +104,7 @@ export class PatientsResolver {
   })
   async getPatientsByPhone(
     @Args('phone', { type: () => String }) phone: string,
-  ): Promise<Paziente[]> {
+  ): Promise<Patient[]> {
     return this.pazientiService.findByPhone(phone);
   }
 
@@ -115,7 +115,7 @@ export class PatientsResolver {
     name: 'patientsRequiringPrivacyUpdate',
     description: 'Get patients with incomplete privacy documentation',
   })
-  async getPatientsRequiringPrivacyUpdate(): Promise<Paziente[]> {
+  async getPatientsRequiringPrivacyUpdate(): Promise<Patient[]> {
     return this.pazientiService.findByStatoPrivacy('NON_ACQUISITA');
   }
 
@@ -128,7 +128,7 @@ export class PatientsResolver {
   })
   async getPatientsByStatus(
     @Args('status', { type: () => String }) status: string,
-  ): Promise<Paziente[]> {
+  ): Promise<Patient[]> {
     return this.pazientiService.findByStatoAnagrafica(status);
   }
 
@@ -154,8 +154,15 @@ export class PatientsResolver {
   async createPatient(
     @Args('createPatientInput', { type: () => CreatePatientInput })
     createPatientInput: CreatePatientInput,
-  ): Promise<Paziente> {
-    return this.pazientiService.create(createPatientInput);
+  ): Promise<Patient> {
+    // Convert GraphQL input to DTO format (Date -> string for dataNascita)
+    const dto = {
+      ...createPatientInput,
+      dataNascita: createPatientInput.dataNascita
+        ? createPatientInput.dataNascita.toISOString().split('T')[0]
+        : undefined,
+    };
+    return this.pazientiService.create(dto as any);
   }
 
   /**
@@ -168,8 +175,15 @@ export class PatientsResolver {
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
     @Args('updatePatientInput', { type: () => UpdatePatientInput })
     updatePatientInput: UpdatePatientInput,
-  ): Promise<Paziente> {
-    return this.pazientiService.update(id, updatePatientInput);
+  ): Promise<Patient> {
+    // Convert GraphQL input to DTO format (Date -> string for dataNascita)
+    const dto = {
+      ...updatePatientInput,
+      dataNascita: updatePatientInput.dataNascita
+        ? updatePatientInput.dataNascita.toISOString().split('T')[0]
+        : undefined,
+    };
+    return this.pazientiService.update(id, dto as any);
   }
 
   /**
@@ -194,7 +208,7 @@ export class PatientsResolver {
   async updatePatientStatus(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
     @Args('status', { type: () => String }) status: string,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     return this.pazientiService.updateStatoAnagrafica(id, status);
   }
 
@@ -207,7 +221,7 @@ export class PatientsResolver {
   async updatePatientPrivacyStatus(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
     @Args('status', { type: () => String }) status: string,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     return this.pazientiService.updateStatoPrivacy(id, status);
   }
 
@@ -222,7 +236,7 @@ export class PatientsResolver {
     @Args('consensoGdpr', { type: () => Boolean }) consensoGdpr: boolean,
     @Args('consensoMarketing', { type: () => Boolean, nullable: true }) consensoMarketing?: boolean,
     @Args('consensoTerzi', { type: () => Boolean, nullable: true }) consensoTerzi?: boolean,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     return this.pazientiService.updateConsents(id, {
       consensoGdpr,
       consensoMarketing,
@@ -238,7 +252,7 @@ export class PatientsResolver {
   })
   async requestPatientDeletion(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     return this.pazientiService.requestDeletion(id);
   }
 
@@ -250,7 +264,7 @@ export class PatientsResolver {
   })
   async anonymizePatient(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     return this.pazientiService.anonymize(id);
   }
 
@@ -262,7 +276,7 @@ export class PatientsResolver {
   })
   async incrementCancellations(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     const currentYear = new Date().getFullYear().toString();
     return this.pazientiService.incrementCounter(id, 'cancellationsByYear', currentYear);
   }
@@ -275,7 +289,7 @@ export class PatientsResolver {
   })
   async incrementNoShows(
     @Args('id', { type: () => ID }, ParseIntPipe) id: number,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     const currentYear = new Date().getFullYear().toString();
     return this.pazientiService.incrementCounter(id, 'noShowsByYear', currentYear);
   }
@@ -285,22 +299,22 @@ export class PatientsResolver {
   /**
    * Resolve fullName computed field
    */
-  @ResolveField('fullName', () => String, {
-    description: 'Full name (name + surname)',
+  @ResolveField('nomeCompleto', () => String, {
+    description: 'Nome completo (nome + cognome)',
   })
-  resolveFullName(@Parent() patient: Paziente): string {
-    return patient.fullName;
+  resolveNomeCompleto(@Parent() patient: Patient): string {
+    return patient.nomeCompleto;
   }
 
   /**
    * Resolve age computed field
    */
-  @ResolveField('age', () => Int, {
+  @ResolveField('eta', () => Int, {
     nullable: true,
-    description: 'Age calculated from date of birth',
+    description: 'Eta calcolata dalla data di nascita',
   })
-  resolveAge(@Parent() patient: Paziente): number | null {
-    return patient.age;
+  resolveEta(@Parent() patient: Patient): number | null {
+    return patient.eta;
   }
 
   /**
@@ -309,7 +323,7 @@ export class PatientsResolver {
   @ResolveField('hasContattoTelefonico', () => Boolean, {
     description: 'Has at least one contact method (phone/email)',
   })
-  resolveHasContattoTelefonico(@Parent() patient: Paziente): boolean {
+  resolveHasContattoTelefonico(@Parent() patient: Patient): boolean {
     return patient.hasContattoTelefonico;
   }
 
@@ -319,7 +333,7 @@ export class PatientsResolver {
   @ResolveField('isAnagraficaMinima', () => Boolean, {
     description: 'Has minimum required data for appointment creation',
   })
-  resolveIsAnagraficaMinima(@Parent() patient: Paziente): boolean {
+  resolveIsAnagraficaMinima(@Parent() patient: Patient): boolean {
     return patient.isAnagraficaMinima;
   }
 
@@ -329,7 +343,7 @@ export class PatientsResolver {
   @ResolveField('canCreateAppuntamento', () => Boolean, {
     description: 'Can create appointments (based on status)',
   })
-  resolveCanCreateAppuntamento(@Parent() patient: Paziente): boolean {
+  resolveCanCreateAppuntamento(@Parent() patient: Patient): boolean {
     return patient.canCreateAppuntamento;
   }
 
@@ -339,7 +353,7 @@ export class PatientsResolver {
   @ResolveField('isPrivacyCompleta', () => Boolean, {
     description: 'Privacy documents complete',
   })
-  resolveIsPrivacyCompleta(@Parent() patient: Paziente): boolean {
+  resolveIsPrivacyCompleta(@Parent() patient: Patient): boolean {
     return patient.isPrivacyCompleta;
   }
 
@@ -349,7 +363,7 @@ export class PatientsResolver {
   @ResolveField('hasAllConsensi', () => Boolean, {
     description: 'All required GDPR consents given',
   })
-  resolveHasAllConsensi(@Parent() patient: Paziente): boolean {
+  resolveHasAllConsensi(@Parent() patient: Patient): boolean {
     return patient.hasAllConsensi;
   }
 
@@ -361,7 +375,7 @@ export class PatientsResolver {
     description: 'Patient appointments',
     nullable: 'itemsAndList',
   })
-  async resolveAppointments(@Parent() patient: Paziente): Promise<Appointment[]> {
+  async resolveAppointments(@Parent() patient: Patient): Promise<Appointment[]> {
     // Lazy load appointments relation
     return await patient.appointments;
   }
@@ -370,7 +384,7 @@ export class PatientsResolver {
     description: 'Patient availability appointments',
     nullable: 'itemsAndList',
   })
-  async resolveAvailabilityAppointments(@Parent() patient: Paziente): Promise<AvailabilityAppointment[]> {
+  async resolveAvailabilityAppointments(@Parent() patient: Patient): Promise<AvailabilityAppointment[]> {
     // Lazy load availabilityAppointments relation
     return await patient.availabilityAppointments;
   }

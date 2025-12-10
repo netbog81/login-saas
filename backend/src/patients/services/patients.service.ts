@@ -14,16 +14,16 @@ import {
   LessThanOrEqual,
   IsNull,
 } from 'typeorm';
-import { Paziente } from './entities/paziente.entity';
-import { PersonaRiferimento } from './entities/persona-riferimento.entity';
-import { PazientePersonaRelazione } from './entities/paziente-persona-relazione.entity';
+import { Patient } from '../../entities/patient.entity';
+import { PersonaRiferimento } from '../entities/persona-riferimento.entity';
+import { PazientePersonaRelazione } from '../entities/paziente-persona-relazione.entity';
 
 // ✅ IMPORT DAGLI ENUM CONDIVISI
 import {
   StatoAnagrafica,
   StatoPrivacy,
   TipoPaziente,
-} from './enums/pazienti-enums';
+} from '../enums/pazienti-enums';
 
 import {
   CreatePazienteDto,
@@ -34,13 +34,13 @@ import {
   UpdateConsensiDto,
   WorkflowStateDto,
   GdprRequestDto,
-} from './dto';
+} from '../dto';
 
 @Injectable()
 export class PazientiService {
   constructor(
-    @InjectRepository(Paziente)
-    private readonly pazientiRepository: Repository<Paziente>,
+    @InjectRepository(Patient)
+    private readonly pazientiRepository: Repository<Patient>,
 
     @InjectRepository(PersonaRiferimento)
     private readonly personeRiferimentoRepository: Repository<PersonaRiferimento>,
@@ -52,7 +52,7 @@ export class PazientiService {
   // ==================== CRUD BASE ====================
 
   // ==================== METODO FINDALL CORRETTO ====================
-  async findAll(searchDto?: SearchPazientiDto): Promise<PazienteResponseDto[]> {
+  async findAll(searchDto?: SearchPazientiDto): Promise<Patient[]> {
     console.log('🔍 FindAll CON FILTRI chiamato:', searchDto);
     console.log(
       '🔍 soloMinorenni value:',
@@ -177,31 +177,10 @@ export class PazientiService {
         return [];
       }
 
-      // ✅ MAPPING CON LOG MIGLIORATO
-      console.log('🔄 Inizio mapping pazienti...');
-      const result = pazienti.map((p, index) => {
-        try {
-          const mapped = this.mapToResponseDto(p);
-          if (index < 3) {
-            // Log solo i primi 3 per non intasare
-            console.log(
-              `   ✅ [${index + 1}] ${p.nome} ${p.cognome} mappato correttamente`,
-            );
-          }
-          return mapped;
-        } catch (error) {
-          console.error(
-            `   ❌ Errore mapping paziente ${p.id} (${p.nome} ${p.cognome}):`,
-            error,
-          );
-          throw error;
-        }
-      });
-
       console.log(
-        `✅ FindAll completato: ${result.length} pazienti restituiti`,
+        `✅ FindAll completato: ${pazienti.length} pazienti restituiti`,
       );
-      return result;
+      return pazienti;
     } catch (error) {
       console.error('❌ ERRORE CRITICO in findAll:', error);
       console.error('❌ Stack:', error.stack);
@@ -257,7 +236,7 @@ export class PazientiService {
 
       const findOptions = {
         where: whereConditions,
-        order: { cognome: 'ASC', nome: 'ASC' } as const,
+        order: { cognome: 'ASC', nome: 'ASC' } as any,
         take: Math.min(searchDto?.limit || 50, 100),
         skip: Math.max(searchDto?.offset || 0, 0),
       };
@@ -401,7 +380,7 @@ export class PazientiService {
   }
 
   ////////////////////////////////////   fine findTutti
-  async findOne(id: number): Promise<Paziente> {
+  async findOne(id: number): Promise<Patient> {
     // ✅ CORREZIONE CRITICA: Rimuovi relations per evitare lazy loading conflicts
     const paziente = await this.pazientiRepository.findOne({
       where: { id },
@@ -420,7 +399,7 @@ export class PazientiService {
     return this.mapToResponseDto(paziente);
   }
 
-  async create(createDto: CreatePazienteDto): Promise<Paziente> {
+  async create(createDto: CreatePazienteDto): Promise<Patient> {
     // Validazioni business
     await this.validatePazienteData(createDto);
 
@@ -466,7 +445,7 @@ export class PazientiService {
     return await this.pazientiRepository.save(paziente);
   }
 
-  async update(id: number, updateDto: UpdatePazienteDto): Promise<Paziente> {
+  async update(id: number, updateDto: UpdatePazienteDto): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     // Validazioni per modifiche critiche
@@ -528,7 +507,7 @@ export class PazientiService {
   async updateWorkflowState(
     id: number,
     workflowDto: WorkflowStateDto,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     switch (workflowDto.azione) {
@@ -569,7 +548,7 @@ export class PazientiService {
 
   // ==================== PRIVACY E GDPR ====================
 
-  async setPrivacy(id: number, privacyDto: SetPrivacyDto): Promise<Paziente> {
+  async setPrivacy(id: number, privacyDto: SetPrivacyDto): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     if (privacyDto.tipoPrivacy === 'cartacea') {
@@ -595,7 +574,7 @@ export class PazientiService {
   async updateConsensi(
     id: number,
     consensiDto: UpdateConsensiDto,
-  ): Promise<Paziente> {
+  ): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     if (consensiDto.consensoMarketing !== undefined) {
@@ -650,25 +629,266 @@ export class PazientiService {
 
   // ==================== RICERCA AVANZATA ====================
 
-  async searchByCodiceFiscale(codiceFiscale: string): Promise<Paziente | null> {
-    // ✅ CORREZIONE: Rimuovi relations per evitare lazy loading conflicts
+  /**
+   * Ricerca avanzata con filtri multipli (usato dal resolver GraphQL)
+   */
+  async search(searchInput: any): Promise<Patient[]> {
+    const queryBuilder = this.pazientiRepository.createQueryBuilder('paziente');
+    queryBuilder.where('paziente.attivo = :attivo', { attivo: true });
+
+    if (searchInput.nome) {
+      queryBuilder.andWhere('LOWER(paziente.nome) LIKE LOWER(:nome)', {
+        nome: `%${searchInput.nome}%`,
+      });
+    }
+
+    if (searchInput.cognome) {
+      queryBuilder.andWhere('LOWER(paziente.cognome) LIKE LOWER(:cognome)', {
+        cognome: `%${searchInput.cognome}%`,
+      });
+    }
+
+    if (searchInput.nomeCompleto) {
+      queryBuilder.andWhere(
+        "LOWER(CONCAT(paziente.nome, ' ', paziente.cognome)) LIKE LOWER(:nomeCompleto)",
+        { nomeCompleto: `%${searchInput.nomeCompleto}%` },
+      );
+    }
+
+    if (searchInput.codiceFiscale) {
+      queryBuilder.andWhere('paziente.codiceFiscale = :codiceFiscale', {
+        codiceFiscale: searchInput.codiceFiscale,
+      });
+    }
+
+    if (searchInput.telefono) {
+      queryBuilder.andWhere(
+        '(paziente.telefono LIKE :telefono OR paziente.cellulare LIKE :telefono)',
+        { telefono: `%${searchInput.telefono}%` },
+      );
+    }
+
+    if (searchInput.email) {
+      queryBuilder.andWhere('LOWER(paziente.email) LIKE LOWER(:email)', {
+        email: `%${searchInput.email}%`,
+      });
+    }
+
+    if (searchInput.genere) {
+      queryBuilder.andWhere('paziente.genere = :genere', {
+        genere: searchInput.genere,
+      });
+    }
+
+    if (searchInput.tipoPaziente) {
+      queryBuilder.andWhere('paziente.tipoPaziente = :tipoPaziente', {
+        tipoPaziente: searchInput.tipoPaziente,
+      });
+    }
+
+    if (searchInput.statoAnagrafica) {
+      queryBuilder.andWhere('paziente.statoAnagrafica = :statoAnagrafica', {
+        statoAnagrafica: searchInput.statoAnagrafica,
+      });
+    }
+
+    if (searchInput.statoPrivacy) {
+      queryBuilder.andWhere('paziente.statoPrivacy = :statoPrivacy', {
+        statoPrivacy: searchInput.statoPrivacy,
+      });
+    }
+
+    if (searchInput.consensoPrivacy !== undefined) {
+      queryBuilder.andWhere('paziente.consensoPrivacy = :consensoPrivacy', {
+        consensoPrivacy: searchInput.consensoPrivacy,
+      });
+    }
+
+    if (searchInput.consensoMarketing !== undefined) {
+      queryBuilder.andWhere('paziente.consensoMarketing = :consensoMarketing', {
+        consensoMarketing: searchInput.consensoMarketing,
+      });
+    }
+
+    if (searchInput.richiestaCancellazione !== undefined) {
+      queryBuilder.andWhere(
+        'paziente.richiestaCancellazione = :richiestaCancellazione',
+        { richiestaCancellazione: searchInput.richiestaCancellazione },
+      );
+    }
+
+    // Sorting
+    const sortBy = searchInput.sortBy || 'cognome';
+    const sortOrder = searchInput.sortOrder || 'ASC';
+    queryBuilder.orderBy(`paziente.${sortBy}`, sortOrder);
+
+    // Pagination
+    const limit = Math.min(searchInput.limit || 20, 100);
+    const offset = searchInput.offset || 0;
+    queryBuilder.limit(limit).offset(offset);
+
+    return await queryBuilder.getMany();
+  }
+
+  async searchByCodiceFiscale(codiceFiscale: string): Promise<Patient | null> {
     return await this.pazientiRepository.findOne({
       where: { codiceFiscale },
-      // ❌ NON includere relations: ['personeRiferimento']
     });
   }
 
-  async searchByTelefono(telefono: string): Promise<Paziente[]> {
+  /**
+   * Alias per searchByCodiceFiscale (usato dal resolver)
+   */
+  async findByCodiceFiscale(codiceFiscale: string): Promise<Patient | null> {
+    return this.searchByCodiceFiscale(codiceFiscale);
+  }
+
+  /**
+   * Trova paziente per email
+   */
+  async findByEmail(email: string): Promise<Patient | null> {
+    return await this.pazientiRepository.findOne({
+      where: { email, attivo: true },
+    });
+  }
+
+  /**
+   * Trova pazienti per numero di telefono
+   */
+  async searchByTelefono(telefono: string): Promise<Patient[]> {
     return await this.pazientiRepository.find({
       where: [
-        { telefono: Like(`%${telefono}%`) },
-        { cellulare: Like(`%${telefono}%`) },
+        { telefono: Like(`%${telefono}%`), attivo: true },
+        { cellulare: Like(`%${telefono}%`), attivo: true },
       ],
       take: 10,
     });
   }
 
-  async getPazientiMinorenni(): Promise<Paziente[]> {
+  /**
+   * Trova pazienti per numero di telefono (alias)
+   */
+  async findByPhone(telefono: string): Promise<Patient[]> {
+    return this.searchByTelefono(telefono);
+  }
+
+  /**
+   * Trova pazienti per stato privacy
+   */
+  async findByStatoPrivacy(statoPrivacy: string): Promise<Patient[]> {
+    return await this.pazientiRepository.find({
+      where: { statoPrivacy: statoPrivacy as StatoPrivacy, attivo: true },
+      order: { cognome: 'ASC', nome: 'ASC' },
+    });
+  }
+
+  /**
+   * Trova pazienti per stato anagrafica
+   */
+  async findByStatoAnagrafica(statoAnagrafica: string): Promise<Patient[]> {
+    return await this.pazientiRepository.find({
+      where: { statoAnagrafica: statoAnagrafica as StatoAnagrafica, attivo: true },
+      order: { cognome: 'ASC', nome: 'ASC' },
+    });
+  }
+
+  /**
+   * Conta tutti i pazienti attivi
+   */
+  async count(): Promise<number> {
+    return await this.pazientiRepository.count({
+      where: { attivo: true },
+    });
+  }
+
+  /**
+   * Aggiorna stato anagrafica
+   */
+  async updateStatoAnagrafica(id: number, status: string): Promise<Patient> {
+    const paziente = await this.findOne(id);
+    paziente.statoAnagrafica = status as StatoAnagrafica;
+    return await this.pazientiRepository.save(paziente);
+  }
+
+  /**
+   * Aggiorna stato privacy
+   */
+  async updateStatoPrivacy(id: number, status: string): Promise<Patient> {
+    const paziente = await this.findOne(id);
+    paziente.statoPrivacy = status as StatoPrivacy;
+    paziente.dataUltimaModificaPrivacy = new Date();
+    return await this.pazientiRepository.save(paziente);
+  }
+
+  /**
+   * Aggiorna consensi (usato dal resolver GraphQL)
+   */
+  async updateConsents(id: number, consents: any): Promise<Patient> {
+    const paziente = await this.findOne(id);
+
+    if (consents.consensoGdpr !== undefined) {
+      paziente.consensoPrivacy = consents.consensoGdpr;
+      if (consents.consensoGdpr) {
+        paziente.dataConsensoPrivacy = new Date();
+      }
+    }
+
+    if (consents.consensoMarketing !== undefined) {
+      paziente.consensoMarketing = consents.consensoMarketing;
+    }
+
+    if (consents.consensoComunicazioneTerzi !== undefined) {
+      paziente.consensoComunicazioneTerzi = consents.consensoComunicazioneTerzi;
+    }
+
+    paziente.dataUltimaModificaPrivacy = new Date();
+    return await this.pazientiRepository.save(paziente);
+  }
+
+  /**
+   * Richiede cancellazione dati (GDPR)
+   */
+  async requestDeletion(id: number): Promise<Patient> {
+    const paziente = await this.findOne(id);
+    paziente.requestCancellazione();
+    return await this.pazientiRepository.save(paziente);
+  }
+
+  /**
+   * Anonimizza paziente (GDPR)
+   */
+  async anonymize(id: number): Promise<Patient> {
+    const paziente = await this.findOne(id);
+    paziente.anonimizza();
+    return await this.pazientiRepository.save(paziente);
+  }
+
+  /**
+   * Incrementa contatore (cancellazioni o no-show)
+   */
+  async incrementCounter(
+    id: number,
+    field: 'cancellationsByYear' | 'noShowsByYear',
+    year: string,
+  ): Promise<Patient> {
+    const paziente = await this.findOne(id);
+
+    if (!paziente[field]) {
+      paziente[field] = {};
+    }
+
+    paziente[field][year] = (paziente[field][year] || 0) + 1;
+    return await this.pazientiRepository.save(paziente);
+  }
+
+  /**
+   * Elimina paziente (soft delete) - usato dal resolver
+   */
+  async delete(id: number): Promise<void> {
+    return this.remove(id);
+  }
+
+  async getPazientiMinorenni(): Promise<Patient[]> {
     const dataLimite = new Date();
     dataLimite.setFullYear(dataLimite.getFullYear() - 18);
 
@@ -689,7 +909,7 @@ export class PazientiService {
     });
   }
 
-  async getPazientiInScadenzaGdpr(): Promise<Paziente[]> {
+  async getPazientiInScadenzaGdpr(): Promise<Patient[]> {
     const oggi = new Date();
     const fra30Giorni = new Date();
     fra30Giorni.setDate(oggi.getDate() + 30);
@@ -745,7 +965,7 @@ export class PazientiService {
   }
 
   //////// inizio mia map to response dto
-  private mapToResponseDto(paziente: Paziente): PazienteResponseDto {
+  private mapToResponseDto(paziente: Patient): PazienteResponseDto {
     try {
       console.log(
         `   🔄 Mappando paziente ID ${paziente.id}: ${paziente.nome} ${paziente.cognome}`,
@@ -786,7 +1006,7 @@ export class PazientiService {
   //////// fine mia mapto response dto
 
   /*
-  private mapToResponseDto(paziente: Paziente): PazienteResponseDto {
+  private mapToResponseDto(paziente: Patient): PazienteResponseDto {
     return {
       id: paziente.id,
       nomeCompleto: paziente.nomeCompleto,
@@ -804,7 +1024,7 @@ export class PazientiService {
     };
   }*/
 
-  private async exportPazienteData(paziente: Paziente): Promise<any> {
+  private async exportPazienteData(paziente: Patient): Promise<any> {
     const persone = await this.personeRiferimentoRepository.find({
       where: { pazienteId: paziente.id },
     });

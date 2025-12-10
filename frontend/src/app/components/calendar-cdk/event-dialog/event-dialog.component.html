@@ -85,8 +85,8 @@
             [class.selected]="patient.id === patientId"
             (click)="onPatientSelect(patient.id)">
             <div class="patient-info">
-              <span class="patient-name">{{ patient.name }} {{ patient.surname }}</span>
-              <span class="patient-phone">{{ patient.phone }}</span>
+              <span class="patient-name">{{ patient.nome }} {{ patient.cognome }}</span>
+              <span class="patient-phone">{{ patient.telefono || patient.cellulare }}</span>
             </div>
           </div>
 
@@ -96,7 +96,7 @@
         </div>
 
         <div class="selected-patient" *ngIf="selectedPatient">
-          <span>{{ selectedPatient.name }} {{ selectedPatient.surname }}</span>
+          <span>{{ selectedPatient.nome }} {{ selectedPatient.cognome }}</span>
           <button class="btn-clear" (click)="onPatientSelect(null)">✕</button>
         </div>
       </div>
@@ -108,18 +108,18 @@
         <div class="form-row">
           <div class="form-group">
             <label>Nome *</label>
-            <input type="text" [(ngModel)]="newPatient.name" class="form-input">
+            <input type="text" [(ngModel)]="newPatient.nome" class="form-input">
           </div>
           <div class="form-group">
             <label>Cognome *</label>
-            <input type="text" [(ngModel)]="newPatient.surname" class="form-input">
+            <input type="text" [(ngModel)]="newPatient.cognome" class="form-input">
           </div>
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label>Telefono *</label>
-            <input type="tel" [(ngModel)]="newPatient.phone" class="form-input">
+            <input type="tel" [(ngModel)]="newPatient.telefono" class="form-input">
           </div>
           <div class="form-group">
             <label>Email</label>

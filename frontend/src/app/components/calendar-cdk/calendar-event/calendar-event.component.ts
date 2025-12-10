@@ -198,7 +198,7 @@ export class CalendarEventComponent {
 
   get displayTitle(): string {
     return this.appointment.patient
-      ? `${this.appointment.patient.name} ${this.appointment.patient.surname}`
+      ? `${this.appointment.patient.nome} ${this.appointment.patient.cognome}`
       : this.appointment.title;
   }
 

@@ -21,7 +21,7 @@ import {
 } from '../enums/pazienti-enums';
 
 // ✅ IMPORT TYPE per evitare dipendenze circolari
-import type { Paziente } from './paziente.entity';
+import type { Patient } from '../../entities/patient.entity';
 
 @Entity('persone_riferimento')
 @Index(['codiceFiscale'], { unique: true, where: 'codice_fiscale IS NOT NULL' })
@@ -195,17 +195,17 @@ export class PersonaRiferimento {
   pazienteId: number;
 
   // ✅ LAZY LOADING per evitare dipendenze circolari
-  @ManyToOne('Paziente', { onDelete: 'CASCADE', lazy: true })
+  @ManyToOne('Patient', { onDelete: 'CASCADE', lazy: true })
   @JoinColumn({ name: 'paziente_id' })
-  paziente: Promise<Paziente>;
+  paziente: Promise<Patient>;
 
   // Relazione autoreferenziale per gestire coniugi che sono entrambi pazienti
   @Column({ name: 'coniuge_paziente_id', nullable: true })
   coniugePazienteId?: number;
 
-  @ManyToOne('Paziente', { nullable: true, lazy: true })
+  @ManyToOne('Patient', { nullable: true, lazy: true })
   @JoinColumn({ name: 'coniuge_paziente_id' })
-  coniugePaziente?: Promise<Paziente>;
+  coniugePaziente?: Promise<Patient>;
 
   // ==================== DATI AMMINISTRATIVI ====================
 

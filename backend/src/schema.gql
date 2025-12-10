@@ -272,6 +272,126 @@ input CreateOperatorInput {
   userId: Int
 }
 
+"""Input per creare un nuovo paziente"""
+input CreatePatientInput {
+  """Allergie"""
+  allergie: String
+
+  """Paziente attivo"""
+  attivo: Boolean = true
+
+  """Contatore disdette per anno. Formato: { "2025": 3 }"""
+  cancellationsByYear: JSONObject
+
+  """CAP"""
+  cap: String
+
+  """Cellulare"""
+  cellulare: String
+
+  """Citta"""
+  citta: String
+
+  """Codice Fiscale"""
+  codiceFiscale: String
+
+  """Codice paziente interno"""
+  codicePaziente: String
+
+  """Codice SDI per fatturazione elettronica"""
+  codiceSdi: String
+
+  """Cognome (obbligatorio)"""
+  cognome: String!
+
+  """Comune di nascita"""
+  comuneNascita: String
+
+  """Consenso marketing"""
+  consensoMarketing: Boolean = false
+
+  """Consenso privacy dato"""
+  consensoPrivacy: Boolean = false
+
+  """Consenso ricerca medica"""
+  consensoRicercaMedica: Boolean = false
+
+  """ID convenzione associata"""
+  convenzioneId: Int
+
+  """Data consenso privacy"""
+  dataConsensoPrivacy: DateTime
+
+  """Data di nascita"""
+  dataNascita: DateTime
+
+  """Email"""
+  email: String
+
+  """Farmaci in uso"""
+  farmaciInUso: String
+
+  """Fax"""
+  fax: String
+
+  """Genere (obbligatorio)"""
+  genere: Genere!
+
+  """Gruppo sanguigno"""
+  gruppoSanguigno: String
+
+  """Indirizzo"""
+  indirizzo: String
+
+  """Luogo nascita estero"""
+  luogoNascitaEstero: String
+
+  """Medico di base"""
+  medicoBase: String
+
+  """Nazione di nascita (default: Italia)"""
+  nazioneNascita: String
+
+  """Nazione residenza"""
+  nazioneResidenza: String
+
+  """Contatore no-show per anno. Formato: { "2025": 2 }"""
+  noShowsByYear: JSONObject
+
+  """Nome (obbligatorio)"""
+  nome: String!
+
+  """Note amministrative"""
+  noteAmministrative: String
+
+  """Note"""
+  notes: String
+
+  """Patologie croniche"""
+  patologieCroniche: String
+
+  """PEC"""
+  pec: String
+
+  """Provincia"""
+  provincia: String
+
+  """Stato anagrafica (default: BOZZA)"""
+  statoAnagrafica: StatoAnagrafica = BOZZA
+
+  """Stato civile"""
+  statoCivile: StatoCivile
+
+  """Stato privacy (default: NON_ACQUISITA)"""
+  statoPrivacy: StatoPrivacy = NON_ACQUISITA
+
+  """Telefono fisso"""
+  telefono: String
+
+  """Tipo paziente (obbligatorio)"""
+  tipoPaziente: TipoPaziente! = ADULTO_AUTONOMO
+}
+
 input CreatePatternGroupInput {
   description: String
   name: String!
@@ -317,6 +437,21 @@ type GeneralSettings {
   updatedAt: DateTime!
   value: JSON!
   valueType: String!
+}
+
+"""Genere del paziente"""
+enum Genere {
+  """Altro"""
+  ALTRO
+
+  """Femmina"""
+  FEMMINA
+
+  """Maschio"""
+  MASCHIO
+
+  """Non specificato"""
+  NON_SPECIFICATO
 }
 
 type GroupException {
@@ -507,6 +642,9 @@ scalar JSONObject
 
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
+
+  """Anonymize patient data (irreversible GDPR compliance action)"""
+  anonymizePatient(id: ID!): PatientModel!
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
@@ -525,6 +663,9 @@ type Mutation {
   createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
   createOperator(input: CreateOperatorInput!): Operator!
   createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
+
+  """Create a new patient record"""
+  createPatient(createPatientInput: CreatePatientInput!): PatientModel!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
   createRoom(capacity: Int, color: String, name: String!): Room!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int): Service!
@@ -549,6 +690,9 @@ type Mutation {
   deleteInstrumentCategory(id: ID!): Boolean!
   deleteOperator(id: ID!): Boolean!
   deleteOperatorCategory(id: ID!): Boolean!
+
+  """Delete patient (performs GDPR-compliant anonymization)"""
+  deletePatient(id: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
@@ -557,10 +701,24 @@ type Mutation {
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
+
+  """Update patient GDPR consent"""
+  grantGdprConsent(consensoGdpr: Boolean!, consensoMarketing: Boolean, consensoTerzi: Boolean, id: ID!): PatientModel!
+
+  """Increment appointment cancellations counter for current year"""
+  incrementCancellations(id: ID!): PatientModel!
+
+  """Increment no-show counter for current year"""
+  incrementNoShows(id: ID!): PatientModel!
   initializeDefaultSettings: Boolean!
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
+
+  """
+  Request patient data deletion (GDPR Article 17 - Right to be Forgotten)
+  """
+  requestPatientDeletion(id: ID!): PatientModel!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
@@ -578,6 +736,15 @@ type Mutation {
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
+
+  """Update an existing patient record"""
+  updatePatient(id: ID!, updatePatientInput: UpdatePatientInput!): PatientModel!
+
+  """Update patient privacy documentation status"""
+  updatePatientPrivacyStatus(id: ID!, status: String!): PatientModel!
+
+  """Update patient record status (workflow state)"""
+  updatePatientStatus(id: ID!, status: String!): PatientModel!
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
@@ -645,6 +812,171 @@ type OperatorService {
   operatorId: ID!
   service: Service!
   serviceId: ID!
+}
+
+"""Anagrafica paziente completa"""
+type PatientModel {
+  """Allergie"""
+  allergie: String
+
+  """Paziente attivo"""
+  attivo: Boolean!
+
+  """Can create appointments (based on status)"""
+  canCreateAppuntamento: Boolean!
+
+  """Contatore disdette per anno. Formato: { "2025": 3, "2024": 1 }"""
+  cancellationsByYear: JSONObject
+
+  """CAP"""
+  cap: String
+
+  """Cellulare"""
+  cellulare: String
+
+  """Citta"""
+  citta: String
+
+  """Codice Fiscale"""
+  codiceFiscale: String
+
+  """Codice paziente interno"""
+  codicePaziente: String
+
+  """Codice SDI"""
+  codiceSdi: String
+
+  """Cognome"""
+  cognome: String!
+
+  """Comune di nascita"""
+  comuneNascita: String
+
+  """Consenso marketing"""
+  consensoMarketing: Boolean!
+
+  """Consenso privacy dato"""
+  consensoPrivacy: Boolean!
+
+  """Consenso ricerca medica"""
+  consensoRicercaMedica: Boolean!
+
+  """Conservazione dati fino a"""
+  conservazioneFino: DateTime
+
+  """ID convenzione associata"""
+  convenzioneId: Int
+
+  """Data creazione"""
+  createdAt: DateTime!
+
+  """Data anonimizzazione"""
+  dataAnonimizzazione: DateTime
+
+  """Data consenso privacy"""
+  dataConsensoPrivacy: DateTime
+
+  """Data di nascita"""
+  dataNascita: DateTime
+
+  """Data richiesta cancellazione"""
+  dataRichiestaCancellazione: DateTime
+
+  """Data ultima modifica privacy"""
+  dataUltimaModificaPrivacy: DateTime
+
+  """Email"""
+  email: String
+
+  """Eta calcolata dalla data di nascita"""
+  eta: Int
+
+  """Farmaci in uso"""
+  farmaciInUso: String
+
+  """Fax"""
+  fax: String
+
+  """Genere"""
+  genere: Genere!
+
+  """Gruppo sanguigno"""
+  gruppoSanguigno: String
+
+  """All required GDPR consents given"""
+  hasAllConsensi: Boolean!
+
+  """Has at least one contact method (phone/email)"""
+  hasContattoTelefonico: Boolean!
+
+  """ID univoco paziente"""
+  id: ID!
+
+  """Indirizzo"""
+  indirizzo: String
+
+  """Has minimum required data for appointment creation"""
+  isAnagraficaMinima: Boolean!
+
+  """Privacy documents complete"""
+  isPrivacyCompleta: Boolean!
+
+  """Luogo nascita estero"""
+  luogoNascitaEstero: String
+
+  """Medico di base"""
+  medicoBase: String
+
+  """Nazione di nascita (default: Italia)"""
+  nazioneNascita: String
+
+  """Nazione residenza"""
+  nazioneResidenza: String
+
+  """Contatore no-show per anno. Formato: { "2025": 2, "2024": 0 }"""
+  noShowsByYear: JSONObject
+
+  """Nome"""
+  nome: String!
+
+  """Nome completo (nome + cognome)"""
+  nomeCompleto: String!
+
+  """Note amministrative"""
+  noteAmministrative: String
+
+  """Note"""
+  notes: String
+
+  """Patologie croniche"""
+  patologieCroniche: String
+
+  """PEC"""
+  pec: String
+
+  """Provincia"""
+  provincia: String
+
+  """Richiesta cancellazione GDPR"""
+  richiestaCancellazione: Boolean!
+
+  """Stato anagrafica (BOZZA, PARZIALE, COMPLETA, DA_VERIFICARE)"""
+  statoAnagrafica: StatoAnagrafica!
+
+  """Stato civile"""
+  statoCivile: StatoCivile
+
+  """Stato privacy (NON_ACQUISITA, CARTACEA, DIGITALE, MISTA)"""
+  statoPrivacy: StatoPrivacy!
+
+  """Telefono fisso"""
+  telefono: String
+
+  """Tipo paziente (adulto, minore, con tutore, etc.)"""
+  tipoPaziente: TipoPaziente!
+
+  """Data ultima modifica"""
+  updatedAt: DateTime!
 }
 
 type PatternGroup {
@@ -733,11 +1065,38 @@ type Query {
   operatorExceptions(endDate: String, operatorId: ID!, startDate: String): [AvailabilityException!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
   operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
+
+  """Get a single patient by ID"""
+  patient(id: ID!): PatientModel
+
+  """Find patient by Italian tax code (Codice Fiscale)"""
+  patientByCodiceFiscale(codiceFiscale: String!): PatientModel
+
+  """Find patient by email address"""
+  patientByEmail(email: String!): PatientModel
+
+  """Get all patients with optional pagination"""
+  patients(limit: Int = 20, offset: Int = 0): [PatientModel!]!
+
+  """Find patients by phone number (partial match)"""
+  patientsByPhone(phone: String!): [PatientModel!]!
+
+  """Get patients filtered by anagrafica status"""
+  patientsByStatus(status: String!): [PatientModel!]!
+
+  """Get total count of patients"""
+  patientsCount: Int!
+
+  """Get patients with incomplete privacy documentation"""
+  patientsRequiringPrivacyUpdate: [PatientModel!]!
   patternGroup(id: ID!): PatternGroup
   patternGroups: [PatternGroup!]!
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
   room(id: ID!): Room
   rooms(onlyActive: Boolean = false): [Room!]!
+
+  """Search patients with various filters and pagination"""
+  searchPatients(searchInput: SearchPatientInput!): [PatientModel!]!
   service(id: ID!): Service
   serviceOperators(serviceId: ID!): [OperatorService!]!
   services(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Service!]!
@@ -787,6 +1146,72 @@ type Room {
   updatedAt: DateTime!
 }
 
+"""Input per ricerca/filtro pazienti"""
+input SearchPatientInput {
+  """Ricerca per codice fiscale (match esatto)"""
+  codiceFiscale: String
+
+  """Ricerca per cognome (match parziale)"""
+  cognome: String
+
+  """Filtra per consenso marketing"""
+  consensoMarketing: Boolean
+
+  """Filtra per consenso privacy"""
+  consensoPrivacy: Boolean
+
+  """Filtra per data nascita massima"""
+  dataNascitaMax: DateTime
+
+  """Filtra per data nascita minima"""
+  dataNascitaMin: DateTime
+
+  """Ricerca per email (match parziale)"""
+  email: String
+
+  """Filtra per genere"""
+  genere: Genere
+
+  """Numero elementi per pagina (default: 20, max: 100)"""
+  limit: Int = 20
+
+  """Filtra per età massima"""
+  maxAge: Float
+
+  """Filtra per età minima"""
+  minAge: Float
+
+  """Ricerca per nome (match parziale)"""
+  nome: String
+
+  """Ricerca per nome completo (match parziale)"""
+  nomeCompleto: String
+
+  """Offset pagina (default: 0)"""
+  offset: Int = 0
+
+  """Filtra pazienti con richiesta cancellazione"""
+  richiestaCancellazione: Boolean
+
+  """Campo ordinamento (cognome, nome, dataNascita, createdAt)"""
+  sortBy: String = "cognome"
+
+  """Direzione ordinamento (ASC o DESC)"""
+  sortOrder: String = "ASC"
+
+  """Filtra per stato anagrafica"""
+  statoAnagrafica: StatoAnagrafica
+
+  """Filtra per stato privacy"""
+  statoPrivacy: StatoPrivacy
+
+  """Ricerca per telefono (match parziale)"""
+  telefono: String
+
+  """Filtra per tipo paziente"""
+  tipoPaziente: TipoPaziente
+}
+
 type Service {
   appointments: [AvailabilityAppointment!]
   bufferTimeAfter: Int!
@@ -822,6 +1247,57 @@ type ServiceInstrument {
   updatedAt: DateTime!
 }
 
+"""Stato di completamento anagrafica paziente"""
+enum StatoAnagrafica {
+  """Bozza - Solo dati minimi da telefono"""
+  BOZZA
+
+  """Completa - Anagrafica + privacy + fatturazione"""
+  COMPLETA
+
+  """Da verificare - Necessita controllo dati"""
+  DA_VERIFICARE
+
+  """Parziale - Anagrafica completa ma manca privacy"""
+  PARZIALE
+}
+
+"""Stato civile del paziente"""
+enum StatoCivile {
+  """Celibe/Nubile"""
+  CELIBE_NUBILE
+
+  """Coniugato/a"""
+  CONIUGATO
+
+  """Divorziato/a"""
+  DIVORZIATO
+
+  """Separato/a"""
+  SEPARATO
+
+  """Unione civile"""
+  UNIONE_CIVILE
+
+  """Vedovo/a"""
+  VEDOVO
+}
+
+"""Stato acquisizione documenti privacy"""
+enum StatoPrivacy {
+  """Cartacea - Documenti fisici archiviati"""
+  CARTACEA
+
+  """Digitale - Documenti digitali firmati"""
+  DIGITALE
+
+  """Mista - Alcuni cartacei, alcuni digitali"""
+  MISTA
+
+  """Non acquisita - Nessun documento firmato"""
+  NON_ACQUISITA
+}
+
 type TemplateAssignment {
   createdAt: DateTime!
   id: ID!
@@ -849,6 +1325,21 @@ type TemplatePattern {
   patternGroupId: ID!
   startTime: String!
   updatedAt: DateTime!
+}
+
+"""Tipo di paziente per gestione consensi"""
+enum TipoPaziente {
+  """Adulto autonomo - può fornire consenso in autonomia"""
+  ADULTO_AUTONOMO
+
+  """Anziano con tutore/amministratore di sostegno"""
+  ANZIANO_CON_TUTORE
+
+  """Disabile con tutore legale nominato"""
+  DISABILE_CON_TUTORE
+
+  """Minorenne - richiede consenso genitori/tutore"""
+  MINORENNE
 }
 
 """Treatment workflow status"""
@@ -908,6 +1399,126 @@ input UpdateOperatorInput {
   preferredDurations: [Int!]
   surname: String
   userId: Int
+}
+
+"""Input for updating an existing patient (all fields optional)"""
+input UpdatePatientInput {
+  """Allergie"""
+  allergie: String
+
+  """Paziente attivo"""
+  attivo: Boolean = true
+
+  """Contatore disdette per anno. Formato: { "2025": 3 }"""
+  cancellationsByYear: JSONObject
+
+  """CAP"""
+  cap: String
+
+  """Cellulare"""
+  cellulare: String
+
+  """Citta"""
+  citta: String
+
+  """Codice Fiscale"""
+  codiceFiscale: String
+
+  """Codice paziente interno"""
+  codicePaziente: String
+
+  """Codice SDI per fatturazione elettronica"""
+  codiceSdi: String
+
+  """Cognome (obbligatorio)"""
+  cognome: String
+
+  """Comune di nascita"""
+  comuneNascita: String
+
+  """Consenso marketing"""
+  consensoMarketing: Boolean = false
+
+  """Consenso privacy dato"""
+  consensoPrivacy: Boolean = false
+
+  """Consenso ricerca medica"""
+  consensoRicercaMedica: Boolean = false
+
+  """ID convenzione associata"""
+  convenzioneId: Int
+
+  """Data consenso privacy"""
+  dataConsensoPrivacy: DateTime
+
+  """Data di nascita"""
+  dataNascita: DateTime
+
+  """Email"""
+  email: String
+
+  """Farmaci in uso"""
+  farmaciInUso: String
+
+  """Fax"""
+  fax: String
+
+  """Genere (obbligatorio)"""
+  genere: Genere
+
+  """Gruppo sanguigno"""
+  gruppoSanguigno: String
+
+  """Indirizzo"""
+  indirizzo: String
+
+  """Luogo nascita estero"""
+  luogoNascitaEstero: String
+
+  """Medico di base"""
+  medicoBase: String
+
+  """Nazione di nascita (default: Italia)"""
+  nazioneNascita: String
+
+  """Nazione residenza"""
+  nazioneResidenza: String
+
+  """Contatore no-show per anno. Formato: { "2025": 2 }"""
+  noShowsByYear: JSONObject
+
+  """Nome (obbligatorio)"""
+  nome: String
+
+  """Note amministrative"""
+  noteAmministrative: String
+
+  """Note"""
+  notes: String
+
+  """Patologie croniche"""
+  patologieCroniche: String
+
+  """PEC"""
+  pec: String
+
+  """Provincia"""
+  provincia: String
+
+  """Stato anagrafica (default: BOZZA)"""
+  statoAnagrafica: StatoAnagrafica = BOZZA
+
+  """Stato civile"""
+  statoCivile: StatoCivile
+
+  """Stato privacy (default: NON_ACQUISITA)"""
+  statoPrivacy: StatoPrivacy = NON_ACQUISITA
+
+  """Telefono fisso"""
+  telefono: String
+
+  """Tipo paziente (obbligatorio)"""
+  tipoPaziente: TipoPaziente = ADULTO_AUTONOMO
 }
 
 input UpdatePatternGroupInput {

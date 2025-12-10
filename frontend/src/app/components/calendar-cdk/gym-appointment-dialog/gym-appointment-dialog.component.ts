@@ -95,8 +95,8 @@ export class GymAppointmentDialogComponent implements OnInit {
     const search = this.patientSearch.toLowerCase();
     this.filteredPatients = (this.data.patients || [])
       .filter(p => {
-        const fullName = `${p.name} ${p.surname}`.toLowerCase();
-        const phone = p.phone?.toLowerCase() || '';
+        const fullName = `${p.nome} ${p.cognome}`.toLowerCase();
+        const phone = (p.telefono || p.cellulare || '').toLowerCase();
         return fullName.includes(search) || phone.includes(search);
       })
       .slice(0, 10);
@@ -106,8 +106,8 @@ export class GymAppointmentDialogComponent implements OnInit {
 
   selectPatient(patient: Patient): void {
     this.selectedPatientId = patient.id;
-    this.clientName = `${patient.name} ${patient.surname}`;
-    this.clientPhone = patient.phone || '';
+    this.clientName = `${patient.nome} ${patient.cognome}`;
+    this.clientPhone = patient.cellulare || patient.telefono || '';
     this.clientEmail = patient.email || '';
     this.patientSearch = '';
     this.showPatientDropdown = false;

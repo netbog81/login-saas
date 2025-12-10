@@ -493,10 +493,10 @@
           <div class="text-xs text-gray-600 space-y-1">
             <div>🕐 {{ apt.startTime }} - {{ apt.endTime }}</div>
             <div *ngIf="apt.patient">
-              👤 {{ apt.patient.name }} {{ apt.patient.surname }}
+              👤 {{ apt.patient.nome }} {{ apt.patient.cognome }}
             </div>
-            <div *ngIf="apt.patient && apt.patient.phone">
-              📞 {{ apt.patient.phone }}
+            <div *ngIf="apt.patient && (apt.patient.telefono || apt.patient.cellulare)">
+              📞 {{ apt.patient.cellulare || apt.patient.telefono }}
             </div>
             <div *ngIf="apt.notes" class="mt-2 pt-2 border-t border-gray-200">
               📝 {{ apt.notes }}
@@ -606,7 +606,7 @@
                   *ngFor="let patient of filteredPatients"
                   (click)="selectPatient(patient)"
                   class="w-full px-3 py-2 text-left hover:bg-gray-100">
-                  {{ patient.name }} {{ patient.surname }} - {{ patient.phone }}
+                  {{ patient.nome }} {{ patient.cognome }} - {{ patient.cellulare || patient.telefono }}
                 </button>
               </div>
               <button

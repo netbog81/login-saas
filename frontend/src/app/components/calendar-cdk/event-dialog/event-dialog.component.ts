@@ -160,9 +160,9 @@ export class EventDialogComponent implements OnInit {
     }
     const search = this.patientSearch.toLowerCase();
     return this.data.patients.filter(p =>
-      p.name.toLowerCase().includes(search) ||
-      p.surname.toLowerCase().includes(search) ||
-      p.phone.includes(search)
+      p.nome.toLowerCase().includes(search) ||
+      p.cognome.toLowerCase().includes(search) ||
+      (p.telefono || p.cellulare || '').includes(search)
     );
   }
 
@@ -397,7 +397,7 @@ export class EventDialogComponent implements OnInit {
     if (patientId) {
       const patient = this.data.patients.find(p => p.id === patientId);
       if (patient) {
-        this.title = `${patient.name} ${patient.surname}`;
+        this.title = `${patient.nome} ${patient.cognome}`;
       }
     }
   }
@@ -405,9 +405,9 @@ export class EventDialogComponent implements OnInit {
   onShowNewPatientForm(): void {
     this.showNewPatientForm = true;
     this.newPatient = {
-      name: '',
-      surname: '',
-      phone: '',
+      nome: '',
+      cognome: '',
+      telefono: '',
       email: '',
       notes: ''
     };

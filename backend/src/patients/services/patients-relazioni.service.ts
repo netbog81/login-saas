@@ -20,7 +20,7 @@ import {
 } from '../enums/pazienti-enums';
 
 // ✅ IMPORT ENTITÀ
-import { Paziente } from '../entities/paziente.entity';
+import { Patient } from '../../entities/patient.entity';
 import { PersonaRiferimento } from '../entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from '../entities/paziente-persona-relazione.entity';
 
@@ -85,8 +85,8 @@ export interface ConsensoResponseDto {
 @Injectable()
 export class PazientiRelazioniService {
   constructor(
-    @InjectRepository(Paziente)
-    private readonly pazientiRepository: Repository<Paziente>,
+    @InjectRepository(Patient)
+    private readonly pazientiRepository: Repository<Patient>,
 
     @InjectRepository(PersonaRiferimento)
     private readonly personeRiferimentoRepository: Repository<PersonaRiferimento>,
@@ -418,7 +418,7 @@ export class PazientiRelazioniService {
 
   private async validatePersonaRiferimento(
     createDto: CreatePersonaRiferimentoDto,
-    paziente: Paziente,
+    paziente: Patient,
   ): Promise<void> {
     // Validazione età vs tipo riferimento
     if (
@@ -616,7 +616,7 @@ export class PazientiRelazioniService {
   }
 
   private async validateConsensoCompleto(
-    paziente: Paziente,
+    paziente: Patient,
     consensiOttenuti: PazientePersonaRelazione[],
     tipoTrattamento: TipoTrattamentoConsenso,
   ): Promise<{ valido: boolean; motivo?: string }> {

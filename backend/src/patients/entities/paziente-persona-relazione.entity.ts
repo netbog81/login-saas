@@ -19,7 +19,7 @@ import {
 } from '../enums/pazienti-enums';
 
 // ✅ IMPORT TYPE per evitare dipendenze circolari
-import type { Paziente } from './paziente.entity';
+import type { Patient } from '../../entities/patient.entity';
 import type { PersonaRiferimento } from './persona-riferimento.entity';
 
 @Entity('paziente_persona_relazioni')
@@ -37,9 +37,9 @@ export class PazientePersonaRelazione {
   pazienteId: number;
 
   // ✅ LAZY LOADING per evitare dipendenze circolari
-  @ManyToOne('Paziente', { onDelete: 'CASCADE', lazy: true })
+  @ManyToOne('Patient', { onDelete: 'CASCADE', lazy: true })
   @JoinColumn({ name: 'paziente_id' })
-  paziente: Promise<Paziente>;
+  paziente: Promise<Patient>;
 
   @Column({ name: 'persona_riferimento_id' })
   personaRiferimentoId: number;

@@ -5,7 +5,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
 import { UsersModule } from './users/users.module';
-import { PatientsModule } from './patients/patients.module';
+import { PazientiModule } from './patients/patients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AvailabilitiesModule } from './availabilities/availabilities.module';
 import { SeedModule } from './seed/seed.module';
@@ -42,6 +42,9 @@ import { ServiceInstrument } from './modules/availability/entities/service-instr
 import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
 import { AppointmentLog } from './modules/availability/entities/appointment-log.entity';
 import { GeneralSettings } from './modules/settings/entities/general-settings.entity';
+// Pazienti module entities
+import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
+import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
 
 @Module({
   imports: [
@@ -85,6 +88,9 @@ import { GeneralSettings } from './modules/settings/entities/general-settings.en
         AppointmentInstrument,
         AppointmentLog,
         GeneralSettings,
+        // Pazienti module entities
+        PersonaRiferimento,
+        PazientePersonaRelazione,
       ],
       autoLoadEntities: false, // Disabled to prevent conflicts
       synchronize: false, // Disabled to prevent conflicts - use migrations instead
@@ -102,7 +108,7 @@ import { GeneralSettings } from './modules/settings/entities/general-settings.en
       introspection: true, // Enable introspection for development
     }),
     UsersModule,
-    PatientsModule,
+    PazientiModule,
     AppointmentsModule,
     AvailabilitiesModule,
     SeedModule,

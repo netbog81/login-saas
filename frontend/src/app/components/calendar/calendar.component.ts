@@ -1334,9 +1334,9 @@ export class CalendarComponent implements OnInit {
   }
 
   selectPatient(patient: Patient): void {
-    this.editingDetails.clientName = patient.name;
-    this.editingDetails.clientSurname = patient.surname;
-    this.editingDetails.clientPhone = patient.phone;
+    this.editingDetails.clientName = patient.nome;
+    this.editingDetails.clientSurname = patient.cognome;
+    this.editingDetails.clientPhone = patient.cellulare || patient.telefono || '';
     this.showPatientSearch = false;
     this.patientSearch = '';
   }

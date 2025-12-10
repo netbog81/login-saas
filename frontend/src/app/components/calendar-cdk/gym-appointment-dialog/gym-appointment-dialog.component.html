@@ -54,8 +54,8 @@
             <div class="patient-item"
                  *ngFor="let patient of filteredPatients"
                  (click)="selectPatient(patient)">
-              <span class="patient-name">{{ patient.name }} {{ patient.surname }}</span>
-              <span class="patient-phone" *ngIf="patient.phone">{{ patient.phone }}</span>
+              <span class="patient-name">{{ patient.nome }} {{ patient.cognome }}</span>
+              <span class="patient-phone" *ngIf="patient.telefono || patient.cellulare">{{ patient.telefono || patient.cellulare }}</span>
             </div>
           </div>
         </div>
