@@ -129,10 +129,10 @@ export interface CreateGymAppointmentInput {
   notes?: string;
   isRecurring?: boolean;
   repeatConfig?: {
-    type: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+    type: 'daily' | 'weekly' | 'monthly';
     interval: number;
     selectedDays?: number[];
-    endType: 'AFTER' | 'UNTIL';
+    endType: 'after' | 'until';
     occurrences?: number;
     untilDate?: string;
   };
