@@ -304,19 +304,26 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit, 
       return false;
     }
 
-    const slotMinutes = this.timeToMinutes(timeSlot);
+    // Calcola i limiti della cella
+    const cellStartMinutes = this.timeToMinutes(timeSlot);
+    const cellEndMinutes = cellStartMinutes + this.slotDuration;
 
-    // Verifica se lo slot è dentro uno degli intervalli disponibili
+    // Verifica se c'è QUALSIASI disponibilità che si sovrappone alla cella
+    // (anche parzialmente) - in quel caso la cella è considerata disponibile
+    // e gli overlay parziali mostreranno le parti non disponibili
     for (const availability of dateAvailabilities) {
-      const startMinutes = this.timeToMinutes(availability.startTime);
-      const endMinutes = this.timeToMinutes(availability.endTime);
+      if (!availability.available) continue;
 
-      if (slotMinutes >= startMinutes && slotMinutes < endMinutes) {
-        return availability.available;
+      const availStartMinutes = this.timeToMinutes(availability.startTime);
+      const availEndMinutes = this.timeToMinutes(availability.endTime);
+
+      // Se c'è sovrapposizione tra disponibilità e cella
+      if (availStartMinutes < cellEndMinutes && availEndMinutes > cellStartMinutes) {
+        return true; // La cella ha almeno disponibilità parziale
       }
     }
 
-    // Lo slot non è dentro nessun intervallo disponibile - non disponibile
+    // Nessuna disponibilità si sovrappone alla cella - non disponibile
     return false;
   }
 
@@ -354,6 +361,64 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit, 
 
   getAvailableSlotsForUser(operatorId: string): AvailableSlotPosition[] {
     return this.availableSlotPositions.get(operatorId) || [];
+  }
+
+  /**
+   * Calcola le percentuali di indisponibilità parziale per una cella.
+   * Usato quando la disponibilità dell'operatore non coincide con i bordi della cella.
+   */
+  getUnavailablePercents(operatorId: string, slotTime: string): { top: number; bottom: number } {
+    // Trova l'utente per verificare se ha template
+    const user = this.users.find(u => u.operatorId === operatorId);
+
+    // Se l'utente non ha template, nessuna indisponibilità parziale
+    if (!user?.hasTemplate) {
+      return { top: 0, bottom: 0 };
+    }
+
+    // Calcola i minuti della cella
+    const cellStartMinutes = this.timeToMinutes(slotTime);
+    const cellEndMinutes = cellStartMinutes + this.slotDuration;
+
+    // Trova le disponibilità dell'operatore per questa data
+    const operatorAvailabilities = this.availabilities.get(operatorId);
+    if (!operatorAvailabilities) {
+      return { top: 0, bottom: 0 };
+    }
+
+    const dateAvailabilities = operatorAvailabilities.get(this.date) || [];
+
+    // Calcola quale parte della cella è coperta da disponibilità
+    let availableStart = cellEndMinutes; // Default: nessuna disponibilità (tutto non disponibile)
+    let availableEnd = cellStartMinutes;
+
+    for (const avail of dateAvailabilities) {
+      if (!avail.available) continue;
+      const availStart = this.timeToMinutes(avail.startTime);
+      const availEnd = this.timeToMinutes(avail.endTime);
+
+      // Se c'è sovrapposizione con la cella
+      if (availStart < cellEndMinutes && availEnd > cellStartMinutes) {
+        // Espandi l'intervallo disponibile
+        availableStart = Math.min(availableStart, Math.max(availStart, cellStartMinutes));
+        availableEnd = Math.max(availableEnd, Math.min(availEnd, cellEndMinutes));
+      }
+    }
+
+    // Se non c'è nessuna disponibilità nella cella, restituisci 0 (sarà gestito da isAvailable)
+    if (availableStart >= cellEndMinutes || availableEnd <= cellStartMinutes) {
+      return { top: 0, bottom: 0 };
+    }
+
+    // Calcola i minuti non disponibili
+    const topUnavailable = Math.max(0, availableStart - cellStartMinutes);
+    const bottomUnavailable = Math.max(0, cellEndMinutes - availableEnd);
+
+    // Converti in percentuali
+    return {
+      top: (topUnavailable / this.slotDuration) * 100,
+      bottom: (bottomUnavailable / this.slotDuration) * 100
+    };
   }
 
   getUserByOperatorId(operatorId: string): User | undefined {

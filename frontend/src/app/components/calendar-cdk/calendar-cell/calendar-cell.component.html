@@ -9,8 +9,18 @@
     {{ timeSlot.time }}
   </div>
 
-  <!-- Visual indicator for availability -->
+  <!-- Overlay non disponibile in alto (disponibilità parziale) -->
+  <div class="partial-unavailable top"
+       *ngIf="unavailableTopPercent > 0"
+       [style.height.%]="unavailableTopPercent"></div>
+
+  <!-- Overlay non disponibile in basso (disponibilità parziale) -->
+  <div class="partial-unavailable bottom"
+       *ngIf="unavailableBottomPercent > 0"
+       [style.height.%]="unavailableBottomPercent"></div>
+
+  <!-- Visual indicator for availability (nascosto se ci sono overlay parziali) -->
   <div class="cell-content" *ngIf="!isOccupied">
-    <div class="availability-indicator" *ngIf="!isAvailable"></div>
+    <div class="availability-indicator" *ngIf="!isAvailable && unavailableTopPercent === 0 && unavailableBottomPercent === 0"></div>
   </div>
 </div>

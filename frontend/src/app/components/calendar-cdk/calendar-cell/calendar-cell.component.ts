@@ -31,6 +31,8 @@ export class CalendarCellComponent {
   @Input() showTimeLabel: boolean = false;
   @Input() isDragSelected: boolean = false;
   @Input() dragSelectionColor: string = '#3b82f6';
+  @Input() unavailableTopPercent: number = 0;    // % non disponibile dall'alto
+  @Input() unavailableBottomPercent: number = 0; // % non disponibile dal basso
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();

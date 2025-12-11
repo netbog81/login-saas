@@ -63,6 +63,8 @@
                   [isOccupied]="isCellOccupied(user.operatorId!, day.date, slot.time)"
                   [isDragSelected]="isCellInDragSelection(user.operatorId!, day.date, slot.time)"
                   [dragSelectionColor]="getUserColorForDrag(user.operatorId!)"
+                  [unavailableTopPercent]="getUnavailablePercents(user.operatorId!, day.date, slot.time).top"
+                  [unavailableBottomPercent]="getUnavailablePercents(user.operatorId!, day.date, slot.time).bottom"
                   (cellMouseDown)="onCellMouseDown($event)"
                   (cellMouseEnter)="onCellMouseEnter($event)"
                   (cellMouseUp)="onCellMouseUp($event)"

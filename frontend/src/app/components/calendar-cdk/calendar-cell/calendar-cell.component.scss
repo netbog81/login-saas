@@ -120,3 +120,28 @@
     );
   }
 }
+
+// Overlay per disponibilità parziale (porzioni non disponibili dentro una cella disponibile)
+.partial-unavailable {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-color: #f3f4f6;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(209, 213, 219, 0.5) 4px,
+    rgba(209, 213, 219, 0.5) 8px
+  );
+  pointer-events: none;
+  z-index: 1;
+
+  &.top {
+    top: 0;
+  }
+
+  &.bottom {
+    bottom: 0;
+  }
+}
