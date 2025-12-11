@@ -41,6 +41,14 @@
         <div class="days-columns-wrapper">
           <!-- Day columns with user sub-columns -->
           <div *ngFor="let day of dayColumns; trackBy: trackByDay" class="day-column">
+            <!-- Indicatore ora corrente (solo per il giorno corrente) -->
+            <div class="current-time-indicator"
+                 *ngIf="currentTimeVisible && isToday(day.date)"
+                 [style.top.px]="currentTimeTop">
+              <div class="current-time-dot"></div>
+              <div class="current-time-line"></div>
+            </div>
+
             <div *ngFor="let user of users; trackBy: trackByUser"
                  class="user-sub-column">
               <!-- Cells -->

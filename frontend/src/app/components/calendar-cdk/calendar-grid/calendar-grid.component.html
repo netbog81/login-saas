@@ -13,6 +13,14 @@
 
     <!-- Grid body with cells and events -->
     <div class="grid-body" #gridBody>
+      <!-- Indicatore ora corrente -->
+      <div class="current-time-indicator"
+           *ngIf="currentTimeVisible"
+           [style.top.px]="currentTimeTop">
+        <div class="current-time-dot"></div>
+        <div class="current-time-line"></div>
+      </div>
+
       <!-- Time column (sticky on left) -->
       <div class="time-column">
         <div class="time-slots">

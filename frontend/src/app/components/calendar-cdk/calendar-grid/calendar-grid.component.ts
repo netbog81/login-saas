@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, OnDestroy, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { CalendarCellComponent, CellEvent } from '../calendar-cell/calendar-cell.component';
@@ -31,7 +31,7 @@ interface AvailableSlotPosition {
   styleUrls: ['./calendar-grid.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
+export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit, OnDestroy {
   @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
 
   constructor(private cdr: ChangeDetectorRef) {}
@@ -67,6 +67,11 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   availableSlotPositions: Map<string, AvailableSlotPosition[]> = new Map();
   gridHeight: number = 0;
 
+  // Current time indicator
+  currentTimeTop: number = 0;
+  currentTimeVisible: boolean = false;
+  private currentTimeInterval: any;
+
   // Cache per memoization dei calcoli delle celle
   private cellAvailabilityCache: Map<string, boolean> = new Map();
   private cellOccupiedCache: Map<string, boolean> = new Map();
@@ -75,6 +80,14 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
   ngOnInit(): void {
     this.calculateEventPositions();
     this.calculateGridHeight();
+    this.updateCurrentTimeIndicator();
+    this.startCurrentTimeUpdates();
+  }
+
+  ngOnDestroy(): void {
+    if (this.currentTimeInterval) {
+      clearInterval(this.currentTimeInterval);
+    }
   }
 
   ngAfterViewInit(): void {
@@ -466,5 +479,52 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit {
         gridHeader.style.paddingRight = '0';
       }
     }
+  }
+
+  // ==================== CURRENT TIME INDICATOR ====================
+
+  /**
+   * Aggiorna la posizione e la visibilità dell'indicatore dell'ora corrente
+   */
+  private updateCurrentTimeIndicator(): void {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const currentMinutes = hours * 60 + minutes;
+
+    // Calcola i limiti dell'orario visualizzato
+    const startMinutes = this.startHour * 60;
+    const endMinutes = startMinutes + (this.timeSlots.length * this.slotDuration);
+
+    // Verifica se è oggi
+    const today = new Date().toISOString().split('T')[0];
+    const isToday = this.date === today;
+
+    // Mostra l'indicatore solo se l'ora corrente è nell'intervallo visualizzato e se è oggi
+    if (isToday && currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+      this.currentTimeTop = this.calculateCurrentTimePosition(currentMinutes, startMinutes);
+      this.currentTimeVisible = true;
+    } else {
+      this.currentTimeVisible = false;
+    }
+  }
+
+  /**
+   * Calcola la posizione verticale in pixel per l'ora corrente
+   */
+  private calculateCurrentTimePosition(currentMinutes: number, startMinutes: number): number {
+    const minutesFromStart = currentMinutes - startMinutes;
+    const pixelsPerMinute = this.slotHeight / this.slotDuration;
+    return minutesFromStart * pixelsPerMinute;
+  }
+
+  /**
+   * Avvia l'aggiornamento periodico dell'indicatore ogni minuto
+   */
+  private startCurrentTimeUpdates(): void {
+    this.currentTimeInterval = setInterval(() => {
+      this.updateCurrentTimeIndicator();
+      this.cdr.markForCheck();
+    }, 60000); // Aggiorna ogni 60 secondi
   }
 }
