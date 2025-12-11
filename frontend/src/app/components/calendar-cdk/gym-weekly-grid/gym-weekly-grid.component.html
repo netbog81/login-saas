@@ -34,6 +34,14 @@
 
     <!-- Colonne per ogni giorno -->
     <div class="day-column-group" *ngFor="let day of dayColumns; trackBy: trackByDay">
+      <!-- Indicatore ora corrente (solo per il giorno corrente) -->
+      <div class="current-time-indicator"
+           *ngIf="currentTimeVisible && isToday(day.date)"
+           [style.top.px]="currentTimeTop">
+        <div class="current-time-dot"></div>
+        <div class="current-time-line"></div>
+      </div>
+
       <!-- Colonne per ogni palestra nel giorno -->
       <div class="gym-room-column"
            *ngFor="let gymRoom of gymRooms; trackBy: trackByGymRoom"

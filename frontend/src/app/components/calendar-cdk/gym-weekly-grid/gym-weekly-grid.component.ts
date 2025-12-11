@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, OnDestroy, SimpleChanges, ViewChild, ElementRef, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { TimeSlot } from '../services/calendar-state.service';
@@ -27,7 +27,7 @@ interface DayColumn {
   styleUrls: ['./gym-weekly-grid.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit {
+export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit, OnDestroy {
   @ViewChild('gridBody') gridBodyRef!: ElementRef<HTMLDivElement>;
 
   constructor(private cdr: ChangeDetectorRef) {}
@@ -51,9 +51,22 @@ export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit 
   gridHeight: number = 0;
   scrollbarWidth: number = 0;
 
+  // Current time indicator
+  currentTimeTop: number = 0;
+  currentTimeVisible: boolean = false;
+  private currentTimeInterval: any;
+
   ngOnInit(): void {
     this.buildDayColumns();
     this.calculateGridHeight();
+    this.updateCurrentTimeIndicator();
+    this.startCurrentTimeUpdates();
+  }
+
+  ngOnDestroy(): void {
+    if (this.currentTimeInterval) {
+      clearInterval(this.currentTimeInterval);
+    }
   }
 
   ngAfterViewInit(): void {
@@ -255,5 +268,52 @@ export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit 
     return today.getFullYear() === checkDate.getFullYear() &&
            today.getMonth() === checkDate.getMonth() &&
            today.getDate() === checkDate.getDate();
+  }
+
+  // ==================== CURRENT TIME INDICATOR ====================
+
+  /**
+   * Aggiorna la posizione e la visibilità dell'indicatore dell'ora corrente
+   */
+  private updateCurrentTimeIndicator(): void {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const currentMinutes = hours * 60 + minutes;
+
+    // Calcola i limiti dell'orario visualizzato
+    const startMinutes = this.startHour * 60;
+    const endMinutes = startMinutes + (this.timeSlots.length * this.slotDuration);
+
+    // Mostra l'indicatore solo se l'ora corrente è nell'intervallo visualizzato
+    // e se oggi è incluso nelle date visualizzate
+    const today = new Date().toISOString().split('T')[0];
+    const isTodayVisible = this.dates.includes(today);
+
+    if (isTodayVisible && currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+      this.currentTimeTop = this.calculateCurrentTimePosition(currentMinutes, startMinutes);
+      this.currentTimeVisible = true;
+    } else {
+      this.currentTimeVisible = false;
+    }
+  }
+
+  /**
+   * Calcola la posizione verticale in pixel per l'ora corrente
+   */
+  private calculateCurrentTimePosition(currentMinutes: number, startMinutes: number): number {
+    const minutesFromStart = currentMinutes - startMinutes;
+    const pixelsPerMinute = this.slotHeight / this.slotDuration;
+    return minutesFromStart * pixelsPerMinute;
+  }
+
+  /**
+   * Avvia l'aggiornamento periodico dell'indicatore ogni minuto
+   */
+  private startCurrentTimeUpdates(): void {
+    this.currentTimeInterval = setInterval(() => {
+      this.updateCurrentTimeIndicator();
+      this.cdr.markForCheck();
+    }, 60000); // Aggiorna ogni 60 secondi
   }
 }

@@ -13,6 +13,14 @@
 
   <!-- Body con time slots e colonne per ogni GymRoom -->
   <div class="grid-body" #gridBody [style.height.px]="gridHeight">
+    <!-- Indicatore ora corrente -->
+    <div class="current-time-indicator"
+         *ngIf="currentTimeVisible"
+         [style.top.px]="currentTimeTop">
+      <div class="current-time-dot"></div>
+      <div class="current-time-line"></div>
+    </div>
+
     <!-- Time column -->
     <div class="time-column">
       <div class="time-slot"
