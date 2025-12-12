@@ -45,6 +45,7 @@ export class CalendarGridComponent implements OnInit, OnChanges, AfterViewInit, 
   @Input() startHour: number = 0;
   @Input() viewType: 'daily' | 'weekly' = 'daily';
   @Input() showWorkingHoursOnly: boolean = false;
+  @Input() showUnavailableCellsBackground: boolean = true;
   @Input() dragStartCell: CellEvent | null = null;
   @Input() dragCurrentCell: CellEvent | null = null;
   @Input() isDragging: boolean = false;

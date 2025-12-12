@@ -9,18 +9,18 @@
     {{ timeSlot.time }}
   </div>
 
-  <!-- Overlay non disponibile in alto (disponibilità parziale) -->
+  <!-- Overlay non disponibile in alto (disponibilità parziale) - solo se showUnavailableBackground -->
   <div class="partial-unavailable top"
-       *ngIf="unavailableTopPercent > 0"
+       *ngIf="showUnavailableBackground && unavailableTopPercent > 0"
        [style.height.%]="unavailableTopPercent"></div>
 
-  <!-- Overlay non disponibile in basso (disponibilità parziale) -->
+  <!-- Overlay non disponibile in basso (disponibilità parziale) - solo se showUnavailableBackground -->
   <div class="partial-unavailable bottom"
-       *ngIf="unavailableBottomPercent > 0"
+       *ngIf="showUnavailableBackground && unavailableBottomPercent > 0"
        [style.height.%]="unavailableBottomPercent"></div>
 
-  <!-- Visual indicator for availability (nascosto se ci sono overlay parziali) -->
+  <!-- Visual indicator for availability (nascosto se ci sono overlay parziali o se showUnavailableBackground è false) -->
   <div class="cell-content" *ngIf="!isOccupied">
-    <div class="availability-indicator" *ngIf="!isAvailable && unavailableTopPercent === 0 && unavailableBottomPercent === 0"></div>
+    <div class="availability-indicator" *ngIf="showUnavailableBackground && !isAvailable && unavailableTopPercent === 0 && unavailableBottomPercent === 0"></div>
   </div>
 </div>

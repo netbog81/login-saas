@@ -16,6 +16,7 @@ interface CalendarSettingsForm {
   showWeekend: boolean;
   slotDuration: number;
   defaultView: 'daily' | 'weekly';
+  showUnavailableCellsBackground: boolean;
 }
 
 @Component({
@@ -42,6 +43,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     showWeekend: true,
     slotDuration: 15,
     defaultView: 'daily',
+    showUnavailableCellsBackground: true,
   };
   originalCalendarSettings: CalendarSettingsForm = { ...this.calendarSettings };
 
@@ -155,6 +157,10 @@ export class SettingsComponent implements OnInit, OnDestroy {
         'calendar.defaultView',
         this.calendarSettings.defaultView
       ),
+      calShowUnavailableCellsBackground: this.settingsService.updateSetting(
+        'calendar.showUnavailableCellsBackground',
+        this.calendarSettings.showUnavailableCellsBackground
+      ),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -193,7 +199,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.calendarSettings.showWorkingHoursOnly !== this.originalCalendarSettings.showWorkingHoursOnly ||
       this.calendarSettings.showWeekend !== this.originalCalendarSettings.showWeekend ||
       this.calendarSettings.slotDuration !== this.originalCalendarSettings.slotDuration ||
-      this.calendarSettings.defaultView !== this.originalCalendarSettings.defaultView;
+      this.calendarSettings.defaultView !== this.originalCalendarSettings.defaultView ||
+      this.calendarSettings.showUnavailableCellsBackground !== this.originalCalendarSettings.showUnavailableCellsBackground;
 
     return appointmentChanged || calendarChanged;
   }

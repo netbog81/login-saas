@@ -167,6 +167,20 @@
           Se abilitato, mostra sabato e domenica nella vista settimanale.
         </small>
       </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="calendarSettings.showUnavailableCellsBackground"
+          />
+          <span>Mostra sfondo celle non disponibili</span>
+        </label>
+        <small class="hint">
+          Se abilitato, le celle in orari non disponibili mostrano uno sfondo a righe diagonali.
+          La logica di prenotazione rimane invariata (non si puo prenotare in orari non disponibili).
+        </small>
+      </div>
     </section>
 
     <!-- Actions -->

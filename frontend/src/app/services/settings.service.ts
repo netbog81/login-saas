@@ -19,6 +19,7 @@ export interface CalendarSettings {
   showWeekend: boolean;
   slotDuration: number;
   defaultView: 'daily' | 'weekly';
+  showUnavailableCellsBackground: boolean;
 }
 
 const GET_ALL_SETTINGS = gql`
@@ -124,6 +125,7 @@ const GET_CALENDAR_SETTINGS = gql`
       showWeekend
       slotDuration
       defaultView
+      showUnavailableCellsBackground
     }
   }
 `;
@@ -244,6 +246,7 @@ export class SettingsService {
       showWeekend: true,
       slotDuration: 15,
       defaultView: 'daily',
+      showUnavailableCellsBackground: true,
     };
 
     return this.apollo

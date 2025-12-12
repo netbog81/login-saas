@@ -50,6 +50,7 @@
             [dragSelectionColor]="getUserColorForDrag(user.operatorId!)"
             [unavailableTopPercent]="getUnavailablePercents(user.operatorId!, slot.time).top"
             [unavailableBottomPercent]="getUnavailablePercents(user.operatorId!, slot.time).bottom"
+            [showUnavailableBackground]="showUnavailableCellsBackground"
             (cellMouseDown)="onCellMouseDown($event)"
             (cellMouseEnter)="onCellMouseEnter($event)"
             (cellMouseUp)="onCellMouseUp($event)"

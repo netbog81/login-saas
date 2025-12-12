@@ -52,6 +52,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   @Input() startHour: number = 0;
   @Input() showWorkingHoursOnly: boolean = false;
   @Input() showWeekend: boolean = true;
+  @Input() showUnavailableCellsBackground: boolean = true;
   @Input() enableHorizontalScroll: boolean = false;
   @Input() minColumnWidth: number = 40; // Reduced for better responsive design
   @Input() dragStartCell: CellEvent | null = null;

@@ -148,6 +148,7 @@ enum BookingStatus {
 type CalendarSettings {
   defaultView: String!
   endHour: Int!
+  showUnavailableCellsBackground: Boolean!
   showWeekend: Boolean!
   showWorkingHoursOnly: Boolean!
   slotDuration: Int!

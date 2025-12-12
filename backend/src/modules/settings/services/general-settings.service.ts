@@ -29,6 +29,7 @@ export const SETTINGS_KEYS = {
   CALENDAR_SHOW_WEEKEND: 'calendar.showWeekend',
   CALENDAR_SLOT_DURATION: 'calendar.slotDuration',
   CALENDAR_DEFAULT_VIEW: 'calendar.defaultView',
+  CALENDAR_SHOW_UNAVAILABLE_BACKGROUND: 'calendar.showUnavailableCellsBackground',
 } as const;
 
 @Injectable()
@@ -226,6 +227,13 @@ export class GeneralSettingsService {
         description: 'Vista predefinita calendario: daily o weekly',
         valueType: 'string',
         category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_SHOW_UNAVAILABLE_BACKGROUND,
+        value: true,
+        description: 'Mostra sfondo evidenziato per celle non disponibili',
+        valueType: 'boolean',
+        category: 'calendar'
       }
     ];
 
@@ -286,14 +294,16 @@ export class GeneralSettingsService {
     showWeekend: boolean;
     slotDuration: number;
     defaultView: 'daily' | 'weekly';
+    showUnavailableCellsBackground: boolean;
   }> {
-    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView] = await Promise.all([
+    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground] = await Promise.all([
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_START_HOUR, 7),
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY, true),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WEEKEND, true),
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_SLOT_DURATION, 15),
       this.getValue<'daily' | 'weekly'>(SETTINGS_KEYS.CALENDAR_DEFAULT_VIEW, 'daily'),
+      this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_UNAVAILABLE_BACKGROUND, true),
     ]);
 
     return {
@@ -303,6 +313,7 @@ export class GeneralSettingsService {
       showWeekend,
       slotDuration,
       defaultView,
+      showUnavailableCellsBackground,
     };
   }
 

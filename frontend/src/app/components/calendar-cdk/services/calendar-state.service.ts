@@ -23,6 +23,7 @@ export interface CalendarConfig {
   workingHoursEnd: number; // 0-23
   showWeekend: boolean;
   showOperatorsLegend: boolean;
+  showUnavailableCellsBackground: boolean; // Mostra sfondo a righe per celle non disponibili
 }
 
 export interface CalendarView {
@@ -107,7 +108,8 @@ export class CalendarStateService {
     workingHoursStart: 8,
     workingHoursEnd: 20,
     showWeekend: true,
-    showOperatorsLegend: false
+    showOperatorsLegend: false,
+    showUnavailableCellsBackground: true
   });
 
   private currentDateSubject = new BehaviorSubject<Date>(new Date());
@@ -190,6 +192,8 @@ export class CalendarStateService {
       showWorkingHoursOnly: hasStoredConfig ? currentConfig.showWorkingHoursOnly : settings.showWorkingHoursOnly,
       showWeekend: hasStoredConfig ? currentConfig.showWeekend : settings.showWeekend,
       viewType: hasStoredConfig ? currentConfig.viewType : settings.defaultView,
+      // Questa impostazione viene sempre dal backend (non salvata in session)
+      showUnavailableCellsBackground: settings.showUnavailableCellsBackground,
     };
 
     this.configSubject.next(newConfig);
@@ -197,6 +201,7 @@ export class CalendarStateService {
       startHour: settings.startHour,
       endHour: settings.endHour,
       slotDuration: settings.slotDuration,
+      showUnavailableCellsBackground: settings.showUnavailableCellsBackground,
       hasStoredConfig
     });
   }

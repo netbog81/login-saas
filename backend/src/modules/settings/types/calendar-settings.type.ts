@@ -22,4 +22,7 @@ export class CalendarSettings {
 
   @Field()
   defaultView: string;
+
+  @Field()
+  showUnavailableCellsBackground: boolean;
 }

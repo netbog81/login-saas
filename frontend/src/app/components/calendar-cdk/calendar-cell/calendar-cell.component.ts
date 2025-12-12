@@ -33,6 +33,7 @@ export class CalendarCellComponent {
   @Input() dragSelectionColor: string = '#3b82f6';
   @Input() unavailableTopPercent: number = 0;    // % non disponibile dall'alto
   @Input() unavailableBottomPercent: number = 0; // % non disponibile dal basso
+  @Input() showUnavailableBackground: boolean = true; // Mostra sfondo a righe per celle non disponibili
 
   @Output() cellMouseDown = new EventEmitter<CellEvent>();
   @Output() cellMouseEnter = new EventEmitter<CellEvent>();
@@ -40,7 +41,11 @@ export class CalendarCellComponent {
   @Output() cellDblClick = new EventEmitter<CellEvent>();
 
   @HostBinding('style.height.px') get cellHeight() { return this.slotHeight; }
-  @HostBinding('class.available') get availableClass() { return this.isAvailable; }
+  // Se showUnavailableBackground è false, mostra sempre la cella come disponibile (sfondo bianco)
+  // La logica di prenotazione rimane invariata (isAvailable controlla se si può prenotare)
+  @HostBinding('class.available') get availableClass() {
+    return this.isAvailable || !this.showUnavailableBackground;
+  }
   @HostBinding('class.occupied') get occupiedClass() { return this.isOccupied; }
   @HostBinding('class.drag-target') get dragTargetClass() { return this.isDragTarget; }
   @HostBinding('class.non-working') get nonWorkingClass() { return !this.isWorkingHour; }
