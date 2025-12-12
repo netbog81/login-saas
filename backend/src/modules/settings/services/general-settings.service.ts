@@ -301,7 +301,7 @@ export class GeneralSettingsService {
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY, true),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WEEKEND, true),
-      this.getValue<number>(SETTINGS_KEYS.CALENDAR_SLOT_DURATION, 15),
+      this.getValue<number>(SETTINGS_KEYS.CALENDAR_SLOT_DURATION, 45),
       this.getValue<'daily' | 'weekly'>(SETTINGS_KEYS.CALENDAR_DEFAULT_VIEW, 'daily'),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_UNAVAILABLE_BACKGROUND, true),
     ]);

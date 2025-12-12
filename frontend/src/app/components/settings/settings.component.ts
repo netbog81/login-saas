@@ -62,7 +62,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   // Calendar options
   hourOptions = Array.from({ length: 24 }, (_, i) => i);
-  calendarSlotOptions = [5, 10, 15, 20, 30, 60];
+  calendarSlotOptions = [5, 10, 15, 20, 30, 45, 60];
   viewOptions: { value: 'daily' | 'weekly'; label: string }[] = [
     { value: 'daily', label: 'Giornaliera' },
     { value: 'weekly', label: 'Settimanale' },

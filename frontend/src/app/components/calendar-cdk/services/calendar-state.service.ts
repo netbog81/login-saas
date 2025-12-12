@@ -98,7 +98,7 @@ export class CalendarStateService {
   private _selectedOperatorIds = new Set<number>();
   // State streams
   private configSubject = new BehaviorSubject<CalendarConfig>({
-    slotDuration: 15,
+    slotDuration: 45,
     startHour: 0,
     endHour: 24,
     zoom: 1,
