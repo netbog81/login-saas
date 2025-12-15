@@ -101,13 +101,50 @@ export class AvailabilityAppointmentResolver {
   }
 
   /**
-   * Mutation: Segna come no-show
+   * Mutation: Segna come no-show (legacy - mantiene compatibilità)
    */
   @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentAsNoShow' })
   async markAsNoShow(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<AvailabilityAppointment> {
     return this.appointmentService.markAsNoShow(id);
+  }
+
+  // ==================== NUOVE MUTATIONS PER GESTIONE STATI ====================
+
+  /**
+   * Mutation: Cancella un appuntamento con calcolo automatico del preavviso
+   * Se preavviso >24h → CANCELLED_EARLY (no penalità)
+   * Se preavviso <24h → CANCELLED_LATE (incrementa contatore paziente)
+   */
+  @Mutation(() => AvailabilityAppointment, { name: 'cancelAppointmentWithNotice' })
+  async cancelAppointmentWithNotice(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('reason') reason: string,
+    @Args('cancelledBy', { type: () => ID }) cancelledBy: string,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.cancelAppointment(id, reason, cancelledBy);
+  }
+
+  /**
+   * Mutation: Segna appuntamento come no-show (incrementa contatore paziente)
+   */
+  @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentNoShow' })
+  async markNoShow(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.markNoShow(id);
+  }
+
+  /**
+   * Mutation: Segna appuntamento come attended (paziente presentato)
+   * Abilita la creazione di un trattamento
+   */
+  @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentAttended' })
+  async markAttended(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.markAttended(id);
   }
 
   /**

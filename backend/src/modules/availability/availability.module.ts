@@ -27,6 +27,8 @@ import { ServiceInstrument } from './entities/service-instrument.entity';
 import { AppointmentInstrument } from './entities/appointment-instrument.entity';
 import { AppointmentLog } from './entities/appointment-log.entity';
 import { Patient } from '../../entities/patient.entity';
+import { Treatment } from './entities/treatment.entity';
+import { TreatmentInstrument } from './entities/treatment-instrument.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -48,6 +50,7 @@ import { GymPatternGroupService } from './services/gym-pattern-group.service';
 import { GymExceptionService } from './services/gym-exception.service';
 import { AppointmentConflictService } from './services/appointment-conflict.service';
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
+import { TreatmentService } from './services/treatment.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
@@ -67,6 +70,7 @@ import { AppointmentConflictResolver } from './resolvers/appointment-conflict.re
 import { AvailabilityAppointmentResolver } from './resolvers/availability-appointment.resolver';
 import { GymPatternGroupResolver } from './resolvers/gym-pattern-group.resolver';
 import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
+import { TreatmentResolver } from './resolvers/treatment.resolver';
 
 @Module({
   imports: [
@@ -96,6 +100,8 @@ import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
       AppointmentInstrument,
       AppointmentLog,
       Patient,
+      Treatment,
+      TreatmentInstrument,
     ]),
   ],
   providers: [
@@ -119,6 +125,7 @@ import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
     GymExceptionService,
     AppointmentConflictService,
     AvailabilityAppointmentService,
+    TreatmentService,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -137,6 +144,7 @@ import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
     AvailabilityAppointmentResolver,
     GymPatternGroupResolver,
     GymExceptionResolver,
+    TreatmentResolver,
   ],
   exports: [
     AvailabilityService,
@@ -158,6 +166,7 @@ import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
     GymExceptionService,
     AppointmentConflictService,
     AvailabilityAppointmentService,
+    TreatmentService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })

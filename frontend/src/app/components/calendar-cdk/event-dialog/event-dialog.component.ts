@@ -404,7 +404,8 @@ export class EventDialogComponent implements OnInit {
     this.patientId = patientId;
     this.patientSearch = '';  // Chiude il dropdown di ricerca
     if (patientId) {
-      const patient = this.data.patients.find(p => p.id === patientId);
+      // Usa == per confronto loose (GraphQL può restituire ID come stringa)
+      const patient = this.data.patients.find(p => p.id == patientId);
       if (patient) {
         this.title = `${patient.nome} ${patient.cognome}`;
       }

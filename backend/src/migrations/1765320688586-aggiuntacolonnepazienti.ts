@@ -96,95 +96,148 @@ export class Aggiuntacolonnepazienti1765320688586 implements MigrationInterface 
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "paziente_persona_relazioni" DROP CONSTRAINT "FK_30c7a6964747d7929e44970036f"`);
-        await queryRunner.query(`ALTER TABLE "paziente_persona_relazioni" DROP CONSTRAINT "FK_c3abc6d16bf05727201ba72ac29"`);
-        await queryRunner.query(`ALTER TABLE "persone_riferimento" DROP CONSTRAINT "FK_15d51f7ad54a305d9c3210e6ca0"`);
-        await queryRunner.query(`ALTER TABLE "persone_riferimento" DROP CONSTRAINT "FK_99eebade3fbebaac4aa182d268f"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_9dd31ef1df1ae197ee914782af"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_4014d08fcce4b66b9c587a57a1"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_46359b42cd949db0902fec024b"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_5ae1c5678291259a8fa83184e9"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "email"`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "email" character varying(100)`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "email"`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "email" character varying`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "updatedAt"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "createdAt"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "phone"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "surname"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "name"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "updated_at"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "created_at"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "conservazione_fino"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "data_anonimizzazione"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "data_richiesta_cancellazione"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "richiesta_cancellazione"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "data_ultima_modifica_privacy"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "convenzione_id"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "note_amministrative"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "attivo"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP CONSTRAINT "UQ_35c47d8eb142907d4f887c5ef80"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "codice_paziente"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "consenso_comunicazione_terzi"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "modalita_consenso_per_trattamento"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "consenso_ricerca_medica"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "consenso_marketing"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "data_consenso_privacy"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "consenso_privacy"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "stato_privacy"`);
-        await queryRunner.query(`DROP TYPE "public"."patients_stato_privacy_enum"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "stato_anagrafica"`);
-        await queryRunner.query(`DROP TYPE "public"."patients_stato_anagrafica_enum"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "patologie_croniche"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "farmaci_uso"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "allergie"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "gruppo_sanguigno"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "medico_base"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "tipo_paziente"`);
-        await queryRunner.query(`DROP TYPE "public"."patients_tipo_paziente_enum"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "nazioneResidenza"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "codiceSdi"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "pec"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "cellulare"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "fax"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "telefono"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "provincia"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "citta"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "cap"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "indirizzo"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "stato_civile"`);
-        await queryRunner.query(`DROP TYPE "public"."patients_stato_civile_enum"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "genere"`);
-        await queryRunner.query(`DROP TYPE "public"."patients_genere_enum"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "luogo_nascita_estero"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "nazione_nascita"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "comune_nascita"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "data_nascita"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "codice_fiscale"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "cognome"`);
-        await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN "nome"`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "phone" character varying NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "surname" character varying NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "name" character varying NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`);
-        await queryRunner.query(`ALTER TABLE "patients" ADD "createdAt" TIMESTAMP NOT NULL DEFAULT now()`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_1fdda4f6872be98035e0534898"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_74a7fd813968dcc416436ffaa3"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_6bfe4218cea4f10c8e9d92df44"`);
-        await queryRunner.query(`DROP TABLE "paziente_persona_relazioni"`);
-        await queryRunner.query(`DROP TYPE "public"."paziente_persona_relazioni_stato_consenso_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."paziente_persona_relazioni_tipo_consenso_richiesto_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."paziente_persona_relazioni_tipo_trattamento_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_bdd975d6d67e535b64be94d79f"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_77884031fd62d48f830955f223"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_030f2a02c84e609e3bbe492645"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_52f44319a09c2f43f4f263d0f1"`);
-        await queryRunner.query(`DROP TABLE "persone_riferimento"`);
-        await queryRunner.query(`DROP TYPE "public"."persone_riferimento_stato_relazione_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."persone_riferimento_tipo_patria_podesta_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."persone_riferimento_tipo_riferimento_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."persone_riferimento_stato_civile_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."persone_riferimento_genere_enum"`);
-    }
-
+    // Rimuovi foreign key constraints con IF EXISTS
+    await queryRunner.query(`ALTER TABLE "paziente_persona_relazioni" DROP CONSTRAINT IF EXISTS "FK_30c7a6964747d7929e44970036f"`);
+    await queryRunner.query(`ALTER TABLE "paziente_persona_relazioni" DROP CONSTRAINT IF EXISTS "FK_c3abc6d16bf05727201ba72ac29"`);
+    await queryRunner.query(`ALTER TABLE "persone_riferimento" DROP CONSTRAINT IF EXISTS "FK_15d51f7ad54a305d9c3210e6ca0"`);
+    await queryRunner.query(`ALTER TABLE "persone_riferimento" DROP CONSTRAINT IF EXISTS "FK_99eebade3fbebaac4aa182d268f"`);
+    
+    // Rimuovi indici con IF EXISTS
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_9dd31ef1df1ae197ee914782af"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_4014d08fcce4b66b9c587a57a1"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_46359b42cd949db0902fec024b"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_5ae1c5678291259a8fa83184e9"`);
+    
+    // Gestione email (rimuovi e riaggiungi se necessario)
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "email"`);
+    await queryRunner.query(`ALTER TABLE "patients" ADD "email" character varying(100)`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "email"`);
+    await queryRunner.query(`ALTER TABLE "patients" ADD "email" character varying`);
+    
+    // Rimuovi colonne timestamp aggiunte
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "updatedAt"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "createdAt"`);
+    
+    // Rimuovi colonne vecchie che potrebbero essere state rinominate
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "phone"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "surname"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "name"`);
+    
+    // Rimuovi colonne aggiunte nella migrazione up (tranne nome, cognome, telefono per ora)
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "updated_at"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "created_at"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "conservazione_fino"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "data_anonimizzazione"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "data_richiesta_cancellazione"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "richiesta_cancellazione"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "data_ultima_modifica_privacy"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "convenzione_id"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "note_amministrative"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "attivo"`);
+    
+    // Rimuovi constraint e colonna codice_paziente
+    await queryRunner.query(`ALTER TABLE "patients" DROP CONSTRAINT IF EXISTS "UQ_35c47d8eb142907d4f887c5ef80"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "codice_paziente"`);
+    
+    // Rimuovi colonne privacy
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "consenso_comunicazione_terzi"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "modalita_consenso_per_trattamento"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "consenso_ricerca_medica"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "consenso_marketing"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "data_consenso_privacy"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "consenso_privacy"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "stato_privacy"`);
+    
+    // Rimuovi tipi ENUM se esistono
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."patients_stato_privacy_enum"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "stato_anagrafica"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."patients_stato_anagrafica_enum"`);
+    
+    // Rimuovi colonne medicali
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "patologie_croniche"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "farmaci_uso"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "allergie"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "gruppo_sanguigno"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "medico_base"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "tipo_paziente"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."patients_tipo_paziente_enum"`);
+    
+    // Rimuovi colonne indirizzo (tranne telefono per ora)
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "nazioneResidenza"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "codiceSdi"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "pec"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "cellulare"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "fax"`);
+    // NON rimuovere telefono ancora - lo faremo dopo
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "provincia"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "citta"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "cap"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "indirizzo"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "stato_civile"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."patients_stato_civile_enum"`);
+    
+    // Rimuovi colonne anagrafiche (tranne nome, cognome per ora)
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "genere"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."patients_genere_enum"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "luogo_nascita_estero"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "nazione_nascita"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "comune_nascita"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "data_nascita"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "codice_fiscale"`);
+    // NON rimuovere cognome e nome ancora - lo faremo dopo
+    
+    // PRIMA: Aggiungi le vecchie colonne - SENZA NOT NULL inizialmente
+    await queryRunner.query(`ALTER TABLE "patients" ADD "phone" character varying`);
+    await queryRunner.query(`ALTER TABLE "patients" ADD "surname" character varying`);
+    await queryRunner.query(`ALTER TABLE "patients" ADD "name" character varying`);
+    await queryRunner.query(`ALTER TABLE "patients" ADD "updatedAt" TIMESTAMP DEFAULT now()`);
+    await queryRunner.query(`ALTER TABLE "patients" ADD "createdAt" TIMESTAMP DEFAULT now()`);
+    
+    // SECONDA: Copia i dati dalle colonne nuove a quelle vecchie
+    // Questo deve avvenire PRIMA di rimuovere nome, cognome, telefono
+    await queryRunner.query(`
+        UPDATE "patients" 
+        SET 
+            "name" = COALESCE("nome", ''),
+            "surname" = COALESCE("cognome", ''),
+            "phone" = COALESCE("telefono", '')
+    `);
+    
+    // TERZA: Ora puoi impostare NOT NULL dopo aver popolato
+    await queryRunner.query(`ALTER TABLE "patients" ALTER COLUMN "name" SET NOT NULL`);
+    await queryRunner.query(`ALTER TABLE "patients" ALTER COLUMN "surname" SET NOT NULL`);
+    await queryRunner.query(`ALTER TABLE "patients" ALTER COLUMN "phone" SET NOT NULL`);
+    await queryRunner.query(`ALTER TABLE "patients" ALTER COLUMN "updatedAt" SET NOT NULL`);
+    await queryRunner.query(`ALTER TABLE "patients" ALTER COLUMN "createdAt" SET NOT NULL`);
+    
+    // QUARTA: Ora puoi rimuovere le colonne nuove (nome, cognome, telefono)
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "cognome"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "nome"`);
+    await queryRunner.query(`ALTER TABLE "patients" DROP COLUMN IF EXISTS "telefono"`);
+    
+    // Rimuovi indici delle tabelle che verranno eliminate
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_1fdda4f6872be98035e0534898"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_74a7fd813968dcc416436ffaa3"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_6bfe4218cea4f10c8e9d92df44"`);
+    
+    // Elimina tabelle
+    await queryRunner.query(`DROP TABLE IF EXISTS "paziente_persona_relazioni"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."paziente_persona_relazioni_stato_consenso_enum"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."paziente_persona_relazioni_tipo_consenso_richiesto_enum"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."paziente_persona_relazioni_tipo_trattamento_enum"`);
+    
+    // Rimuovi indici di persone_riferimento
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_bdd975d6d67e535b64be94d79f"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_77884031fd62d48f830955f223"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_030f2a02c84e609e3bbe492645"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_52f44319a09c2f43f4f263d0f1"`);
+    
+    // Elimina tabelle
+    await queryRunner.query(`DROP TABLE IF EXISTS "persone_riferimento"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."persone_riferimento_stato_relazione_enum"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."persone_riferimento_tipo_patria_podesta_enum"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."persone_riferimento_tipo_riferimento_enum"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."persone_riferimento_stato_civile_enum"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "public"."persone_riferimento_genere_enum"`);
+}
 }

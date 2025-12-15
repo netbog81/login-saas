@@ -1,5 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { AvailabilityTemplate } from './availability-template.entity';
 import { AvailabilityException } from './availability-exception.entity';
 import { AvailabilityAppointment } from './availability-appointment.entity';
@@ -72,6 +72,14 @@ export class Operator {
   @Field()
   @Column({ default: true })
   isActive: boolean;
+
+  /**
+   * Percentuale royalty che l'operatore riceve per ogni trattamento
+   * Es: 30.00 = 30%
+   */
+  @Field(() => Float)
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  royaltyPercentage: number;
 
   @Field()
   @CreateDateColumn()

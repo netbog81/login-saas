@@ -605,7 +605,7 @@ export class AvailabilityAppointmentService {
       where: {
         operatorId,
         appointmentDate: Between(new Date(startDate), new Date(endDate)),
-        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
       },
       relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
@@ -697,13 +697,161 @@ export class AvailabilityAppointmentService {
   }
 
   /**
-   * Segna come no-show
+   * Segna come no-show (legacy - usa markNoShow per la versione completa)
    */
   async markAsNoShow(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
     appointment.bookingStatus = BookingStatus.NO_SHOW;
     await this.appointmentRepo.save(appointment);
     return this.findById(id);
+  }
+
+  // ==================== NUOVI METODI PER GESTIONE STATI ====================
+
+  /**
+   * Cancella un appuntamento calcolando automaticamente le ore di preavviso
+   * Se preavviso >24h: CANCELLED_EARLY (nessuna penalità)
+   * Se preavviso <24h: CANCELLED_LATE (incrementa contatore paziente)
+   */
+  async cancelAppointment(
+    id: string,
+    reason: string,
+    cancelledBy: string,
+  ): Promise<AvailabilityAppointment> {
+    const appointment = await this.findById(id);
+
+    // Verifica che l'appuntamento sia in uno stato cancellabile
+    if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
+      throw new BadRequestException(
+        `L'appuntamento non può essere cancellato. Stato attuale: ${appointment.bookingStatus}`
+      );
+    }
+
+    // Calcola le ore di preavviso
+    const hoursNotice = this.calculateHoursNotice(
+      appointment.appointmentDate,
+      appointment.startTime,
+    );
+
+    // Determina il tipo di cancellazione
+    const isCancelledLate = hoursNotice < 24;
+
+    appointment.bookingStatus = isCancelledLate
+      ? BookingStatus.CANCELLED_LATE
+      : BookingStatus.CANCELLED_EARLY;
+    appointment.cancellationReason = reason;
+    appointment.cancelledAt = new Date();
+    appointment.cancelledBy = cancelledBy;
+    appointment.cancellationHoursNotice = hoursNotice;
+
+    await this.appointmentRepo.save(appointment);
+
+    // Se cancellazione tardiva e c'è un paziente, incrementa il contatore
+    if (isCancelledLate && appointment.patientId) {
+      await this.incrementPatientCancellation(appointment.patientId);
+    }
+
+    return this.findById(id);
+  }
+
+  /**
+   * Segna un appuntamento come no-show e incrementa il contatore paziente
+   */
+  async markNoShow(id: string): Promise<AvailabilityAppointment> {
+    const appointment = await this.findById(id);
+
+    // Verifica che l'appuntamento sia in uno stato appropriato
+    if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
+      throw new BadRequestException(
+        `L'appuntamento non può essere segnato come no-show. Stato attuale: ${appointment.bookingStatus}`
+      );
+    }
+
+    appointment.bookingStatus = BookingStatus.NO_SHOW;
+    await this.appointmentRepo.save(appointment);
+
+    // Incrementa contatore no-show del paziente
+    if (appointment.patientId) {
+      await this.incrementPatientNoShow(appointment.patientId);
+    }
+
+    return this.findById(id);
+  }
+
+  /**
+   * Segna un appuntamento come attended (paziente presentato)
+   * Questo abilita la creazione di un trattamento
+   */
+  async markAttended(id: string): Promise<AvailabilityAppointment> {
+    const appointment = await this.findById(id);
+
+    // Verifica che l'appuntamento sia in uno stato appropriato
+    if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
+      throw new BadRequestException(
+        `L'appuntamento non può essere segnato come presentato. Stato attuale: ${appointment.bookingStatus}`
+      );
+    }
+
+    appointment.bookingStatus = BookingStatus.ATTENDED;
+    await this.appointmentRepo.save(appointment);
+
+    return this.findById(id);
+  }
+
+  /**
+   * Calcola le ore di preavviso tra adesso e l'orario dell'appuntamento
+   */
+  private calculateHoursNotice(appointmentDate: Date, startTime: string): number {
+    // Crea un Date con data e ora dell'appuntamento
+    const dateStr = appointmentDate instanceof Date
+      ? appointmentDate.toISOString().split('T')[0]
+      : appointmentDate;
+
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const appointmentDateTime = new Date(`${dateStr}T${startTime}:00`);
+
+    // Calcola la differenza in ore
+    const now = new Date();
+    const diffMs = appointmentDateTime.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    return Math.max(0, diffHours); // Non può essere negativo
+  }
+
+  /**
+   * Incrementa il contatore cancellazioni del paziente per l'anno corrente
+   */
+  private async incrementPatientCancellation(patientId: number): Promise<void> {
+    const year = new Date().getFullYear().toString();
+
+    // Query raw per aggiornare il JSONB direttamente
+    await this.dataSource.query(`
+      UPDATE patients
+      SET "cancellationsByYear" = jsonb_set(
+        COALESCE("cancellationsByYear", '{}'::jsonb),
+        '{${year}}',
+        to_jsonb(COALESCE(("cancellationsByYear"->>'${year}')::int, 0) + 1)
+      )
+      WHERE id = $1
+    `, [patientId]);
+  }
+
+  /**
+   * Incrementa il contatore no-show del paziente per l'anno corrente
+   */
+  private async incrementPatientNoShow(patientId: number): Promise<void> {
+    const year = new Date().getFullYear().toString();
+
+    // Query raw per aggiornare il JSONB direttamente
+    await this.dataSource.query(`
+      UPDATE patients
+      SET "noShowsByYear" = jsonb_set(
+        COALESCE("noShowsByYear", '{}'::jsonb),
+        '{${year}}',
+        to_jsonb(COALESCE(("noShowsByYear"->>'${year}')::int, 0) + 1)
+      )
+      WHERE id = $1
+    `, [patientId]);
   }
 
   /**
@@ -765,7 +913,7 @@ export class AvailabilityAppointmentService {
         gymRoomId,
         appointmentDate: new Date(date),
         appointmentType: AppointmentType.GYM,
-        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
       },
       relations: ['operator', 'gymRoom'],
       order: { startTime: 'ASC' },
@@ -789,7 +937,7 @@ export class AvailabilityAppointmentService {
         gymRoomId: In(gymRoomIds),
         appointmentDate: Between(new Date(startDate), new Date(endDate)),
         appointmentType: AppointmentType.GYM,
-        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
       },
       relations: ['operator', 'gymRoom'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
@@ -812,7 +960,7 @@ export class AvailabilityAppointmentService {
         startTime,
         endTime,
         appointmentType: AppointmentType.GYM,
-        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
       },
     });
   }
@@ -855,7 +1003,7 @@ export class AvailabilityAppointmentService {
           startTime: input.startTime,
           endTime: input.endTime,
           patientId: input.patientId,
-          bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+          bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
         },
       });
 

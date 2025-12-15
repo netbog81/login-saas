@@ -1,5 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
-import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int, Float, registerEnumType } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 import { Service } from './service.entity';
 import { GymRoom } from './gym-room.entity';
@@ -7,6 +7,7 @@ import { AppointmentType } from './appointment-type.enum';
 import { AppointmentInstrument } from './appointment-instrument.entity';
 import { Patient } from '../../../entities/patient.entity';
 import GraphQLJSON from 'graphql-type-json';
+import { TreatmentStatus } from './treatment-enums';
 
 // ==================== ENUMS ====================
 
@@ -26,20 +27,13 @@ export enum AppointmentStatus {
  * BookingStatus - Stato della prenotazione
  */
 export enum BookingStatus {
-  SCHEDULED = 'scheduled',      // Prenotato
-  CONFIRMED = 'confirmed',      // Confermato (dopo invio reminder 24h)
-  CANCELLED = 'cancelled',      // Disdetto dal paziente
-  NO_SHOW = 'no_show'           // Paziente non presentato
-}
-
-/**
- * TreatmentStatus - Stato del trattamento (workflow in clinica)
- */
-export enum TreatmentStatus {
-  WAITING = 'waiting',                    // In sala d'attesa
-  IN_PROGRESS = 'in_progress',            // Trattamento in corso
-  OPERATOR_COMPLETED = 'operator_completed', // Operatore ha finito e inserito indicazioni
-  CLOSED = 'closed'                       // Segreteria ha chiuso (fatturato)
+  SCHEDULED = 'scheduled',              // Prenotato
+  CONFIRMED = 'confirmed',              // Confermato (dopo invio reminder 24h)
+  CANCELLED = 'cancelled',              // Disdetto (legacy, per compatibilità)
+  CANCELLED_EARLY = 'cancelled_early',  // Disdetto con >24h preavviso (no penalità)
+  CANCELLED_LATE = 'cancelled_late',    // Disdetto con <24h preavviso (tracciato, penalità)
+  NO_SHOW = 'no_show',                  // Paziente non presentato (tracciato, penalità)
+  ATTENDED = 'attended'                 // Paziente presentato → abilita trattamento
 }
 
 /**
@@ -63,10 +57,7 @@ registerEnumType(BookingStatus, {
   description: 'Booking status of the appointment',
 });
 
-registerEnumType(TreatmentStatus, {
-  name: 'TreatmentStatus',
-  description: 'Treatment workflow status',
-});
+// TreatmentStatus is registered in treatment.entity.ts
 
 registerEnumType(ConflictReason, {
   name: 'ConflictReason',
@@ -285,6 +276,28 @@ export class AvailabilityAppointment {
   @Field({ nullable: true })
   @Column('text', { nullable: true })
   cancellationReason?: string;
+
+  /**
+   * Quando è stato cancellato l'appuntamento
+   */
+  @Field({ nullable: true })
+  @Column('timestamp', { nullable: true })
+  cancelledAt?: Date;
+
+  /**
+   * Chi ha cancellato l'appuntamento (userId)
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  cancelledBy?: string;
+
+  /**
+   * Ore di preavviso con cui è stato cancellato (calcolato automaticamente)
+   * Serve per tracciare se la cancellazione è avvenuta con >24h o <24h di preavviso
+   */
+  @Field(() => Float, { nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  cancellationHoursNotice?: number;
 
   /**
    * Note dell'operatore (indicazioni per segreteria dopo il trattamento)

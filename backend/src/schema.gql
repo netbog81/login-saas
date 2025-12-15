@@ -51,7 +51,10 @@ type AvailabilityAppointment {
   appointmentDate: String!
   appointmentType: AppointmentType!
   bookingStatus: BookingStatus!
+  cancellationHoursNotice: Float
   cancellationReason: String
+  cancelledAt: DateTime
+  cancelledBy: ID
   clientEmail: String
   clientName: String!
   clientPhone: String
@@ -139,7 +142,10 @@ type AvailabilityTemplate {
 
 """Booking status of the appointment"""
 enum BookingStatus {
+  ATTENDED
   CANCELLED
+  CANCELLED_EARLY
+  CANCELLED_LATE
   CONFIRMED
   NO_SHOW
   SCHEDULED
@@ -161,6 +167,18 @@ input CheckPhysiotherapistAvailabilityInput {
   durationMinutes: Int
   operatorId: ID!
   serviceId: ID
+}
+
+input CloseTreatmentInput {
+  secretaryNotes: String
+}
+
+input CompleteTreatmentInput {
+  clinicalNotes: String
+  isTest: Boolean
+  operatorNotes: String
+  price: Float!
+  secretaryNotes: String
 }
 
 """Reason for availability conflict"""
@@ -648,7 +666,10 @@ type Mutation {
   anonymizePatient(id: ID!): PatientModel!
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
+  cancelAppointmentWithNotice(cancelledBy: ID!, id: ID!, reason: String!): AvailabilityAppointment!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
+  closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
+  completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
   confirmAvailabilityAppointment(id: ID!): AvailabilityAppointment!
   createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
@@ -672,6 +693,7 @@ type Mutation {
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int): Service!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
+  createTreatment(appointmentId: ID!): Treatment!
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
@@ -713,7 +735,12 @@ type Mutation {
   incrementNoShows(id: ID!): PatientModel!
   initializeDefaultSettings: Boolean!
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
+  markAppointmentAttended(id: ID!): AvailabilityAppointment!
+  markAppointmentNoShow(id: ID!): AvailabilityAppointment!
+  markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
+  markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
+  recordTreatmentPayment(id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
 
   """
@@ -752,6 +779,7 @@ type Mutation {
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int): Service!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
+  updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 }
 
@@ -773,6 +801,7 @@ type Operator {
   name: String!
   phone: String
   preferredDurations: [Int!]
+  royaltyPercentage: Float!
   services: [OperatorService!]
   surname: String
   templateAssignments: [TemplateAssignment!]
@@ -1006,6 +1035,15 @@ input PatternInput {
   startTime: String!
 }
 
+"""Payment method used"""
+enum PaymentMethod {
+  CARD
+  CASH
+  OTHER
+  SATISPAY
+  TRANSFER
+}
+
 type PhysiotherapistSlotOutput {
   available: Boolean!
   endTime: String!
@@ -1104,6 +1142,19 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+  treatment(id: ID!): Treatment
+  treatmentByAppointment(appointmentId: ID!): Treatment
+  treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
+  treatmentsByPatient(limit: Int, offset: Int, patientId: Int!): [Treatment!]!
+  treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
+  treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
+  treatmentsPendingClosure: [Treatment!]!
+}
+
+input RecordPaymentInput {
+  amount: Float
+  collectedBy: ID!
+  paymentMethod: PaymentMethod!
 }
 
 """Modalità di fine ricorrenza"""
@@ -1341,6 +1392,65 @@ enum TipoPaziente {
 
   """Minorenne - richiede consenso genitori/tutore"""
   MINORENNE
+}
+
+type Treatment {
+  appointment: AvailabilityAppointment!
+  appointmentId: ID!
+  clinicalNotes: String
+  closedAt: DateTime
+  collectedBy: ID
+  completedAt: DateTime
+  createdAt: DateTime!
+  id: ID!
+  instruments: [TreatmentInstrument!]
+  invoicedByOperatorAt: DateTime
+  invoicedToPatientAt: DateTime
+  isInvoicedByOperator: Boolean!
+  isInvoicedToPatient: Boolean!
+  isPaid: Boolean!
+  isTest: Boolean!
+  operator: Operator!
+  operatorId: ID!
+  operatorInvoiceNumber: String
+  operatorNotes: String
+  paidAt: DateTime
+  patient: PatientModel
+  patientId: Int
+  patientInvoiceNumber: String
+  paymentMethod: PaymentMethod
+  price: Float!
+  secretaryNotes: String
+  service: Service
+  serviceId: ID
+  startedAt: DateTime!
+  status: TreatmentStatus!
+  updatedAt: DateTime!
+}
+
+type TreatmentInstrument {
+  categoryName: String
+  endOffsetMinutes: Int!
+  id: ID!
+  instrument: Instrument
+  instrumentCategory: InstrumentCategory
+  instrumentCategoryId: ID
+  instrumentId: ID!
+  instrumentName: String
+  orderPosition: Int
+  startOffsetMinutes: Int!
+  treatment: Treatment!
+  treatmentId: ID!
+  wasUsed: Boolean!
+}
+
+input TreatmentInstrumentInput {
+  endOffsetMinutes: Int!
+  instrumentCategoryId: ID
+  instrumentId: ID!
+  orderPosition: Int
+  startOffsetMinutes: Int!
+  wasUsed: Boolean!
 }
 
 """Treatment workflow status"""
