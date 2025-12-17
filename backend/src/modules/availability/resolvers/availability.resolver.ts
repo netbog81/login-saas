@@ -104,6 +104,7 @@ export class AvailabilityResolver {
       input.durationMinutes,
       input.serviceId,
       customSlots,
+      input.instrumentOrderMatters,
     );
 
     // Convert internal format to output format

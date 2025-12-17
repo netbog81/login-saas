@@ -1,5 +1,5 @@
 import { InputType, Field, ID, Int } from '@nestjs/graphql';
-import { IsUUID, IsDateString, IsOptional, IsInt, ValidateNested } from 'class-validator';
+import { IsUUID, IsDateString, IsOptional, IsInt, ValidateNested, Matches, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InstrumentSlotInput } from './instrument-slot.input';
 
@@ -30,4 +30,18 @@ export class CheckPhysiotherapistAvailabilityInput {
   @ValidateNested({ each: true })
   @Type(() => InstrumentSlotInput)
   customInstrumentSlots?: InstrumentSlotInput[];
+
+  // Optional: filter to a specific time slot (HH:mm format)
+  // Used for real-time validation in booking modal
+  @Field({ nullable: true })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'startTime must be in HH:mm format' })
+  startTime?: string;
+
+  // Whether the order of instruments matters
+  // If false, backend can try reversed order when checking availability
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  instrumentOrderMatters?: boolean;
 }

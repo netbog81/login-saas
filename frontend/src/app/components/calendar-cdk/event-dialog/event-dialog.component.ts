@@ -1,13 +1,14 @@
-import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject, of } from 'rxjs';
+import { debounceTime, switchMap, takeUntil, tap, catchError } from 'rxjs/operators';
 import { Appointment, AppointmentInstrument, RepeatConfig, RecurringType, RecurringEndType, BookingStatus } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Patient } from '../../../models/patient.model';
 import { InstrumentCategory } from '../../../graphql/generated/types';
 import { PatientService } from '../../../services/patient.service';
-import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { AvailabilityAppointmentService, InstrumentSlotInput } from '../../../services/availability-appointment.service';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -54,7 +55,7 @@ export interface EventDialogResult {
   templateUrl: './event-dialog.component.html',
   styleUrls: ['./event-dialog.component.scss']
 })
-export class EventDialogComponent implements OnInit {
+export class EventDialogComponent implements OnInit, OnDestroy {
   @Input() data!: EventDialogData;
   @Output() result = new EventEmitter<EventDialogResult>();
 
@@ -73,6 +74,13 @@ export class EventDialogComponent implements OnInit {
   newPatient: Partial<Patient> = {};
   newPatientError: string = '';
   savingNewPatient: boolean = false;
+
+  // Instrument validation state
+  instrumentValidationPending: boolean = false;
+  instrumentValidationError: string | null = null;
+  instrumentValidationWarning: boolean = false;
+  private instrumentValidation$ = new Subject<void>();
+  private destroy$ = new Subject<void>();
 
   constructor(
     private patientService: PatientService,
@@ -166,6 +174,18 @@ export class EventDialogComponent implements OnInit {
         }
       }
     }
+
+    // Setup debounced instrument validation
+    this.instrumentValidation$.pipe(
+      debounceTime(500),
+      switchMap(() => this.validateInstruments()),
+      takeUntil(this.destroy$)
+    ).subscribe();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   get filteredPatients(): Patient[] {
@@ -232,11 +252,12 @@ export class EventDialogComponent implements OnInit {
 
   /**
    * Verifica se è possibile aggiungere un secondo strumento
+   * Nota: >= 45 min per coerenza con la sidebar di ricerca disponibilità
    */
   get canAddSecondInstrument(): boolean {
     return this.instrumentsEnabled &&
            !!this.selectedInstrumentCategoryId &&
-           this.appointmentDuration >= 60;
+           this.appointmentDuration >= 45;
   }
 
   /**
@@ -275,11 +296,18 @@ export class EventDialogComponent implements OnInit {
       }
     } else if (this.selectedInstrumentCategoryId && this.selectedInstrument2CategoryId) {
       // Two instruments
-      const halfDuration = Math.floor(duration / 2);
       const name1 = this.getInstrumentCategoryName(this.selectedInstrumentCategoryId);
       const name2 = this.getInstrumentCategoryName(this.selectedInstrument2CategoryId);
-      parts.push(`${name1} (0-${halfDuration} min)`);
-      parts.push(`${name2} (${halfDuration}-${duration} min)`);
+      if (duration === 45) {
+        // Overlapping: 0-30 and 15-45 (coerente con buildInstrumentSlotsForValidation)
+        parts.push(`${name1} (0-30 min)`);
+        parts.push(`${name2} (15-45 min)`);
+      } else {
+        // Sequential: split evenly
+        const halfDuration = Math.floor(duration / 2);
+        parts.push(`${name1} (0-${halfDuration} min)`);
+        parts.push(`${name2} (${halfDuration}-${duration} min)`);
+      }
       if (this.instrumentOrderMatters) {
         parts.push('(ordine specifico)');
       }
@@ -298,6 +326,10 @@ export class EventDialogComponent implements OnInit {
       this.selectedInstrument2CategoryId = '';
       this.instrumentPosition = 'first';
       this.instrumentOrderMatters = false;
+      this.instrumentValidationError = null;
+      this.instrumentValidationWarning = false;
+    } else {
+      this.triggerInstrumentValidation();
     }
   }
 
@@ -307,6 +339,127 @@ export class EventDialogComponent implements OnInit {
   removeSecondInstrument(): void {
     this.selectedInstrument2CategoryId = '';
     this.instrumentOrderMatters = false;
+    this.triggerInstrumentValidation();
+  }
+
+  /**
+   * Gestisce il cambio di selezione strumenti (categoria, posizione, ecc.)
+   */
+  onInstrumentChange(): void {
+    this.triggerInstrumentValidation();
+  }
+
+  /**
+   * Trigger per la validazione debounced degli strumenti
+   */
+  private triggerInstrumentValidation(): void {
+    this.instrumentValidation$.next();
+  }
+
+  /**
+   * Valida la disponibilità degli strumenti selezionati
+   */
+  private validateInstruments() {
+    // Skip validation if instruments not enabled or no category selected
+    if (!this.instrumentsEnabled || !this.selectedInstrumentCategoryId) {
+      this.instrumentValidationError = null;
+      this.instrumentValidationWarning = false;
+      return of(void 0);
+    }
+
+    // Skip if required fields missing
+    if (!this.operatorId || !this.date || !this.startTime || !this.endTime) {
+      return of(void 0);
+    }
+
+    this.instrumentValidationPending = true;
+    this.instrumentValidationError = null;
+    this.instrumentValidationWarning = false;
+
+    const instrumentSlots = this.buildInstrumentSlotsForValidation();
+
+    return this.appointmentService.checkSlotAvailability({
+      operatorId: this.operatorId,
+      date: this.date,
+      startTime: this.startTime,
+      durationMinutes: this.appointmentDuration,
+      customInstrumentSlots: instrumentSlots,
+      instrumentOrderMatters: this.instrumentOrderMatters,
+    }).pipe(
+      tap(result => {
+        this.instrumentValidationPending = false;
+        if (!result.available) {
+          this.instrumentValidationError = result.reason || 'Strumento non disponibile per questo orario';
+          this.instrumentValidationWarning = true;
+        }
+      }),
+      catchError(err => {
+        this.instrumentValidationPending = false;
+        console.error('Instrument validation error:', err);
+        return of(void 0);
+      })
+    );
+  }
+
+  /**
+   * Costruisce gli slot strumenti per la validazione
+   */
+  private buildInstrumentSlotsForValidation(): InstrumentSlotInput[] {
+    const duration = this.appointmentDuration;
+    const slots: InstrumentSlotInput[] = [];
+
+    if (this.selectedInstrumentCategoryId && !this.selectedInstrument2CategoryId) {
+      // Single instrument
+      if (duration <= 30) {
+        slots.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: duration,
+        });
+      } else if (this.instrumentPosition === 'first') {
+        slots.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: 30,
+        });
+      } else {
+        slots.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: duration - 30,
+          endOffsetMinutes: duration,
+        });
+      }
+    } else if (this.selectedInstrumentCategoryId && this.selectedInstrument2CategoryId) {
+      // Two instruments
+      if (duration === 45) {
+        // Overlapping: 0-30 and 15-45
+        slots.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: 30,
+        });
+        slots.push({
+          instrumentCategoryId: this.selectedInstrument2CategoryId,
+          startOffsetMinutes: 15,
+          endOffsetMinutes: 45,
+        });
+      } else {
+        // Sequential: split evenly
+        const halfDuration = Math.floor(duration / 2);
+        slots.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: halfDuration,
+        });
+        slots.push({
+          instrumentCategoryId: this.selectedInstrument2CategoryId,
+          startOffsetMinutes: halfDuration,
+          endOffsetMinutes: duration,
+        });
+      }
+    }
+
+    return slots;
   }
 
   // ==================== RECURRING METHODS ====================
@@ -520,6 +673,16 @@ export class EventDialogComponent implements OnInit {
       return;
     }
 
+    // Check for instrument validation warnings
+    if (this.instrumentValidationWarning && this.instrumentValidationError) {
+      const proceed = confirm(
+        `Attenzione: ${this.instrumentValidationError}\n\nVuoi procedere comunque con la prenotazione?`
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
     const appointment: Appointment = {
       id: this.data.appointment?.id || 0,
       title: this.title,
@@ -591,20 +754,36 @@ export class EventDialogComponent implements OnInit {
       }
     } else if (this.selectedInstrumentCategoryId && this.selectedInstrument2CategoryId) {
       // Two instruments
-      const halfDuration = Math.floor(duration / 2);
-
-      instruments.push({
-        instrumentCategoryId: this.selectedInstrumentCategoryId,
-        startOffsetMinutes: 0,
-        endOffsetMinutes: halfDuration,
-        orderPosition: 1
-      });
-      instruments.push({
-        instrumentCategoryId: this.selectedInstrument2CategoryId,
-        startOffsetMinutes: halfDuration,
-        endOffsetMinutes: duration,
-        orderPosition: 2
-      });
+      if (duration === 45) {
+        // Overlapping: 0-30 and 15-45 (15 min overlap)
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: 30,
+          orderPosition: 1
+        });
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrument2CategoryId,
+          startOffsetMinutes: 15,
+          endOffsetMinutes: 45,
+          orderPosition: 2
+        });
+      } else {
+        // Sequential: split evenly (60 min → 0-30 e 30-60)
+        const halfDuration = Math.floor(duration / 2);
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: halfDuration,
+          orderPosition: 1
+        });
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrument2CategoryId,
+          startOffsetMinutes: halfDuration,
+          endOffsetMinutes: duration,
+          orderPosition: 2
+        });
+      }
     }
 
     return instruments;
@@ -753,7 +932,7 @@ export class EventDialogComponent implements OnInit {
         this.appointmentService.cancelWithNotice(
           String(this.data.appointment.id),
           reason,
-          'system' // TODO: sostituire con ID utente corrente
+          this.data.appointment.operatorId // Usa l'operatorId come cancelledBy
         )
       );
       this.result.emit({ action: 'delete' });

@@ -7,6 +7,7 @@ import {
   GET_AVAILABILITY_APPOINTMENTS,
   GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR,
   IS_INSTRUMENT_AVAILABLE,
+  CHECK_SLOT_AVAILABILITY,
 } from '../graphql/operations/availability-appointment.queries';
 import {
   CREATE_AVAILABILITY_APPOINTMENT,
@@ -314,4 +315,93 @@ export class AvailabilityAppointmentService {
       })
       .pipe(map((result) => result.data?.isInstrumentAvailable ?? false));
   }
+
+  /**
+   * Verifica disponibilità slot con strumenti multipli
+   * Usato per validazione real-time nel modal di prenotazione
+   */
+  checkSlotAvailability(input: CheckSlotAvailabilityInput): Observable<SlotAvailabilityResult> {
+    console.log('[checkSlotAvailability] Input:', JSON.stringify(input, null, 2));
+
+    return this.apollo
+      .query<{ physiotherapistAvailableSlots: PhysiotherapistSlotOutput[] }>({
+        query: CHECK_SLOT_AVAILABILITY,
+        variables: { input },
+        fetchPolicy: 'network-only',
+      })
+      .pipe(
+        map((result) => {
+          const slots = result.data?.physiotherapistAvailableSlots || [];
+          console.log('[checkSlotAvailability] Backend returned slots:', slots.length, slots.map(s => `${s.startTime} (available: ${s.available})`));
+
+          // Trova lo slot che corrisponde al nostro startTime
+          const matchingSlot = slots.find(slot => slot.startTime === input.startTime);
+          console.log('[checkSlotAvailability] Looking for startTime:', input.startTime, '| Found:', !!matchingSlot);
+
+          if (!matchingSlot) {
+            // Se slots è vuoto, probabilmente mancano strumenti attivi per le categorie richieste
+            if (slots.length === 0) {
+              console.log('[checkSlotAvailability] No slots returned - likely missing active instruments for categories');
+              return {
+                available: false,
+                reason: 'Nessuno strumento disponibile per una delle categorie selezionate'
+              };
+            }
+
+            // Se non troviamo lo slot specifico, verifichiamo se c'è almeno uno slot disponibile
+            const anyAvailable = slots.find(slot => slot.available);
+            if (anyAvailable) {
+              console.log('[checkSlotAvailability] Slot not found at exact time, but other available slots exist');
+              return { available: true };
+            }
+            return { available: false, reason: 'Slot non disponibile per questo orario' };
+          }
+
+          console.log('[checkSlotAvailability] Matching slot found:', matchingSlot);
+          return {
+            available: matchingSlot.available,
+            reason: matchingSlot.reason,
+            suggestedInstruments: matchingSlot.suggestedInstruments,
+          };
+        })
+      );
+  }
+}
+
+// Interfaces for slot availability check
+export interface InstrumentSlotInput {
+  instrumentCategoryId: string;
+  startOffsetMinutes: number;
+  endOffsetMinutes: number;
+}
+
+export interface CheckSlotAvailabilityInput {
+  operatorId: string;
+  date: string;
+  startTime?: string; // Per filtrare il risultato
+  durationMinutes: number;
+  customInstrumentSlots?: InstrumentSlotInput[];
+  instrumentOrderMatters?: boolean; // Se false, backend prova anche ordine inverso
+}
+
+export interface InstrumentSlotOutput {
+  instrumentCategoryId: string;
+  categoryName: string;
+  instrumentId?: string;
+  startOffsetMinutes: number;
+  endOffsetMinutes: number;
+}
+
+export interface PhysiotherapistSlotOutput {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+  reason?: string;
+  suggestedInstruments?: InstrumentSlotOutput[];
+}
+
+export interface SlotAvailabilityResult {
+  available: boolean;
+  reason?: string;
+  suggestedInstruments?: InstrumentSlotOutput[];
 }

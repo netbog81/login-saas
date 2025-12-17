@@ -110,7 +110,7 @@ export const GET_AVAILABILITY_APPOINTMENTS = gql`
 `;
 
 /**
- * Query: Verifica disponibilità strumento
+ * Query: Verifica disponibilità strumento singolo
  */
 export const IS_INSTRUMENT_AVAILABLE = gql`
   query IsInstrumentAvailable(
@@ -129,5 +129,27 @@ export const IS_INSTRUMENT_AVAILABLE = gql`
       endOffsetMinutes: $endOffsetMinutes
       excludeAppointmentId: $excludeAppointmentId
     )
+  }
+`;
+
+/**
+ * Query: Verifica disponibilità slot con strumenti multipli
+ * Usata per validazione real-time nel modal di prenotazione
+ */
+export const CHECK_SLOT_AVAILABILITY = gql`
+  query CheckAppointmentSlotAvailability($input: CheckPhysiotherapistAvailabilityInput!) {
+    physiotherapistAvailableSlots(input: $input) {
+      startTime
+      endTime
+      available
+      reason
+      suggestedInstruments {
+        instrumentCategoryId
+        categoryName
+        instrumentId
+        startOffsetMinutes
+        endOffsetMinutes
+      }
+    }
   }
 `;

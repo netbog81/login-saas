@@ -1743,19 +1743,18 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       : this.visibleDates;
 
     // Costruisci gli instrument slots in base ai filtri
-    // Se ci sono 2 strumenti e l'ordine NON importa, prova entrambe le combinazioni
-    const instrumentSlotsCombinations = this.buildInstrumentSlotsCombinations(filters);
+    // Il backend gestisce automaticamente il fallback con ordine inverso se instrumentOrderMatters = false
+    const instrumentSlots = this.buildInstrumentSlots(filters);
+    const instrumentOrderMatters = filters.instrumentOrderMatters ?? false;
 
-    // Cerca slot per ogni fisioterapista, data e combinazione strumenti
+    // Cerca slot per ogni fisioterapista e data
     const searchPromises: Promise<void>[] = [];
 
     for (const physio of physiotherapists) {
       for (const date of datesToSearch) {
-        for (const instrumentSlots of instrumentSlotsCombinations) {
-          searchPromises.push(
-            this.searchSlotsForOperator(physio, date, filters.duration, instrumentSlots, availableSlots)
-          );
-        }
+        searchPromises.push(
+          this.searchSlotsForOperator(physio, date, filters.duration, instrumentSlots, instrumentOrderMatters, availableSlots)
+        );
       }
     }
 
@@ -1821,6 +1820,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     date: string,
     duration: number,
     instrumentSlots: InstrumentSlotInput[] | undefined,
+    instrumentOrderMatters: boolean,
     results: AvailableSlot[]
   ): Promise<void> {
     try {
@@ -1829,7 +1829,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           operatorId: operator.operatorId!,
           date,
           durationMinutes: duration,
-          customInstrumentSlots: instrumentSlots
+          customInstrumentSlots: instrumentSlots,
+          instrumentOrderMatters: instrumentOrderMatters
         })
       );
 

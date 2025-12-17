@@ -36,6 +36,7 @@ export interface CheckAvailabilityParams {
   durationMinutes?: number;
   serviceId?: string;
   customInstrumentSlots?: InstrumentSlot[];
+  instrumentOrderMatters?: boolean; // If false, backend can try reversed order
 }
 
 export interface AvailabilityResult {
@@ -76,7 +77,8 @@ export class PhysiotherapistAvailabilityService {
 
     // Determine final parameters: custom overrides service
     let requiredInstruments: ServiceInstrument[] = [];
-    let instrumentOrderMatters = false;
+    // Use value from params if provided, otherwise default to false
+    let instrumentOrderMatters = params.instrumentOrderMatters ?? false;
     let requestedSlots = customInstrumentSlots;
     let serviceConfig: { defaultInstrumentSlotOffset?: number; reverseInstrumentOrder?: boolean } | undefined;
 
@@ -95,7 +97,8 @@ export class PhysiotherapistAvailabilityService {
         durationMinutes = service.defaultDuration;
       }
 
-      // Always get instrumentOrderMatters from service
+      // When using a service, always get instrumentOrderMatters from service config
+      // (overrides any value passed from frontend)
       instrumentOrderMatters = service.instrumentOrderMatters;
 
       // Get service configuration for instrument slot calculation
@@ -396,8 +399,6 @@ export class PhysiotherapistAvailabilityService {
     requestedSlots?: InstrumentSlot[],
     serviceConfig?: { defaultInstrumentSlotOffset?: number; reverseInstrumentOrder?: boolean },
   ): Promise<AvailabilityResult> {
-    const suggestedInstruments: InstrumentSlot[] = [];
-
     // Calculate instrument slots based on duration and order
     const instrumentSlots = this.calculateInstrumentSlots(
       durationMinutes,
@@ -410,6 +411,85 @@ export class PhysiotherapistAvailabilityService {
     if (!instrumentSlots) {
       return { available: false, reason: 'Configurazione slot strumenti non valida' };
     }
+
+    // Check if slots are sequential (no overlap) or overlapping
+    // Sequential: slot2.startOffset >= slot1.endOffset (e.g., 0-30 and 30-60)
+    // Overlapping: slot2.startOffset < slot1.endOffset (e.g., 0-30 and 15-45)
+    const hasOverlap = instrumentSlots.length === 2 &&
+      instrumentSlots[1].startOffsetMinutes < instrumentSlots[0].endOffsetMinutes;
+
+    // Try to find available instruments with the requested order
+    const result = await this.tryFindInstruments(
+      date,
+      startTime,
+      requiredInstruments,
+      instrumentSlots,
+    );
+
+    if (result.available) {
+      return result;
+    }
+
+    // If order doesn't matter and we have 2 instruments and SEQUENTIAL slots (60 min),
+    // try reversed order (swapping time slots)
+    // For OVERLAPPING slots (45 min), skip fallback - same physical conflict exists
+    if (!orderMatters && !hasOverlap && requiredInstruments.length === 2 && requestedSlots && requestedSlots.length === 2) {
+      // Reverse the time slots (swap time ranges between instruments)
+      // Category A now searches in slot 2's time, Category B in slot 1's time
+      const reversedSlots = [
+        { ...instrumentSlots[1] }, // Category A gets second slot's time
+        { ...instrumentSlots[0] }, // Category B gets first slot's time
+      ];
+
+      const reversedResult = await this.tryFindInstruments(
+        date,
+        startTime,
+        requiredInstruments, // Same categories, different times
+        reversedSlots,
+      );
+
+      if (reversedResult.available) {
+        return reversedResult;
+      }
+    }
+
+    // If still not available and orderMatters=true with SEQUENTIAL slots,
+    // check if it's specifically an order conflict for a more descriptive message
+    if (orderMatters && !hasOverlap && requiredInstruments.length === 2) {
+      const requestedCategories = requiredInstruments.map((inst, i) => ({
+        categoryId: inst.instrumentCategoryId,
+        startOffset: instrumentSlots[i].startOffsetMinutes,
+        endOffset: instrumentSlots[i].endOffsetMinutes,
+      }));
+
+      const conflict = await this.checkOrderConflict(
+        date,
+        startTime,
+        requestedCategories,
+        'fisioterapista',
+      );
+
+      if (conflict.hasConflict) {
+        return {
+          available: false,
+          reason: 'Ordine strumenti già riservato da un altro appuntamento',
+        };
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Helper to try finding available instruments for given slots
+   */
+  private async tryFindInstruments(
+    date: Date,
+    startTime: string,
+    requiredInstruments: ServiceInstrument[],
+    instrumentSlots: { startOffsetMinutes: number; endOffsetMinutes: number }[],
+  ): Promise<AvailabilityResult> {
+    const suggestedInstruments: InstrumentSlot[] = [];
 
     // For each required instrument category, find an available instrument
     for (let i = 0; i < requiredInstruments.length; i++) {
@@ -614,6 +694,84 @@ export class PhysiotherapistAvailabilityService {
   }
 
   /**
+   * Helper: Format date for database query (YYYY-MM-DD)
+   */
+  private formatDateForQuery(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  /**
+   * Check if requested instrument order conflicts with existing appointments.
+   * This is used ONLY for sequential slots (60+ min) where orderMatters logic applies.
+   * Returns true if there's a conflict (same order already locked by another appointment).
+   */
+  private async checkOrderConflict(
+    date: Date,
+    startTime: string,
+    requestedCategories: { categoryId: string; startOffset: number; endOffset: number }[],
+    macroCategory: string,
+  ): Promise<{ hasConflict: boolean; conflictingAppointment?: string }> {
+    const dateString = this.formatDateForQuery(date);
+
+    // Find all appointments on this date/time that have instrumentOrderMatters = true
+    // We need to check appointments that START at the EXACT same time
+    // because the order conflict is about using the same instrument ORDER in the same time slot
+    const conflictingAppointments = await this.appointmentRepo
+      .createQueryBuilder('apt')
+      .innerJoin('apt.operator', 'op')
+      .innerJoinAndSelect('apt.instruments', 'ai')
+      .innerJoinAndSelect('ai.instrument', 'inst')
+      .where('apt.appointmentDate = :date', { date: dateString })
+      .andWhere('apt.instrumentOrderMatters = true')
+      .andWhere('apt.bookingStatus NOT IN (:...excluded)', { excluded: ['cancelled', 'no_show'] })
+      .andWhere('op.macroCategory = :macroCategory', { macroCategory })
+      // Check for exact same start time - order conflict only matters for same time slot
+      .andWhere('apt.startTime = :startTime', { startTime })
+      .getMany();
+
+    for (const apt of conflictingAppointments) {
+      // Build category/offset list from existing appointment
+      const aptCategories = apt.instruments.map(ai => ({
+        categoryId: ai.instrument.categoryId,
+        startOffset: ai.startOffsetMinutes,
+        endOffset: ai.endOffsetMinutes,
+      }));
+
+      // Check if the order is identical
+      const sameOrder = this.isSameInstrumentOrder(requestedCategories, aptCategories);
+      if (sameOrder) {
+        return { hasConflict: true, conflictingAppointment: apt.id };
+      }
+    }
+
+    return { hasConflict: false };
+  }
+
+  /**
+   * Compare two instrument orders to see if they are identical.
+   * Orders are compared by: categoryId + startOffset + endOffset
+   */
+  private isSameInstrumentOrder(
+    requested: { categoryId: string; startOffset: number; endOffset: number }[],
+    existing: { categoryId: string; startOffset: number; endOffset: number }[],
+  ): boolean {
+    if (requested.length !== existing.length) return false;
+
+    // Sort both by startOffset and compare
+    const sortByOffset = (a: { startOffset: number }, b: { startOffset: number }) => a.startOffset - b.startOffset;
+    const reqSorted = [...requested].sort(sortByOffset);
+    const exSorted = [...existing].sort(sortByOffset);
+
+    for (let i = 0; i < reqSorted.length; i++) {
+      if (reqSorted[i].categoryId !== exSorted[i].categoryId) return false;
+      if (reqSorted[i].startOffset !== exSorted[i].startOffset) return false;
+      if (reqSorted[i].endOffset !== exSorted[i].endOffset) return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Calculate the slot step duration based on operator preferences and system settings.
    * Priority:
    * 1. If system priority is 'system', use system default
@@ -720,6 +878,7 @@ export class PhysiotherapistAvailabilityService {
     durationMinutes?: number,
     serviceId?: string,
     customInstrumentSlots?: InstrumentSlot[],
+    instrumentOrderMatters?: boolean,
   ): Promise<AvailabilitySlot[]> {
     const slots: AvailabilitySlot[] = [];
 
@@ -850,6 +1009,7 @@ export class PhysiotherapistAvailabilityService {
               durationMinutes: finalDuration,
               serviceId,
               customInstrumentSlots,
+              instrumentOrderMatters,
             });
 
             // Only add slots that pass availability check

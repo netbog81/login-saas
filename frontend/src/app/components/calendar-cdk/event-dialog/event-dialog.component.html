@@ -22,6 +22,7 @@
           type="date"
           id="date"
           [(ngModel)]="date"
+          (ngModelChange)="onInstrumentChange()"
           [class.error]="errors['date']"
           class="form-input">
         <span class="error-message" *ngIf="errors['date']">{{ errors['date'] }}</span>
@@ -32,6 +33,7 @@
         <select
           id="operatorId"
           [(ngModel)]="operatorId"
+          (ngModelChange)="onInstrumentChange()"
           [class.error]="errors['operatorId']"
           class="form-input">
           <option value="">Seleziona operatore</option>
@@ -50,6 +52,7 @@
           type="time"
           id="startTime"
           [(ngModel)]="startTime"
+          (ngModelChange)="onInstrumentChange()"
           [class.error]="errors['startTime']"
           class="form-input">
         <span class="error-message" *ngIf="errors['startTime']">{{ errors['startTime'] }}</span>
@@ -61,6 +64,7 @@
           type="time"
           id="endTime"
           [(ngModel)]="endTime"
+          (ngModelChange)="onInstrumentChange()"
           [class.error]="errors['endTime']"
           class="form-input">
         <span class="error-message" *ngIf="errors['endTime']">{{ errors['endTime'] }}</span>
@@ -181,6 +185,7 @@
             <label>Strumento 1</label>
             <select
               [(ngModel)]="selectedInstrumentCategoryId"
+              (ngModelChange)="onInstrumentChange()"
               class="form-input">
               <option value="">Seleziona strumento</option>
               <option *ngFor="let cat of instrumentCategories" [value]="cat.id">
@@ -195,6 +200,7 @@
               <input
                 type="radio"
                 [(ngModel)]="instrumentPosition"
+                (ngModelChange)="onInstrumentChange()"
                 value="first">
               Primi 30 min
             </label>
@@ -202,18 +208,20 @@
               <input
                 type="radio"
                 [(ngModel)]="instrumentPosition"
+                (ngModelChange)="onInstrumentChange()"
                 value="second">
               Ultimi 30 min
             </label>
           </div>
         </div>
 
-        <!-- Second instrument (only if duration >= 60 and first is selected) -->
+        <!-- Second instrument (only if duration >= 45 and first is selected) -->
         <div class="instrument-row" *ngIf="canAddSecondInstrument">
           <div class="form-group">
             <label>Strumento 2 (opzionale)</label>
             <select
               [(ngModel)]="selectedInstrument2CategoryId"
+              (ngModelChange)="onInstrumentChange()"
               class="form-input">
               <option value="">Nessuno</option>
               <option *ngFor="let cat of instrumentCategories" [value]="cat.id">
@@ -227,7 +235,8 @@
             <label class="checkbox-label">
               <input
                 type="checkbox"
-                [(ngModel)]="instrumentOrderMatters">
+                [(ngModel)]="instrumentOrderMatters"
+                (ngModelChange)="onInstrumentChange()">
               L'ordine degli strumenti e importante
             </label>
             <button
@@ -239,8 +248,23 @@
           </div>
         </div>
 
+        <!-- Validation feedback -->
+        <div class="instrument-validation" *ngIf="selectedInstrumentCategoryId">
+          <!-- Loading indicator -->
+          <div class="validation-loading" *ngIf="instrumentValidationPending">
+            <span class="spinner"></span>
+            <span>Verifica disponibilita...</span>
+          </div>
+
+          <!-- Warning message -->
+          <div class="validation-warning" *ngIf="instrumentValidationWarning && !instrumentValidationPending">
+            <span class="warning-icon">⚠️</span>
+            <span class="warning-text">{{ instrumentValidationError }}</span>
+          </div>
+        </div>
+
         <!-- Summary -->
-        <div class="instruments-info" *ngIf="selectedInstrumentCategoryId">
+        <div class="instruments-info" *ngIf="selectedInstrumentCategoryId && !instrumentValidationWarning">
           <div class="instruments-badge">
             <span class="badge-icon">✓</span>
             <span class="badge-text">{{ getInstrumentDescription() }}</span>

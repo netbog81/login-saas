@@ -155,8 +155,10 @@ export type CheckPhysiotherapistAvailabilityInput = {
   customInstrumentSlots?: InputMaybe<Array<InstrumentSlotInput>>;
   date: Scalars['String']['input'];
   durationMinutes?: InputMaybe<Scalars['Int']['input']>;
+  instrumentOrderMatters?: InputMaybe<Scalars['Boolean']['input']>;
   operatorId: Scalars['ID']['input'];
   serviceId?: InputMaybe<Scalars['ID']['input']>;
+  startTime?: InputMaybe<Scalars['String']['input']>;
 };
 
 /** Reason for availability conflict */

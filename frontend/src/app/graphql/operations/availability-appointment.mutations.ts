@@ -77,7 +77,7 @@ export const MARK_APPOINTMENT_AS_NO_SHOW = gql`
  */
 export const CANCEL_APPOINTMENT_WITH_NOTICE = gql`
   ${AVAILABILITY_APPOINTMENT_FIELDS}
-  mutation CancelAppointmentWithNotice($id: ID!, $reason: String!, $cancelledBy: ID!) {
+  mutation CancelAvailabilityAppointmentWithNotice($id: ID!, $reason: String!, $cancelledBy: ID!) {
     cancelAppointmentWithNotice(id: $id, reason: $reason, cancelledBy: $cancelledBy) {
       ...AvailabilityAppointmentFields
     }
@@ -89,7 +89,7 @@ export const CANCEL_APPOINTMENT_WITH_NOTICE = gql`
  */
 export const MARK_APPOINTMENT_ATTENDED = gql`
   ${AVAILABILITY_APPOINTMENT_FIELDS}
-  mutation MarkAppointmentAttended($id: ID!) {
+  mutation MarkAvailabilityAppointmentAttended($id: ID!) {
     markAppointmentAttended(id: $id) {
       ...AvailabilityAppointmentFields
     }
