@@ -596,6 +596,109 @@ textarea.form-input {
   }
 }
 
+// Booking Status Section
+.status-actions {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 12px;
+
+  &.status-scheduled {
+    background: #e3f2fd;
+    color: #1565c0;
+  }
+
+  &.status-confirmed {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  &.status-attended {
+    background: #c8e6c9;
+    color: #1b5e20;
+  }
+
+  &.status-no-show {
+    background: #ffebee;
+    color: #c62828;
+  }
+
+  &.status-cancelled,
+  &.status-cancelled-late {
+    background: #fff3e0;
+    color: #ef6c00;
+  }
+}
+
+.status-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-status {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &.btn-attended {
+    background: #4caf50;
+    color: white;
+
+    &:hover {
+      background: #43a047;
+    }
+  }
+
+  &.btn-no-show {
+    background: #f44336;
+    color: white;
+
+    &:hover {
+      background: #e53935;
+    }
+  }
+
+  &.btn-cancel {
+    background: #ff9800;
+    color: white;
+
+    &:hover {
+      background: #fb8c00;
+    }
+  }
+}
+
+.late-warning {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fff3e0;
+  border-left: 3px solid #ff9800;
+  font-size: 12px;
+  color: #e65100;
+}
+
+.status-description {
+  font-size: 13px;
+  color: #666;
+  margin: 8px 0 0;
+  font-style: italic;
+}
+
 // Responsive
 @media (max-width: 640px) {
   .event-dialog {

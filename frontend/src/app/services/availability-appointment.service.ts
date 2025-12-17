@@ -15,6 +15,8 @@ import {
   DELETE_AVAILABILITY_APPOINTMENT,
   CONFIRM_AVAILABILITY_APPOINTMENT,
   MARK_APPOINTMENT_AS_NO_SHOW,
+  CANCEL_APPOINTMENT_WITH_NOTICE,
+  MARK_APPOINTMENT_ATTENDED,
 } from '../graphql/operations/availability-appointment.mutations';
 
 export interface AppointmentInstrumentInput {
@@ -238,6 +240,50 @@ export class AvailabilityAppointmentService {
             throw new Error('Failed to mark appointment as no-show');
           }
           return result.data.markAppointmentAsNoShow;
+        })
+      );
+  }
+
+  /**
+   * Cancella con calcolo automatico del preavviso
+   * - >24h → cancelled_early
+   * - <24h → cancelled_late (incrementa contatore paziente)
+   */
+  cancelWithNotice(
+    id: string,
+    reason: string,
+    cancelledBy: string
+  ): Observable<AvailabilityAppointment> {
+    return this.apollo
+      .mutate<{ cancelAppointmentWithNotice: AvailabilityAppointment }>({
+        mutation: CANCEL_APPOINTMENT_WITH_NOTICE,
+        variables: { id, reason, cancelledBy },
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error('Failed to cancel appointment');
+          }
+          return result.data.cancelAppointmentWithNotice;
+        })
+      );
+  }
+
+  /**
+   * Segna paziente come presentato (abilita creazione trattamento)
+   */
+  markAsAttended(id: string): Observable<AvailabilityAppointment> {
+    return this.apollo
+      .mutate<{ markAppointmentAttended: AvailabilityAppointment }>({
+        mutation: MARK_APPOINTMENT_ATTENDED,
+        variables: { id },
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error('Failed to mark appointment as attended');
+          }
+          return result.data.markAppointmentAttended;
         })
       );
   }

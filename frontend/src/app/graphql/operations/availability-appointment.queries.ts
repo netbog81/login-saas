@@ -21,6 +21,9 @@ export const AVAILABILITY_APPOINTMENT_FIELDS = gql`
     conflictReason
     notes
     cancellationReason
+    cancelledAt
+    cancelledBy
+    cancellationHoursNotice
     operatorNotes
     instrumentOrderMatters
     createdAt

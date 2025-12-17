@@ -361,6 +361,43 @@
         placeholder="Note aggiuntive..."
         class="form-input"></textarea>
     </div>
+
+    <!-- Booking Status Actions (solo in edit mode) -->
+    <div class="form-group status-actions" *ngIf="isEditMode">
+      <label>Stato Appuntamento</label>
+
+      <div class="status-badge" [ngClass]="getStatusClass()">
+        {{ getStatusLabel() }}
+      </div>
+
+      <!-- Descrizioni per stati finali -->
+      <p class="status-description" *ngIf="bookingStatus === 'attended'">
+        Il paziente e arrivato e puo iniziare il trattamento.
+      </p>
+      <p class="status-description" *ngIf="bookingStatus === 'no_show'">
+        Il paziente non si e presentato. Evento tracciato.
+      </p>
+      <p class="status-description" *ngIf="bookingStatus === 'cancelled_early' || bookingStatus === 'cancelled_late'">
+        L'appuntamento e stato disdetto.
+      </p>
+
+      <!-- Bottoni azione solo per stati attivi -->
+      <div class="status-buttons" *ngIf="canShowStatusActions">
+        <button *ngIf="canMarkAttended" class="btn-status btn-attended" (click)="onMarkAttended()">
+          ✓ Paziente Arrivato
+        </button>
+        <button *ngIf="canMarkNoShow" class="btn-status btn-no-show" (click)="onMarkNoShow()">
+          ✗ Non Presentato
+        </button>
+        <button *ngIf="canCancel" class="btn-status btn-cancel" (click)="onCancelWithNotice()">
+          Disdici
+        </button>
+      </div>
+
+      <div class="late-warning" *ngIf="isLateCancellation && canCancel">
+        ⚠️ Cancellazione con meno di 24h - verra tracciata
+      </div>
+    </div>
   </div>
 
   <!-- Dialog footer -->

@@ -69,3 +69,29 @@ export const MARK_APPOINTMENT_AS_NO_SHOW = gql`
     }
   }
 `;
+
+/**
+ * Mutation: Cancella appuntamento con calcolo automatico preavviso
+ * - >24h → cancelled_early
+ * - <24h → cancelled_late (incrementa contatore paziente)
+ */
+export const CANCEL_APPOINTMENT_WITH_NOTICE = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  mutation CancelAppointmentWithNotice($id: ID!, $reason: String!, $cancelledBy: ID!) {
+    cancelAppointmentWithNotice(id: $id, reason: $reason, cancelledBy: $cancelledBy) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;
+
+/**
+ * Mutation: Segna paziente come presentato (abilita creazione trattamento)
+ */
+export const MARK_APPOINTMENT_ATTENDED = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  mutation MarkAppointmentAttended($id: ID!) {
+    markAppointmentAttended(id: $id) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;

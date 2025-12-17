@@ -2,11 +2,12 @@ import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { Appointment, AppointmentInstrument, RepeatConfig, RecurringType, RecurringEndType } from '../../../models/appointment.model';
+import { Appointment, AppointmentInstrument, RepeatConfig, RecurringType, RecurringEndType, BookingStatus } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Patient } from '../../../models/patient.model';
 import { InstrumentCategory } from '../../../graphql/generated/types';
 import { PatientService } from '../../../services/patient.service';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -73,7 +74,10 @@ export class EventDialogComponent implements OnInit {
   newPatientError: string = '';
   savingNewPatient: boolean = false;
 
-  constructor(private patientService: PatientService) {}
+  constructor(
+    private patientService: PatientService,
+    private appointmentService: AvailabilityAppointmentService
+  ) {}
 
   // Instrument management
   instrumentsEnabled: boolean = false;
@@ -102,6 +106,9 @@ export class EventDialogComponent implements OnInit {
   isEditMode: boolean = false;
   errors: { [key: string]: string } = {};
 
+  // Booking status for edit mode
+  bookingStatus: BookingStatus = 'scheduled';
+
   ngOnInit(): void {
     if (this.data.appointment) {
       // Edit mode
@@ -114,6 +121,7 @@ export class EventDialogComponent implements OnInit {
       this.operatorId = apt.operatorId;
       this.patientId = apt.patientId ? Number(apt.patientId) : null;  // Forza conversione a number
       this.notes = apt.notes || '';
+      this.bookingStatus = (apt.bookingStatus as BookingStatus) || 'scheduled';
 
       // Load existing instruments
       if (apt.instruments && apt.instruments.length > 0) {
@@ -615,6 +623,144 @@ export class EventDialogComponent implements OnInit {
     this.result.emit({
       action: 'cancel'
     });
+  }
+
+  // ==================== BOOKING STATUS METHODS ====================
+
+  /**
+   * Mostra le azioni di stato solo per appuntamenti non già cancellati/chiusi
+   */
+  get canShowStatusActions(): boolean {
+    return this.bookingStatus === 'scheduled' || this.bookingStatus === 'confirmed';
+  }
+
+  /**
+   * Può segnare come "paziente arrivato" solo se l'appuntamento è oggi
+   */
+  get canMarkAttended(): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    return this.canShowStatusActions && this.date === today;
+  }
+
+  /**
+   * Può segnare come no-show solo se l'appuntamento è passato
+   */
+  get canMarkNoShow(): boolean {
+    const now = new Date();
+    const appointmentEnd = new Date(`${this.date}T${this.endTime}`);
+    return this.canShowStatusActions && appointmentEnd < now;
+  }
+
+  /**
+   * Può cancellare se lo stato lo consente
+   */
+  get canCancel(): boolean {
+    return this.canShowStatusActions;
+  }
+
+  /**
+   * Verifica se è una cancellazione tardiva (<24h)
+   */
+  get isLateCancellation(): boolean {
+    if (!this.date || !this.startTime) return false;
+    const appointmentStart = new Date(`${this.date}T${this.startTime}`);
+    const hoursUntil = (appointmentStart.getTime() - Date.now()) / (1000 * 60 * 60);
+    return hoursUntil < 24;
+  }
+
+  /**
+   * Restituisce la classe CSS per il badge dello stato
+   */
+  getStatusClass(): string {
+    const statusClasses: Record<string, string> = {
+      'scheduled': 'status-scheduled',
+      'confirmed': 'status-confirmed',
+      'attended': 'status-attended',
+      'no_show': 'status-no-show',
+      'cancelled_early': 'status-cancelled',
+      'cancelled_late': 'status-cancelled-late',
+      'cancelled': 'status-cancelled'
+    };
+    return statusClasses[this.bookingStatus] || 'status-scheduled';
+  }
+
+  /**
+   * Restituisce il label dello stato
+   */
+  getStatusLabel(): string {
+    const labels: Record<string, string> = {
+      'scheduled': 'Prenotato',
+      'confirmed': 'Confermato',
+      'attended': 'Presentato',
+      'no_show': 'Non Presentato',
+      'cancelled_early': 'Disdetto',
+      'cancelled_late': 'Disdetto (tardivo)',
+      'cancelled': 'Cancellato'
+    };
+    return labels[this.bookingStatus] || 'Prenotato';
+  }
+
+  /**
+   * Segna il paziente come arrivato
+   */
+  async onMarkAttended(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+    try {
+      await firstValueFrom(
+        this.appointmentService.markAsAttended(String(this.data.appointment.id))
+      );
+      this.result.emit({
+        action: 'save',
+        appointment: { ...this.data.appointment, bookingStatus: 'attended' } as Appointment
+      });
+    } catch (error) {
+      console.error('Error marking as attended:', error);
+      alert('Errore nel segnare il paziente come arrivato');
+    }
+  }
+
+  /**
+   * Segna come no-show
+   */
+  async onMarkNoShow(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+    if (!confirm('Confermi che il paziente non si e presentato?')) return;
+    try {
+      await firstValueFrom(
+        this.appointmentService.markAsNoShow(String(this.data.appointment.id))
+      );
+      this.result.emit({
+        action: 'save',
+        appointment: { ...this.data.appointment, bookingStatus: 'no_show' } as Appointment
+      });
+    } catch (error) {
+      console.error('Error marking as no-show:', error);
+      alert('Errore nel segnare come non presentato');
+    }
+  }
+
+  /**
+   * Disdici appuntamento con calcolo automatico del preavviso
+   */
+  async onCancelWithNotice(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+
+    const reason = prompt('Motivo della cancellazione:');
+    if (!reason) return;
+
+    try {
+      await firstValueFrom(
+        this.appointmentService.cancelWithNotice(
+          String(this.data.appointment.id),
+          reason,
+          'system' // TODO: sostituire con ID utente corrente
+        )
+      );
+      this.result.emit({ action: 'delete' });
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      alert('Errore nella cancellazione dell\'appuntamento');
+    }
   }
 
   private timeToMinutes(time: string): number {

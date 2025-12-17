@@ -4,7 +4,14 @@ import { Operator } from '../graphql/generated/types';
 
 // ==================== ENUMS ====================
 
-export type BookingStatus = 'scheduled' | 'confirmed' | 'cancelled' | 'no_show';
+export type BookingStatus =
+  | 'scheduled'        // Prenotato
+  | 'confirmed'        // Confermato (reminder inviato)
+  | 'cancelled'        // Cancellato (legacy)
+  | 'cancelled_early'  // Disdetto con >24h preavviso
+  | 'cancelled_late'   // Disdetto con <24h preavviso (penalità)
+  | 'no_show'          // Non presentato
+  | 'attended';        // Paziente presentato → può iniziare trattamento
 export type TreatmentStatus = 'waiting' | 'in_progress' | 'operator_completed' | 'closed';
 export type ConflictReason = 'template_change' | 'operator_sick' | 'operator_vacation' | 'operator_unavailable';
 
