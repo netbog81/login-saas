@@ -275,11 +275,20 @@ export class EventDialogComponent implements OnInit {
       }
     } else if (this.selectedInstrumentCategoryId && this.selectedInstrument2CategoryId) {
       // Two instruments
-      const halfDuration = Math.floor(duration / 2);
       const name1 = this.getInstrumentCategoryName(this.selectedInstrumentCategoryId);
       const name2 = this.getInstrumentCategoryName(this.selectedInstrument2CategoryId);
-      parts.push(`${name1} (0-${halfDuration} min)`);
-      parts.push(`${name2} (${halfDuration}-${duration} min)`);
+
+      if (duration === 45) {
+        // Overlap: 0-30 e 15-45 (15 min di sovrapposizione)
+        parts.push(`${name1} (0-30 min)`);
+        parts.push(`${name2} (15-45 min)`);
+      } else {
+        // Sequenziale: split a metà (es: 60 min → 0-30 e 30-60)
+        const halfDuration = Math.floor(duration / 2);
+        parts.push(`${name1} (0-${halfDuration} min)`);
+        parts.push(`${name2} (${halfDuration}-${duration} min)`);
+      }
+
       if (this.instrumentOrderMatters) {
         parts.push('(ordine specifico)');
       }
@@ -591,20 +600,36 @@ export class EventDialogComponent implements OnInit {
       }
     } else if (this.selectedInstrumentCategoryId && this.selectedInstrument2CategoryId) {
       // Two instruments
-      const halfDuration = Math.floor(duration / 2);
-
-      instruments.push({
-        instrumentCategoryId: this.selectedInstrumentCategoryId,
-        startOffsetMinutes: 0,
-        endOffsetMinutes: halfDuration,
-        orderPosition: 1
-      });
-      instruments.push({
-        instrumentCategoryId: this.selectedInstrument2CategoryId,
-        startOffsetMinutes: halfDuration,
-        endOffsetMinutes: duration,
-        orderPosition: 2
-      });
+      if (duration === 45) {
+        // Overlap: 0-30 e 15-45 (15 min di sovrapposizione)
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: 30,
+          orderPosition: 1
+        });
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrument2CategoryId,
+          startOffsetMinutes: 15,
+          endOffsetMinutes: 45,
+          orderPosition: 2
+        });
+      } else {
+        // Sequenziale: split a metà (es: 60 min → 0-30 e 30-60)
+        const halfDuration = Math.floor(duration / 2);
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrumentCategoryId,
+          startOffsetMinutes: 0,
+          endOffsetMinutes: halfDuration,
+          orderPosition: 1
+        });
+        instruments.push({
+          instrumentCategoryId: this.selectedInstrument2CategoryId,
+          startOffsetMinutes: halfDuration,
+          endOffsetMinutes: duration,
+          orderPosition: 2
+        });
+      }
     }
 
     return instruments;

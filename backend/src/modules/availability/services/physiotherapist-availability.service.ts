@@ -338,10 +338,25 @@ export class PhysiotherapistAvailabilityService {
         date.getMonth(),
         date.getDate(),
       );
-      const diffTime = normalizedDate.getTime() - patternStart.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      // Use formula that handles negative days correctly
-      const dayInPattern = ((diffDays % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
+
+      // Calculate dayInPattern based on pattern duration
+      let dayInPattern: number;
+      if (patternGroup.patternDuration === 7) {
+        // Per pattern settimanali, usa direttamente il giorno della settimana
+        // Questo garantisce che Lunedì nel template corrisponda sempre a Lunedì nel calendario
+        const jsDayOfWeek = normalizedDate.getDay(); // JavaScript: 0=Dom, 1=Lun, ..., 6=Sab
+        // Converti a formato pattern: 0=Lun, 1=Mar, 2=Mer, 3=Gio, 4=Ven, 5=Sab, 6=Dom
+        dayInPattern = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
+      } else {
+        // Per pattern multi-settimanali, calcola l'offset del giorno della settimana
+        // Se la data di inizio è mercoledì, quel giorno sarà il mercoledì della prima settimana (giorno 2)
+        const startDayOfWeek = patternStart.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
+        const startPatternDay = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
+
+        const diffTime = normalizedDate.getTime() - patternStart.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        dayInPattern = (((diffDays + startPatternDay) % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
+      }
 
       // Check all patterns for this day
       const todayPatterns = patternGroup.patterns.filter(
@@ -782,9 +797,26 @@ export class PhysiotherapistAvailabilityService {
         date.getMonth(),
         date.getDate(),
       );
-      const diffTime = requestDate.getTime() - patternStart.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      const dayInPattern = ((diffDays % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
+
+      // Calculate dayInPattern based on pattern duration
+      let dayInPattern: number;
+      let diffDays: number | undefined;
+      if (patternGroup.patternDuration === 7) {
+        // Per pattern settimanali, usa direttamente il giorno della settimana
+        // Questo garantisce che Lunedì nel template corrisponda sempre a Lunedì nel calendario
+        const jsDayOfWeek = requestDate.getDay(); // JavaScript: 0=Dom, 1=Lun, ..., 6=Sab
+        // Converti a formato pattern: 0=Lun, 1=Mar, 2=Mer, 3=Gio, 4=Ven, 5=Sab, 6=Dom
+        dayInPattern = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
+      } else {
+        // Per pattern multi-settimanali, calcola l'offset del giorno della settimana
+        // Se la data di inizio è mercoledì, quel giorno sarà il mercoledì della prima settimana (giorno 2)
+        const startDayOfWeek = patternStart.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
+        const startPatternDay = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
+
+        const diffTime = requestDate.getTime() - patternStart.getTime();
+        diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        dayInPattern = (((diffDays + startPatternDay) % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
+      }
 
       console.log('[getAvailableSlots] Pattern calculation:', {
         operatorId,

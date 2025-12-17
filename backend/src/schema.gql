@@ -165,6 +165,7 @@ input CheckPhysiotherapistAvailabilityInput {
   customInstrumentSlots: [InstrumentSlotInput!]
   date: String!
   durationMinutes: Int
+  instrumentOrderMatters: Boolean
   operatorId: ID!
   serviceId: ID
 }

@@ -1,5 +1,5 @@
 import { InputType, Field, ID, Int } from '@nestjs/graphql';
-import { IsUUID, IsDateString, IsOptional, IsInt, ValidateNested } from 'class-validator';
+import { IsUUID, IsDateString, IsOptional, IsInt, IsBoolean, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InstrumentSlotInput } from './instrument-slot.input';
 
@@ -30,4 +30,9 @@ export class CheckPhysiotherapistAvailabilityInput {
   @ValidateNested({ each: true })
   @Type(() => InstrumentSlotInput)
   customInstrumentSlots?: InstrumentSlotInput[];
+
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  instrumentOrderMatters?: boolean;
 }

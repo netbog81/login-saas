@@ -517,8 +517,15 @@ export class AvailabilityService {
   }
 
   private getPatternDay(date: Date, patternStart: Date, patternDuration: number): number {
-    // Normalizza entrambe le date a mezzanotte locale per evitare problemi di timezone
-    // Questa logica è ora allineata con physiotherapist-availability.service.ts
+    // Per pattern settimanali (7 giorni), usa direttamente il giorno della settimana
+    // Questo garantisce che Lunedì nel template corrisponda sempre a Lunedì nel calendario
+    if (patternDuration === 7) {
+      const jsDayOfWeek = date.getDay(); // JavaScript: 0=Dom, 1=Lun, ..., 6=Sab
+      // Converti a formato pattern: 0=Lun, 1=Mar, 2=Mer, 3=Gio, 4=Ven, 5=Sab, 6=Dom
+      return jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
+    }
+
+    // Per pattern multi-settimanali (es: 14 giorni bisettimanali)
     const normalizedPatternStart = new Date(
       patternStart.getFullYear(),
       patternStart.getMonth(),
@@ -530,13 +537,21 @@ export class AvailabilityService {
       date.getDate(),
     );
 
-    // Calcola la differenza in giorni dalla patternStartDate
-    // Questa logica funziona per TUTTI i tipi di pattern (7, 14, o altri giorni)
+    // Calcola quale giorno della settimana è la patternStartDate
+    // Questo permette di allineare correttamente: se la data di inizio è mercoledì,
+    // quel giorno corrisponde al mercoledì della prima settimana (giorno 2), non al giorno 0
+    const startDayOfWeek = patternStart.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
+    // Converti a formato pattern: 0=Lun, 1=Mar, ..., 6=Dom
+    const startPatternDay = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
+
     const diffTime = normalizedDate.getTime() - normalizedPatternStart.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-    // Formula che gestisce anche giorni negativi (date prima di patternStartDate)
-    return ((diffDays % patternDuration) + patternDuration) % patternDuration;
+    // Aggiungi l'offset del giorno di inizio per allineare al giorno corretto della settimana
+    // Esempio: se patternStart è mercoledì (startPatternDay=2) e diffDays=0,
+    // il risultato sarà (0+2)%14=2, cioè mercoledì della prima settimana
+    const result = (((diffDays + startPatternDay) % patternDuration) + patternDuration) % patternDuration;
+    return result;
   }
 
   private async ensureCacheUpdated(operatorId: string, startDate: string, endDate: string): Promise<void> {
