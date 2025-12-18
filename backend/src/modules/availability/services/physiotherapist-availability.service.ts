@@ -571,11 +571,16 @@ export class PhysiotherapistAvailabilityService {
     const startMinutes = this.timeToMinutes(startTime);
     const endMinutes = this.timeToMinutes(endTime);
 
+    // Formatta la data come stringa YYYY-MM-DD per il confronto con il database
+    const dateStr = date instanceof Date
+      ? date.toISOString().split('T')[0]
+      : date;
+
     const bookings = await this.appointmentInstrumentRepo
       .createQueryBuilder('ai')
       .innerJoin('ai.appointment', 'appointment')
       .where('ai.instrumentId = :instrumentId', { instrumentId })
-      .andWhere('appointment.appointmentDate = :date', { date })
+      .andWhere('appointment.appointmentDate = :date', { date: dateStr })
       .andWhere('appointment.bookingStatus NOT IN (:...excludedStatuses)', {
         excludedStatuses: ['cancelled', 'no_show'],
       })

@@ -155,12 +155,25 @@ export class EventDialogComponent implements OnInit {
         this.instrumentsEnabled = true;
         this.instrumentOrderMatters = this.data.searchFilters.instrumentOrderMatters || false;
 
-        if (this.data.searchFilters.instrumentCategoryId) {
-          this.selectedInstrumentCategoryId = this.data.searchFilters.instrumentCategoryId;
+        // Usa suggestedInstruments se disponibili (contengono la combinazione che ha funzionato durante la ricerca)
+        const suggested = this.data.searchFilters.suggestedInstruments;
+
+        if (suggested && suggested.length >= 2) {
+          // Usa l'ordine che ha effettivamente funzionato durante la ricerca
+          this.selectedInstrumentCategoryId = suggested[0].categoryId;
+          this.selectedInstrument2CategoryId = suggested[1].categoryId;
+        } else if (suggested && suggested.length === 1) {
+          this.selectedInstrumentCategoryId = suggested[0].categoryId;
+        } else {
+          // Fallback ai filtri originali se non ci sono suggestedInstruments
+          if (this.data.searchFilters.instrumentCategoryId) {
+            this.selectedInstrumentCategoryId = this.data.searchFilters.instrumentCategoryId;
+          }
+          if (this.data.searchFilters.instrument2CategoryId) {
+            this.selectedInstrument2CategoryId = this.data.searchFilters.instrument2CategoryId;
+          }
         }
-        if (this.data.searchFilters.instrument2CategoryId) {
-          this.selectedInstrument2CategoryId = this.data.searchFilters.instrument2CategoryId;
-        }
+
         if (this.data.searchFilters.instrumentPosition) {
           this.instrumentPosition = this.data.searchFilters.instrumentPosition;
         }
