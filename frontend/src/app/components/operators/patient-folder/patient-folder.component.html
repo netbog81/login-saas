@@ -1,0 +1,100 @@
+<div class="patient-folder" *ngIf="patient">
+  <!-- Header -->
+  <div class="folder-header">
+    <div class="header-left">
+      <div class="patient-avatar">
+        {{ getPatientInitials() }}
+      </div>
+      <div class="patient-info">
+        <h3 class="patient-name">{{ getPatientName() }}</h3>
+        <div class="patient-meta">
+          <span class="meta-item" *ngIf="getPatientAge()">{{ getPatientAge() }} anni</span>
+          <span class="meta-item" *ngIf="getPatientPhone()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+            </svg>
+            {{ getPatientPhone() }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <button class="view-details-btn" (click)="onViewPatientDetails()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+      </svg>
+      Dettagli
+    </button>
+  </div>
+
+  <!-- Stats -->
+  <div class="folder-stats">
+    <div class="stat-item">
+      <span class="stat-value">{{ paths.length }}</span>
+      <span class="stat-label">Percorsi</span>
+    </div>
+    <div class="stat-item active">
+      <span class="stat-value">{{ activePathsCount }}</span>
+      <span class="stat-label">Attivi</span>
+    </div>
+    <div class="stat-item completed">
+      <span class="stat-value">{{ completedPathsCount }}</span>
+      <span class="stat-label">Completati</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-value">{{ totalTreatmentsCount }}</span>
+      <span class="stat-label">Trattamenti</span>
+    </div>
+  </div>
+
+  <!-- Loading state -->
+  <div class="loading-overlay" *ngIf="loading">
+    <div class="spinner"></div>
+    <span>Caricamento cartella...</span>
+  </div>
+
+  <!-- Content -->
+  <div class="folder-content" *ngIf="!loading">
+    <!-- Left: Timeline -->
+    <aside class="timeline-sidebar">
+      <app-therapeutic-path-timeline
+        [paths]="paths"
+        [selectedPathId]="selectedPath?.id || null"
+        [loading]="loading"
+        (pathSelect)="onPathSelect($event)">
+      </app-therapeutic-path-timeline>
+    </aside>
+
+    <!-- Right: Path details -->
+    <main class="path-details">
+      <div class="paths-accordion" *ngIf="paths.length > 0">
+        <app-therapeutic-path-accordion
+          *ngFor="let path of paths"
+          [path]="path"
+          [expanded]="isPathExpanded(path.id)"
+          [selected]="isPathSelected(path.id)"
+          (toggleExpand)="togglePathExpanded(path.id)"
+          (selectPath)="onPathSelect($event)">
+        </app-therapeutic-path-accordion>
+      </div>
+
+      <div class="empty-state" *ngIf="paths.length === 0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+        <h4>Nessun percorso terapeutico</h4>
+        <p>Questo paziente non ha ancora percorsi terapeutici registrati</p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- No patient selected -->
+<div class="no-patient" *ngIf="!patient">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
+  <h4>Seleziona un paziente</h4>
+  <p>Clicca su un appuntamento per visualizzare la cartella del paziente</p>
+</div>

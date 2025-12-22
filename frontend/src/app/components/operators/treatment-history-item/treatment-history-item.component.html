@@ -1,0 +1,115 @@
+<div class="treatment-item" [class.expanded]="expanded" [class.first]="isFirst" [class.last]="isLast">
+  <!-- Timeline connector -->
+  <div class="timeline-connector">
+    <div class="connector-line top" *ngIf="!isFirst"></div>
+    <div class="connector-dot" [style.borderColor]="getTypeColor()"></div>
+    <div class="connector-line bottom" *ngIf="!isLast"></div>
+  </div>
+
+  <!-- Content -->
+  <div class="item-content">
+    <!-- Header (sempre visibile) -->
+    <button class="item-header" (click)="onToggleExpand()">
+      <div class="header-left">
+        <span class="treatment-date">{{ formatDate(treatment.date) }}</span>
+        <span class="treatment-type" [style.color]="getTypeColor()">{{ getTypeLabel() }}</span>
+      </div>
+      <div class="header-center">
+        <span class="treatment-title" *ngIf="treatment.title">{{ treatment.title }}</span>
+        <span class="treatment-time" *ngIf="treatment.startTime">
+          {{ formatTime(treatment.startTime) }} - {{ formatTime(treatment.endTime) }}
+        </span>
+      </div>
+      <div class="header-right">
+        <!-- Pain score indicator -->
+        <div class="pain-indicator" *ngIf="hasPainScores()" [class]="getPainDifferenceClass()">
+          <span class="pain-before" *ngIf="treatment.painScaleBefore !== undefined">{{ treatment.painScaleBefore }}</span>
+          <svg *ngIf="getPainDifference() !== null" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+          <span class="pain-after" *ngIf="treatment.painScaleAfter !== undefined">{{ treatment.painScaleAfter }}</span>
+        </div>
+
+        <!-- Expand icon -->
+        <svg class="expand-icon" [class.rotated]="expanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+    </button>
+
+    <!-- Expanded content -->
+    <div class="item-details" *ngIf="expanded">
+      <!-- Clinical notes -->
+      <div class="detail-section" *ngIf="treatment.clinicalNotes">
+        <h5 class="section-label">Note cliniche</h5>
+        <p class="section-content">{{ treatment.clinicalNotes }}</p>
+      </div>
+
+      <!-- Treatment description -->
+      <div class="detail-section" *ngIf="treatment.treatmentDescription">
+        <h5 class="section-label">Trattamento eseguito</h5>
+        <p class="section-content">{{ treatment.treatmentDescription }}</p>
+      </div>
+
+      <!-- Patient response -->
+      <div class="detail-section" *ngIf="treatment.patientResponse">
+        <h5 class="section-label">Risposta paziente</h5>
+        <p class="section-content">{{ treatment.patientResponse }}</p>
+      </div>
+
+      <!-- Instruments used -->
+      <div class="detail-section" *ngIf="hasInstruments()">
+        <h5 class="section-label">Strumenti utilizzati</h5>
+        <div class="instruments-grid">
+          <div class="instrument-item" *ngFor="let instrument of treatment.instrumentsUsed">
+            <span class="instrument-name">{{ instrument.instrumentName }}</span>
+            <span class="instrument-details" *ngIf="instrument.duration || instrument.settings">
+              <span *ngIf="instrument.duration">{{ instrument.duration }} min</span>
+              <span *ngIf="instrument.settings"> - {{ instrument.settings }}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pain scores detail -->
+      <div class="detail-section" *ngIf="hasPainScores()">
+        <h5 class="section-label">Scala del dolore</h5>
+        <div class="pain-detail">
+          <div class="pain-bar">
+            <div class="pain-value before" *ngIf="treatment.painScaleBefore !== undefined">
+              <span class="label">Prima</span>
+              <div class="bar-container">
+                <div class="bar" [style.width.%]="treatment.painScaleBefore * 10"></div>
+              </div>
+              <span class="value">{{ treatment.painScaleBefore }}/10</span>
+            </div>
+            <div class="pain-value after" *ngIf="treatment.painScaleAfter !== undefined">
+              <span class="label">Dopo</span>
+              <div class="bar-container">
+                <div class="bar" [style.width.%]="treatment.painScaleAfter * 10"></div>
+              </div>
+              <span class="value">{{ treatment.painScaleAfter }}/10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Home exercises -->
+      <div class="detail-section" *ngIf="treatment.homeExercises">
+        <h5 class="section-label">Esercizi domiciliari</h5>
+        <p class="section-content exercises">{{ treatment.homeExercises }}</p>
+      </div>
+
+      <!-- Next steps -->
+      <div class="detail-section" *ngIf="treatment.nextSteps">
+        <h5 class="section-label">Prossimi passi</h5>
+        <p class="section-content">{{ treatment.nextSteps }}</p>
+      </div>
+
+      <!-- Operator -->
+      <div class="detail-footer" *ngIf="treatment.operatorName">
+        <span class="operator-name">{{ treatment.operatorName }}</span>
+      </div>
+    </div>
+  </div>
+</div>

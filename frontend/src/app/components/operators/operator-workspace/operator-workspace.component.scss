@@ -1,0 +1,276 @@
+.operator-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f3f4f6;
+}
+
+// Header
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.header-left {
+  flex: 1;
+  max-width: 300px;
+}
+
+.header-center {
+  flex: 1;
+  text-align: center;
+}
+
+.page-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.header-right {
+  flex: 1;
+  text-align: right;
+}
+
+.current-date {
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-transform: capitalize;
+}
+
+// Error banner
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 0.875rem;
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+  }
+
+  span {
+    flex: 1;
+  }
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #b91c1c;
+    border-radius: 0.25rem;
+
+    &:hover {
+      background: rgba(185, 28, 28, 0.1);
+    }
+
+    svg {
+      width: 1rem;
+      height: 1rem;
+    }
+  }
+}
+
+// Content
+.workspace-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+// Sidebar wrapper
+.appointments-sidebar-wrapper {
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+
+  &.collapsed {
+    width: 60px;
+  }
+
+  &:not(.collapsed) {
+    width: 280px;
+  }
+}
+
+// Main area
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+// Main content
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+// Current treatment section
+.current-treatment-section {
+  flex-shrink: 0;
+}
+
+// Patient folder section
+.patient-folder-section {
+  flex: 1;
+  min-height: 400px;
+}
+
+// Empty states
+.empty-state-full,
+.loading-state-full {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem;
+
+  svg {
+    width: 4rem;
+    height: 4rem;
+    color: #d1d5db;
+    margin-bottom: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 0 0 0.5rem 0;
+  }
+
+  p {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0;
+    max-width: 300px;
+  }
+}
+
+.loading-state-full {
+  .spinner {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 3px solid #e5e7eb;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 1rem;
+  }
+
+  span {
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty-selection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  background: white;
+  border-radius: 0.75rem;
+  border: 2px dashed #e5e7eb;
+  text-align: center;
+
+  svg {
+    width: 3rem;
+    height: 3rem;
+    color: #d1d5db;
+    margin-bottom: 1rem;
+  }
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 0 0 0.5rem 0;
+  }
+
+  p {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0;
+  }
+}
+
+// Responsive
+@media (max-width: 1024px) {
+  .workspace-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header-left,
+  .header-right {
+    flex: none;
+    width: auto;
+  }
+
+  .header-center {
+    order: -1;
+    flex: 0 0 100%;
+  }
+
+  .page-title {
+    text-align: left;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-content {
+    flex-direction: column;
+  }
+
+  .appointments-sidebar-wrapper {
+    width: 100% !important;
+    height: auto;
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+
+    &.collapsed {
+      max-height: 50px;
+    }
+  }
+
+  .main-content {
+    padding: 0.75rem;
+  }
+}

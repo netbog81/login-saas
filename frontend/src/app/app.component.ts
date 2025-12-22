@@ -33,6 +33,12 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
           </a>
           <a
             class="nav-item"
+            routerLink="/operatori"
+            routerLinkActive="active">
+            Operatori
+          </a>
+          <a
+            class="nav-item"
             routerLink="/availability"
             routerLinkActive="active">
             Disponibilità

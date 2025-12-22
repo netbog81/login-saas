@@ -1,0 +1,58 @@
+<div class="path-timeline">
+  <h4 class="timeline-title">Percorsi Terapeutici</h4>
+
+  <!-- Loading state -->
+  <div class="loading-state" *ngIf="loading">
+    <div class="skeleton-item" *ngFor="let i of [1,2,3]">
+      <div class="skeleton-dot"></div>
+      <div class="skeleton-content">
+        <div class="skeleton-line short"></div>
+        <div class="skeleton-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div class="empty-state" *ngIf="!loading && paths.length === 0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
+    <p>Nessun percorso terapeutico</p>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-content" *ngIf="!loading && paths.length > 0">
+    <div class="year-group" *ngFor="let year of years">
+      <div class="year-label">{{ year }}</div>
+
+      <div class="paths-list">
+        <button
+          *ngFor="let path of getPathsForYear(year); let last = last"
+          class="path-item"
+          [class.selected]="isSelected(path)"
+          [class.last]="last"
+          (click)="onPathSelect(path)">
+
+          <!-- Timeline dot -->
+          <div class="timeline-dot" [style.borderColor]="getStatusColor(path)">
+            <div class="dot-inner" [style.backgroundColor]="getStatusColor(path)"></div>
+          </div>
+
+          <!-- Path info -->
+          <div class="path-info">
+            <span class="path-date">{{ formatDate(path.startDate) }}</span>
+            <span class="path-name">{{ path.name }}</span>
+            <span class="path-status" [style.color]="getStatusColor(path)">
+              {{ getStatusLabel(path) }}
+            </span>
+          </div>
+
+          <!-- Selection indicator -->
+          <svg class="select-indicator" *ngIf="isSelected(path)" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

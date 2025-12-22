@@ -1,0 +1,305 @@
+<div class="treatment-card" [class]="getStatusClass()" [class.in-progress]="isInProgress()" [class.cancelled]="isCancelled()">
+  <!-- Header -->
+  <div class="card-header">
+    <div class="header-left">
+      <h3 class="card-title">
+        <span *ngIf="isInProgress()" class="in-progress-badge">
+          <span class="pulse-dot"></span>
+          In corso
+        </span>
+        <span *ngIf="!isInProgress()">Appuntamento selezionato</span>
+      </h3>
+      <span class="status-badge" [class]="getStatusClass()">{{ getStatusLabel() }}</span>
+    </div>
+    <div class="header-right">
+      <span class="appointment-time">
+        {{ formatTime(appointment?.startTime) }} - {{ formatTime(appointment?.endTime) }}
+      </span>
+      <span class="appointment-duration">({{ formatDuration() }})</span>
+    </div>
+  </div>
+
+  <!-- Loading state -->
+  <div class="loading-overlay" *ngIf="loading">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Content -->
+  <div class="card-content" *ngIf="!loading">
+    <!-- Client info -->
+    <div class="client-section">
+      <div class="client-avatar">
+        {{ getClientName().charAt(0) }}
+      </div>
+      <div class="client-info">
+        <h4 class="client-name">{{ getClientName() }}</h4>
+        <div class="client-contacts">
+          <span class="contact-item" *ngIf="getClientPhone()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+            </svg>
+            {{ getClientPhone() }}
+          </span>
+          <span class="contact-item" *ngIf="getClientEmail()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            {{ getClientEmail() }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instruments section -->
+    <div class="instruments-section" *ngIf="hasInstruments()">
+      <h5 class="section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+        Strumenti prenotati
+      </h5>
+      <div class="instruments-list">
+        <span class="instrument-badge" *ngFor="let instrument of appointment?.instruments">
+          {{ instrument.instrumentName || instrument.categoryName }}
+          <span class="instrument-time" *ngIf="instrument.startOffsetMinutes !== undefined">
+            ({{ instrument.startOffsetMinutes }}-{{ instrument.endOffsetMinutes }} min)
+          </span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Notes section -->
+    <div class="notes-section" *ngIf="appointment?.notes">
+      <h5 class="section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Note
+      </h5>
+      <p class="notes-text">{{ appointment?.notes }}</p>
+    </div>
+
+    <!-- Sezione Completamento Trattamento (solo quando in corso) -->
+    <div class="completion-section" *ngIf="isInProgress()">
+      <button
+        class="section-toggle"
+        (click)="toggleCompletionForm()"
+        type="button">
+        <span class="toggle-icon" [class.expanded]="completionFormExpanded">&#9654;</span>
+        Completamento Trattamento
+      </button>
+
+      <div class="completion-form" *ngIf="completionFormExpanded">
+        <!-- Valutazione Dolore -->
+        <div class="form-group">
+          <h6 class="group-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9"/>
+              <line x1="15" y1="9" x2="15.01" y2="9"/>
+            </svg>
+            Valutazione Dolore (VAS 0-10)
+          </h6>
+          <div class="pain-assessment">
+            <div class="pain-field">
+              <label>Prima del trattamento</label>
+              <div class="pain-slider-container">
+                <input type="range" min="0" max="10" step="1"
+                       [(ngModel)]="completionData.painAssessment.painBefore"
+                       class="pain-slider">
+                <span class="pain-value" [class.no-pain]="completionData.painAssessment.painBefore === 0"
+                      [class.mild-pain]="completionData.painAssessment.painBefore && completionData.painAssessment.painBefore <= 3"
+                      [class.moderate-pain]="completionData.painAssessment.painBefore && completionData.painAssessment.painBefore > 3 && completionData.painAssessment.painBefore <= 6"
+                      [class.severe-pain]="completionData.painAssessment.painBefore && completionData.painAssessment.painBefore > 6">
+                  {{ completionData.painAssessment.painBefore ?? '-' }}
+                </span>
+              </div>
+              <div class="pain-labels">
+                <span>0 - Nessun dolore</span>
+                <span>10 - Dolore massimo</span>
+              </div>
+            </div>
+            <div class="pain-field">
+              <label>Dopo il trattamento</label>
+              <div class="pain-slider-container">
+                <input type="range" min="0" max="10" step="1"
+                       [(ngModel)]="completionData.painAssessment.painAfter"
+                       class="pain-slider">
+                <span class="pain-value" [class.no-pain]="completionData.painAssessment.painAfter === 0"
+                      [class.mild-pain]="completionData.painAssessment.painAfter && completionData.painAssessment.painAfter <= 3"
+                      [class.moderate-pain]="completionData.painAssessment.painAfter && completionData.painAssessment.painAfter > 3 && completionData.painAssessment.painAfter <= 6"
+                      [class.severe-pain]="completionData.painAssessment.painAfter && completionData.painAssessment.painAfter > 6">
+                  {{ completionData.painAssessment.painAfter ?? '-' }}
+                </span>
+              </div>
+              <div class="pain-labels">
+                <span>0 - Nessun dolore</span>
+                <span>10 - Dolore massimo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Riprogrammazione -->
+        <div class="form-group">
+          <h6 class="group-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            Riprogrammazione
+          </h6>
+
+          <div class="radio-option">
+            <input type="radio" id="reschedNone" name="reschedulingType"
+                   [(ngModel)]="reschedulingType" value="none">
+            <label for="reschedNone">Nessun suggerimento</label>
+          </div>
+
+          <div class="radio-option">
+            <input type="radio" id="reschedDays" name="reschedulingType"
+                   [(ngModel)]="reschedulingType" value="days">
+            <label for="reschedDays">Consiglio appuntamento fra</label>
+            <input type="number" min="1" max="365"
+                   [(ngModel)]="completionData.rescheduling.suggestInDays"
+                   [disabled]="reschedulingType !== 'days'"
+                   placeholder="N"
+                   class="days-input">
+            <span>giorni</span>
+          </div>
+
+          <div class="radio-option range-option">
+            <input type="radio" id="reschedRange" name="reschedulingType"
+                   [(ngModel)]="reschedulingType" value="range">
+            <label for="reschedRange">Intervallo date</label>
+          </div>
+          <div class="date-range" *ngIf="reschedulingType === 'range'">
+            <label>Dal</label>
+            <input type="date"
+                   [(ngModel)]="completionData.rescheduling.suggestDateRangeStart">
+            <label>al</label>
+            <input type="date"
+                   [(ngModel)]="completionData.rescheduling.suggestDateRangeEnd">
+          </div>
+
+          <div class="textarea-field">
+            <label>Note per segreteria</label>
+            <textarea
+              [(ngModel)]="completionData.rescheduling.secretaryNotes"
+              placeholder="Informazioni per la segreteria sulla riprogrammazione..."
+              rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- Tariffa -->
+        <div class="form-group">
+          <h6 class="group-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            Tariffa
+          </h6>
+          <div class="price-field">
+            <label>Prezzo trattamento</label>
+            <div class="input-with-prefix">
+              <span class="prefix">EUR</span>
+              <input type="number" min="0" step="0.01"
+                     [(ngModel)]="completionData.pricing.price"
+                     placeholder="0.00">
+            </div>
+          </div>
+        </div>
+
+        <!-- Note -->
+        <div class="form-group">
+          <h6 class="group-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Note
+          </h6>
+          <div class="textarea-field">
+            <label>Note operatore</label>
+            <textarea
+              [(ngModel)]="completionData.notes.operatorNotes"
+              placeholder="Note cliniche o osservazioni..."
+              rows="3"></textarea>
+          </div>
+          <div class="textarea-field">
+            <label>Informazioni per il paziente</label>
+            <textarea
+              [(ngModel)]="completionData.notes.patientNotes"
+              placeholder="Indicazioni, esercizi da fare a casa..."
+              rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card-actions" *ngIf="!loading && !isCancelled()">
+    <button
+      class="action-btn primary"
+      *ngIf="canStartTreatment()"
+      (click)="onStartTreatment()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Inizia Trattamento
+    </button>
+
+    <button
+      class="action-btn success"
+      *ngIf="canCompleteTreatment()"
+      (click)="onCompleteTreatment()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      Completa Trattamento
+    </button>
+
+    <button
+      class="action-btn secondary"
+      (click)="onViewPatientFolder()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      Cartella Paziente
+    </button>
+
+    <button
+      class="action-btn danger"
+      *ngIf="canStartTreatment()"
+      (click)="onCancelAppointment()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="15" y1="9" x2="9" y2="15"/>
+        <line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+      Annulla
+    </button>
+  </div>
+
+  <!-- Cancelled message -->
+  <div class="cancelled-message" *ngIf="isCancelled()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="15" y1="9" x2="9" y2="15"/>
+      <line x1="9" y1="9" x2="15" y2="15"/>
+    </svg>
+    <span>Appuntamento annullato</span>
+  </div>
+</div>

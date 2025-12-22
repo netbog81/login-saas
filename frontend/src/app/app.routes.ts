@@ -4,6 +4,7 @@ import { AvailabilityDashboardComponent } from './components/availability/availa
 import { ConflictDashboardComponent } from './components/conflict-dashboard/conflict-dashboard.component';
 import { SettingsComponent } from './components/settings/settings.component';
 import { PatientManagementComponent } from './components/patients/patient-management/patient-management.component';
+import { OperatorWorkspaceComponent } from './components/operators/operator-workspace/operator-workspace.component';
 
 export const routes: Routes = [
   {
@@ -15,6 +16,11 @@ export const routes: Routes = [
     path: 'patients',
     component: PatientManagementComponent,
     title: 'Gestione Pazienti'
+  },
+  {
+    path: 'operatori',
+    component: OperatorWorkspaceComponent,
+    title: 'Workspace Operatore'
   },
   {
     path: 'availability',

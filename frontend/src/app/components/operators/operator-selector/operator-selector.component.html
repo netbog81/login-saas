@@ -1,0 +1,42 @@
+<div class="operator-selector">
+  <label class="selector-label">Operatore</label>
+
+  <div class="selector-wrapper">
+    <!-- Avatar operatore selezionato -->
+    <div
+      class="selected-avatar"
+      *ngIf="selectedOperator"
+      [style.backgroundColor]="selectedOperator.color || '#6b7280'">
+      {{ getOperatorInitials(selectedOperator) }}
+    </div>
+
+    <!-- Dropdown -->
+    <select
+      class="operator-dropdown"
+      [value]="selectedOperator?.id || ''"
+      (change)="onSelectionChange($any($event.target).value)"
+      [disabled]="disabled || loading">
+      <option value="" disabled>Seleziona operatore...</option>
+      <option
+        *ngFor="let operator of operators"
+        [value]="operator.id">
+        {{ getOperatorDisplayName(operator) }}
+      </option>
+    </select>
+
+    <!-- Loading spinner -->
+    <div class="loading-spinner" *ngIf="loading">
+      <svg class="spinner" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round">
+          <animate attributeName="stroke-dasharray" values="0 150;42 150;42 150;42 150" dur="1.5s" repeatCount="indefinite"/>
+          <animate attributeName="stroke-dashoffset" values="0;-16;-59;-59" dur="1.5s" repeatCount="indefinite"/>
+        </circle>
+      </svg>
+    </div>
+
+    <!-- Chevron icon -->
+    <svg class="chevron-icon" *ngIf="!loading" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+    </svg>
+  </div>
+</div>

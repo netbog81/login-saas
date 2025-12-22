@@ -1,0 +1,295 @@
+.treatment-item {
+  display: flex;
+  gap: 1rem;
+}
+
+// Timeline connector
+.timeline-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 1.5rem;
+  flex-shrink: 0;
+}
+
+.connector-line {
+  width: 2px;
+  background: #e5e7eb;
+  flex: 1;
+
+  &.top {
+    min-height: 0.5rem;
+  }
+
+  &.bottom {
+    min-height: 1rem;
+  }
+}
+
+.connector-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #6b7280;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+// Content
+.item-content {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0.5rem;
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+  }
+
+  .treatment-item.expanded & {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-color: transparent;
+  }
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 80px;
+}
+
+.treatment-date {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.treatment-type {
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.treatment-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.treatment-time {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+// Pain indicator
+.pain-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  background: #f3f4f6;
+
+  svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  &.improved {
+    background: #d1fae5;
+    color: #047857;
+  }
+
+  &.worsened {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  &.unchanged {
+    background: #fef3c7;
+    color: #b45309;
+  }
+}
+
+.expand-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #9ca3af;
+  transition: transform 0.2s ease;
+
+  &.rotated {
+    transform: rotate(180deg);
+  }
+}
+
+// Expanded details
+.item-details {
+  padding: 1rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+.detail-section {
+  padding: 0.75rem 0;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  &:first-child {
+    padding-top: 0;
+  }
+}
+
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem 0;
+}
+
+.section-content {
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+
+  &.exercises {
+    background: #fefce8;
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    border-left: 3px solid #facc15;
+  }
+}
+
+// Instruments grid
+.instruments-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.instrument-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.75rem;
+  background: #f3f4f6;
+  border-radius: 0.375rem;
+}
+
+.instrument-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.instrument-details {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+// Pain detail bars
+.pain-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pain-value {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  .label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    width: 3rem;
+  }
+
+  .bar-container {
+    flex: 1;
+    height: 0.5rem;
+    background: #e5e7eb;
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+
+  .bar {
+    height: 100%;
+    border-radius: 9999px;
+    transition: width 0.3s ease;
+  }
+
+  &.before .bar {
+    background: #f87171;
+  }
+
+  &.after .bar {
+    background: #34d399;
+  }
+
+  .value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #374151;
+    width: 2.5rem;
+    text-align: right;
+  }
+}
+
+// Footer
+.detail-footer {
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid #f3f4f6;
+  text-align: right;
+}
+
+.operator-name {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-style: italic;
+}
