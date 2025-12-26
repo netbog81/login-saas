@@ -16,7 +16,7 @@ export interface WeekSchedule {
 }
 
 export interface GridConfig {
-  cellDuration: 30 | 60; // minuti
+  cellDuration: 5 | 10 | 15 | 20 | 30 | 45 | 60; // minuti
   workingHours: {
     start: string; // "07:00"
     end: string;   // "20:00"

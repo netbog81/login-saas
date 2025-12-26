@@ -439,9 +439,9 @@ export class WeekGrid implements OnInit, OnChanges {
     const cellHeight = 40;
     const movedPixels = event.clientY - this.resizeStartY;
 
-    // Always snap to 30-minute intervals for flexible slot durations
+    // Snap to cellDuration intervals (5, 10, 15, 20, 30, 45, 60 min)
     const pixelsPerMinute = cellHeight / this.config.cellDuration;
-    const movedMinutes = Math.round((movedPixels / pixelsPerMinute) / 30) * 30;
+    const movedMinutes = Math.round(movedPixels / pixelsPerMinute / this.config.cellDuration) * this.config.cellDuration;
 
     // Parse initial end time
     const [endHours, endMinutes] = this.resizeInitialEndTime.split(':').map(Number);

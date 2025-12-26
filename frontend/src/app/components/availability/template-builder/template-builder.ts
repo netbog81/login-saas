@@ -69,7 +69,7 @@ export class TemplateBuilder implements OnInit {
 
   onCellDurationChange() {
     // Convert to number if it becomes a string from select dropdown
-    this.config.cellDuration = Number(this.config.cellDuration) as 30 | 60;
+    this.config.cellDuration = Number(this.config.cellDuration) as 5 | 10 | 15 | 20 | 30 | 45 | 60;
     // Create new config object to trigger change detection
     // Slots will be recalculated automatically using mathematical positioning
     this.config = { ...this.config };

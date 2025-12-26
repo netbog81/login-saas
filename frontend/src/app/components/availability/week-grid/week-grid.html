@@ -87,7 +87,7 @@
 
               <!-- Resize Handle -->
               <div
-                *ngIf="isSlotHovered(day, slotIndex) && !isDraggingSlot"
+                *ngIf="(isSlotHovered(day, slotIndex) || isResizing) && !isDraggingSlot"
                 class="resize-handle"
                 (mousedown)="onResizeStart($event, day, slotIndex)"
                 title="Ridimensiona"

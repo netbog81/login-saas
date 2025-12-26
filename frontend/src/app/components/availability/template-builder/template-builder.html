@@ -25,7 +25,12 @@
         [(ngModel)]="config.cellDuration"
         (ngModelChange)="onCellDurationChange()"
       >
+        <option [value]="5">5 minuti</option>
+        <option [value]="10">10 minuti</option>
+        <option [value]="15">15 minuti</option>
+        <option [value]="20">20 minuti</option>
         <option [value]="30">30 minuti</option>
+        <option [value]="45">45 minuti</option>
         <option [value]="60">60 minuti</option>
       </select>
     </div>
