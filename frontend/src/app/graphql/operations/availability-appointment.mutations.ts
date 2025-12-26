@@ -95,3 +95,16 @@ export const MARK_APPOINTMENT_ATTENDED = gql`
     }
   }
 `;
+
+/**
+ * Mutation: Annulla stato attended e ripristina a confirmed
+ * Utile per correggere click accidentali
+ */
+export const REVERT_APPOINTMENT_ATTENDED = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  mutation RevertAppointmentAttended($id: ID!) {
+    revertAppointmentAttended(id: $id) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;

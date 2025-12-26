@@ -381,6 +381,13 @@
         L'appuntamento e stato disdetto.
       </p>
 
+      <!-- Pulsante per annullare stato attended -->
+      <div class="status-buttons" *ngIf="canRevertAttended">
+        <button class="btn-status btn-revert" (click)="onRevertAttended()">
+          ↩ Annulla Presentato
+        </button>
+      </div>
+
       <!-- Bottoni azione solo per stati attivi -->
       <div class="status-buttons" *ngIf="canShowStatusActions">
         <button *ngIf="canMarkAttended" class="btn-status btn-attended" (click)="onMarkAttended()">

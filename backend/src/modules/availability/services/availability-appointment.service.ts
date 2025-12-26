@@ -799,6 +799,25 @@ export class AvailabilityAppointmentService {
   }
 
   /**
+   * Annulla lo stato attended e ripristina a confirmed
+   * Utile per correggere click accidentali
+   */
+  async revertAttended(id: string): Promise<AvailabilityAppointment> {
+    const appointment = await this.findById(id);
+
+    if (appointment.bookingStatus !== BookingStatus.ATTENDED) {
+      throw new BadRequestException(
+        `L'appuntamento non è in stato presentato. Stato attuale: ${appointment.bookingStatus}`
+      );
+    }
+
+    appointment.bookingStatus = BookingStatus.CONFIRMED;
+    await this.appointmentRepo.save(appointment);
+
+    return this.findById(id);
+  }
+
+  /**
    * Calcola le ore di preavviso tra adesso e l'orario dell'appuntamento
    */
   private calculateHoursNotice(appointmentDate: Date, startTime: string): number {

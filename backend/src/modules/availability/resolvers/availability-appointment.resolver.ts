@@ -148,6 +148,17 @@ export class AvailabilityAppointmentResolver {
   }
 
   /**
+   * Mutation: Annulla stato attended e ripristina a confirmed
+   * Utile per correggere click accidentali
+   */
+  @Mutation(() => AvailabilityAppointment, { name: 'revertAppointmentAttended' })
+  async revertAttended(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.revertAttended(id);
+  }
+
+  /**
    * Query: Verifica se uno strumento è disponibile per un dato slot
    */
   @Query(() => Boolean, { name: 'isInstrumentAvailable' })

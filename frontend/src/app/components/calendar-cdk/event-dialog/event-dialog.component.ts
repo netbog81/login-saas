@@ -681,12 +681,12 @@ export class EventDialogComponent implements OnInit {
   }
 
   /**
-   * Può segnare come no-show solo se l'appuntamento è passato
+   * Può segnare come no-show solo se l'ora di inizio dell'appuntamento è passata
    */
   get canMarkNoShow(): boolean {
     const now = new Date();
-    const appointmentEnd = new Date(`${this.date}T${this.endTime}`);
-    return this.canShowStatusActions && appointmentEnd < now;
+    const appointmentStart = new Date(`${this.date}T${this.startTime}`);
+    return this.canShowStatusActions && appointmentStart < now;
   }
 
   /**
@@ -754,6 +754,34 @@ export class EventDialogComponent implements OnInit {
     } catch (error) {
       console.error('Error marking as attended:', error);
       alert('Errore nel segnare il paziente come arrivato');
+    }
+  }
+
+  /**
+   * Può annullare lo stato attended (per correggere errori)
+   */
+  get canRevertAttended(): boolean {
+    return this.bookingStatus === 'attended';
+  }
+
+  /**
+   * Annulla lo stato attended e ripristina a confirmed
+   */
+  async onRevertAttended(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+    if (!confirm('Vuoi annullare lo stato "Presentato" e riportare l\'appuntamento a "Confermato"?')) return;
+
+    try {
+      await firstValueFrom(
+        this.appointmentService.revertAttended(String(this.data.appointment.id))
+      );
+      this.result.emit({
+        action: 'save',
+        appointment: { ...this.data.appointment, bookingStatus: 'confirmed' } as Appointment
+      });
+    } catch (error) {
+      console.error('Error reverting attended status:', error);
+      alert('Errore nell\'annullare lo stato presentato');
     }
   }
 

@@ -750,6 +750,7 @@ type Mutation {
   requestPatientDeletion(id: ID!): PatientModel!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
+  revertAppointmentAttended(id: ID!): AvailabilityAppointment!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!

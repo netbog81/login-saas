@@ -17,6 +17,7 @@ import {
   MARK_APPOINTMENT_AS_NO_SHOW,
   CANCEL_APPOINTMENT_WITH_NOTICE,
   MARK_APPOINTMENT_ATTENDED,
+  REVERT_APPOINTMENT_ATTENDED,
 } from '../graphql/operations/availability-appointment.mutations';
 
 export interface AppointmentInstrumentInput {
@@ -284,6 +285,26 @@ export class AvailabilityAppointmentService {
             throw new Error('Failed to mark appointment as attended');
           }
           return result.data.markAppointmentAttended;
+        })
+      );
+  }
+
+  /**
+   * Annulla stato attended e ripristina a confirmed
+   * Utile per correggere click accidentali
+   */
+  revertAttended(id: string): Observable<AvailabilityAppointment> {
+    return this.apollo
+      .mutate<{ revertAppointmentAttended: AvailabilityAppointment }>({
+        mutation: REVERT_APPOINTMENT_ATTENDED,
+        variables: { id },
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error('Failed to revert attended status');
+          }
+          return result.data.revertAppointmentAttended;
         })
       );
   }
