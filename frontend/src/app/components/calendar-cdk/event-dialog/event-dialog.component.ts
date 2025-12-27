@@ -1,13 +1,14 @@
-import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Appointment, AppointmentInstrument, RepeatConfig, RecurringType, RecurringEndType, BookingStatus } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Patient } from '../../../models/patient.model';
-import { InstrumentCategory } from '../../../graphql/generated/types';
+import { InstrumentCategory, Service } from '../../../graphql/generated/types';
 import { PatientService } from '../../../services/patient.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { ServiceService } from '../../../services/service.service';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -54,7 +55,7 @@ export interface EventDialogResult {
   templateUrl: './event-dialog.component.html',
   styleUrls: ['./event-dialog.component.scss']
 })
-export class EventDialogComponent implements OnInit {
+export class EventDialogComponent implements OnInit, OnChanges {
   @Input() data!: EventDialogData;
   @Output() result = new EventEmitter<EventDialogResult>();
 
@@ -64,8 +65,13 @@ export class EventDialogComponent implements OnInit {
   startTime: string = '';
   endTime: string = '';
   operatorId: string = '';
+  serviceId: string | null = null;
   patientId: number | null = null;
   notes: string = '';
+
+  // Service selection
+  operatorServices: Service[] = [];
+  loadingServices: boolean = false;
 
   // Patient search
   patientSearch: string = '';
@@ -76,7 +82,8 @@ export class EventDialogComponent implements OnInit {
 
   constructor(
     private patientService: PatientService,
-    private appointmentService: AvailabilityAppointmentService
+    private appointmentService: AvailabilityAppointmentService,
+    private serviceService: ServiceService
   ) {}
 
   // Instrument management
@@ -109,6 +116,16 @@ export class EventDialogComponent implements OnInit {
   // Booking status for edit mode
   bookingStatus: BookingStatus = 'scheduled';
 
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && changes['data'].currentValue?.appointment) {
+      const apt = changes['data'].currentValue.appointment;
+      // Se serviceId è presente nel nuovo dato e non è ancora stato assegnato, assegnalo
+      if (apt.serviceId && !this.serviceId) {
+        this.serviceId = apt.serviceId;
+      }
+    }
+  }
+
   ngOnInit(): void {
     if (this.data.appointment) {
       // Edit mode
@@ -119,7 +136,8 @@ export class EventDialogComponent implements OnInit {
       this.startTime = apt.startTime;
       this.endTime = apt.endTime;
       this.operatorId = apt.operatorId;
-      this.patientId = apt.patientId ? Number(apt.patientId) : null;  // Forza conversione a number
+      this.serviceId = apt.serviceId || null;
+      this.patientId = apt.patientId ? Number(apt.patientId) : null;
       this.notes = apt.notes || '';
       this.bookingStatus = (apt.bookingStatus as BookingStatus) || 'scheduled';
 
@@ -179,6 +197,55 @@ export class EventDialogComponent implements OnInit {
         }
       }
     }
+
+    // Load operator services if operator is selected
+    if (this.operatorId) {
+      this.loadOperatorServices(this.operatorId);
+    }
+  }
+
+  /**
+   * Carica i servizi assegnati all'operatore selezionato
+   */
+  loadOperatorServices(operatorId: string): void {
+    if (!operatorId) {
+      this.operatorServices = [];
+      return;
+    }
+
+    this.loadingServices = true;
+    this.serviceService.getOperatorServices(operatorId).subscribe({
+      next: (operatorServiceList) => {
+        // Mappa i servizi e filtra quelli attivi
+        const services = operatorServiceList
+          .map(os => os.service)
+          .filter((s): s is Service => !!s && s.isActive !== false);
+        this.operatorServices = services;
+        this.loadingServices = false;
+
+        // NON resettare serviceId se la lista è vuota (potrebbe essere una risposta intermedia di Apollo)
+        // Solo resettare se abbiamo effettivamente dei servizi e il nostro non è tra questi
+        if (services.length > 0 && this.serviceId) {
+          const foundService = this.operatorServices.find(s => s.id === this.serviceId);
+          if (!foundService) {
+            this.serviceId = null;
+          }
+        }
+      },
+      error: (error) => {
+        console.error('Error loading operator services:', error);
+        this.operatorServices = [];
+        this.loadingServices = false;
+      }
+    });
+  }
+
+  /**
+   * Gestisce il cambio di operatore - resetta il servizio e carica i nuovi servizi
+   */
+  onOperatorChange(): void {
+    this.serviceId = null;
+    this.loadOperatorServices(this.operatorId);
   }
 
   get filteredPatients(): Patient[] {
@@ -549,6 +616,7 @@ export class EventDialogComponent implements OnInit {
       startTime: this.startTime,
       endTime: this.endTime,
       operatorId: this.operatorId,
+      serviceId: this.serviceId || undefined,
       patientId: this.patientId ? Number(this.patientId) : undefined,  // Forza conversione a Int per GraphQL
       notes: this.notes || undefined
     };

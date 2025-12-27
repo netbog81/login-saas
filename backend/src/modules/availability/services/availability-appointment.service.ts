@@ -46,6 +46,7 @@ export interface CreateAvailabilityAppointmentInput {
 }
 
 export interface UpdateAvailabilityAppointmentInput {
+  serviceId?: string;
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -640,12 +641,24 @@ export class AvailabilityAppointmentService {
    * Aggiorna un appuntamento
    */
   async update(id: string, input: UpdateAvailabilityAppointmentInput): Promise<AvailabilityAppointment> {
-    const appointment = await this.findById(id);
+    console.log('[AppointmentService] update called with input:', JSON.stringify(input, null, 2));
+
+    // IMPORTANTE: Carica l'entity SENZA relazioni per evitare che l'Identity Map
+    // mantenga cached le vecchie relazioni (service, operator, etc.)
+    const appointment = await this.appointmentRepo.findOne({ where: { id } });
+    if (!appointment) {
+      throw new Error(`Appuntamento con ID ${id} non trovato`);
+    }
+
+    console.log('[AppointmentService] current appointment.serviceId:', appointment.serviceId);
     const { instruments, ...updateData } = input;
+    console.log('[AppointmentService] updateData (without instruments):', JSON.stringify(updateData, null, 2));
 
     // Aggiorna i campi dell'appuntamento
     Object.assign(appointment, updateData);
+    console.log('[AppointmentService] appointment.serviceId AFTER Object.assign:', appointment.serviceId);
     await this.appointmentRepo.save(appointment);
+    console.log('[AppointmentService] saved to DB');
 
     // Se vengono passati strumenti, aggiorna le associazioni
     if (instruments !== undefined) {
@@ -663,7 +676,25 @@ export class AvailabilityAppointmentService {
       }
     }
 
-    return this.findById(id);
+    // IMPORTANTE: Usa QueryBuilder per bypassare l'Identity Map di TypeORM
+    // L'Identity Map mantiene cached le entity già caricate nella stessa "sessione"
+    // findOne() ritornerebbe l'entity cached con le vecchie relazioni
+    const result = await this.appointmentRepo
+      .createQueryBuilder('appointment')
+      .leftJoinAndSelect('appointment.operator', 'operator')
+      .leftJoinAndSelect('appointment.service', 'service')
+      .leftJoinAndSelect('appointment.instruments', 'instruments')
+      .leftJoinAndSelect('instruments.instrument', 'instrument')
+      .leftJoinAndSelect('instrument.category', 'category')
+      .where('appointment.id = :id', { id })
+      .getOne();
+
+    if (!result) {
+      throw new Error(`Appuntamento con ID ${id} non trovato dopo update`);
+    }
+
+    console.log('[AppointmentService] FINAL result.serviceId returned:', result.serviceId);
+    return result;
   }
 
   /**

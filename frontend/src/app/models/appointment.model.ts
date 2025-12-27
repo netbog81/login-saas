@@ -66,6 +66,8 @@ export interface Appointment {
   endTime: string;
   operatorId: string;
   operator?: Operator;
+  serviceId?: string;   // ID del servizio associato
+  service?: { id: string; name: string };  // Oggetto servizio per visualizzazione
   patientId?: number;
   patient?: Patient;
   notes?: string;

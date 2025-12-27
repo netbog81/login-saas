@@ -53,6 +53,7 @@ export interface CreateAvailabilityAppointmentInput {
 }
 
 export interface UpdateAvailabilityAppointmentInput {
+  serviceId?: string;
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;

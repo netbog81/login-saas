@@ -1495,6 +1495,7 @@ input UpdateAvailabilityAppointmentInput {
   notes: String
   operatorNotes: String
   patientId: Int
+  serviceId: ID
   startTime: String
 }
 

@@ -32,6 +32,7 @@
         <select
           id="operatorId"
           [(ngModel)]="operatorId"
+          (ngModelChange)="onOperatorChange()"
           [class.error]="errors['operatorId']"
           class="form-input">
           <option value="">Seleziona operatore</option>
@@ -40,6 +41,24 @@
           </option>
         </select>
         <span class="error-message" *ngIf="errors['operatorId']">{{ errors['operatorId'] }}</span>
+      </div>
+    </div>
+
+    <!-- Service selection -->
+    <div class="form-row" *ngIf="operatorId">
+      <div class="form-group" style="flex: 1;">
+        <label for="serviceId">Servizio ({{ operatorServices.length }} disponibili)</label>
+        <select
+          id="serviceId"
+          [(ngModel)]="serviceId"
+          class="form-input"
+          [disabled]="loadingServices">
+          <option [ngValue]="null">-- Nessun servizio --</option>
+          <option *ngFor="let service of operatorServices" [ngValue]="service.id">
+            {{ service.name }} ({{ service.defaultDuration }} min - €{{ service.defaultPrice }})
+          </option>
+        </select>
+        <span class="loading-hint" *ngIf="loadingServices">Caricamento servizi...</span>
       </div>
     </div>
 

@@ -13,6 +13,8 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     endTime: formatTime(aa.endTime),
     operatorId: aa.operatorId || '',
     operator: aa.operator || undefined,
+    serviceId: aa.serviceId || undefined,
+    service: aa.service ? { id: aa.service.id, name: aa.service.name } : undefined,
     patientId: aa.patientId || undefined,
     notes: aa.notes || undefined,
 

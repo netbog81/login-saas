@@ -1275,19 +1275,22 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
       if (isUpdate) {
         // Update appuntamento esistente (non supporta ricorrenza)
+        const updateInput = {
+          serviceId: appointment.serviceId,
+          clientName: appointment.title,
+          patientId: appointment.patientId,
+          appointmentDate: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          notes: appointment.notes,
+          instrumentOrderMatters: instrumentOrderMatters,
+          instruments: instruments
+        };
+        console.log('[Calendar] Updating appointment with input:', JSON.stringify(updateInput, null, 2));
         await firstValueFrom(
           this.availabilityAppointmentService.updateAppointment(
             appointment.id as string,
-            {
-              clientName: appointment.title,
-              patientId: appointment.patientId,
-              appointmentDate: appointment.date,
-              startTime: appointment.startTime,
-              endTime: appointment.endTime,
-              notes: appointment.notes,
-              instrumentOrderMatters: instrumentOrderMatters,
-              instruments: instruments
-            }
+            updateInput
           )
         );
         console.log('[Calendar] Updated appointment:', appointment.id);
@@ -1296,6 +1299,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         const created = await firstValueFrom(
           this.availabilityAppointmentService.createAppointment({
             operatorId: appointment.operatorId,
+            serviceId: appointment.serviceId,
             clientName: appointment.title,
             patientId: appointment.patientId,
             appointmentDate: appointment.date,

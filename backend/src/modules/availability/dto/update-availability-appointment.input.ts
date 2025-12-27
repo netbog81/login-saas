@@ -29,6 +29,11 @@ export class UpdateAvailabilityAppointmentInput {
   @IsInt()
   patientId?: number;
 
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID('4', { message: 'serviceId deve essere un UUID valido' })
+  serviceId?: string;
+
   @Field({ nullable: true })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La data deve essere nel formato YYYY-MM-DD' })

@@ -102,6 +102,14 @@ textarea.form-input {
   color: #ef4444;
 }
 
+.loading-hint {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 4px;
+}
+
 .patient-selector {
   position: relative;
 }

@@ -99,6 +99,12 @@
       </div>
     </div>
 
+    <!-- Service -->
+    <div class="info-section" *ngIf="appointment.service">
+      <div class="info-label">Servizio</div>
+      <div class="info-value">{{ appointment.service.name }}</div>
+    </div>
+
     <!-- Instruments -->
     <div class="info-section" *ngIf="hasInstruments">
       <div class="info-label">
