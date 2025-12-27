@@ -9,6 +9,7 @@ import { AvailabilityStateService } from '../../../services/availability-state.s
 import { OperatorService } from '../../../services/operator.service';
 import { OperatorCategoryService } from '../../../services/operator-category.service';
 import { ServiceService } from '../../../services/service.service';
+import { ServiceSubcategoryService, ServiceSubcategory } from '../../../services/service-subcategory.service';
 import {
   Operator,
   OperatorCategory,
@@ -61,6 +62,27 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   selectedServices: string[] = [];
   operatorServices: { [operatorId: string]: Service[] } = {};
 
+  // Service filters for modal
+  allSubcategories: ServiceSubcategory[] = [];
+  filteredSubcategoriesForModal: ServiceSubcategory[] = [];
+  filterMacroCategory: OperatorMacroCategory | null = null;
+  filterSubcategoryId: string | null = null;
+
+  // Macro categories for dropdown
+  macroCategories = [
+    OperatorMacroCategory.Doctor,
+    OperatorMacroCategory.Physiotherapist,
+    OperatorMacroCategory.GymInstructor,
+    OperatorMacroCategory.Other
+  ];
+
+  macroCategoryLabels: Record<string, string> = {
+    [OperatorMacroCategory.Doctor]: 'Medici',
+    [OperatorMacroCategory.Physiotherapist]: 'Fisioterapisti',
+    [OperatorMacroCategory.GymInstructor]: 'Istruttori Palestra',
+    [OperatorMacroCategory.Other]: 'Altro'
+  };
+
   // Expose enum to template
   OperatorMacroCategory = OperatorMacroCategory;
 
@@ -68,7 +90,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     private availabilityState: AvailabilityStateService,
     private operatorService: OperatorService,
     private operatorCategoryService: OperatorCategoryService,
-    private serviceService: ServiceService
+    private serviceService: ServiceService,
+    private serviceSubcategoryService: ServiceSubcategoryService
   ) {}
 
   ngOnInit() {
@@ -114,6 +137,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     this.loadOperators();
     this.loadCategories();
     this.loadServices();
+    this.loadAllSubcategories();
   }
 
   ngOnDestroy() {
@@ -138,6 +162,47 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
 
   loadServices() {
     this.availabilityState.loadServices();
+  }
+
+  loadAllSubcategories() {
+    this.serviceSubcategoryService.getServiceSubcategories(undefined, true)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (subcategories) => {
+          this.allSubcategories = subcategories;
+        },
+        error: (error) => {
+          console.error('Error loading subcategories:', error);
+        }
+      });
+  }
+
+  onMacroCategoryFilterChange() {
+    // Reset subcategory filter when macro changes
+    this.filterSubcategoryId = null;
+
+    // Filter subcategories based on selected macro
+    if (this.filterMacroCategory) {
+      this.filteredSubcategoriesForModal = this.allSubcategories.filter(
+        sub => sub.macroCategory === this.filterMacroCategory
+      );
+    } else {
+      this.filteredSubcategoriesForModal = [];
+    }
+  }
+
+  get filteredServicesForModal(): Service[] {
+    let filtered = this.services;
+
+    if (this.filterMacroCategory) {
+      filtered = filtered.filter(s => (s as any).macroCategory === this.filterMacroCategory);
+    }
+
+    if (this.filterSubcategoryId) {
+      filtered = filtered.filter(s => (s as any).subcategoryId === this.filterSubcategoryId);
+    }
+
+    return filtered;
   }
 
   selectOperator(operator: Operator) {
@@ -376,6 +441,10 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
 
   openServiceAssignment(operator: Operator) {
     this.selectedOperator = operator;
+    // Reset filters
+    this.filterMacroCategory = null;
+    this.filterSubcategoryId = null;
+    this.filteredSubcategoriesForModal = [];
     this.loadOperatorServices(operator.id);
     this.showServiceAssignment = true;
   }

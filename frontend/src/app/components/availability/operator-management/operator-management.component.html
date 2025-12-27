@@ -181,9 +181,37 @@
         <button class="close-btn" (click)="closeServiceAssignment()">×</button>
       </div>
 
+      <!-- Filtri per servizi -->
+      <div class="modal-filters">
+        <div class="filter-row">
+          <div class="form-group">
+            <label>Macro Categoria</label>
+            <select [(ngModel)]="filterMacroCategory"
+                    (ngModelChange)="onMacroCategoryFilterChange()"
+                    class="form-control">
+              <option [ngValue]="null">-- Tutte --</option>
+              <option *ngFor="let cat of macroCategories" [ngValue]="cat">
+                {{ macroCategoryLabels[cat] }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sotto Categoria</label>
+            <select [(ngModel)]="filterSubcategoryId"
+                    class="form-control"
+                    [disabled]="!filterMacroCategory">
+              <option [ngValue]="null">-- Tutte --</option>
+              <option *ngFor="let sub of filteredSubcategoriesForModal" [ngValue]="sub.id">
+                {{ sub.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-body">
         <div class="services-list">
-          <div *ngFor="let service of services" class="service-item">
+          <div *ngFor="let service of filteredServicesForModal" class="service-item">
             <label class="checkbox-label">
               <input type="checkbox"
                      [checked]="isServiceSelected(service.id)"
