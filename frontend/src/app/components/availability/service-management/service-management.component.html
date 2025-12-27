@@ -31,10 +31,10 @@
       <thead>
         <tr>
           <th>Nome</th>
-          <th>Descrizione</th>
+          <th>Categoria</th>
           <th>Durata</th>
           <th>Prezzo</th>
-          <th>Buffer</th>
+          <th>Sconto FE</th>
           <th>Stato</th>
           <th>Azioni</th>
         </tr>
@@ -47,15 +47,10 @@
             <span class="color-indicator" [style.background-color]="service.color"></span>
             {{ service.name }}
           </td>
-          <td class="service-description">{{ service.description || '-' }}</td>
+          <td>{{ service.macroCategory ? macroCategoryLabels[service.macroCategory] : '-' }}</td>
           <td>{{ formatDuration(service.defaultDuration) }}</td>
           <td>{{ formatPrice(service.defaultPrice) }}</td>
-          <td>
-            <span *ngIf="service.bufferTimeBefore || service.bufferTimeAfter">
-              {{ service.bufferTimeBefore }}' / {{ service.bufferTimeAfter }}'
-            </span>
-            <span *ngIf="!service.bufferTimeBefore && !service.bufferTimeAfter">-</span>
-          </td>
+          <td>{{ $any(service).discountFE ? formatPrice($any(service).discountFE) : '-' }}</td>
           <td>
             <span [class]="service.isActive ? 'status-active' : 'status-inactive'">
               {{ service.isActive ? 'Attivo' : 'Inattivo' }}
@@ -100,6 +95,28 @@
           </div>
         </div>
 
+        <div class="form-row">
+          <div class="form-group">
+            <label>Macro Categoria</label>
+            <select [(ngModel)]="editingService.macroCategory"
+                    (change)="onMacroCategoryChange()"
+                    class="form-control">
+              <option *ngFor="let cat of macroCategories" [ngValue]="cat">
+                {{ macroCategoryLabels[cat] }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sotto Categoria</label>
+            <select [(ngModel)]="editingService.subcategoryId" class="form-control">
+              <option [ngValue]="null">-- Nessuna --</option>
+              <option *ngFor="let sub of filteredSubcategories" [ngValue]="sub.id">
+                {{ sub.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
         <div class="form-group">
           <label>Descrizione</label>
           <textarea [(ngModel)]="editingService.description" class="form-control" rows="3"></textarea>
@@ -121,6 +138,16 @@
                    min="0"
                    step="0.01"
                    class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Sconto FE (€)</label>
+            <input type="number"
+                   [(ngModel)]="editingService.discountFE"
+                   min="0"
+                   step="0.01"
+                   class="form-control"
+                   placeholder="Prezzo alternativo">
+            <small>Lasciare vuoto se non applicabile</small>
           </div>
         </div>
 

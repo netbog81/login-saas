@@ -1,9 +1,10 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { OperatorService } from './operator-service.entity';
 import { AvailabilityAppointment } from './availability-appointment.entity';
 import { OperatorMacroCategory } from './operator-macro-category.enum';
 import { ServiceInstrument } from './service-instrument.entity';
+import { ServiceSubcategory } from './service-subcategory.entity';
 
 @ObjectType()
 @Entity('services')
@@ -67,6 +68,19 @@ export class Service {
   @Field({ nullable: true })
   @Column({ default: false })
   reverseInstrumentOrder?: boolean; // For 2 instruments in 45min when orderMatters=false: reverse the order
+
+  @Field({ nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  discountFE?: number; // Prezzo alternativo "Sconto FE"
+
+  @Field(() => ServiceSubcategory, { nullable: true })
+  @ManyToOne(() => ServiceSubcategory, { nullable: true })
+  @JoinColumn({ name: 'subcategoryId' })
+  subcategory?: ServiceSubcategory;
+
+  @Field(() => ID, { nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  subcategoryId?: string;
 
   @Field()
   @CreateDateColumn()

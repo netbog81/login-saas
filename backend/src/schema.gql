@@ -691,7 +691,8 @@ type Mutation {
   createPatient(createPatientInput: CreatePatientInput!): PatientModel!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
   createRoom(capacity: Int, color: String, name: String!): Room!
-  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int): Service!
+  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, subcategoryId: ID): Service!
+  createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   createTreatment(appointmentId: ID!): Treatment!
@@ -720,6 +721,7 @@ type Mutation {
   deletePatternGroup(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
+  deleteServiceSubcategory(id: ID!): Boolean!
   deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
@@ -778,7 +780,8 @@ type Mutation {
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
-  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int): Service!
+  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, subcategoryId: ID): Service!
+  updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
@@ -834,6 +837,7 @@ Macro category defining what an operator can do (use instruments, manage gym, et
 enum OperatorMacroCategory {
   DOCTOR
   GYM_INSTRUCTOR
+  OTHER
   PHYSIOTHERAPIST
 }
 
@@ -1140,6 +1144,8 @@ type Query {
   searchPatients(searchInput: SearchPatientInput!): [PatientModel!]!
   service(id: ID!): Service
   serviceOperators(serviceId: ID!): [OperatorService!]!
+  serviceSubcategories(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [ServiceSubcategory!]!
+  serviceSubcategory(id: ID!): ServiceSubcategory
   services(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Service!]!
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
@@ -1276,6 +1282,7 @@ type Service {
   defaultInstrumentSlotOffset: Int
   defaultPrice: Float!
   description: String
+  discountFE: Float
   id: ID!
   instrumentOrderMatters: Boolean!
   isActive: Boolean!
@@ -1285,6 +1292,8 @@ type Service {
   preferredDuration: Int
   requiredInstruments: [ServiceInstrument!]
   reverseInstrumentOrder: Boolean
+  subcategory: ServiceSubcategory
+  subcategoryId: ID
   updatedAt: DateTime!
 }
 
@@ -1298,6 +1307,16 @@ type ServiceInstrument {
   quantity: Int!
   service: Service!
   serviceId: String!
+  updatedAt: DateTime!
+}
+
+type ServiceSubcategory {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  isActive: Boolean!
+  macroCategory: OperatorMacroCategory!
+  name: String!
   updatedAt: DateTime!
 }
 

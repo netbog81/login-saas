@@ -3,7 +3,8 @@ import { registerEnumType } from '@nestjs/graphql';
 export enum OperatorMacroCategory {
   DOCTOR = 'doctor',
   PHYSIOTHERAPIST = 'physiotherapist',
-  GYM_INSTRUCTOR = 'gym_instructor'
+  GYM_INSTRUCTOR = 'gym_instructor',
+  OTHER = 'other'
 }
 
 registerEnumType(OperatorMacroCategory, {

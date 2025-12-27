@@ -10,9 +10,10 @@ import { OperatorTemplateAssignment } from '../operator-template-assignment/oper
 import { OperatorCategoryManagementComponent } from '../operator-category-management/operator-category-management.component';
 import { InstrumentationManagementComponent } from '../instrumentation-management/instrumentation-management.component';
 import { GymManagementComponent } from '../gym-management/gym-management.component';
+import { ServiceSubcategoryManagementComponent } from '../service-subcategory-management/service-subcategory-management.component';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 
-type TabType = 'operators' | 'categories' | 'services' | 'templates' | 'assignments' | 'instrumentation' | 'gyms' | 'calendar';
+type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'templates' | 'assignments' | 'instrumentation' | 'gyms' | 'calendar';
 
 @Component({
   selector: 'app-availability-dashboard',
@@ -27,7 +28,8 @@ type TabType = 'operators' | 'categories' | 'services' | 'templates' | 'assignme
     TemplateManagement,
     OperatorTemplateAssignment,
     InstrumentationManagementComponent,
-    GymManagementComponent
+    GymManagementComponent,
+    ServiceSubcategoryManagementComponent
   ],
   templateUrl: './availability-dashboard.component.html',
   styleUrls: ['./availability-dashboard.component.scss']

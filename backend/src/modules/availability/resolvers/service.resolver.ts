@@ -28,7 +28,7 @@ export class ServiceResolver {
 
     return this.serviceRepo.find({
       where,
-      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory'],
+      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory', 'subcategory'],
       order: { name: 'ASC' },
     });
   }
@@ -40,7 +40,7 @@ export class ServiceResolver {
   ): Promise<Service | null> {
     return this.serviceRepo.findOne({
       where: { id },
-      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory'],
+      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory', 'subcategory'],
     });
   }
 
@@ -60,6 +60,8 @@ export class ServiceResolver {
     @Args('isActive', { nullable: true }) isActive?: boolean,
     @Args('preferredDuration', { type: () => Int, nullable: true }) preferredDuration?: number,
     @Args('instrumentOrderMatters', { nullable: true }) instrumentOrderMatters?: boolean,
+    @Args('subcategoryId', { type: () => ID, nullable: true }) subcategoryId?: string,
+    @Args('discountFE', { nullable: true }) discountFE?: number,
   ): Promise<Service> {
     const service = this.serviceRepo.create({
       name,
@@ -73,6 +75,8 @@ export class ServiceResolver {
       macroCategory,
       preferredDuration,
       instrumentOrderMatters: instrumentOrderMatters || false,
+      subcategoryId,
+      discountFE,
     });
 
     return this.serviceRepo.save(service);
@@ -94,6 +98,8 @@ export class ServiceResolver {
     macroCategory?: OperatorMacroCategory,
     @Args('preferredDuration', { type: () => Int, nullable: true }) preferredDuration?: number,
     @Args('instrumentOrderMatters', { nullable: true }) instrumentOrderMatters?: boolean,
+    @Args('subcategoryId', { type: () => ID, nullable: true }) subcategoryId?: string,
+    @Args('discountFE', { nullable: true }) discountFE?: number,
   ): Promise<Service> {
     await this.serviceRepo.update(id, {
       ...(name !== undefined && { name }),
@@ -107,11 +113,13 @@ export class ServiceResolver {
       ...(macroCategory !== undefined && { macroCategory }),
       ...(preferredDuration !== undefined && { preferredDuration }),
       ...(instrumentOrderMatters !== undefined && { instrumentOrderMatters }),
+      ...(subcategoryId !== undefined && { subcategoryId }),
+      ...(discountFE !== undefined && { discountFE }),
     });
 
     const service = await this.serviceRepo.findOne({
       where: { id },
-      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory'],
+      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory', 'subcategory'],
     });
     if (!service) {
       throw new Error('Service not found');

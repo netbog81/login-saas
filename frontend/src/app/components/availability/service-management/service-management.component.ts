@@ -5,7 +5,8 @@ import { Subject, takeUntil } from 'rxjs';
 
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 import { ServiceService } from '../../../services/service.service';
-import { Service, MutationCreateServiceArgs as CreateServiceInput, MutationUpdateServiceArgs as UpdateServiceInput } from '../../../graphql/generated/types';
+import { ServiceSubcategoryService, ServiceSubcategory } from '../../../services/service-subcategory.service';
+import { Service, MutationCreateServiceArgs as CreateServiceInput, MutationUpdateServiceArgs as UpdateServiceInput, OperatorMacroCategory } from '../../../graphql/generated/types';
 
 @Component({
   selector: 'app-service-management',
@@ -24,7 +25,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
 
   // Form state
   showServiceForm = false;
-  editingService: Partial<CreateServiceInput> = {
+  editingService: Partial<CreateServiceInput> & { subcategoryId?: string | null; discountFE?: number | null } = {
     name: '',
     description: '',
     defaultDuration: 30,
@@ -32,16 +33,36 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
     bufferTimeBefore: 0,
     bufferTimeAfter: 0,
     isActive: true,
-    color: '#007bff'
+    color: '#007bff',
+    macroCategory: OperatorMacroCategory.Other,
+    subcategoryId: null,
+    discountFE: null
   };
 
   // Filter and search
   searchTerm = '';
   showInactive = false;
 
+  // Macro categories and subcategories
+  macroCategories: OperatorMacroCategory[] = [
+    OperatorMacroCategory.Doctor,
+    OperatorMacroCategory.Physiotherapist,
+    OperatorMacroCategory.GymInstructor,
+    OperatorMacroCategory.Other
+  ];
+  macroCategoryLabels: Record<string, string> = {
+    [OperatorMacroCategory.Doctor]: 'Medici',
+    [OperatorMacroCategory.Physiotherapist]: 'Fisioterapisti',
+    [OperatorMacroCategory.GymInstructor]: 'Istruttori Palestra',
+    [OperatorMacroCategory.Other]: 'Altro'
+  };
+  allSubcategories: ServiceSubcategory[] = [];
+  filteredSubcategories: ServiceSubcategory[] = [];
+
   constructor(
     private availabilityState: AvailabilityStateService,
-    private serviceService: ServiceService
+    private serviceService: ServiceService,
+    private subcategoryService: ServiceSubcategoryService
   ) {}
 
   ngOnInit() {
@@ -68,6 +89,15 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
 
     // Initial load
     this.loadServices();
+    this.loadSubcategories();
+  }
+
+  loadSubcategories() {
+    this.subcategoryService.getServiceSubcategories(undefined, true)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(subcategories => {
+        this.allSubcategories = subcategories;
+      });
   }
 
   ngOnDestroy() {
@@ -106,8 +136,12 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         bufferTimeBefore: service.bufferTimeBefore,
         bufferTimeAfter: service.bufferTimeAfter,
         isActive: service.isActive,
-        color: service.color || '#007bff'
+        color: service.color || '#007bff',
+        macroCategory: service.macroCategory || OperatorMacroCategory.Other,
+        subcategoryId: (service as any).subcategoryId || null,
+        discountFE: (service as any).discountFE || null
       };
+      this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
     } else {
       this.selectedService = null;
       this.editingService = {
@@ -118,10 +152,25 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         bufferTimeBefore: 0,
         bufferTimeAfter: 0,
         isActive: true,
-        color: '#007bff'
+        color: '#007bff',
+        macroCategory: OperatorMacroCategory.Other,
+        subcategoryId: null,
+        discountFE: null
       };
+      this.filterSubcategoriesByMacroCategory(OperatorMacroCategory.Other);
     }
     this.showServiceForm = true;
+  }
+
+  onMacroCategoryChange() {
+    this.editingService.subcategoryId = null;
+    this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
+  }
+
+  filterSubcategoriesByMacroCategory(macroCategory: OperatorMacroCategory) {
+    this.filteredSubcategories = this.allSubcategories.filter(
+      sub => sub.macroCategory === macroCategory
+    );
   }
 
   closeServiceForm() {
@@ -135,8 +184,12 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
       bufferTimeBefore: 0,
       bufferTimeAfter: 0,
       isActive: true,
-      color: '#007bff'
+      color: '#007bff',
+      macroCategory: OperatorMacroCategory.Other,
+      subcategoryId: null,
+      discountFE: null
     };
+    this.filteredSubcategories = [];
   }
 
   saveService() {
@@ -149,7 +202,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
 
     if (this.selectedService) {
       // Update existing service
-      const input: UpdateServiceInput = {
+      const input: UpdateServiceInput & { subcategoryId?: string | null; discountFE?: number | null } = {
         id: this.selectedService.id,
         name: this.editingService.name,
         description: this.editingService.description,
@@ -158,10 +211,13 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         bufferTimeBefore: this.editingService.bufferTimeBefore,
         bufferTimeAfter: this.editingService.bufferTimeAfter,
         isActive: this.editingService.isActive,
-        color: this.editingService.color
+        color: this.editingService.color,
+        macroCategory: this.editingService.macroCategory,
+        subcategoryId: this.editingService.subcategoryId,
+        discountFE: this.editingService.discountFE
       };
 
-      this.serviceService.updateService(this.selectedService.id, input)
+      this.serviceService.updateService(this.selectedService.id, input as any)
         .subscribe({
           next: (service) => {
             this.availabilityState.updateService(service);
@@ -237,8 +293,12 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
       bufferTimeBefore: service.bufferTimeBefore,
       bufferTimeAfter: service.bufferTimeAfter,
       isActive: service.isActive,
-      color: service.color
+      color: service.color,
+      macroCategory: service.macroCategory || OperatorMacroCategory.Other,
+      subcategoryId: (service as any).subcategoryId || null,
+      discountFE: (service as any).discountFE || null
     };
+    this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
   }
 
   formatDuration(minutes: number): string {

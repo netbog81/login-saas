@@ -1,0 +1,119 @@
+<div class="subcategory-management">
+  <!-- Header -->
+  <div class="header">
+    <h2>Gestione Sotto-Categorie Servizi</h2>
+    <button class="btn btn-primary" (click)="openSubcategoryForm()">
+      + Nuova Sotto-Categoria
+    </button>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <div class="macro-category-filters">
+      <button class="filter-btn"
+              [class.active]="filterMacroCategory === null"
+              (click)="filterMacroCategory = null">
+        Tutte ({{ subcategories.length }})
+      </button>
+      <button *ngFor="let cat of macroCategories"
+              class="filter-btn"
+              [class.active]="filterMacroCategory === cat"
+              (click)="filterMacroCategory = cat">
+        {{ macroCategoryLabels[cat] }} ({{ getSubcategoryCount(cat) }})
+      </button>
+    </div>
+    <label class="checkbox-label">
+      <input type="checkbox" [(ngModel)]="showInactive">
+      Mostra inattive
+    </label>
+  </div>
+
+  <!-- Loading/Error states -->
+  <div *ngIf="loading" class="loading">Caricamento...</div>
+  <div *ngIf="error && !showSubcategoryForm" class="error">{{ error }}</div>
+
+  <!-- Subcategories Grid -->
+  <div class="subcategories-grid" *ngIf="!loading">
+    <div *ngFor="let subcategory of filteredSubcategories"
+         class="subcategory-card"
+         [class.inactive]="!subcategory.isActive">
+      <div class="card-header">
+        <span class="macro-badge">{{ macroCategoryLabels[subcategory.macroCategory] }}</span>
+        <span class="status-badge" [class.active]="subcategory.isActive">
+          {{ subcategory.isActive ? 'Attiva' : 'Inattiva' }}
+        </span>
+      </div>
+      <div class="card-body">
+        <h4>{{ subcategory.name }}</h4>
+        <p *ngIf="subcategory.description">{{ subcategory.description }}</p>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-sm" (click)="openSubcategoryForm(subcategory)">
+          Modifica
+        </button>
+        <button class="btn btn-sm btn-danger" (click)="deleteSubcategory(subcategory)">
+          Elimina
+        </button>
+      </div>
+    </div>
+
+    <div *ngIf="filteredSubcategories.length === 0" class="no-data">
+      Nessuna sotto-categoria trovata
+    </div>
+  </div>
+
+  <!-- Form Modal -->
+  <div *ngIf="showSubcategoryForm" class="modal-overlay" (click)="closeSubcategoryForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditMode ? 'Modifica' : 'Nuova' }} Sotto-Categoria</h3>
+        <button class="close-btn" (click)="closeSubcategoryForm()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div *ngIf="error" class="error">{{ error }}</div>
+
+        <div class="form-group">
+          <label>Macro Categoria *</label>
+          <select [(ngModel)]="editingSubcategory.macroCategory"
+                  class="form-control"
+                  [disabled]="isEditMode">
+            <option *ngFor="let cat of macroCategories" [ngValue]="cat">
+              {{ macroCategoryLabels[cat] }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Nome *</label>
+          <input type="text"
+                 [(ngModel)]="editingSubcategory.name"
+                 class="form-control"
+                 placeholder="Nome della sotto-categoria">
+        </div>
+
+        <div class="form-group">
+          <label>Descrizione</label>
+          <textarea [(ngModel)]="editingSubcategory.description"
+                    class="form-control"
+                    rows="3"
+                    placeholder="Descrizione opzionale"></textarea>
+        </div>
+
+        <div class="form-group" *ngIf="isEditMode">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingSubcategory.isActive">
+            Sotto-Categoria Attiva
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeSubcategoryForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveSubcategory()" [disabled]="loading">
+          {{ isEditMode ? 'Aggiorna' : 'Crea' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

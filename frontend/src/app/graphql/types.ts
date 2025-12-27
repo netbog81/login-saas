@@ -3,6 +3,7 @@ export enum OperatorMacroCategory {
   Doctor = 'DOCTOR',
   Physiotherapist = 'PHYSIOTHERAPIST',
   GymInstructor = 'GYM_INSTRUCTOR',
+  Other = 'OTHER',
 }
 
 export enum ExceptionType {
@@ -438,6 +439,9 @@ export function getMacroCategoryLabel(macroCategory: OperatorMacroCategory | str
     case OperatorMacroCategory.GymInstructor:
     case 'GYM_INSTRUCTOR':
       return 'Istruttore Palestra';
+    case OperatorMacroCategory.Other:
+    case 'OTHER':
+      return 'Altro';
     default:
       return String(macroCategory);
   }

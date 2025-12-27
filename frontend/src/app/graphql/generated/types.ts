@@ -928,7 +928,8 @@ export type OperatorConflictCount = {
 export enum OperatorMacroCategory {
   Doctor = 'DOCTOR',
   GymInstructor = 'GYM_INSTRUCTOR',
-  Physiotherapist = 'PHYSIOTHERAPIST'
+  Physiotherapist = 'PHYSIOTHERAPIST',
+  Other = 'OTHER'
 }
 
 export type OperatorService = {

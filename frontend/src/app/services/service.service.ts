@@ -61,7 +61,10 @@ export class ServiceService {
       bufferTimeBefore: input.bufferTimeBefore,
       bufferTimeAfter: input.bufferTimeAfter,
       color: input.color,
-      isActive: input.isActive
+      isActive: input.isActive,
+      macroCategory: input.macroCategory,
+      subcategoryId: (input as any).subcategoryId,
+      discountFE: (input as any).discountFE
     };
 
     console.log('ServiceService.createService - sending variables:', variables);
@@ -96,7 +99,10 @@ export class ServiceService {
           bufferTimeBefore: input.bufferTimeBefore,
           bufferTimeAfter: input.bufferTimeAfter,
           color: input.color,
-          isActive: input.isActive
+          isActive: input.isActive,
+          macroCategory: input.macroCategory,
+          subcategoryId: (input as any).subcategoryId,
+          discountFE: (input as any).discountFE
         },
         refetchQueries: [
           { query: GET_SERVICES },

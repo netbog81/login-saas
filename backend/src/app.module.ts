@@ -42,6 +42,9 @@ import { ServiceInstrument } from './modules/availability/entities/service-instr
 import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
 import { AppointmentLog } from './modules/availability/entities/appointment-log.entity';
 import { GeneralSettings } from './modules/settings/entities/general-settings.entity';
+import { ServiceSubcategory } from './modules/availability/entities/service-subcategory.entity';
+import { Treatment } from './modules/availability/entities/treatment.entity';
+import { TreatmentInstrument } from './modules/availability/entities/treatment-instrument.entity';
 // Pazienti module entities
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
@@ -88,6 +91,9 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
         AppointmentInstrument,
         AppointmentLog,
         GeneralSettings,
+        ServiceSubcategory,
+        Treatment,
+        TreatmentInstrument,
         // Pazienti module entities
         PersonaRiferimento,
         PazientePersonaRelazione,

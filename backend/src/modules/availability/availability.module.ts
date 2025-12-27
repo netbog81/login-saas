@@ -29,6 +29,7 @@ import { AppointmentLog } from './entities/appointment-log.entity';
 import { Patient } from '../../entities/patient.entity';
 import { Treatment } from './entities/treatment.entity';
 import { TreatmentInstrument } from './entities/treatment-instrument.entity';
+import { ServiceSubcategory } from './entities/service-subcategory.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -71,6 +72,7 @@ import { AvailabilityAppointmentResolver } from './resolvers/availability-appoin
 import { GymPatternGroupResolver } from './resolvers/gym-pattern-group.resolver';
 import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
 import { TreatmentResolver } from './resolvers/treatment.resolver';
+import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.resolver';
 
 @Module({
   imports: [
@@ -102,6 +104,7 @@ import { TreatmentResolver } from './resolvers/treatment.resolver';
       Patient,
       Treatment,
       TreatmentInstrument,
+      ServiceSubcategory,
     ]),
   ],
   providers: [
@@ -145,6 +148,7 @@ import { TreatmentResolver } from './resolvers/treatment.resolver';
     GymPatternGroupResolver,
     GymExceptionResolver,
     TreatmentResolver,
+    ServiceSubcategoryResolver,
   ],
   exports: [
     AvailabilityService,

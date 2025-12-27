@@ -10,6 +10,9 @@ export const CREATE_SERVICE = gql`
     $bufferTimeAfter: Int
     $color: String
     $isActive: Boolean
+    $macroCategory: OperatorMacroCategory
+    $subcategoryId: ID
+    $discountFE: Float
   ) {
     createService(
       name: $name
@@ -20,6 +23,9 @@ export const CREATE_SERVICE = gql`
       bufferTimeAfter: $bufferTimeAfter
       color: $color
       isActive: $isActive
+      macroCategory: $macroCategory
+      subcategoryId: $subcategoryId
+      discountFE: $discountFE
     ) {
       id
       name
@@ -30,6 +36,13 @@ export const CREATE_SERVICE = gql`
       bufferTimeAfter
       color
       isActive
+      macroCategory
+      discountFE
+      subcategoryId
+      subcategory {
+        id
+        name
+      }
       createdAt
       updatedAt
     }
@@ -47,6 +60,9 @@ export const UPDATE_SERVICE = gql`
     $bufferTimeAfter: Int
     $color: String
     $isActive: Boolean
+    $macroCategory: OperatorMacroCategory
+    $subcategoryId: ID
+    $discountFE: Float
   ) {
     updateService(
       id: $id
@@ -58,6 +74,9 @@ export const UPDATE_SERVICE = gql`
       bufferTimeAfter: $bufferTimeAfter
       color: $color
       isActive: $isActive
+      macroCategory: $macroCategory
+      subcategoryId: $subcategoryId
+      discountFE: $discountFE
     ) {
       id
       name
@@ -68,6 +87,13 @@ export const UPDATE_SERVICE = gql`
       bufferTimeAfter
       color
       isActive
+      macroCategory
+      discountFE
+      subcategoryId
+      subcategory {
+        id
+        name
+      }
       createdAt
       updatedAt
     }

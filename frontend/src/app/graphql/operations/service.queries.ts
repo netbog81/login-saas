@@ -12,6 +12,13 @@ export const GET_SERVICES = gql`
       bufferTimeAfter
       color
       isActive
+      macroCategory
+      discountFE
+      subcategoryId
+      subcategory {
+        id
+        name
+      }
       createdAt
       updatedAt
     }
@@ -30,6 +37,13 @@ export const GET_SERVICE = gql`
       bufferTimeAfter
       color
       isActive
+      macroCategory
+      discountFE
+      subcategoryId
+      subcategory {
+        id
+        name
+      }
       createdAt
       updatedAt
       operators {

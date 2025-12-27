@@ -395,7 +395,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     const labels: Record<OperatorMacroCategory, string> = {
       [OperatorMacroCategory.Doctor]: 'Medico',
       [OperatorMacroCategory.Physiotherapist]: 'Fisioterapista',
-      [OperatorMacroCategory.GymInstructor]: 'Istruttore Palestra'
+      [OperatorMacroCategory.GymInstructor]: 'Istruttore Palestra',
+      [OperatorMacroCategory.Other]: 'Altro'
     };
     return labels[cat] || cat;
   }
