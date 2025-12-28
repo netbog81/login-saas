@@ -28,6 +28,18 @@
         <span class="label">Istruttore:</span>
         <span class="value">{{ operatorName }}</span>
       </div>
+      <div class="slot-info-row" *ngIf="data.slotInfo.operator">
+        <span class="label">Servizio:</span>
+        <div class="service-select-container">
+          <select [(ngModel)]="serviceId" class="form-control service-select" [disabled]="loadingServices">
+            <option [ngValue]="null">-- Nessun servizio --</option>
+            <option *ngFor="let service of operatorServices" [ngValue]="service.id">
+              {{ service.name }} ({{ service.defaultDuration }} min - €{{ service.defaultPrice }})
+            </option>
+          </select>
+          <span class="loading-hint" *ngIf="loadingServices">Caricamento...</span>
+        </div>
+      </div>
       <div class="slot-info-row">
         <span class="label">Posti disponibili:</span>
         <span class="value capacity" [class.low]="remainingCapacity <= 2">

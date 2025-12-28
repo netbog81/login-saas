@@ -6,6 +6,8 @@ import { GymRoom, GymSlotInfo, GymAppointment, CreateGymAppointmentInput, Update
 import { Patient } from '../../../models/patient.model';
 import { RepeatConfig } from '../../../models/appointment.model';
 import { PatientService } from '../../../services/patient.service';
+import { ServiceService } from '../../../services/service.service';
+import { Service } from '../../../graphql/generated/types';
 
 export interface GymAppointmentDialogData {
   gymRoom: GymRoom;
@@ -35,7 +37,10 @@ export class GymAppointmentDialogComponent implements OnInit {
   @Input() data!: GymAppointmentDialogData;
   @Output() result = new EventEmitter<GymAppointmentDialogResult>();
 
-  constructor(private patientService: PatientService) {}
+  constructor(
+    private patientService: PatientService,
+    private serviceService: ServiceService
+  ) {}
 
   // Form fields
   clientName: string = '';
@@ -43,6 +48,11 @@ export class GymAppointmentDialogComponent implements OnInit {
   clientEmail: string = '';
   notes: string = '';
   selectedPatientId: number | null = null;
+
+  // Service selection
+  serviceId: string | null = null;
+  operatorServices: Service[] = [];
+  loadingServices: boolean = false;
 
   // Patient search
   patientSearch: string = '';
@@ -79,6 +89,11 @@ export class GymAppointmentDialogComponent implements OnInit {
   ngOnInit(): void {
     this.filteredPatients = this.data.patients?.slice(0, 10) || [];
 
+    // Carica i servizi dell'operatore assegnato allo slot
+    if (this.data.slotInfo.operator?.id) {
+      this.loadOperatorServices(this.data.slotInfo.operator.id);
+    }
+
     // Se in modalità edit, popola i campi con i dati esistenti
     if (this.data.appointment) {
       const apt = this.data.appointment;
@@ -86,6 +101,7 @@ export class GymAppointmentDialogComponent implements OnInit {
       this.clientPhone = apt.clientPhone || '';
       this.clientEmail = apt.clientEmail || '';
       this.notes = apt.notes || '';
+      this.serviceId = apt.serviceId || null;
       // Forza conversione a number (GraphQL ID può essere stringa)
       this.selectedPatientId = apt.patientId ? Number(apt.patientId) : null;
 
@@ -100,6 +116,32 @@ export class GymAppointmentDialogComponent implements OnInit {
         }
       }
     }
+  }
+
+  /**
+   * Carica i servizi assegnati all'operatore dello slot
+   */
+  loadOperatorServices(operatorId: string): void {
+    if (!operatorId) {
+      this.operatorServices = [];
+      return;
+    }
+
+    this.loadingServices = true;
+    this.serviceService.getOperatorServices(operatorId).subscribe({
+      next: (operatorServiceList) => {
+        const services = operatorServiceList
+          .map(os => os.service)
+          .filter((s): s is Service => !!s && s.isActive !== false);
+        this.operatorServices = services;
+        this.loadingServices = false;
+      },
+      error: (error) => {
+        console.error('Error loading operator services:', error);
+        this.operatorServices = [];
+        this.loadingServices = false;
+      }
+    });
   }
 
   get remainingCapacity(): number {
@@ -338,6 +380,7 @@ export class GymAppointmentDialogComponent implements OnInit {
         clientEmail: this.clientEmail.trim() || undefined,
         // Forza conversione a Int per GraphQL
         patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
+        serviceId: this.serviceId || undefined,
         notes: this.notes.trim() || undefined
       };
 
@@ -369,6 +412,7 @@ export class GymAppointmentDialogComponent implements OnInit {
         clientEmail: this.clientEmail.trim() || undefined,
         // Forza conversione a Int per GraphQL
         patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
+        serviceId: this.serviceId || undefined,
         notes: this.notes.trim() || undefined,
         isRecurring: this.repeatEnabled || undefined,
         repeatConfig: repeatConfigData

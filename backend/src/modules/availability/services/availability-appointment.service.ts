@@ -1099,6 +1099,7 @@ export class AvailabilityAppointmentService {
     const appointment = this.appointmentRepo.create({
       operatorId: data.operatorId,
       gymRoomId: data.gymRoomId,
+      serviceId: data.serviceId,
       appointmentType: AppointmentType.GYM,
       clientName: data.clientName,
       clientEmail: data.clientEmail,
@@ -1128,7 +1129,7 @@ export class AvailabilityAppointmentService {
 
     return this.appointmentRepo.findOne({
       where: { id: savedAppointment.id },
-      relations: ['operator', 'gymRoom'],
+      relations: ['operator', 'gymRoom', 'service'],
     });
   }
 

@@ -46,6 +46,11 @@ export class CreateGymAppointmentInput {
   @Min(1)
   patientId?: number;
 
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID('4', { message: 'serviceId deve essere un UUID valido' })
+  serviceId?: string;
+
   @Field({ nullable: true })
   @IsOptional()
   @IsString()

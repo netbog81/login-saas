@@ -245,6 +245,7 @@ input CreateGymAppointmentInput {
   notes: String
   patientId: Int
   repeatConfig: JSON
+  serviceId: ID
   startTime: String!
 }
 

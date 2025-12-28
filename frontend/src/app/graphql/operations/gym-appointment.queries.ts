@@ -8,6 +8,7 @@ export const GYM_APPOINTMENT_FIELDS = gql`
     id
     operatorId
     gymRoomId
+    serviceId
     clientName
     clientEmail
     clientPhone
@@ -35,6 +36,10 @@ export const GYM_APPOINTMENT_FIELDS = gql`
       name
       color
       maxCapacity
+    }
+    service {
+      id
+      name
     }
   }
 `;

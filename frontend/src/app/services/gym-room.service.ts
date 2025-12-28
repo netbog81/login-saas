@@ -86,6 +86,7 @@ export interface GymAppointment {
   id: string;
   operatorId: string;
   gymRoomId: string;
+  serviceId?: string;
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -112,6 +113,10 @@ export interface GymAppointment {
     color?: string;
     maxCapacity: number;
   };
+  service?: {
+    id: string;
+    name: string;
+  };
 }
 
 /**
@@ -126,6 +131,7 @@ export interface CreateGymAppointmentInput {
   clientEmail?: string;
   clientPhone?: string;
   patientId?: number;
+  serviceId?: string;
   notes?: string;
   isRecurring?: boolean;
   repeatConfig?: {
@@ -149,6 +155,7 @@ export interface UpdateGymAppointmentInput {
   clientEmail?: string;
   clientPhone?: string;
   patientId?: number;
+  serviceId?: string;
   notes?: string;
   gymRoomId?: string;
 }
