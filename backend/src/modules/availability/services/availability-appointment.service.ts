@@ -641,8 +641,6 @@ export class AvailabilityAppointmentService {
    * Aggiorna un appuntamento
    */
   async update(id: string, input: UpdateAvailabilityAppointmentInput): Promise<AvailabilityAppointment> {
-    console.log('[AppointmentService] update called with input:', JSON.stringify(input, null, 2));
-
     // IMPORTANTE: Carica l'entity SENZA relazioni per evitare che l'Identity Map
     // mantenga cached le vecchie relazioni (service, operator, etc.)
     const appointment = await this.appointmentRepo.findOne({ where: { id } });
@@ -650,15 +648,11 @@ export class AvailabilityAppointmentService {
       throw new Error(`Appuntamento con ID ${id} non trovato`);
     }
 
-    console.log('[AppointmentService] current appointment.serviceId:', appointment.serviceId);
     const { instruments, ...updateData } = input;
-    console.log('[AppointmentService] updateData (without instruments):', JSON.stringify(updateData, null, 2));
 
     // Aggiorna i campi dell'appuntamento
     Object.assign(appointment, updateData);
-    console.log('[AppointmentService] appointment.serviceId AFTER Object.assign:', appointment.serviceId);
     await this.appointmentRepo.save(appointment);
-    console.log('[AppointmentService] saved to DB');
 
     // Se vengono passati strumenti, aggiorna le associazioni
     if (instruments !== undefined) {
@@ -693,7 +687,6 @@ export class AvailabilityAppointmentService {
       throw new Error(`Appuntamento con ID ${id} non trovato dopo update`);
     }
 
-    console.log('[AppointmentService] FINAL result.serviceId returned:', result.serviceId);
     return result;
   }
 
