@@ -258,6 +258,77 @@
         </div>
       </div>
     </div>
+
+    <!-- Status management section (only in edit mode) -->
+    <div class="form-section status-section" *ngIf="isEditMode">
+      <h3>Stato Appuntamento</h3>
+
+      <!-- Current status badge -->
+      <div class="current-status">
+        <span class="status-badge" [ngClass]="statusClass">{{ statusLabel }}</span>
+      </div>
+
+      <!-- Status action buttons -->
+      <div class="status-actions">
+        <!-- Mark as attended -->
+        <button *ngIf="canMarkAttended"
+                class="btn btn-success btn-sm"
+                (click)="onMarkAttended()"
+                [disabled]="processingStatus">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Presente
+        </button>
+
+        <!-- Mark as no-show -->
+        <button *ngIf="canMarkNoShow"
+                class="btn btn-warning btn-sm"
+                (click)="onMarkNoShow()"
+                [disabled]="processingStatus">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          Non presentato
+        </button>
+
+        <!-- Cancel appointment -->
+        <button *ngIf="canCancel"
+                class="btn btn-danger btn-sm"
+                (click)="onCancelWithNotice()"
+                [disabled]="processingStatus">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          Disdici
+        </button>
+
+        <!-- Revert attended status -->
+        <button *ngIf="canRevertAttended"
+                class="btn btn-secondary btn-sm"
+                (click)="onRevertAttended()"
+                [disabled]="processingStatus">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+          </svg>
+          Annulla Presentato
+        </button>
+      </div>
+
+      <!-- Late cancellation warning -->
+      <div class="late-warning" *ngIf="isLateCancellation && canCancel">
+        ⚠️ Cancellazione con meno di 24h - verrà tracciata
+      </div>
+
+      <!-- Processing indicator -->
+      <div class="processing-indicator" *ngIf="processingStatus">
+        Elaborazione in corso...
+      </div>
+    </div>
   </div>
 
   <div class="dialog-footer">

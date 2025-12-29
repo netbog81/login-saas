@@ -527,3 +527,124 @@ textarea.form-control {
     font-weight: 500;
   }
 }
+
+// ==================== STATUS MANAGEMENT STYLES ====================
+
+.status-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.current-status {
+  margin-bottom: 16px;
+
+  .status-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 500;
+
+    &.status-scheduled {
+      background-color: #e3f2fd;
+      color: #1565c0;
+    }
+
+    &.status-confirmed {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    &.status-cancelled {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+
+    &.status-cancelled-late {
+      background-color: #fff3e0;
+      color: #e65100;
+    }
+
+    &.status-noshow {
+      background-color: #fce4ec;
+      color: #ad1457;
+    }
+
+    &.status-attended {
+      background-color: #e8f5e9;
+      color: #1b5e20;
+    }
+  }
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  .btn-sm {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-success {
+    background-color: #10b981;
+    color: white;
+
+    &:hover:not(:disabled) {
+      background-color: #059669;
+    }
+  }
+
+  .btn-warning {
+    background-color: #f59e0b;
+    color: white;
+
+    &:hover:not(:disabled) {
+      background-color: #d97706;
+    }
+  }
+
+  .btn-danger {
+    background-color: #ef4444;
+    color: white;
+
+    &:hover:not(:disabled) {
+      background-color: #dc2626;
+    }
+  }
+}
+
+.processing-indicator {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.late-warning {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background-color: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  color: #856404;
+  font-size: 13px;
+}

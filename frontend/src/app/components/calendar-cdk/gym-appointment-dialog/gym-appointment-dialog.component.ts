@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -7,6 +7,7 @@ import { Patient } from '../../../models/patient.model';
 import { RepeatConfig } from '../../../models/appointment.model';
 import { PatientService } from '../../../services/patient.service';
 import { ServiceService } from '../../../services/service.service';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { Service } from '../../../graphql/generated/types';
 
 export interface GymAppointmentDialogData {
@@ -20,7 +21,7 @@ export interface GymAppointmentDialogData {
 }
 
 export interface GymAppointmentDialogResult {
-  action: 'save' | 'update' | 'cancel';
+  action: 'save' | 'update' | 'cancel' | 'status-changed';
   input?: CreateGymAppointmentInput;
   updateInput?: UpdateGymAppointmentInput;
   appointmentId?: string;
@@ -33,13 +34,14 @@ export interface GymAppointmentDialogResult {
   templateUrl: './gym-appointment-dialog.component.html',
   styleUrls: ['./gym-appointment-dialog.component.scss']
 })
-export class GymAppointmentDialogComponent implements OnInit {
+export class GymAppointmentDialogComponent implements OnInit, OnChanges {
   @Input() data!: GymAppointmentDialogData;
   @Output() result = new EventEmitter<GymAppointmentDialogResult>();
 
   constructor(
     private patientService: PatientService,
-    private serviceService: ServiceService
+    private serviceService: ServiceService,
+    private appointmentService: AvailabilityAppointmentService
   ) {}
 
   // Form fields
@@ -53,6 +55,10 @@ export class GymAppointmentDialogComponent implements OnInit {
   serviceId: string | null = null;
   operatorServices: Service[] = [];
   loadingServices: boolean = false;
+
+  // Status management
+  bookingStatus: string = 'scheduled';
+  processingStatus: boolean = false;
 
   // Patient search
   patientSearch: string = '';
@@ -86,11 +92,45 @@ export class GymAppointmentDialogComponent implements OnInit {
     return !!this.data.appointment;
   }
 
+  ngOnChanges(changes: SimpleChanges): void {
+    // Reagisce ai cambiamenti del data binding
+    if (changes['data'] && this.data) {
+      this.initializeForm();
+    }
+  }
+
   ngOnInit(): void {
+    // Chiamata iniziale quando il componente viene creato
+    if (this.data) {
+      this.initializeForm();
+    }
+  }
+
+  /**
+   * Inizializza il form con i dati ricevuti.
+   * Resetta tutti i campi e popola in base alla modalità (create/edit).
+   */
+  private initializeForm(): void {
+    // Reset a valori default
+    this.clientName = '';
+    this.clientPhone = '';
+    this.clientEmail = '';
+    this.notes = '';
+    this.serviceId = null;
+    this.bookingStatus = 'scheduled';
+    this.selectedPatientId = null;
+    this.patientSearch = '';
+    this.showPatientDropdown = false;
+    this.showNewPatientForm = false;
+    this.repeatEnabled = false;
+    this.errors = {};
+    this.processingStatus = false;
+
+    // Inizializza pazienti filtrati
     this.filteredPatients = this.data.patients?.slice(0, 10) || [];
 
     // Carica i servizi dell'operatore assegnato allo slot
-    if (this.data.slotInfo.operator?.id) {
+    if (this.data.slotInfo?.operator?.id) {
       this.loadOperatorServices(this.data.slotInfo.operator.id);
     }
 
@@ -102,6 +142,7 @@ export class GymAppointmentDialogComponent implements OnInit {
       this.clientEmail = apt.clientEmail || '';
       this.notes = apt.notes || '';
       this.serviceId = apt.serviceId || null;
+      this.bookingStatus = apt.bookingStatus || 'scheduled';
       // Forza conversione a number (GraphQL ID può essere stringa)
       this.selectedPatientId = apt.patientId ? Number(apt.patientId) : null;
 
@@ -424,5 +465,180 @@ export class GymAppointmentDialogComponent implements OnInit {
 
   onCancel(): void {
     this.result.emit({ action: 'cancel' });
+  }
+
+  // ==================== STATUS MANAGEMENT METHODS ====================
+
+  /**
+   * Normalizza lo stato dell'appuntamento per gestire differenze di case
+   * tra frontend (lowercase) e backend/GraphQL (potenzialmente UPPERCASE).
+   * Converte anche underscore in formato consistente.
+   */
+  private normalizeStatus(status: string | null | undefined): string {
+    if (!status) return 'scheduled';
+    // Converti a lowercase e sostituisci eventuali spazi con underscore
+    return status.toLowerCase().replace(/\s+/g, '_');
+  }
+
+  /**
+   * Verifica se la cancellazione è tardiva (< 24h dall'appuntamento)
+   */
+  get isLateCancellation(): boolean {
+    if (!this.data.date || !this.data.startTime) return false;
+    const appointmentStart = new Date(`${this.data.date}T${this.data.startTime}`);
+    const hoursUntil = (appointmentStart.getTime() - Date.now()) / (1000 * 60 * 60);
+    return hoursUntil < 24;
+  }
+
+  /**
+   * Verifica se è possibile mostrare le azioni di stato (stato non terminale)
+   */
+  get canShowStatusActions(): boolean {
+    const status = this.normalizeStatus(this.bookingStatus);
+    return status === 'scheduled' || status === 'confirmed';
+  }
+
+  /**
+   * Verifica se è possibile marcare come presente (appuntamento oggi)
+   */
+  get canMarkAttended(): boolean {
+    if (!this.isEditMode || this.processingStatus) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return this.canShowStatusActions && this.data.date === today;
+  }
+
+  /**
+   * Verifica se è possibile marcare come non presentato (ora di inizio passata)
+   */
+  get canMarkNoShow(): boolean {
+    if (!this.isEditMode || this.processingStatus) return false;
+    const now = new Date();
+    const appointmentStart = new Date(`${this.data.date}T${this.data.startTime}`);
+    return this.canShowStatusActions && appointmentStart < now;
+  }
+
+  /**
+   * Verifica se è possibile disdire (stato non terminale)
+   */
+  get canCancel(): boolean {
+    if (!this.isEditMode || this.processingStatus) return false;
+    return this.canShowStatusActions;
+  }
+
+  /**
+   * Verifica se è possibile ripristinare lo stato (solo da 'attended')
+   */
+  get canRevertAttended(): boolean {
+    if (!this.isEditMode || this.processingStatus) return false;
+    const status = this.normalizeStatus(this.bookingStatus);
+    return status === 'attended';
+  }
+
+  get statusLabel(): string {
+    const status = this.normalizeStatus(this.bookingStatus);
+    const labels: Record<string, string> = {
+      'scheduled': 'Programmato',
+      'confirmed': 'Confermato',
+      'cancelled': 'Annullato',
+      'cancelled_early': 'Disdetto (>24h)',
+      'cancelled_late': 'Disdetto (<24h)',
+      'no_show': 'Non presentato',
+      'attended': 'Presente'
+    };
+    return labels[status] || this.bookingStatus || 'Sconosciuto';
+  }
+
+  get statusClass(): string {
+    const status = this.normalizeStatus(this.bookingStatus);
+    const classes: Record<string, string> = {
+      'scheduled': 'status-scheduled',
+      'confirmed': 'status-confirmed',
+      'cancelled': 'status-cancelled',
+      'cancelled_early': 'status-cancelled',
+      'cancelled_late': 'status-cancelled-late',
+      'no_show': 'status-noshow',
+      'attended': 'status-attended'
+    };
+    return classes[status] || '';
+  }
+
+  async onMarkAttended(): Promise<void> {
+    if (!this.data.appointment?.id || this.processingStatus) return;
+
+    this.processingStatus = true;
+    try {
+      await firstValueFrom(this.appointmentService.markAsAttended(this.data.appointment.id));
+      this.bookingStatus = 'attended';
+      this.result.emit({ action: 'status-changed' }); // Chiudi modal e forza refresh della griglia
+    } catch (error) {
+      console.error('Error marking as attended:', error);
+      alert('Errore nel segnare il paziente come arrivato');
+    } finally {
+      this.processingStatus = false;
+    }
+  }
+
+  async onMarkNoShow(): Promise<void> {
+    if (!this.data.appointment?.id || this.processingStatus) return;
+
+    // Chiedi conferma come in EventDialogComponent
+    if (!confirm('Confermi che il paziente non si è presentato?')) return;
+
+    this.processingStatus = true;
+    try {
+      await firstValueFrom(this.appointmentService.markAsNoShow(this.data.appointment.id));
+      this.bookingStatus = 'no_show';
+      this.result.emit({ action: 'status-changed' });
+    } catch (error) {
+      console.error('Error marking as no-show:', error);
+      alert('Errore nel segnare come non presentato');
+    } finally {
+      this.processingStatus = false;
+    }
+  }
+
+  async onCancelWithNotice(): Promise<void> {
+    if (!this.data.appointment?.id || this.processingStatus) return;
+
+    // Chiedi il motivo come in EventDialogComponent
+    const reason = prompt('Motivo della cancellazione:');
+    if (!reason) return;
+
+    this.processingStatus = true;
+    try {
+      await firstValueFrom(
+        this.appointmentService.cancelWithNotice(
+          this.data.appointment.id,
+          reason,
+          'system' // TODO: sostituire con ID utente corrente
+        )
+      );
+      // Lo stato verrà aggiornato in base alla logica del backend (early/late)
+      this.result.emit({ action: 'status-changed' });
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      alert('Errore nella cancellazione dell\'appuntamento');
+    } finally {
+      this.processingStatus = false;
+    }
+  }
+
+  async onRevertAttended(): Promise<void> {
+    if (!this.data.appointment?.id || this.processingStatus) return;
+
+    // Chiedi conferma come in EventDialogComponent
+    if (!confirm('Vuoi annullare lo stato "Presentato" e riportare l\'appuntamento a "Confermato"?')) return;
+
+    this.processingStatus = true;
+    try {
+      await firstValueFrom(this.appointmentService.revertAttended(this.data.appointment.id));
+      this.bookingStatus = 'confirmed';
+      this.result.emit({ action: 'status-changed' });
+    } catch (error) {
+      console.error('Error reverting attended status:', error);
+      alert('Errore nell\'annullare lo stato presentato');
+    } finally {
+      this.processingStatus = false;
+    }
   }
 }

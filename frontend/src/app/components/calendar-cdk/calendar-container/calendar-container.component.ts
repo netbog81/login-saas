@@ -105,6 +105,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   isGymSlotSummaryOpen: boolean = false;
   currentGymSlotData: { gymRoom: GymRoom; slotInfo: GymSlotInfo; date: string; appointments: GymAppointment[] } | null = null;
 
+  // Click/double-click debounce for gym slots
+  private gymSlotClickTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingGymSlotClick: GymSlotClickEvent | null = null;
+
   // Gym appointment delete confirmation
   showGymDeleteConfirmDialog: boolean = false;
   gymAppointmentToDelete: GymAppointment | null = null;
@@ -748,6 +752,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   /**
    * Gestisce il click su uno slot della palestra - mostra il riepilogo
+   * Utilizza un debounce per evitare conflitto con il doppio click
    */
   onGymSlotClick(event: GymSlotClickEvent): void {
     // Se lo slot non ha template, non fare nulla
@@ -755,11 +760,31 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Ottieni gli appuntamenti per questo slot
-    const appointments = this.getGymSlotAppointments(event.gymRoom.id, event.date, event.startTime);
+    // Cancella eventuali timer precedenti
+    if (this.gymSlotClickTimer) {
+      clearTimeout(this.gymSlotClickTimer);
+      this.gymSlotClickTimer = null;
+    }
 
-    // Mostra il summary overlay
-    this.showGymSlotSummary(event, appointments);
+    // Salva l'evento per il debounce
+    this.pendingGymSlotClick = event;
+
+    // Aspetta 250ms prima di mostrare il summary per vedere se arriva un double-click
+    this.gymSlotClickTimer = setTimeout(() => {
+      if (this.pendingGymSlotClick) {
+        // Ottieni gli appuntamenti per questo slot
+        const appointments = this.getGymSlotAppointments(
+          this.pendingGymSlotClick.gymRoom.id,
+          this.pendingGymSlotClick.date,
+          this.pendingGymSlotClick.startTime
+        );
+
+        // Mostra il summary overlay
+        this.showGymSlotSummary(this.pendingGymSlotClick, appointments);
+        this.pendingGymSlotClick = null;
+      }
+      this.gymSlotClickTimer = null;
+    }, 250);
   }
 
   /**
@@ -998,6 +1023,18 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
    * Gestisce il doppio click su uno slot della palestra per creare appuntamento
    */
   onGymSlotDblClick(event: GymSlotClickEvent): void {
+    // Cancella il timer del single-click per evitare che si apra anche il summary
+    if (this.gymSlotClickTimer) {
+      clearTimeout(this.gymSlotClickTimer);
+      this.gymSlotClickTimer = null;
+    }
+    this.pendingGymSlotClick = null;
+
+    // Chiudi il summary se è aperto
+    if (this.isGymSlotSummaryOpen) {
+      this.closeGymSlotSummary();
+    }
+
     if (!event.slotInfo.isAvailable || event.slotInfo.isClosed) {
       return;
     }
@@ -1021,7 +1058,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   async onGymAppointmentDialogResult(result: GymAppointmentDialogResult): Promise<void> {
     this.showGymAppointmentDialog = false;
 
-    if (result.action === 'save' && result.input) {
+    if (result.action === 'status-changed') {
+      // Stato appuntamento cambiato (presente, non presentato, disdetto, annullato)
+      // Ricaricare i dati per aggiornare la UI
+      await this.loadGymDataForCurrentView();
+    } else if (result.action === 'save' && result.input) {
       try {
         await firstValueFrom(this.gymRoomService.createAppointment(result.input));
         await this.loadGymDataForCurrentView();
