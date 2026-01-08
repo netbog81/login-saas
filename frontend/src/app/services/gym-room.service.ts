@@ -1,10 +1,10 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import {
   GET_GYM_ROOMS,
   GET_GYM_ROOM,
 } from '../graphql/operations/gym-room.queries';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   GET_GYM_ROOM_APPOINTMENTS,
   GET_GYM_ROOMS_APPOINTMENTS,
@@ -163,115 +163,74 @@ export interface UpdateGymAppointmentInput {
 @Injectable({
   providedIn: 'root',
 })
-export class GymRoomService {
-  constructor(private apollo: Apollo) {}
+export class GymRoomService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene tutte le palestre
    */
   getAll(onlyActive: boolean = false): Observable<GymRoom[]> {
-    return this.apollo
-      .query<{ gymRooms: GymRoom[] }>({
-        query: GET_GYM_ROOMS,
-        variables: { onlyActive },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymRooms || []));
+    return this.query<{ gymRooms: GymRoom[] }>(GET_GYM_ROOMS, { onlyActive })
+      .pipe(map((result) => result.gymRooms || []));
   }
 
   /**
    * Ottiene una singola palestra per ID
    */
   getById(id: string): Observable<GymRoom | null> {
-    return this.apollo
-      .query<{ gymRoom: GymRoom | null }>({
-        query: GET_GYM_ROOM,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymRoom || null));
+    return this.query<{ gymRoom: GymRoom | null }>(GET_GYM_ROOM, { id })
+      .pipe(map((result) => result.gymRoom || null));
   }
 
   /**
    * Crea una nuova palestra
    */
   create(input: CreateGymRoomInput): Observable<GymRoom> {
-    return this.apollo
-      .mutate<{ createGymRoom: GymRoom }>({
-        mutation: CREATE_GYM_ROOM,
-        variables: {
-          name: input.name,
-          maxCapacity: input.maxCapacity,
-          slotDuration: input.slotDuration,
-          color: input.color,
-          defaultStartTime: input.defaultStartTime,
-          defaultEndTime: input.defaultEndTime,
-        },
-        refetchQueries: [{ query: GET_GYM_ROOMS }],
-        awaitRefetchQueries: true,
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nella creazione della palestra');
-          }
-          return result.data.createGymRoom;
-        })
-      );
+    return this.mutate<{ createGymRoom: GymRoom }>(
+      CREATE_GYM_ROOM,
+      {
+        name: input.name,
+        maxCapacity: input.maxCapacity,
+        slotDuration: input.slotDuration,
+        color: input.color,
+        defaultStartTime: input.defaultStartTime,
+        defaultEndTime: input.defaultEndTime,
+      },
+      [{ query: GET_GYM_ROOMS }]
+    ).pipe(map((result) => result.createGymRoom));
   }
 
   /**
    * Aggiorna una palestra esistente
    */
   update(id: string, input: UpdateGymRoomInput): Observable<GymRoom> {
-    return this.apollo
-      .mutate<{ updateGymRoom: GymRoom }>({
-        mutation: UPDATE_GYM_ROOM,
-        variables: {
-          id,
-          name: input.name,
-          maxCapacity: input.maxCapacity,
-          slotDuration: input.slotDuration,
-          color: input.color,
-          isActive: input.isActive,
-          defaultStartTime: input.defaultStartTime,
-          defaultEndTime: input.defaultEndTime,
-        },
-        refetchQueries: [
-          { query: GET_GYM_ROOMS },
-          { query: GET_GYM_ROOM, variables: { id } },
-        ],
-        awaitRefetchQueries: true,
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'aggiornamento della palestra');
-          }
-          return result.data.updateGymRoom;
-        })
-      );
+    return this.mutate<{ updateGymRoom: GymRoom }>(
+      UPDATE_GYM_ROOM,
+      {
+        id,
+        name: input.name,
+        maxCapacity: input.maxCapacity,
+        slotDuration: input.slotDuration,
+        color: input.color,
+        isActive: input.isActive,
+        defaultStartTime: input.defaultStartTime,
+        defaultEndTime: input.defaultEndTime,
+      },
+      [{ query: GET_GYM_ROOMS }, { query: GET_GYM_ROOM, variables: { id } }]
+    ).pipe(map((result) => result.updateGymRoom));
   }
 
   /**
    * Elimina una palestra
    */
   delete(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteGymRoom: boolean }>({
-        mutation: DELETE_GYM_ROOM,
-        variables: { id },
-        refetchQueries: [{ query: GET_GYM_ROOMS }],
-        awaitRefetchQueries: true,
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'eliminazione della palestra');
-          }
-          return result.data.deleteGymRoom;
-        })
-      );
+    return this.mutate<{ deleteGymRoom: boolean }>(
+      DELETE_GYM_ROOM,
+      { id },
+      [{ query: GET_GYM_ROOMS }]
+    ).pipe(map((result) => result.deleteGymRoom));
   }
 
   // ==========================================
@@ -282,13 +241,10 @@ export class GymRoomService {
    * Ottiene gli appuntamenti per una GymRoom in una data specifica
    */
   getAppointments(gymRoomId: string, date: string): Observable<GymAppointment[]> {
-    return this.apollo
-      .query<{ gymRoomAppointments: GymAppointment[] }>({
-        query: GET_GYM_ROOM_APPOINTMENTS,
-        variables: { gymRoomId, date },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymRoomAppointments || []));
+    return this.query<{ gymRoomAppointments: GymAppointment[] }>(
+      GET_GYM_ROOM_APPOINTMENTS,
+      { gymRoomId, date }
+    ).pipe(map((result) => result.gymRoomAppointments || []));
   }
 
   /**
@@ -299,82 +255,49 @@ export class GymRoomService {
     startDate: string,
     endDate: string
   ): Observable<GymAppointment[]> {
-    return this.apollo
-      .query<{ gymRoomsAppointments: GymAppointment[] }>({
-        query: GET_GYM_ROOMS_APPOINTMENTS,
-        variables: { gymRoomIds, startDate, endDate },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymRoomsAppointments || []));
+    return this.query<{ gymRoomsAppointments: GymAppointment[] }>(
+      GET_GYM_ROOMS_APPOINTMENTS,
+      { gymRoomIds, startDate, endDate }
+    ).pipe(map((result) => result.gymRoomsAppointments || []));
   }
 
   /**
    * Ottiene gli slot disponibili per una GymRoom in una data
    */
   getAvailableSlots(gymRoomId: string, date: string): Observable<GymSlotInfo[]> {
-    return this.apollo
-      .query<{ gymRoomAvailableSlots: GymSlotInfo[] }>({
-        query: GET_GYM_ROOM_AVAILABLE_SLOTS,
-        variables: { gymRoomId, date },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymRoomAvailableSlots || []));
+    return this.query<{ gymRoomAvailableSlots: GymSlotInfo[] }>(
+      GET_GYM_ROOM_AVAILABLE_SLOTS,
+      { gymRoomId, date }
+    ).pipe(map((result) => result.gymRoomAvailableSlots || []));
   }
 
   /**
    * Crea un appuntamento palestra
    */
   createAppointment(input: CreateGymAppointmentInput): Observable<GymAppointment> {
-    return this.apollo
-      .mutate<{ createGymAppointment: GymAppointment }>({
-        mutation: CREATE_GYM_APPOINTMENT,
-        variables: { input },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nella creazione dell\'appuntamento');
-          }
-          return result.data.createGymAppointment;
-        })
-      );
+    return this.mutate<{ createGymAppointment: GymAppointment }>(
+      CREATE_GYM_APPOINTMENT,
+      { input }
+    ).pipe(map((result) => result.createGymAppointment));
   }
 
   /**
    * Aggiorna un appuntamento palestra esistente
    */
   updateAppointment(id: string, input: UpdateGymAppointmentInput): Observable<GymAppointment> {
-    return this.apollo
-      .mutate<{ updateAvailabilityAppointment: GymAppointment }>({
-        mutation: UPDATE_AVAILABILITY_APPOINTMENT,
-        variables: { id, input },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'aggiornamento dell\'appuntamento');
-          }
-          return result.data.updateAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ updateAvailabilityAppointment: GymAppointment }>(
+      UPDATE_AVAILABILITY_APPOINTMENT,
+      { id, input }
+    ).pipe(map((result) => result.updateAvailabilityAppointment));
   }
 
   /**
    * Elimina un appuntamento palestra
    */
   deleteAppointment(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteAvailabilityAppointment: boolean }>({
-        mutation: DELETE_AVAILABILITY_APPOINTMENT,
-        variables: { id },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'eliminazione dell\'appuntamento');
-          }
-          return result.data.deleteAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ deleteAvailabilityAppointment: boolean }>(
+      DELETE_AVAILABILITY_APPOINTMENT,
+      { id }
+    ).pipe(map((result) => result.deleteAvailabilityAppointment));
   }
 }

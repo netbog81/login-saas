@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -54,7 +54,8 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     private conflictService: ConflictService,
-    private operatorService: OperatorService
+    private operatorService: OperatorService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
@@ -132,31 +133,39 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
   }
 
   applyFilters(): void {
-    this.loadConflicts();
+    this.ngZone.run(() => {
+      this.loadConflicts();
+    });
   }
 
   clearFilters(): void {
-    this.selectedOperatorId = '';
-    this.dateFrom = '';
-    this.dateTo = '';
-    this.selectedReason = '';
-    this.loadConflicts();
+    this.ngZone.run(() => {
+      this.selectedOperatorId = '';
+      this.dateFrom = '';
+      this.dateTo = '';
+      this.selectedReason = '';
+      this.loadConflicts();
+    });
   }
 
   toggleConflictSelection(conflictId: string): void {
-    if (this.selectedConflicts.has(conflictId)) {
-      this.selectedConflicts.delete(conflictId);
-    } else {
-      this.selectedConflicts.add(conflictId);
-    }
+    this.ngZone.run(() => {
+      if (this.selectedConflicts.has(conflictId)) {
+        this.selectedConflicts.delete(conflictId);
+      } else {
+        this.selectedConflicts.add(conflictId);
+      }
+    });
   }
 
   toggleSelectAll(): void {
-    if (this.selectedConflicts.size === this.conflicts.length) {
-      this.selectedConflicts.clear();
-    } else {
-      this.conflicts.forEach((c) => this.selectedConflicts.add(c.id));
-    }
+    this.ngZone.run(() => {
+      if (this.selectedConflicts.size === this.conflicts.length) {
+        this.selectedConflicts.clear();
+      } else {
+        this.conflicts.forEach((c) => this.selectedConflicts.add(c.id));
+      }
+    });
   }
 
   isSelected(conflictId: string): boolean {
@@ -165,21 +174,25 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
 
   // Single conflict resolution
   openResolveDialog(conflict: AvailabilityAppointment): void {
-    this.conflictToResolve = conflict;
-    this.showResolveDialog = true;
-    this.newDate = this.formatDateForInput(conflict.appointmentDate);
-    this.newStartTime = conflict.startTime;
-    this.newEndTime = conflict.endTime;
-    this.resolutionNotes = '';
+    this.ngZone.run(() => {
+      this.conflictToResolve = conflict;
+      this.showResolveDialog = true;
+      this.newDate = this.formatDateForInput(conflict.appointmentDate);
+      this.newStartTime = conflict.startTime;
+      this.newEndTime = conflict.endTime;
+      this.resolutionNotes = '';
+    });
   }
 
   closeResolveDialog(): void {
-    this.showResolveDialog = false;
-    this.conflictToResolve = null;
-    this.newDate = '';
-    this.newStartTime = '';
-    this.newEndTime = '';
-    this.resolutionNotes = '';
+    this.ngZone.run(() => {
+      this.showResolveDialog = false;
+      this.conflictToResolve = null;
+      this.newDate = '';
+      this.newStartTime = '';
+      this.newEndTime = '';
+      this.resolutionNotes = '';
+    });
   }
 
   resolveConflict(action: ConflictResolutionAction): void {
@@ -291,7 +304,9 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
   }
 
   refreshData(): void {
-    this.loadConflicts();
-    this.loadStats();
+    this.ngZone.run(() => {
+      this.loadConflicts();
+      this.loadStats();
+    });
   }
 }

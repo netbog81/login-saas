@@ -1,5 +1,4 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import {
   Treatment,
@@ -10,6 +9,7 @@ import {
   CancelAppointmentInput,
 } from '../models/treatment.model';
 import { Appointment } from '../models/appointment.model';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
 // Queries
 import {
@@ -39,8 +39,10 @@ import {
 @Injectable({
   providedIn: 'root',
 })
-export class TreatmentService {
-  constructor(private apollo: Apollo) {}
+export class TreatmentService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   // ==================== QUERIES ====================
 
@@ -48,51 +50,36 @@ export class TreatmentService {
    * Get a treatment by ID
    */
   getTreatment(id: string): Observable<Treatment | null> {
-    return this.apollo
-      .query<{ treatment: Treatment | null }>({
-        query: GET_TREATMENT,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatment));
+    return this.query<{ treatment: Treatment | null }>(GET_TREATMENT, { id })
+      .pipe(map((result) => result.treatment));
   }
 
   /**
    * Get treatment by appointment ID
    */
   getTreatmentByAppointment(appointmentId: string): Observable<Treatment | null> {
-    return this.apollo
-      .query<{ treatmentByAppointment: Treatment | null }>({
-        query: GET_TREATMENT_BY_APPOINTMENT,
-        variables: { appointmentId },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatmentByAppointment));
+    return this.query<{ treatmentByAppointment: Treatment | null }>(
+      GET_TREATMENT_BY_APPOINTMENT,
+      { appointmentId }
+    ).pipe(map((result) => result.treatmentByAppointment));
   }
 
   /**
    * Get active treatments by operator
    */
   getTreatmentsByOperator(operatorId: string, date?: string): Observable<Treatment[]> {
-    return this.apollo
-      .query<{ treatmentsByOperator: Treatment[] }>({
-        query: GET_TREATMENTS_BY_OPERATOR,
-        variables: { operatorId, date },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatmentsByOperator));
+    return this.query<{ treatmentsByOperator: Treatment[] }>(
+      GET_TREATMENTS_BY_OPERATOR,
+      { operatorId, date }
+    ).pipe(map((result) => result.treatmentsByOperator));
   }
 
   /**
    * Get treatments pending closure by secretary
    */
   getTreatmentsPendingClosure(): Observable<Treatment[]> {
-    return this.apollo
-      .query<{ treatmentsPendingClosure: Treatment[] }>({
-        query: GET_TREATMENTS_PENDING_CLOSURE,
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatmentsPendingClosure));
+    return this.query<{ treatmentsPendingClosure: Treatment[] }>(GET_TREATMENTS_PENDING_CLOSURE)
+      .pipe(map((result) => result.treatmentsPendingClosure));
   }
 
   /**
@@ -103,13 +90,10 @@ export class TreatmentService {
     limit?: number,
     offset?: number
   ): Observable<Treatment[]> {
-    return this.apollo
-      .query<{ treatmentsByPatient: Treatment[] }>({
-        query: GET_TREATMENTS_BY_PATIENT,
-        variables: { patientId, limit, offset },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatmentsByPatient));
+    return this.query<{ treatmentsByPatient: Treatment[] }>(
+      GET_TREATMENTS_BY_PATIENT,
+      { patientId, limit, offset }
+    ).pipe(map((result) => result.treatmentsByPatient));
   }
 
   /**
@@ -119,13 +103,10 @@ export class TreatmentService {
     dateFrom?: string,
     dateTo?: string
   ): Observable<Treatment[]> {
-    return this.apollo
-      .query<{ treatmentsNotInvoicedToPatient: Treatment[] }>({
-        query: GET_TREATMENTS_NOT_INVOICED_TO_PATIENT,
-        variables: { dateFrom, dateTo },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatmentsNotInvoicedToPatient));
+    return this.query<{ treatmentsNotInvoicedToPatient: Treatment[] }>(
+      GET_TREATMENTS_NOT_INVOICED_TO_PATIENT,
+      { dateFrom, dateTo }
+    ).pipe(map((result) => result.treatmentsNotInvoicedToPatient));
   }
 
   /**
@@ -136,13 +117,10 @@ export class TreatmentService {
     dateFrom?: string,
     dateTo?: string
   ): Observable<Treatment[]> {
-    return this.apollo
-      .query<{ treatmentsNotInvoicedByOperator: Treatment[] }>({
-        query: GET_TREATMENTS_NOT_INVOICED_BY_OPERATOR,
-        variables: { operatorId, dateFrom, dateTo },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data.treatmentsNotInvoicedByOperator));
+    return this.query<{ treatmentsNotInvoicedByOperator: Treatment[] }>(
+      GET_TREATMENTS_NOT_INVOICED_BY_OPERATOR,
+      { operatorId, dateFrom, dateTo }
+    ).pipe(map((result) => result.treatmentsNotInvoicedByOperator));
   }
 
   // ==================== TREATMENT MUTATIONS ====================
@@ -151,87 +129,62 @@ export class TreatmentService {
    * Create treatment from appointment (when patient arrives)
    */
   createTreatment(appointmentId: string): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ createTreatment: Treatment }>({
-        mutation: CREATE_TREATMENT,
-        variables: { appointmentId },
-      })
-      .pipe(map((result) => result.data!.createTreatment));
+    return this.mutate<{ createTreatment: Treatment }>(CREATE_TREATMENT, { appointmentId })
+      .pipe(map((result) => result.createTreatment));
   }
 
   /**
    * Operator completes treatment
    */
   completeTreatment(id: string, input: CompleteTreatmentInput): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ completeTreatment: Treatment }>({
-        mutation: COMPLETE_TREATMENT,
-        variables: { id, input },
-      })
-      .pipe(map((result) => result.data!.completeTreatment));
+    return this.mutate<{ completeTreatment: Treatment }>(COMPLETE_TREATMENT, { id, input })
+      .pipe(map((result) => result.completeTreatment));
   }
 
   /**
    * Secretary closes treatment
    */
   closeTreatment(id: string, input: CloseTreatmentInput): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ closeTreatment: Treatment }>({
-        mutation: CLOSE_TREATMENT,
-        variables: { id, input },
-      })
-      .pipe(map((result) => result.data!.closeTreatment));
+    return this.mutate<{ closeTreatment: Treatment }>(CLOSE_TREATMENT, { id, input })
+      .pipe(map((result) => result.closeTreatment));
   }
 
   /**
    * Record payment for treatment
    */
   recordPayment(id: string, input: RecordPaymentInput): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ recordTreatmentPayment: Treatment }>({
-        mutation: RECORD_TREATMENT_PAYMENT,
-        variables: { id, input },
-      })
-      .pipe(map((result) => result.data!.recordTreatmentPayment));
+    return this.mutate<{ recordTreatmentPayment: Treatment }>(RECORD_TREATMENT_PAYMENT, { id, input })
+      .pipe(map((result) => result.recordTreatmentPayment));
   }
 
   /**
    * Mark treatment as invoiced to patient
    */
   markInvoicedToPatient(id: string, invoiceNumber?: string): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ markTreatmentInvoicedToPatient: Treatment }>({
-        mutation: MARK_TREATMENT_INVOICED_TO_PATIENT,
-        variables: { id, invoiceNumber },
-      })
-      .pipe(map((result) => result.data!.markTreatmentInvoicedToPatient));
+    return this.mutate<{ markTreatmentInvoicedToPatient: Treatment }>(
+      MARK_TREATMENT_INVOICED_TO_PATIENT,
+      { id, invoiceNumber }
+    ).pipe(map((result) => result.markTreatmentInvoicedToPatient));
   }
 
   /**
    * Mark treatment as invoiced by operator to studio
    */
   markInvoicedByOperator(id: string, invoiceNumber?: string): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ markTreatmentInvoicedByOperator: Treatment }>({
-        mutation: MARK_TREATMENT_INVOICED_BY_OPERATOR,
-        variables: { id, invoiceNumber },
-      })
-      .pipe(map((result) => result.data!.markTreatmentInvoicedByOperator));
+    return this.mutate<{ markTreatmentInvoicedByOperator: Treatment }>(
+      MARK_TREATMENT_INVOICED_BY_OPERATOR,
+      { id, invoiceNumber }
+    ).pipe(map((result) => result.markTreatmentInvoicedByOperator));
   }
 
   /**
    * Update treatment instruments
    */
-  updateInstruments(
-    id: string,
-    instruments: TreatmentInstrumentInput[]
-  ): Observable<Treatment> {
-    return this.apollo
-      .mutate<{ updateTreatmentInstruments: Treatment }>({
-        mutation: UPDATE_TREATMENT_INSTRUMENTS,
-        variables: { id, instruments },
-      })
-      .pipe(map((result) => result.data!.updateTreatmentInstruments));
+  updateInstruments(id: string, instruments: TreatmentInstrumentInput[]): Observable<Treatment> {
+    return this.mutate<{ updateTreatmentInstruments: Treatment }>(
+      UPDATE_TREATMENT_INSTRUMENTS,
+      { id, instruments }
+    ).pipe(map((result) => result.updateTreatmentInstruments));
   }
 
   // ==================== APPOINTMENT STATUS MUTATIONS ====================
@@ -240,35 +193,25 @@ export class TreatmentService {
    * Cancel appointment with notice tracking
    */
   cancelAppointment(id: string, input: CancelAppointmentInput): Observable<Appointment> {
-    return this.apollo
-      .mutate<{ cancelAppointmentWithNotice: Appointment }>({
-        mutation: CANCEL_APPOINTMENT_WITH_NOTICE,
-        variables: { id, input },
-      })
-      .pipe(map((result) => result.data!.cancelAppointmentWithNotice));
+    return this.mutate<{ cancelAppointmentWithNotice: Appointment }>(
+      CANCEL_APPOINTMENT_WITH_NOTICE,
+      { id, input }
+    ).pipe(map((result) => result.cancelAppointmentWithNotice));
   }
 
   /**
    * Mark appointment as no-show
    */
   markAppointmentNoShow(id: string): Observable<Appointment> {
-    return this.apollo
-      .mutate<{ markAppointmentNoShow: Appointment }>({
-        mutation: MARK_APPOINTMENT_NO_SHOW,
-        variables: { id },
-      })
-      .pipe(map((result) => result.data!.markAppointmentNoShow));
+    return this.mutate<{ markAppointmentNoShow: Appointment }>(MARK_APPOINTMENT_NO_SHOW, { id })
+      .pipe(map((result) => result.markAppointmentNoShow));
   }
 
   /**
    * Mark appointment as attended (patient arrived)
    */
   markAppointmentAttended(id: string): Observable<Appointment> {
-    return this.apollo
-      .mutate<{ markAppointmentAttended: Appointment }>({
-        mutation: MARK_APPOINTMENT_ATTENDED,
-        variables: { id },
-      })
-      .pipe(map((result) => result.data!.markAppointmentAttended));
+    return this.mutate<{ markAppointmentAttended: Appointment }>(MARK_APPOINTMENT_ATTENDED, { id })
+      .pipe(map((result) => result.markAppointmentAttended));
   }
 }

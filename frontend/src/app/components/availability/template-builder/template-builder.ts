@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WeekGrid } from '../week-grid/week-grid';
@@ -11,6 +11,7 @@ import { TemplatePattern, GridConfig, WeekSchedule, DaySchedule } from '../../..
   styleUrl: './template-builder.scss',
 })
 export class TemplateBuilder implements OnInit {
+  constructor(private ngZone: NgZone) {}
   @Input() pattern: TemplatePattern | null = null;
   @Output() patternChange = new EventEmitter<TemplatePattern>();
   @Output() save = new EventEmitter<TemplatePattern>();
@@ -68,71 +69,79 @@ export class TemplateBuilder implements OnInit {
   }
 
   onCellDurationChange() {
-    // Convert to number if it becomes a string from select dropdown
-    this.config.cellDuration = Number(this.config.cellDuration) as 5 | 10 | 15 | 20 | 30 | 45 | 60;
-    // Create new config object to trigger change detection
-    // Slots will be recalculated automatically using mathematical positioning
-    this.config = { ...this.config };
-    this.notifyPatternChange();
+    this.ngZone.run(() => {
+      // Convert to number if it becomes a string from select dropdown
+      this.config.cellDuration = Number(this.config.cellDuration) as 5 | 10 | 15 | 20 | 30 | 45 | 60;
+      // Create new config object to trigger change detection
+      // Slots will be recalculated automatically using mathematical positioning
+      this.config = { ...this.config };
+      this.notifyPatternChange();
+    });
   }
 
   onWorkingHoursChange() {
-    // Only validate if both times are complete (HH:MM format)
-    const startValid = /^\d{2}:\d{2}$/.test(this.config.workingHours.start);
-    const endValid = /^\d{2}:\d{2}$/.test(this.config.workingHours.end);
+    this.ngZone.run(() => {
+      // Only validate if both times are complete (HH:MM format)
+      const startValid = /^\d{2}:\d{2}$/.test(this.config.workingHours.start);
+      const endValid = /^\d{2}:\d{2}$/.test(this.config.workingHours.end);
 
-    if (startValid && endValid) {
-      // Validate and trigger grid regeneration only when both times are complete
-      if (this.config.workingHours.start >= this.config.workingHours.end) {
-        alert('L\'ora di inizio deve essere precedente all\'ora di fine');
-        // Revert to previous valid value or default
-        this.config.workingHours.end = '20:00';
-        return;
+      if (startValid && endValid) {
+        // Validate and trigger grid regeneration only when both times are complete
+        if (this.config.workingHours.start >= this.config.workingHours.end) {
+          alert('L\'ora di inizio deve essere precedente all\'ora di fine');
+          // Revert to previous valid value or default
+          this.config.workingHours.end = '20:00';
+          return;
+        }
+
+        // Create new config object to trigger change detection
+        // Slots will be recalculated automatically using mathematical positioning
+        this.config = {
+          ...this.config,
+          workingHours: { ...this.config.workingHours }
+        };
+        this.notifyPatternChange();
       }
-
-      // Create new config object to trigger change detection
-      // Slots will be recalculated automatically using mathematical positioning
-      this.config = {
-        ...this.config,
-        workingHours: { ...this.config.workingHours }
-      };
-      this.notifyPatternChange();
-    }
+    });
   }
 
   onPatternWeeksChange() {
-    const oldWeeks = this.weeks.length;
-    const newWeeks = this.config.patternWeeks;
+    this.ngZone.run(() => {
+      const oldWeeks = this.weeks.length;
+      const newWeeks = this.config.patternWeeks;
 
-    if (newWeeks > oldWeeks) {
-      // Add new weeks
-      for (let i = oldWeeks + 1; i <= newWeeks; i++) {
-        this.weeks.push({
-          weekNumber: i,
-          days: [],
-        });
-        this.expandedWeeks.add(i);
+      if (newWeeks > oldWeeks) {
+        // Add new weeks
+        for (let i = oldWeeks + 1; i <= newWeeks; i++) {
+          this.weeks.push({
+            weekNumber: i,
+            days: [],
+          });
+          this.expandedWeeks.add(i);
+        }
+      } else if (newWeeks < oldWeeks) {
+        // Remove weeks
+        this.weeks = this.weeks.slice(0, newWeeks);
+        // Remove expansion state for removed weeks
+        for (let i = newWeeks + 1; i <= oldWeeks; i++) {
+          this.expandedWeeks.delete(i);
+        }
       }
-    } else if (newWeeks < oldWeeks) {
-      // Remove weeks
-      this.weeks = this.weeks.slice(0, newWeeks);
-      // Remove expansion state for removed weeks
-      for (let i = newWeeks + 1; i <= oldWeeks; i++) {
-        this.expandedWeeks.delete(i);
-      }
-    }
 
-    // Create new config object to trigger change detection
-    this.config = { ...this.config };
-    this.notifyPatternChange();
+      // Create new config object to trigger change detection
+      this.config = { ...this.config };
+      this.notifyPatternChange();
+    });
   }
 
   toggleWeekExpansion(weekNumber: number) {
-    if (this.expandedWeeks.has(weekNumber)) {
-      this.expandedWeeks.delete(weekNumber);
-    } else {
-      this.expandedWeeks.add(weekNumber);
-    }
+    this.ngZone.run(() => {
+      if (this.expandedWeeks.has(weekNumber)) {
+        this.expandedWeeks.delete(weekNumber);
+      } else {
+        this.expandedWeeks.add(weekNumber);
+      }
+    });
   }
 
   isWeekExpanded(weekNumber: number): boolean {
@@ -140,11 +149,13 @@ export class TemplateBuilder implements OnInit {
   }
 
   onWeekScheduleChange(weekNumber: number, schedule: DaySchedule[]) {
-    const week = this.weeks.find(w => w.weekNumber === weekNumber);
-    if (week) {
-      week.days = schedule;
-      this.notifyPatternChange();
-    }
+    this.ngZone.run(() => {
+      const week = this.weeks.find(w => w.weekNumber === weekNumber);
+      if (week) {
+        week.days = schedule;
+        this.notifyPatternChange();
+      }
+    });
   }
 
   notifyPatternChange() {
@@ -206,43 +217,47 @@ export class TemplateBuilder implements OnInit {
   }
 
   copyWeek(sourceWeekNumber: number) {
-    const sourceWeek = this.weeks.find(w => w.weekNumber === sourceWeekNumber);
-    if (!sourceWeek) return;
+    this.ngZone.run(() => {
+      const sourceWeek = this.weeks.find(w => w.weekNumber === sourceWeekNumber);
+      if (!sourceWeek) return;
 
-    const targetWeekNumbers = Array.from({ length: this.config.patternWeeks }, (_, i) => i + 1)
-      .filter(num => num !== sourceWeekNumber);
+      const targetWeekNumbers = Array.from({ length: this.config.patternWeeks }, (_, i) => i + 1)
+        .filter(num => num !== sourceWeekNumber);
 
-    if (targetWeekNumbers.length === 0) return;
+      if (targetWeekNumbers.length === 0) return;
 
-    const targetWeek = prompt(
-      `Copia Settimana ${sourceWeekNumber} in quale settimana? (${targetWeekNumbers.join(', ')})`
-    );
+      const targetWeek = prompt(
+        `Copia Settimana ${sourceWeekNumber} in quale settimana? (${targetWeekNumbers.join(', ')})`
+      );
 
-    if (!targetWeek) return;
+      if (!targetWeek) return;
 
-    const targetWeekNum = parseInt(targetWeek);
-    if (isNaN(targetWeekNum) || !targetWeekNumbers.includes(targetWeekNum)) {
-      alert('Numero settimana non valido');
-      return;
-    }
+      const targetWeekNum = parseInt(targetWeek);
+      if (isNaN(targetWeekNum) || !targetWeekNumbers.includes(targetWeekNum)) {
+        alert('Numero settimana non valido');
+        return;
+      }
 
-    const target = this.weeks.find(w => w.weekNumber === targetWeekNum);
-    if (target) {
-      target.days = JSON.parse(JSON.stringify(sourceWeek.days)); // Deep copy
-      this.notifyPatternChange();
-    }
+      const target = this.weeks.find(w => w.weekNumber === targetWeekNum);
+      if (target) {
+        target.days = JSON.parse(JSON.stringify(sourceWeek.days)); // Deep copy
+        this.notifyPatternChange();
+      }
+    });
   }
 
   clearWeek(weekNumber: number) {
-    if (!confirm(`Vuoi cancellare tutte le fasce orarie della Settimana ${weekNumber}?`)) {
-      return;
-    }
+    this.ngZone.run(() => {
+      if (!confirm(`Vuoi cancellare tutte le fasce orarie della Settimana ${weekNumber}?`)) {
+        return;
+      }
 
-    const week = this.weeks.find(w => w.weekNumber === weekNumber);
-    if (week) {
-      week.days = [];
-      this.notifyPatternChange();
-    }
+      const week = this.weeks.find(w => w.weekNumber === weekNumber);
+      if (week) {
+        week.days = [];
+        this.notifyPatternChange();
+      }
+    });
   }
 
   trackByWeekNumber(index: number, week: WeekSchedule): number {

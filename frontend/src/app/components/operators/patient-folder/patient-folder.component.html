@@ -19,13 +19,21 @@
       </div>
     </div>
 
-    <button class="view-details-btn" (click)="onViewPatientDetails()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-        <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-      </svg>
-      Dettagli
-    </button>
+    <div class="header-actions">
+      <button class="new-path-btn" (click)="openNewPathDialog()" title="Nuovo Percorso Terapeutico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Nuovo Percorso
+      </button>
+      <button class="view-details-btn" (click)="onViewPatientDetails()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+        </svg>
+        Dettagli
+      </button>
+    </div>
   </div>
 
   <!-- Stats -->
@@ -75,7 +83,9 @@
           [expanded]="isPathExpanded(path.id)"
           [selected]="isPathSelected(path.id)"
           (toggleExpand)="togglePathExpanded(path.id)"
-          (selectPath)="onPathSelect($event)">
+          (selectPath)="onPathSelect($event)"
+          (editPath)="openEditPathDialog($event)"
+          (deletePath)="confirmDeletePath($event)">
         </app-therapeutic-path-accordion>
       </div>
 
@@ -98,3 +108,23 @@
   <h4>Seleziona un paziente</h4>
   <p>Clicca su un appuntamento per visualizzare la cartella del paziente</p>
 </div>
+
+<!-- Therapeutic Path Dialog -->
+<app-therapeutic-path-dialog
+  *ngIf="showPathDialog && pathDialogData"
+  [data]="pathDialogData"
+  (save)="onPathDialogSave($event)"
+  (cancel)="onPathDialogCancel()">
+</app-therapeutic-path-dialog>
+
+<!-- Delete Confirmation Dialog -->
+<app-confirm-dialog
+  *ngIf="showDeleteConfirm && pathToDelete"
+  title="Elimina Percorso"
+  [message]="'Sei sicuro di voler eliminare il percorso \'' + pathToDelete.name + '\'? Questa azione non può essere annullata.'"
+  confirmText="Elimina"
+  cancelText="Annulla"
+  confirmButtonClass="btn-danger"
+  (confirm)="onDeleteConfirm()"
+  (cancel)="onDeleteCancel()">
+</app-confirm-dialog>

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
@@ -68,7 +68,10 @@ export class SettingsComponent implements OnInit, OnDestroy {
     { value: 'weekly', label: 'Settimanale' },
   ];
 
-  constructor(private settingsService: SettingsService) {}
+  constructor(
+    private settingsService: SettingsService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit(): void {
     this.loadSettings();
@@ -118,9 +121,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   saveSettings(): void {
-    this.saving = true;
-    this.error = null;
-    this.successMessage = null;
+    this.ngZone.run(() => {
+      this.saving = true;
+      this.error = null;
+      this.successMessage = null;
+    });
 
     forkJoin({
       // Appointment settings
@@ -182,10 +187,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   resetSettings(): void {
-    this.appointmentSettings = { ...this.originalSettings };
-    this.calendarSettings = { ...this.originalCalendarSettings };
-    this.error = null;
-    this.successMessage = null;
+    this.ngZone.run(() => {
+      this.appointmentSettings = { ...this.originalSettings };
+      this.calendarSettings = { ...this.originalCalendarSettings };
+      this.error = null;
+      this.successMessage = null;
+    });
   }
 
   hasChanges(): boolean {
@@ -205,30 +212,39 @@ export class SettingsComponent implements OnInit, OnDestroy {
     return appointmentChanged || calendarChanged;
   }
 
+  // Force change detection when settings change
+  onSettingChange(): void {
+    this.ngZone.run(() => {
+      // Trigger change detection
+    });
+  }
+
   formatHour(hour: number): string {
     return `${hour.toString().padStart(2, '0')}:00`;
   }
 
   initializeDefaults(): void {
-    this.loading = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      this.loading = true;
+      this.error = null;
 
-    this.settingsService
-      .initializeDefaults()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadSettings();
-          this.successMessage = 'Impostazioni predefinite inizializzate';
-          setTimeout(() => {
-            this.successMessage = null;
-          }, 3000);
-        },
-        error: (err) => {
-          this.error = 'Errore nell\'inizializzazione delle impostazioni';
-          this.loading = false;
-          console.error('Error initializing defaults:', err);
-        },
-      });
+      this.settingsService
+        .initializeDefaults()
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadSettings();
+            this.successMessage = 'Impostazioni predefinite inizializzate';
+            setTimeout(() => {
+              this.successMessage = null;
+            }, 3000);
+          },
+          error: (err) => {
+            this.error = 'Errore nell\'inizializzazione delle impostazioni';
+            this.loading = false;
+            console.error('Error initializing defaults:', err);
+          },
+        });
+    });
   }
 }

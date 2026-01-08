@@ -12,18 +12,18 @@
     <div class="macro-category-filters">
       <button class="filter-btn"
               [class.active]="filterMacroCategory === null"
-              (click)="filterMacroCategory = null">
+              (click)="setFilterMacroCategory(null)">
         Tutte ({{ subcategories.length }})
       </button>
       <button *ngFor="let cat of macroCategories"
               class="filter-btn"
               [class.active]="filterMacroCategory === cat"
-              (click)="filterMacroCategory = cat">
+              (click)="setFilterMacroCategory(cat)">
         {{ macroCategoryLabels[cat] }} ({{ getSubcategoryCount(cat) }})
       </button>
     </div>
     <label class="checkbox-label">
-      <input type="checkbox" [(ngModel)]="showInactive">
+      <input type="checkbox" [checked]="showInactive" (change)="toggleShowInactive()">
       Mostra inattive
     </label>
   </div>

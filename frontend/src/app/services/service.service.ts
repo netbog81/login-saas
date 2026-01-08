@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   Service,
   OperatorService,
@@ -27,29 +27,26 @@ import {
 @Injectable({
   providedIn: 'root'
 })
-export class ServiceService {
-  constructor(private apollo: Apollo) {}
+export class ServiceService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   getServices(): Observable<Service[]> {
-    return this.apollo
-      .watchQuery<{ services: Service[] }>({
-        query: GET_SERVICES,
-        fetchPolicy: 'cache-and-network'
-      })
-      .valueChanges.pipe(
-        map(result => (result.data?.services || []) as Service[])
-      );
+    return this.watch<{ services: Service[] }>(
+      GET_SERVICES
+    ).pipe(
+      map(result => (result.services || []) as Service[])
+    );
   }
 
   getService(id: string): Observable<Service | null> {
-    return this.apollo
-      .watchQuery<{ service: Service | null }>({
-        query: GET_SERVICE,
-        variables: { id }
-      })
-      .valueChanges.pipe(
-        map(result => (result.data?.service || null) as Service | null)
-      );
+    return this.watch<{ service: Service | null }>(
+      GET_SERVICE,
+      { id }
+    ).pipe(
+      map(result => (result.service || null) as Service | null)
+    );
   }
 
   createService(input: CreateServiceInput): Observable<Service> {
@@ -69,168 +66,136 @@ export class ServiceService {
 
     console.log('ServiceService.createService - sending variables:', variables);
 
-    return this.apollo
-      .mutate<{ createService: Service }>({
-        mutation: CREATE_SERVICE,
-        variables,
-        refetchQueries: [{ query: GET_SERVICES }]
+    return this.mutate<{ createService: Service }>(
+      CREATE_SERVICE,
+      variables,
+      [{ query: GET_SERVICES }]
+    ).pipe(
+      map(result => {
+        console.log('ServiceService.createService - received result:', result);
+        if (!result.createService) {
+          throw new Error('Failed to create service');
+        }
+        return result.createService;
       })
-      .pipe(
-        map(result => {
-          console.log('ServiceService.createService - received result:', result);
-          if (!result.data) {
-            throw new Error('Failed to create service');
-          }
-          return result.data.createService;
-        })
-      );
+    );
   }
 
   updateService(id: string, input: UpdateServiceInput): Observable<Service> {
-    return this.apollo
-      .mutate<{ updateService: Service }>({
-        mutation: UPDATE_SERVICE,
-        variables: {
-          id,
-          name: input.name,
-          description: input.description,
-          defaultDuration: input.defaultDuration,
-          defaultPrice: input.defaultPrice,
-          bufferTimeBefore: input.bufferTimeBefore,
-          bufferTimeAfter: input.bufferTimeAfter,
-          color: input.color,
-          isActive: input.isActive,
-          macroCategory: input.macroCategory,
-          subcategoryId: (input as any).subcategoryId,
-          discountFE: (input as any).discountFE
-        },
-        refetchQueries: [
-          { query: GET_SERVICES },
-          { query: GET_SERVICE, variables: { id } }
-        ]
+    return this.mutate<{ updateService: Service }>(
+      UPDATE_SERVICE,
+      {
+        id,
+        name: input.name,
+        description: input.description,
+        defaultDuration: input.defaultDuration,
+        defaultPrice: input.defaultPrice,
+        bufferTimeBefore: input.bufferTimeBefore,
+        bufferTimeAfter: input.bufferTimeAfter,
+        color: input.color,
+        isActive: input.isActive,
+        macroCategory: input.macroCategory,
+        subcategoryId: (input as any).subcategoryId,
+        discountFE: (input as any).discountFE
+      },
+      [
+        { query: GET_SERVICES },
+        { query: GET_SERVICE, variables: { id } }
+      ]
+    ).pipe(
+      map(result => {
+        if (!result.updateService) {
+          throw new Error('Failed to update service');
+        }
+        return result.updateService;
       })
-      .pipe(
-        map(result => {
-          if (!result.data) {
-            throw new Error('Failed to update service');
-          }
-          return result.data.updateService;
-        })
-      );
+    );
   }
 
   deleteService(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteService: boolean }>({
-        mutation: DELETE_SERVICE,
-        variables: { id },
-        refetchQueries: [{ query: GET_SERVICES }],
-        update: (cache) => {
-          // Remove the deleted service from cache
-          const data = cache.readQuery<{ services: Service[] }>({
-            query: GET_SERVICES
-          });
-          if (data) {
-            cache.writeQuery({
-              query: GET_SERVICES,
-              data: {
-                services: data.services.filter(s => s.id !== id)
-              }
-            });
-          }
+    return this.mutate<{ deleteService: boolean }>(
+      DELETE_SERVICE,
+      { id },
+      [{ query: GET_SERVICES }]
+    ).pipe(
+      map(result => {
+        if (result.deleteService === undefined) {
+          throw new Error('Failed to delete service');
         }
+        return result.deleteService;
       })
-      .pipe(
-        map(result => {
-          if (!result.data) {
-            throw new Error('Failed to delete service');
-          }
-          return result.data.deleteService;
-        })
-      );
+    );
   }
 
   getOperatorServices(operatorId: string): Observable<OperatorService[]> {
-    return this.apollo
-      .watchQuery<{ operatorServices: OperatorService[] }>({
-        query: GET_OPERATOR_SERVICES,
-        variables: { operatorId },
-        fetchPolicy: 'network-only'
-      })
-      .valueChanges.pipe(
-        map(result => (result.data?.operatorServices || []) as OperatorService[])
-      );
+    return this.query<{ operatorServices: OperatorService[] }>(
+      GET_OPERATOR_SERVICES,
+      { operatorId }
+    ).pipe(
+      map(result => (result.operatorServices || []) as OperatorService[])
+    );
   }
 
   getServiceOperators(serviceId: string): Observable<OperatorService[]> {
-    return this.apollo
-      .watchQuery<{ serviceOperators: OperatorService[] }>({
-        query: GET_SERVICE_OPERATORS,
-        variables: { serviceId },
-        fetchPolicy: 'network-only'
-      })
-      .valueChanges.pipe(
-        map(result => (result.data?.serviceOperators || []) as OperatorService[])
-      );
+    return this.query<{ serviceOperators: OperatorService[] }>(
+      GET_SERVICE_OPERATORS,
+      { serviceId }
+    ).pipe(
+      map(result => (result.serviceOperators || []) as OperatorService[])
+    );
   }
 
   assignServiceToOperator(input: AssignServiceToOperatorInput): Observable<OperatorService> {
-    return this.apollo
-      .mutate<{ assignServiceToOperator: OperatorService }>({
-        mutation: ASSIGN_SERVICE_TO_OPERATOR,
-        variables: input,
-        refetchQueries: [
-          { query: GET_OPERATOR_SERVICES, variables: { operatorId: input.operatorId } },
-          { query: GET_SERVICE_OPERATORS, variables: { serviceId: input.serviceId } }
-        ]
+    return this.mutate<{ assignServiceToOperator: OperatorService }>(
+      ASSIGN_SERVICE_TO_OPERATOR,
+      input,
+      [
+        { query: GET_OPERATOR_SERVICES, variables: { operatorId: input.operatorId } },
+        { query: GET_SERVICE_OPERATORS, variables: { serviceId: input.serviceId } }
+      ]
+    ).pipe(
+      map(result => {
+        if (!result.assignServiceToOperator) {
+          throw new Error('Failed to assign service to operator');
+        }
+        return result.assignServiceToOperator;
       })
-      .pipe(
-        map(result => {
-          if (!result.data) {
-            throw new Error('Failed to assign service to operator');
-          }
-          return result.data.assignServiceToOperator;
-        })
-      );
+    );
   }
 
   updateOperatorService(input: UpdateOperatorServiceInput): Observable<OperatorService> {
-    return this.apollo
-      .mutate<{ updateOperatorService: OperatorService }>({
-        mutation: UPDATE_OPERATOR_SERVICE,
-        variables: input,
-        refetchQueries: [
-          { query: GET_OPERATOR_SERVICES, variables: { operatorId: input.operatorId } },
-          { query: GET_SERVICE_OPERATORS, variables: { serviceId: input.serviceId } }
-        ]
+    return this.mutate<{ updateOperatorService: OperatorService }>(
+      UPDATE_OPERATOR_SERVICE,
+      input,
+      [
+        { query: GET_OPERATOR_SERVICES, variables: { operatorId: input.operatorId } },
+        { query: GET_SERVICE_OPERATORS, variables: { serviceId: input.serviceId } }
+      ]
+    ).pipe(
+      map(result => {
+        if (!result.updateOperatorService) {
+          throw new Error('Failed to update operator service');
+        }
+        return result.updateOperatorService;
       })
-      .pipe(
-        map(result => {
-          if (!result.data) {
-            throw new Error('Failed to update operator service');
-          }
-          return result.data.updateOperatorService;
-        })
-      );
+    );
   }
 
   removeServiceFromOperator(operatorId: string, serviceId: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ removeServiceFromOperator: boolean }>({
-        mutation: REMOVE_SERVICE_FROM_OPERATOR,
-        variables: { operatorId, serviceId },
-        refetchQueries: [
-          { query: GET_OPERATOR_SERVICES, variables: { operatorId } },
-          { query: GET_SERVICE_OPERATORS, variables: { serviceId } }
-        ]
+    return this.mutate<{ removeServiceFromOperator: boolean }>(
+      REMOVE_SERVICE_FROM_OPERATOR,
+      { operatorId, serviceId },
+      [
+        { query: GET_OPERATOR_SERVICES, variables: { operatorId } },
+        { query: GET_SERVICE_OPERATORS, variables: { serviceId } }
+      ]
+    ).pipe(
+      map(result => {
+        if (result.removeServiceFromOperator === undefined) {
+          throw new Error('Failed to remove service from operator');
+        }
+        return result.removeServiceFromOperator;
       })
-      .pipe(
-        map(result => {
-          if (!result.data) {
-            throw new Error('Failed to remove service from operator');
-          }
-          return result.data.removeServiceFromOperator;
-        })
-      );
+    );
   }
 }

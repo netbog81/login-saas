@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, OnChanges, SimpleChanges, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -46,6 +46,7 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
   constructor(
     private exceptionService: GymExceptionService,
     private operatorService: OperatorService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit() {
@@ -110,41 +111,47 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
   }
 
   onDateRangeChange() {
-    this.loadExceptions();
+    this.ngZone.run(() => {
+      this.loadExceptions();
+    });
   }
 
   openForm(exception?: GymException) {
-    if (exception) {
-      this.isEditMode = true;
-      this.editingException = {
-        id: exception.id,
-        gymRoomId: exception.gymRoomId,
-        operatorId: exception.operatorId,
-        exceptionDate: exception.exceptionDate,
-        startTime: exception.startTime,
-        endTime: exception.endTime,
-        exceptionType: exception.exceptionType,
-        substituteOperatorId: exception.substituteOperatorId,
-        reason: exception.reason,
-      };
-    } else {
-      this.isEditMode = false;
-      const today = new Date().toISOString().split('T')[0];
-      this.editingException = {
-        gymRoomId: this.gymRoom?.id || '',
-        exceptionDate: today,
-        exceptionType: GymExceptionType.CLOSED,
-      };
-    }
-    this.showForm = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      if (exception) {
+        this.isEditMode = true;
+        this.editingException = {
+          id: exception.id,
+          gymRoomId: exception.gymRoomId,
+          operatorId: exception.operatorId,
+          exceptionDate: exception.exceptionDate,
+          startTime: exception.startTime,
+          endTime: exception.endTime,
+          exceptionType: exception.exceptionType,
+          substituteOperatorId: exception.substituteOperatorId,
+          reason: exception.reason,
+        };
+      } else {
+        this.isEditMode = false;
+        const today = new Date().toISOString().split('T')[0];
+        this.editingException = {
+          gymRoomId: this.gymRoom?.id || '',
+          exceptionDate: today,
+          exceptionType: GymExceptionType.CLOSED,
+        };
+      }
+      this.showForm = true;
+      this.error = null;
+    });
   }
 
   closeForm() {
-    this.showForm = false;
-    this.isEditMode = false;
-    this.editingException = {};
-    this.error = null;
+    this.ngZone.run(() => {
+      this.showForm = false;
+      this.isEditMode = false;
+      this.editingException = {};
+      this.error = null;
+    });
   }
 
   saveException() {
@@ -216,22 +223,24 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
   }
 
   deleteException(exception: GymException) {
-    if (!this.gymRoom) return;
-    if (!confirm('Sei sicuro di voler eliminare questa eccezione?')) return;
+    this.ngZone.run(() => {
+      if (!this.gymRoom) return;
+      if (!confirm('Sei sicuro di voler eliminare questa eccezione?')) return;
 
-    this.loading = true;
-    this.exceptionService.delete(exception.id, this.gymRoom.id, exception.exceptionDate)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadExceptions();
-        },
-        error: (error) => {
-          console.error('Error deleting exception:', error);
-          this.error = 'Errore nell\'eliminazione dell\'eccezione';
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.exceptionService.delete(exception.id, this.gymRoom.id, exception.exceptionDate)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadExceptions();
+          },
+          error: (error) => {
+            console.error('Error deleting exception:', error);
+            this.error = 'Errore nell\'eliminazione dell\'eccezione';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   formatDate(dateStr: string): string {

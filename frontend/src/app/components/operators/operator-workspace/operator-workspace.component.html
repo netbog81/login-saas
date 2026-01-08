@@ -98,8 +98,12 @@
             [patient]="selectedPatient"
             [paths]="patientPaths"
             [loading]="loadingPatient"
+            [currentOperatorId]="selectedOperator?.id ?? null"
             (pathSelect)="onPathSelect($event)"
-            (viewPatientDetails)="onViewPatientDetails($event)">
+            (viewPatientDetails)="onViewPatientDetails($event)"
+            (pathCreated)="onPathCreated($event)"
+            (pathUpdated)="onPathUpdated($event)"
+            (pathDeleted)="onPathDeleted($event)">
           </app-patient-folder>
         </section>
       </div>

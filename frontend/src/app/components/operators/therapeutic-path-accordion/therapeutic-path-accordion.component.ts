@@ -27,6 +27,8 @@ export class TherapeuticPathAccordionComponent {
   @Output() selectPath = new EventEmitter<TherapeuticPath>();
   @Output() viewAnamnesis = new EventEmitter<TherapeuticPath>();
   @Output() viewDocuments = new EventEmitter<TherapeuticPath>();
+  @Output() editPath = new EventEmitter<TherapeuticPath>();
+  @Output() deletePath = new EventEmitter<TherapeuticPath>();
 
   // Local state
   activeTab: 'treatments' | 'anamnesis' | 'documents' = 'treatments';
@@ -46,6 +48,16 @@ export class TherapeuticPathAccordionComponent {
 
   onViewDocuments(): void {
     this.viewDocuments.emit(this.path);
+  }
+
+  onEditPath(event: Event): void {
+    event.stopPropagation();
+    this.editPath.emit(this.path);
+  }
+
+  onDeletePath(event: Event): void {
+    event.stopPropagation();
+    this.deletePath.emit(this.path);
   }
 
   setActiveTab(tab: 'treatments' | 'anamnesis' | 'documents'): void {

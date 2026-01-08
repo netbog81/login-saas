@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core';
-import { Apollo, gql } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
+import { gql } from 'apollo-angular';
 import { Observable, map, catchError, of } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
 export interface GeneralSetting {
   id: string;
@@ -133,57 +134,47 @@ const GET_CALENDAR_SETTINGS = gql`
 @Injectable({
   providedIn: 'root',
 })
-export class SettingsService {
-  constructor(private apollo: Apollo) {}
+export class SettingsService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Get all settings
    */
   getAllSettings(): Observable<GeneralSetting[]> {
-    return this.apollo
-      .query<{ generalSettings: GeneralSetting[] }>({
-        query: GET_ALL_SETTINGS,
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.generalSettings ?? []));
+    return this.query<{ generalSettings: GeneralSetting[] }>(GET_ALL_SETTINGS)
+      .pipe(map((result) => result.generalSettings ?? []));
   }
 
   /**
    * Get settings by category
    */
   getSettingsByCategory(category: string): Observable<GeneralSetting[]> {
-    return this.apollo
-      .query<{ generalSettingsByCategory: GeneralSetting[] }>({
-        query: GET_SETTINGS_BY_CATEGORY,
-        variables: { category },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.generalSettingsByCategory ?? []));
+    return this.query<{ generalSettingsByCategory: GeneralSetting[] }>(
+      GET_SETTINGS_BY_CATEGORY,
+      { category }
+    ).pipe(map((result) => result.generalSettingsByCategory ?? []));
   }
 
   /**
    * Get a single setting by key
    */
   getSetting(key: string): Observable<GeneralSetting | null> {
-    return this.apollo
-      .query<{ generalSetting: GeneralSetting | null }>({
-        query: GET_SETTING,
-        variables: { key },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.generalSetting ?? null));
+    return this.query<{ generalSetting: GeneralSetting | null }>(
+      GET_SETTING,
+      { key }
+    ).pipe(map((result) => result.generalSetting ?? null));
   }
 
   /**
    * Update a setting value
    */
   updateSetting(key: string, value: any): Observable<GeneralSetting> {
-    return this.apollo
-      .mutate<{ updateGeneralSetting: GeneralSetting }>({
-        mutation: UPDATE_SETTING,
-        variables: { key, value },
-      })
-      .pipe(map((result) => result.data!.updateGeneralSetting));
+    return this.mutate<{ updateGeneralSetting: GeneralSetting }>(
+      UPDATE_SETTING,
+      { key, value }
+    ).pipe(map((result) => result.updateGeneralSetting));
   }
 
   /**
@@ -198,41 +189,34 @@ export class SettingsService {
       category?: string;
     }
   ): Observable<GeneralSetting> {
-    return this.apollo
-      .mutate<{ upsertGeneralSetting: GeneralSetting }>({
-        mutation: UPSERT_SETTING,
-        variables: {
-          key,
-          value,
-          description: options?.description,
-          valueType: options?.valueType,
-          category: options?.category,
-        },
-      })
-      .pipe(map((result) => result.data!.upsertGeneralSetting));
+    return this.mutate<{ upsertGeneralSetting: GeneralSetting }>(
+      UPSERT_SETTING,
+      {
+        key,
+        value,
+        description: options?.description,
+        valueType: options?.valueType,
+        category: options?.category,
+      }
+    ).pipe(map((result) => result.upsertGeneralSetting));
   }
 
   /**
    * Delete a setting
    */
   deleteSetting(key: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteGeneralSetting: boolean }>({
-        mutation: DELETE_SETTING,
-        variables: { key },
-      })
-      .pipe(map((result) => result.data!.deleteGeneralSetting));
+    return this.mutate<{ deleteGeneralSetting: boolean }>(
+      DELETE_SETTING,
+      { key }
+    ).pipe(map((result) => result.deleteGeneralSetting));
   }
 
   /**
    * Initialize default settings
    */
   initializeDefaults(): Observable<boolean> {
-    return this.apollo
-      .mutate<{ initializeDefaultSettings: boolean }>({
-        mutation: INITIALIZE_DEFAULTS,
-      })
-      .pipe(map((result) => result.data!.initializeDefaultSettings));
+    return this.mutate<{ initializeDefaultSettings: boolean }>(INITIALIZE_DEFAULTS)
+      .pipe(map((result) => result.initializeDefaultSettings));
   }
 
   /**
@@ -249,13 +233,9 @@ export class SettingsService {
       showUnavailableCellsBackground: true,
     };
 
-    return this.apollo
-      .query<{ calendarSettings: CalendarSettings }>({
-        query: GET_CALENDAR_SETTINGS,
-        fetchPolicy: 'network-only',
-      })
+    return this.query<{ calendarSettings: CalendarSettings }>(GET_CALENDAR_SETTINGS)
       .pipe(
-        map((result) => result.data?.calendarSettings ?? defaultSettings),
+        map((result) => result.calendarSettings ?? defaultSettings),
         catchError((error) => {
           console.warn('Error loading calendar settings, using defaults:', error);
           return of(defaultSettings);

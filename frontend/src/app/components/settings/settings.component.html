@@ -37,6 +37,7 @@
         <select
           id="defaultSlotDuration"
           [(ngModel)]="appointmentSettings.defaultSlotDuration"
+          (ngModelChange)="onSettingChange()"
           class="form-control"
         >
           <option *ngFor="let duration of durationOptions" [ngValue]="duration">
@@ -58,6 +59,7 @@
               name="slotDurationPriority"
               [value]="option.value"
               [(ngModel)]="appointmentSettings.slotDurationPriority"
+              (ngModelChange)="onSettingChange()"
             />
             <span class="radio-label">{{ option.label }}</span>
           </label>
@@ -88,6 +90,7 @@
           <select
             id="calStartHour"
             [(ngModel)]="calendarSettings.startHour"
+            (ngModelChange)="onSettingChange()"
             class="form-control"
           >
             <option *ngFor="let hour of hourOptions" [ngValue]="hour">
@@ -101,6 +104,7 @@
           <select
             id="calEndHour"
             [(ngModel)]="calendarSettings.endHour"
+            (ngModelChange)="onSettingChange()"
             class="form-control"
           >
             <option *ngFor="let hour of hourOptions" [ngValue]="hour">
@@ -118,6 +122,7 @@
         <select
           id="calSlotDuration"
           [(ngModel)]="calendarSettings.slotDuration"
+          (ngModelChange)="onSettingChange()"
           class="form-control"
         >
           <option *ngFor="let duration of calendarSlotOptions" [ngValue]="duration">
@@ -134,6 +139,7 @@
         <select
           id="calDefaultView"
           [(ngModel)]="calendarSettings.defaultView"
+          (ngModelChange)="onSettingChange()"
           class="form-control"
         >
           <option *ngFor="let view of viewOptions" [ngValue]="view.value">
@@ -147,6 +153,7 @@
           <input
             type="checkbox"
             [(ngModel)]="calendarSettings.showWorkingHoursOnly"
+            (ngModelChange)="onSettingChange()"
           />
           <span>Mostra solo orari lavorativi</span>
         </label>
@@ -160,6 +167,7 @@
           <input
             type="checkbox"
             [(ngModel)]="calendarSettings.showWeekend"
+            (ngModelChange)="onSettingChange()"
           />
           <span>Mostra weekend</span>
         </label>
@@ -173,6 +181,7 @@
           <input
             type="checkbox"
             [(ngModel)]="calendarSettings.showUnavailableCellsBackground"
+            (ngModelChange)="onSettingChange()"
           />
           <span>Mostra sfondo celle non disponibili</span>
         </label>

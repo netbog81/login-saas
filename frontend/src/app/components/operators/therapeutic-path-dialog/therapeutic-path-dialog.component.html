@@ -1,0 +1,183 @@
+<div class="dialog-overlay" (click)="onCancel()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <!-- Dialog Header -->
+    <div class="dialog-header">
+      <h3 class="dialog-title">{{ dialogTitle }}</h3>
+      <button class="close-btn" (click)="onCancel()" type="button" [disabled]="saving">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Dialog Body -->
+    <div class="dialog-body">
+      <form [formGroup]="form" (ngSubmit)="onSubmit()">
+        <!-- Operatore Responsabile -->
+        <div class="form-group">
+          <label for="primaryOperatorId" class="form-label required">
+            Operatore Responsabile
+          </label>
+          <select
+            id="primaryOperatorId"
+            formControlName="primaryOperatorId"
+            class="form-select"
+            [class.is-invalid]="isFieldInvalid('primaryOperatorId')"
+          >
+            <option value="" disabled>Seleziona operatore...</option>
+            @for (operator of operators; track operator.id) {
+              <option [value]="operator.id">
+                {{ getOperatorDisplayName(operator) }}
+              </option>
+            }
+          </select>
+          @if (loadingOperators) {
+            <span class="loading-text">Caricamento operatori...</span>
+          }
+          @if (isFieldInvalid('primaryOperatorId')) {
+            <div class="error-message">{{ getFieldError('primaryOperatorId') }}</div>
+          }
+        </div>
+
+        <!-- Nome Percorso -->
+        <div class="form-group">
+          <label for="name" class="form-label required">
+            Nome Percorso
+          </label>
+          <input
+            type="text"
+            id="name"
+            formControlName="name"
+            class="form-input"
+            [class.is-invalid]="isFieldInvalid('name')"
+            placeholder="Es: Cervicalgia, Lombalgia cronica..."
+          />
+          @if (isFieldInvalid('name')) {
+            <div class="error-message">{{ getFieldError('name') }}</div>
+          }
+        </div>
+
+        <!-- Diagnosi -->
+        <div class="form-group">
+          <label for="diagnosis" class="form-label">
+            Diagnosi
+          </label>
+          <textarea
+            id="diagnosis"
+            formControlName="diagnosis"
+            class="form-textarea"
+            rows="2"
+            placeholder="Descrizione della diagnosi..."
+          ></textarea>
+        </div>
+
+        <!-- Codice ICD -->
+        <div class="form-group">
+          <label for="icdCode" class="form-label">
+            Codice ICD
+          </label>
+          <input
+            type="text"
+            id="icdCode"
+            formControlName="icdCode"
+            class="form-input"
+            placeholder="Es: M54.2"
+          />
+        </div>
+
+        <!-- Sezione Medico Esterno -->
+        <div class="form-section">
+          <h4 class="section-title">Prescrizione Esterna (opzionale)</h4>
+
+          <div class="form-row">
+            <!-- Medico Esterno -->
+            <div class="form-group half">
+              <label for="externalDoctorName" class="form-label">
+                Medico Prescrittore
+              </label>
+              <input
+                type="text"
+                id="externalDoctorName"
+                formControlName="externalDoctorName"
+                class="form-input"
+                placeholder="Nome del medico"
+              />
+            </div>
+
+            <!-- Riferimento Prescrizione -->
+            <div class="form-group half">
+              <label for="externalPrescriptionRef" class="form-label">
+                Riferimento Prescrizione
+              </label>
+              <input
+                type="text"
+                id="externalPrescriptionRef"
+                formControlName="externalPrescriptionRef"
+                class="form-input"
+                placeholder="N. prescrizione"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Status (solo in edit mode) -->
+        @if (isEditMode) {
+          <div class="form-group">
+            <label for="status" class="form-label">
+              Stato Percorso
+            </label>
+            <select
+              id="status"
+              formControlName="status"
+              class="form-select"
+            >
+              @for (option of statusOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
+        }
+
+        <!-- Note -->
+        <div class="form-group">
+          <label for="notes" class="form-label">
+            Note
+          </label>
+          <textarea
+            id="notes"
+            formControlName="notes"
+            class="form-textarea"
+            rows="3"
+            placeholder="Note aggiuntive sul percorso..."
+          ></textarea>
+        </div>
+      </form>
+    </div>
+
+    <!-- Dialog Footer -->
+    <div class="dialog-footer">
+      <button
+        class="btn btn-secondary"
+        (click)="onCancel()"
+        type="button"
+        [disabled]="saving"
+      >
+        Annulla
+      </button>
+      <button
+        class="btn btn-primary"
+        (click)="onSubmit()"
+        type="button"
+        [disabled]="form.invalid || saving || loadingOperators"
+      >
+        @if (saving) {
+          <span class="spinner"></span>
+          Salvataggio...
+        } @else {
+          {{ isEditMode ? 'Salva Modifiche' : 'Crea Percorso' }}
+        }
+      </button>
+    </div>
+  </div>
+</div>

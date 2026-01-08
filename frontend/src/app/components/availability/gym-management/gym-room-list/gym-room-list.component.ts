@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Output, EventEmitter } from '@angular/core';
+import { Component, OnInit, OnDestroy, Output, EventEmitter, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -38,7 +38,10 @@ export class GymRoomListComponent implements OnInit, OnDestroy {
     isActive: true,
   };
 
-  constructor(private gymRoomService: GymRoomService) {}
+  constructor(
+    private gymRoomService: GymRoomService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit() {
     this.loadGymRooms();
@@ -70,24 +73,46 @@ export class GymRoomListComponent implements OnInit, OnDestroy {
   }
 
   selectGymRoom(gymRoom: GymRoom) {
-    this.selectedGymRoom = gymRoom;
-    this.gymRoomSelected.emit(gymRoom);
+    this.ngZone.run(() => {
+      this.selectedGymRoom = gymRoom;
+      this.gymRoomSelected.emit(gymRoom);
+    });
   }
 
   openForm(gymRoom?: GymRoom) {
-    if (gymRoom) {
-      this.isEditMode = true;
-      this.editingGymRoom = {
-        id: gymRoom.id,
-        name: gymRoom.name,
-        maxCapacity: gymRoom.maxCapacity,
-        slotDuration: gymRoom.slotDuration,
-        color: gymRoom.color || '#4A90E2',
-        defaultStartTime: gymRoom.defaultStartTime || '07:00',
-        defaultEndTime: gymRoom.defaultEndTime || '21:00',
-        isActive: gymRoom.isActive,
-      };
-    } else {
+    this.ngZone.run(() => {
+      if (gymRoom) {
+        this.isEditMode = true;
+        this.editingGymRoom = {
+          id: gymRoom.id,
+          name: gymRoom.name,
+          maxCapacity: gymRoom.maxCapacity,
+          slotDuration: gymRoom.slotDuration,
+          color: gymRoom.color || '#4A90E2',
+          defaultStartTime: gymRoom.defaultStartTime || '07:00',
+          defaultEndTime: gymRoom.defaultEndTime || '21:00',
+          isActive: gymRoom.isActive,
+        };
+      } else {
+        this.isEditMode = false;
+        this.editingGymRoom = {
+          name: '',
+          maxCapacity: 4,
+          slotDuration: 60,
+          color: '#4A90E2',
+          defaultStartTime: '07:00',
+          defaultEndTime: '21:00',
+          isActive: true,
+        };
+      }
+      this.showForm = true;
+      this.error = null;
+    });
+  }
+
+  closeForm() {
+    this.ngZone.run(() => {
+      this.showForm = false;
       this.isEditMode = false;
       this.editingGymRoom = {
         name: '',
@@ -98,24 +123,8 @@ export class GymRoomListComponent implements OnInit, OnDestroy {
         defaultEndTime: '21:00',
         isActive: true,
       };
-    }
-    this.showForm = true;
-    this.error = null;
-  }
-
-  closeForm() {
-    this.showForm = false;
-    this.isEditMode = false;
-    this.editingGymRoom = {
-      name: '',
-      maxCapacity: 4,
-      slotDuration: 60,
-      color: '#4A90E2',
-      defaultStartTime: '07:00',
-      defaultEndTime: '21:00',
-      isActive: true,
-    };
-    this.error = null;
+      this.error = null;
+    });
   }
 
   saveGymRoom() {
@@ -181,33 +190,39 @@ export class GymRoomListComponent implements OnInit, OnDestroy {
   }
 
   deleteGymRoom(gymRoom: GymRoom) {
-    if (!confirm(`Sei sicuro di voler eliminare la palestra "${gymRoom.name}"? Verranno eliminati anche tutti i template e le eccezioni associate.`)) {
-      return;
-    }
+    this.ngZone.run(() => {
+      if (!confirm(`Sei sicuro di voler eliminare la palestra "${gymRoom.name}"? Verranno eliminati anche tutti i template e le eccezioni associate.`)) {
+        return;
+      }
 
-    this.loading = true;
-    this.gymRoomService.delete(gymRoom.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadGymRooms();
-          if (this.selectedGymRoom?.id === gymRoom.id) {
-            this.selectedGymRoom = null;
-          }
-        },
-        error: (error) => {
-          console.error('Error deleting gym room:', error);
-          this.error = 'Errore nell\'eliminazione della palestra';
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.gymRoomService.delete(gymRoom.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadGymRooms();
+            if (this.selectedGymRoom?.id === gymRoom.id) {
+              this.selectedGymRoom = null;
+            }
+          },
+          error: (error) => {
+            console.error('Error deleting gym room:', error);
+            this.error = 'Errore nell\'eliminazione della palestra';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   onOpenTemplate(gymRoom: GymRoom) {
-    this.openTemplate.emit(gymRoom);
+    this.ngZone.run(() => {
+      this.openTemplate.emit(gymRoom);
+    });
   }
 
   onOpenExceptions(gymRoom: GymRoom) {
-    this.openExceptions.emit(gymRoom);
+    this.ngZone.run(() => {
+      this.openExceptions.emit(gymRoom);
+    });
   }
 }

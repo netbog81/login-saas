@@ -4,11 +4,24 @@ import { Patient } from '../../../models/patient.model';
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
 import { TherapeuticPathTimelineComponent } from '../therapeutic-path-timeline/therapeutic-path-timeline.component';
 import { TherapeuticPathAccordionComponent } from '../therapeutic-path-accordion/therapeutic-path-accordion.component';
+import {
+  TherapeuticPathDialogComponent,
+  TherapeuticPathDialogData,
+  TherapeuticPathFormResult
+} from '../therapeutic-path-dialog/therapeutic-path-dialog.component';
+import { TherapeuticPathService, CreateTherapeuticPathInput, UpdateTherapeuticPathInput } from '../../../services/therapeutic-path.service';
+import { ConfirmDialogComponent } from '../../calendar-cdk/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-patient-folder',
   standalone: true,
-  imports: [CommonModule, TherapeuticPathTimelineComponent, TherapeuticPathAccordionComponent],
+  imports: [
+    CommonModule,
+    TherapeuticPathTimelineComponent,
+    TherapeuticPathAccordionComponent,
+    TherapeuticPathDialogComponent,
+    ConfirmDialogComponent
+  ],
   templateUrl: './patient-folder.component.html',
   styleUrls: ['./patient-folder.component.scss'],
 })
@@ -16,13 +29,26 @@ export class PatientFolderComponent implements OnChanges {
   @Input() patient: Patient | null = null;
   @Input() paths: TherapeuticPath[] = [];
   @Input() loading = false;
+  @Input() currentOperatorId: string | null = null;
 
   @Output() pathSelect = new EventEmitter<TherapeuticPath>();
   @Output() viewPatientDetails = new EventEmitter<Patient>();
+  @Output() pathCreated = new EventEmitter<TherapeuticPath>();
+  @Output() pathUpdated = new EventEmitter<TherapeuticPath>();
+  @Output() pathDeleted = new EventEmitter<string>();
 
   // Local state
   selectedPath: TherapeuticPath | null = null;
   expandedPathId: string | null = null;
+
+  // Dialog state
+  showPathDialog = false;
+  pathDialogData: TherapeuticPathDialogData | null = null;
+  showDeleteConfirm = false;
+  pathToDelete: TherapeuticPath | null = null;
+  savingPath = false;
+
+  constructor(private therapeuticPathService: TherapeuticPathService) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     // Auto-select first active path when paths change
@@ -103,5 +129,129 @@ export class PatientFolderComponent implements OnChanges {
 
   get totalTreatmentsCount(): number {
     return this.paths.reduce((sum, p) => sum + (p.treatments?.length || 0), 0);
+  }
+
+  // ==================== CRUD Operations ====================
+
+  openNewPathDialog(): void {
+    if (!this.patient) return;
+
+    this.pathDialogData = {
+      mode: 'create',
+      patientId: this.patient.id,
+      currentOperatorId: this.currentOperatorId || undefined
+    };
+    this.showPathDialog = true;
+  }
+
+  openEditPathDialog(path: TherapeuticPath): void {
+    if (!this.patient) return;
+
+    this.pathDialogData = {
+      mode: 'edit',
+      path: path,
+      patientId: this.patient.id,
+      currentOperatorId: this.currentOperatorId || undefined
+    };
+    this.showPathDialog = true;
+  }
+
+  onPathDialogSave(result: TherapeuticPathFormResult): void {
+    if (!this.patient || !this.pathDialogData) return;
+
+    this.savingPath = true;
+
+    if (this.pathDialogData.mode === 'create') {
+      const input: CreateTherapeuticPathInput = {
+        patientId: Number(this.patient.id),
+        primaryOperatorId: result.primaryOperatorId,
+        name: result.name,
+        diagnosis: result.diagnosis,
+        icdCode: result.icdCode,
+        externalDoctorName: result.externalDoctorName,
+        externalPrescriptionRef: result.externalPrescriptionRef,
+        notes: result.notes
+      };
+
+      this.therapeuticPathService.createPath(input).subscribe({
+        next: (newPath) => {
+          this.savingPath = false;
+          this.showPathDialog = false;
+          this.pathDialogData = null;
+          this.pathCreated.emit(newPath);
+          // Select the new path
+          this.onPathSelect(newPath);
+        },
+        error: (error) => {
+          console.error('Error creating path:', error);
+          this.savingPath = false;
+          // TODO: Show error toast
+        }
+      });
+    } else if (this.pathDialogData.mode === 'edit' && this.pathDialogData.path) {
+      const input: UpdateTherapeuticPathInput = {
+        name: result.name,
+        diagnosis: result.diagnosis,
+        icdCode: result.icdCode,
+        externalDoctorName: result.externalDoctorName,
+        externalPrescriptionRef: result.externalPrescriptionRef,
+        notes: result.notes,
+        status: result.status
+      };
+
+      this.therapeuticPathService.updatePath(this.pathDialogData.path.id, input).subscribe({
+        next: (updatedPath) => {
+          this.savingPath = false;
+          this.showPathDialog = false;
+          this.pathDialogData = null;
+          this.pathUpdated.emit(updatedPath);
+        },
+        error: (error) => {
+          console.error('Error updating path:', error);
+          this.savingPath = false;
+          // TODO: Show error toast
+        }
+      });
+    }
+  }
+
+  onPathDialogCancel(): void {
+    this.showPathDialog = false;
+    this.pathDialogData = null;
+  }
+
+  confirmDeletePath(path: TherapeuticPath): void {
+    this.pathToDelete = path;
+    this.showDeleteConfirm = true;
+  }
+
+  onDeleteConfirm(): void {
+    if (!this.pathToDelete) return;
+
+    const pathId = this.pathToDelete.id;
+    this.therapeuticPathService.deletePath(pathId).subscribe({
+      next: () => {
+        this.showDeleteConfirm = false;
+        this.pathToDelete = null;
+        this.pathDeleted.emit(pathId);
+
+        // If we deleted the selected path, clear selection
+        if (this.selectedPath?.id === pathId) {
+          this.selectedPath = null;
+          this.expandedPathId = null;
+        }
+      },
+      error: (error) => {
+        console.error('Error deleting path:', error);
+        this.showDeleteConfirm = false;
+        this.pathToDelete = null;
+        // TODO: Show error toast
+      }
+    });
+  }
+
+  onDeleteCancel(): void {
+    this.showDeleteConfirm = false;
+    this.pathToDelete = null;
   }
 }

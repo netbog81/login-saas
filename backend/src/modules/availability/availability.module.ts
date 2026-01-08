@@ -30,6 +30,9 @@ import { Patient } from '../../entities/patient.entity';
 import { Treatment } from './entities/treatment.entity';
 import { TreatmentInstrument } from './entities/treatment-instrument.entity';
 import { ServiceSubcategory } from './entities/service-subcategory.entity';
+import { TherapeuticPath } from './entities/therapeutic-path.entity';
+import { PatientEvaluation } from './entities/patient-evaluation.entity';
+import { PathDocument } from './entities/path-document.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -52,6 +55,7 @@ import { GymExceptionService } from './services/gym-exception.service';
 import { AppointmentConflictService } from './services/appointment-conflict.service';
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 import { TreatmentService } from './services/treatment.service';
+import { TherapeuticPathService } from './services/therapeutic-path.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
@@ -72,6 +76,7 @@ import { AvailabilityAppointmentResolver } from './resolvers/availability-appoin
 import { GymPatternGroupResolver } from './resolvers/gym-pattern-group.resolver';
 import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
 import { TreatmentResolver } from './resolvers/treatment.resolver';
+import { TherapeuticPathResolver } from './resolvers/therapeutic-path.resolver';
 import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.resolver';
 
 @Module({
@@ -105,6 +110,9 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
       Treatment,
       TreatmentInstrument,
       ServiceSubcategory,
+      TherapeuticPath,
+      PatientEvaluation,
+      PathDocument,
     ]),
   ],
   providers: [
@@ -129,6 +137,7 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
     AppointmentConflictService,
     AvailabilityAppointmentService,
     TreatmentService,
+    TherapeuticPathService,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -148,6 +157,7 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
     GymPatternGroupResolver,
     GymExceptionResolver,
     TreatmentResolver,
+    TherapeuticPathResolver,
     ServiceSubcategoryResolver,
   ],
   exports: [
@@ -171,6 +181,7 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
     AppointmentConflictService,
     AvailabilityAppointmentService,
     TreatmentService,
+    TherapeuticPathService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })

@@ -45,6 +45,10 @@ import { GeneralSettings } from './modules/settings/entities/general-settings.en
 import { ServiceSubcategory } from './modules/availability/entities/service-subcategory.entity';
 import { Treatment } from './modules/availability/entities/treatment.entity';
 import { TreatmentInstrument } from './modules/availability/entities/treatment-instrument.entity';
+// Therapeutic path entities
+import { TherapeuticPath } from './modules/availability/entities/therapeutic-path.entity';
+import { PatientEvaluation } from './modules/availability/entities/patient-evaluation.entity';
+import { PathDocument } from './modules/availability/entities/path-document.entity';
 // Pazienti module entities
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
@@ -94,6 +98,10 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
         ServiceSubcategory,
         Treatment,
         TreatmentInstrument,
+        // Therapeutic path entities
+        TherapeuticPath,
+        PatientEvaluation,
+        PathDocument,
         // Pazienti module entities
         PersonaRiferimento,
         PazientePersonaRelazione,

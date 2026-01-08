@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   Instrument,
   InstrumentCategory,
@@ -62,8 +62,10 @@ export interface UpdateInstrumentCategoryInput {
 @Injectable({
   providedIn: 'root',
 })
-export class InstrumentService {
-  constructor(private apollo: Apollo) {}
+export class InstrumentService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   // ============ INSTRUMENTS ============
 
@@ -74,39 +76,30 @@ export class InstrumentService {
     categoryId?: string,
     status?: InstrumentStatus
   ): Observable<Instrument[]> {
-    return this.apollo
-      .query<{ instruments: Instrument[] }>({
-        query: GET_INSTRUMENTS,
-        variables: { categoryId, status },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.instruments || []));
+    return this.query<{ instruments: Instrument[] }>(
+      GET_INSTRUMENTS,
+      { categoryId, status }
+    ).pipe(map((result) => result.instruments || []));
   }
 
   /**
    * Ottiene un singolo strumento per ID
    */
   getInstrument(id: string): Observable<Instrument | null> {
-    return this.apollo
-      .query<{ instrument: Instrument | null }>({
-        query: GET_INSTRUMENT,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.instrument || null));
+    return this.query<{ instrument: Instrument | null }>(
+      GET_INSTRUMENT,
+      { id }
+    ).pipe(map((result) => result.instrument || null));
   }
 
   /**
    * Ottiene strumenti disponibili per categoria (solo ACTIVE e isActive=true)
    */
   getAvailableInstrumentsByCategory(categoryId: string): Observable<Instrument[]> {
-    return this.apollo
-      .query<{ availableInstrumentsByCategory: Instrument[] }>({
-        query: GET_AVAILABLE_INSTRUMENTS_BY_CATEGORY,
-        variables: { categoryId },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.availableInstrumentsByCategory || []));
+    return this.query<{ availableInstrumentsByCategory: Instrument[] }>(
+      GET_AVAILABLE_INSTRUMENTS_BY_CATEGORY,
+      { categoryId }
+    ).pipe(map((result) => result.availableInstrumentsByCategory || []));
   }
 
   /**
@@ -128,21 +121,18 @@ export class InstrumentService {
       ...(verificationExpiryValue && { verificationExpiry: verificationExpiryValue }),
     };
 
-    return this.apollo
-      .mutate<{ createInstrument: Instrument }>({
-        mutation: CREATE_INSTRUMENT,
-        variables,
-        refetchQueries: [{ query: GET_INSTRUMENTS }, { query: GET_INSTRUMENT_CATEGORIES }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ createInstrument: Instrument }>(
+      CREATE_INSTRUMENT,
+      variables,
+      [{ query: GET_INSTRUMENTS }, { query: GET_INSTRUMENT_CATEGORIES }]
+    ).pipe(
+      map((result) => {
+        if (!result.createInstrument) {
+          throw new Error('Failed to create instrument');
+        }
+        return result.createInstrument;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to create instrument');
-          }
-          return result.data.createInstrument;
-        })
-      );
+    );
   }
 
   /**
@@ -165,67 +155,58 @@ export class InstrumentService {
       ...(verificationExpiryValue && { verificationExpiry: verificationExpiryValue }),
     };
 
-    return this.apollo
-      .mutate<{ updateInstrument: Instrument }>({
-        mutation: UPDATE_INSTRUMENT,
-        variables,
-        refetchQueries: [
-          { query: GET_INSTRUMENTS },
-          { query: GET_INSTRUMENT, variables: { id } },
-          { query: GET_INSTRUMENT_CATEGORIES },
-        ],
-        awaitRefetchQueries: true,
+    return this.mutate<{ updateInstrument: Instrument }>(
+      UPDATE_INSTRUMENT,
+      variables,
+      [
+        { query: GET_INSTRUMENTS },
+        { query: GET_INSTRUMENT, variables: { id } },
+        { query: GET_INSTRUMENT_CATEGORIES },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.updateInstrument) {
+          throw new Error('Failed to update instrument');
+        }
+        return result.updateInstrument;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to update instrument');
-          }
-          return result.data.updateInstrument;
-        })
-      );
+    );
   }
 
   /**
    * Cambia lo stato di uno strumento
    */
   setInstrumentStatus(id: string, status: InstrumentStatus): Observable<Instrument> {
-    return this.apollo
-      .mutate<{ setInstrumentStatus: Instrument }>({
-        mutation: SET_INSTRUMENT_STATUS,
-        variables: { id, status },
-        refetchQueries: [{ query: GET_INSTRUMENTS }, { query: GET_INSTRUMENT_CATEGORIES }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ setInstrumentStatus: Instrument }>(
+      SET_INSTRUMENT_STATUS,
+      { id, status },
+      [{ query: GET_INSTRUMENTS }, { query: GET_INSTRUMENT_CATEGORIES }]
+    ).pipe(
+      map((result) => {
+        if (!result.setInstrumentStatus) {
+          throw new Error('Failed to set instrument status');
+        }
+        return result.setInstrumentStatus;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to set instrument status');
-          }
-          return result.data.setInstrumentStatus;
-        })
-      );
+    );
   }
 
   /**
    * Elimina uno strumento
    */
   deleteInstrument(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteInstrument: boolean }>({
-        mutation: DELETE_INSTRUMENT,
-        variables: { id },
-        refetchQueries: [{ query: GET_INSTRUMENTS }, { query: GET_INSTRUMENT_CATEGORIES }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ deleteInstrument: boolean }>(
+      DELETE_INSTRUMENT,
+      { id },
+      [{ query: GET_INSTRUMENTS }, { query: GET_INSTRUMENT_CATEGORIES }]
+    ).pipe(
+      map((result) => {
+        if (result.deleteInstrument === undefined) {
+          throw new Error('Failed to delete instrument');
+        }
+        return result.deleteInstrument;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to delete instrument');
-          }
-          return result.data.deleteInstrument;
-        })
-      );
+    );
   }
 
   // ============ INSTRUMENT CATEGORIES ============
@@ -236,26 +217,20 @@ export class InstrumentService {
   getInstrumentCategories(
     macroCategory?: OperatorMacroCategory
   ): Observable<InstrumentCategory[]> {
-    return this.apollo
-      .query<{ instrumentCategories: InstrumentCategory[] }>({
-        query: GET_INSTRUMENT_CATEGORIES,
-        variables: { macroCategory },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.instrumentCategories || []));
+    return this.query<{ instrumentCategories: InstrumentCategory[] }>(
+      GET_INSTRUMENT_CATEGORIES,
+      { macroCategory }
+    ).pipe(map((result) => result.instrumentCategories || []));
   }
 
   /**
    * Ottiene una singola categoria strumenti per ID
    */
   getInstrumentCategory(id: string): Observable<InstrumentCategory | null> {
-    return this.apollo
-      .query<{ instrumentCategory: InstrumentCategory | null }>({
-        query: GET_INSTRUMENT_CATEGORY,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.instrumentCategory || null));
+    return this.query<{ instrumentCategory: InstrumentCategory | null }>(
+      GET_INSTRUMENT_CATEGORY,
+      { id }
+    ).pipe(map((result) => result.instrumentCategory || null));
   }
 
   /**
@@ -264,21 +239,18 @@ export class InstrumentService {
   createInstrumentCategory(
     input: CreateInstrumentCategoryInput
   ): Observable<InstrumentCategory> {
-    return this.apollo
-      .mutate<{ createInstrumentCategory: InstrumentCategory }>({
-        mutation: CREATE_INSTRUMENT_CATEGORY,
-        variables: input,
-        refetchQueries: [{ query: GET_INSTRUMENT_CATEGORIES }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ createInstrumentCategory: InstrumentCategory }>(
+      CREATE_INSTRUMENT_CATEGORY,
+      input,
+      [{ query: GET_INSTRUMENT_CATEGORIES }]
+    ).pipe(
+      map((result) => {
+        if (!result.createInstrumentCategory) {
+          throw new Error('Failed to create instrument category');
+        }
+        return result.createInstrumentCategory;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to create instrument category');
-          }
-          return result.data.createInstrumentCategory;
-        })
-      );
+    );
   }
 
   /**
@@ -288,44 +260,38 @@ export class InstrumentService {
     id: string,
     input: UpdateInstrumentCategoryInput
   ): Observable<InstrumentCategory> {
-    return this.apollo
-      .mutate<{ updateInstrumentCategory: InstrumentCategory }>({
-        mutation: UPDATE_INSTRUMENT_CATEGORY,
-        variables: { id, ...input },
-        refetchQueries: [
-          { query: GET_INSTRUMENT_CATEGORIES },
-          { query: GET_INSTRUMENT_CATEGORY, variables: { id } },
-        ],
-        awaitRefetchQueries: true,
+    return this.mutate<{ updateInstrumentCategory: InstrumentCategory }>(
+      UPDATE_INSTRUMENT_CATEGORY,
+      { id, ...input },
+      [
+        { query: GET_INSTRUMENT_CATEGORIES },
+        { query: GET_INSTRUMENT_CATEGORY, variables: { id } },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.updateInstrumentCategory) {
+          throw new Error('Failed to update instrument category');
+        }
+        return result.updateInstrumentCategory;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to update instrument category');
-          }
-          return result.data.updateInstrumentCategory;
-        })
-      );
+    );
   }
 
   /**
    * Elimina una categoria strumenti
    */
   deleteInstrumentCategory(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteInstrumentCategory: boolean }>({
-        mutation: DELETE_INSTRUMENT_CATEGORY,
-        variables: { id },
-        refetchQueries: [{ query: GET_INSTRUMENT_CATEGORIES }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ deleteInstrumentCategory: boolean }>(
+      DELETE_INSTRUMENT_CATEGORY,
+      { id },
+      [{ query: GET_INSTRUMENT_CATEGORIES }]
+    ).pipe(
+      map((result) => {
+        if (result.deleteInstrumentCategory === undefined) {
+          throw new Error('Failed to delete instrument category');
+        }
+        return result.deleteInstrumentCategory;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to delete instrument category');
-          }
-          return result.data.deleteInstrumentCategory;
-        })
-      );
+    );
   }
 }

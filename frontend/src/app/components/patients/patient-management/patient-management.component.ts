@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, firstValueFrom } from 'rxjs';
@@ -43,7 +43,10 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   completePatients = 0;
   pendingPatients = 0;
 
-  constructor(private patientService: PatientService) {}
+  constructor(
+    private patientService: PatientService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit(): void {
     this.loadPatients();
@@ -128,37 +131,47 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   }
 
   onSearchChange(): void {
-    this.applyFilters();
+    this.ngZone.run(() => {
+      this.applyFilters();
+    });
   }
 
   onStateFilterChange(state: StatoAnagrafica | null): void {
-    this.selectedStateFilter = state;
-    this.applyFilters();
+    this.ngZone.run(() => {
+      this.selectedStateFilter = state;
+      this.applyFilters();
+    });
   }
 
   // Form management
   openNewPatientForm(): void {
-    this.isEditMode = false;
-    this.editingPatientId = null;
-    this.editingPatient = this.getEmptyPatient();
-    this.formError = null;
-    this.showPatientForm = true;
+    this.ngZone.run(() => {
+      this.isEditMode = false;
+      this.editingPatientId = null;
+      this.editingPatient = this.getEmptyPatient();
+      this.formError = null;
+      this.showPatientForm = true;
+    });
   }
 
   openEditPatientForm(patient: Patient): void {
-    this.isEditMode = true;
-    this.editingPatientId = patient.id;
-    this.editingPatient = { ...patient };
-    this.formError = null;
-    this.showPatientForm = true;
+    this.ngZone.run(() => {
+      this.isEditMode = true;
+      this.editingPatientId = patient.id;
+      this.editingPatient = { ...patient };
+      this.formError = null;
+      this.showPatientForm = true;
+    });
   }
 
   closePatientForm(): void {
-    this.showPatientForm = false;
-    this.isEditMode = false;
-    this.editingPatientId = null;
-    this.editingPatient = this.getEmptyPatient();
-    this.formError = null;
+    this.ngZone.run(() => {
+      this.showPatientForm = false;
+      this.isEditMode = false;
+      this.editingPatientId = null;
+      this.editingPatient = this.getEmptyPatient();
+      this.formError = null;
+    });
   }
 
   async savePatient(): Promise<void> {
@@ -214,7 +227,9 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   }
 
   selectPatient(patient: Patient): void {
-    this.selectedPatient = this.selectedPatient?.id === patient.id ? null : patient;
+    this.ngZone.run(() => {
+      this.selectedPatient = this.selectedPatient?.id === patient.id ? null : patient;
+    });
   }
 
   // Helper methods

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -66,7 +66,10 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
   OperatorMacroCategory = OperatorMacroCategory;
   InstrumentStatus = InstrumentStatus;
 
-  constructor(private instrumentService: InstrumentService) {}
+  constructor(
+    private instrumentService: InstrumentService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit() {
     this.loadCategories();
@@ -123,32 +126,56 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
   // ============ FILTER HANDLERS ============
 
   onMacroCategoryChange() {
-    this.selectedCategoryFilter = null;
-    this.loadCategories();
-    this.loadInstruments();
+    this.ngZone.run(() => {
+      this.selectedCategoryFilter = null;
+      this.loadCategories();
+      this.loadInstruments();
+    });
   }
 
   onCategoryFilterChange() {
-    this.loadInstruments();
+    this.ngZone.run(() => {
+      this.loadInstruments();
+    });
   }
 
   onStatusFilterChange() {
-    this.loadInstruments();
+    this.ngZone.run(() => {
+      this.loadInstruments();
+    });
   }
 
   // ============ CATEGORY CRUD ============
 
   openCategoryForm(category?: InstrumentCategory) {
-    if (category) {
-      this.isEditingCategory = true;
-      this.editingCategoryId = category.id;
-      this.editingCategory = {
-        name: category.name,
-        description: category.description || '',
-        macroCategory: category.macroCategory,
-        isActive: category.isActive,
-      };
-    } else {
+    this.ngZone.run(() => {
+      if (category) {
+        this.isEditingCategory = true;
+        this.editingCategoryId = category.id;
+        this.editingCategory = {
+          name: category.name,
+          description: category.description || '',
+          macroCategory: category.macroCategory,
+          isActive: category.isActive,
+        };
+      } else {
+        this.isEditingCategory = false;
+        this.editingCategoryId = null;
+        this.editingCategory = {
+          name: '',
+          description: '',
+          macroCategory: this.selectedMacroCategory,
+          isActive: true,
+        };
+      }
+      this.showCategoryForm = true;
+      this.error = null;
+    });
+  }
+
+  closeCategoryForm() {
+    this.ngZone.run(() => {
+      this.showCategoryForm = false;
       this.isEditingCategory = false;
       this.editingCategoryId = null;
       this.editingCategory = {
@@ -157,22 +184,8 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
         macroCategory: this.selectedMacroCategory,
         isActive: true,
       };
-    }
-    this.showCategoryForm = true;
-    this.error = null;
-  }
-
-  closeCategoryForm() {
-    this.showCategoryForm = false;
-    this.isEditingCategory = false;
-    this.editingCategoryId = null;
-    this.editingCategory = {
-      name: '',
-      description: '',
-      macroCategory: this.selectedMacroCategory,
-      isActive: true,
-    };
-    this.error = null;
+      this.error = null;
+    });
   }
 
   saveCategory() {
@@ -232,53 +245,78 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
   }
 
   deleteCategory(category: InstrumentCategory) {
-    const instrumentCount = category.instruments?.length || 0;
-    const message = instrumentCount > 0
-      ? `Questa categoria contiene ${instrumentCount} strumenti. Sei sicuro di voler eliminare "${category.name}"?`
-      : `Sei sicuro di voler eliminare la categoria "${category.name}"?`;
+    this.ngZone.run(() => {
+      const instrumentCount = category.instruments?.length || 0;
+      const message = instrumentCount > 0
+        ? `Questa categoria contiene ${instrumentCount} strumenti. Sei sicuro di voler eliminare "${category.name}"?`
+        : `Sei sicuro di voler eliminare la categoria "${category.name}"?`;
 
-    if (!confirm(message)) return;
+      if (!confirm(message)) return;
 
-    this.loading = true;
-    this.instrumentService.deleteInstrumentCategory(category.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadCategories();
-          this.loadInstruments();
-        },
-        error: (error) => {
-          console.error('Error deleting category:', error);
-          this.error = this.extractErrorMessage(error, 'eliminazione categoria');
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.instrumentService.deleteInstrumentCategory(category.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadCategories();
+            this.loadInstruments();
+          },
+          error: (error) => {
+            console.error('Error deleting category:', error);
+            this.error = this.extractErrorMessage(error, 'eliminazione categoria');
+            this.loading = false;
+          },
+        });
+    });
   }
 
   // ============ INSTRUMENT CRUD ============
 
   openInstrumentForm(instrument?: Instrument) {
-    if (instrument) {
-      this.isEditingInstrument = true;
-      this.editingInstrumentId = instrument.id;
-      this.editingInstrument = {
-        categoryId: instrument.categoryId,
-        name: instrument.name,
-        brand: instrument.brand || '',
-        model: instrument.model || '',
-        color: instrument.color || '#4A90E2',
-        verificationExpiry: instrument.verificationExpiry ? new Date(instrument.verificationExpiry) : undefined,
-        status: instrument.status,
-        isActive: instrument.isActive,
-      };
-      this.verificationExpiryString = instrument.verificationExpiry
-        ? new Date(instrument.verificationExpiry).toISOString().split('T')[0]
-        : '';
-    } else {
+    this.ngZone.run(() => {
+      if (instrument) {
+        this.isEditingInstrument = true;
+        this.editingInstrumentId = instrument.id;
+        this.editingInstrument = {
+          categoryId: instrument.categoryId,
+          name: instrument.name,
+          brand: instrument.brand || '',
+          model: instrument.model || '',
+          color: instrument.color || '#4A90E2',
+          verificationExpiry: instrument.verificationExpiry ? new Date(instrument.verificationExpiry) : undefined,
+          status: instrument.status,
+          isActive: instrument.isActive,
+        };
+        this.verificationExpiryString = instrument.verificationExpiry
+          ? new Date(instrument.verificationExpiry).toISOString().split('T')[0]
+          : '';
+      } else {
+        this.isEditingInstrument = false;
+        this.editingInstrumentId = null;
+        this.editingInstrument = {
+          categoryId: this.selectedCategoryFilter || (this.categories[0]?.id || ''),
+          name: '',
+          brand: '',
+          model: '',
+          color: '#4A90E2',
+          verificationExpiry: undefined,
+          status: InstrumentStatus.Active,
+          isActive: true,
+        };
+        this.verificationExpiryString = '';
+      }
+      this.showInstrumentForm = true;
+      this.error = null;
+    });
+  }
+
+  closeInstrumentForm() {
+    this.ngZone.run(() => {
+      this.showInstrumentForm = false;
       this.isEditingInstrument = false;
       this.editingInstrumentId = null;
       this.editingInstrument = {
-        categoryId: this.selectedCategoryFilter || (this.categories[0]?.id || ''),
+        categoryId: '',
         name: '',
         brand: '',
         model: '',
@@ -288,27 +326,8 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
         isActive: true,
       };
       this.verificationExpiryString = '';
-    }
-    this.showInstrumentForm = true;
-    this.error = null;
-  }
-
-  closeInstrumentForm() {
-    this.showInstrumentForm = false;
-    this.isEditingInstrument = false;
-    this.editingInstrumentId = null;
-    this.editingInstrument = {
-      categoryId: '',
-      name: '',
-      brand: '',
-      model: '',
-      color: '#4A90E2',
-      verificationExpiry: undefined,
-      status: InstrumentStatus.Active,
-      isActive: true,
-    };
-    this.verificationExpiryString = '';
-    this.error = null;
+      this.error = null;
+    });
   }
 
   saveInstrument() {
@@ -387,38 +406,42 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
   }
 
   deleteInstrument(instrument: Instrument) {
-    if (!confirm(`Sei sicuro di voler eliminare lo strumento "${instrument.name}"?`)) return;
+    this.ngZone.run(() => {
+      if (!confirm(`Sei sicuro di voler eliminare lo strumento "${instrument.name}"?`)) return;
 
-    this.loading = true;
-    this.instrumentService.deleteInstrument(instrument.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadInstruments();
-          this.loadCategories(); // Refresh count
-        },
-        error: (error) => {
-          console.error('Error deleting instrument:', error);
-          this.error = this.extractErrorMessage(error, 'eliminazione strumento');
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.instrumentService.deleteInstrument(instrument.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadInstruments();
+            this.loadCategories(); // Refresh count
+          },
+          error: (error) => {
+            console.error('Error deleting instrument:', error);
+            this.error = this.extractErrorMessage(error, 'eliminazione strumento');
+            this.loading = false;
+          },
+        });
+    });
   }
 
   setInstrumentStatus(instrument: Instrument, status: InstrumentStatus) {
-    this.loading = true;
-    this.instrumentService.setInstrumentStatus(instrument.id, status)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadInstruments();
-        },
-        error: (error) => {
-          console.error('Error setting instrument status:', error);
-          this.error = this.extractErrorMessage(error, 'cambio stato strumento');
-          this.loading = false;
-        },
-      });
+    this.ngZone.run(() => {
+      this.loading = true;
+      this.instrumentService.setInstrumentStatus(instrument.id, status)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadInstruments();
+          },
+          error: (error) => {
+            console.error('Error setting instrument status:', error);
+            this.error = this.extractErrorMessage(error, 'cambio stato strumento');
+            this.loading = false;
+          },
+        });
+    });
   }
 
   // ============ HELPERS ============

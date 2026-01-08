@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -18,11 +18,17 @@ export class ConfirmDialogComponent {
   @Output() confirm = new EventEmitter<void>();
   @Output() cancel = new EventEmitter<void>();
 
+  constructor(private ngZone: NgZone) {}
+
   onConfirm(): void {
-    this.confirm.emit();
+    this.ngZone.run(() => {
+      this.confirm.emit();
+    });
   }
 
   onCancel(): void {
-    this.cancel.emit();
+    this.ngZone.run(() => {
+      this.cancel.emit();
+    });
   }
 }

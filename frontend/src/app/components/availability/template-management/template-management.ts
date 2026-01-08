@@ -1,11 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TemplateBuilder } from '../template-builder/template-builder';
 import { TemplateService } from '../../../services/template.service';
 import { AvailabilityTemplate } from '../../../graphql/generated/types';
 import { TemplatePattern } from '../../../graphql/types';
-import { catchError, finalize, of } from 'rxjs';
+import { catchError, finalize, forkJoin, of, Subject, takeUntil } from 'rxjs';
 
 interface TemplateGroup {
   name: string;
@@ -21,7 +21,8 @@ interface TemplateGroup {
   templateUrl: './template-management.html',
   styleUrl: './template-management.scss',
 })
-export class TemplateManagement implements OnInit {
+export class TemplateManagement implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   templateGroups: TemplateGroup[] = [];
   filteredGroups: TemplateGroup[] = [];
 
@@ -36,10 +37,18 @@ export class TemplateManagement implements OnInit {
   isEditMode = false;
   editingGroup: TemplateGroup | null = null;
 
-  constructor(private templateService: TemplateService) {}
+  constructor(
+    private templateService: TemplateService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit() {
     this.loadTemplates();
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadTemplates() {
@@ -49,6 +58,7 @@ export class TemplateManagement implements OnInit {
     this.templateService
       .getAllTemplates()
       .pipe(
+        takeUntil(this.destroy$),
         catchError((err) => {
           this.error = 'Errore nel caricamento dei template: ' + err.message;
           return of([]);
@@ -108,104 +118,122 @@ export class TemplateManagement implements OnInit {
   }
 
   selectGroup(group: TemplateGroup) {
-    this.selectedGroup = this.selectedGroup === group ? null : group;
+    this.ngZone.run(() => {
+      this.selectedGroup = this.selectedGroup === group ? null : group;
+    });
   }
 
   openCreateModal() {
-    this.currentPattern = null;
-    this.isEditMode = false;
-    this.showBuilderModal = true;
+    this.ngZone.run(() => {
+      this.currentPattern = null;
+      this.isEditMode = false;
+      this.showBuilderModal = true;
+    });
   }
 
   openEditModal(group: TemplateGroup) {
-    if (!group.pattern) {
-      alert('Impossibile modificare questo template');
-      return;
-    }
+    this.ngZone.run(() => {
+      if (!group.pattern) {
+        alert('Impossibile modificare questo template');
+        return;
+      }
 
-    // Check if template is used by operators
-    if (group.operatorCount > 0) {
-      const action = confirm(
-        `Questo template è utilizzato da ${group.operatorCount} operatore/i.\n\n` +
-          'Vuoi:\n' +
-          '- OK: Aggiornare il template esistente (impatterà gli operatori)\n' +
-          '- Annulla: Creare una copia con nuovo nome'
-      );
+      // Check if template is used by operators
+      if (group.operatorCount > 0) {
+        const action = confirm(
+          `Questo template è utilizzato da ${group.operatorCount} operatore/i.\n\n` +
+            'Vuoi:\n' +
+            '- OK: Aggiornare il template esistente (impatterà gli operatori)\n' +
+            '- Annulla: Creare una copia con nuovo nome'
+        );
 
-      if (action) {
-        // Update existing
+        if (action) {
+          // Update existing
+          this.currentPattern = group.pattern;
+          this.isEditMode = true;
+          this.editingGroup = group;
+          this.showBuilderModal = true;
+        } else {
+          // Create copy
+          this.currentPattern = {
+            ...group.pattern,
+            id: undefined,
+            name: group.name + ' - Copia',
+          };
+          this.isEditMode = false;
+          this.editingGroup = null;
+          this.showBuilderModal = true;
+        }
+      } else {
+        // No operators using it, safe to edit
         this.currentPattern = group.pattern;
         this.isEditMode = true;
         this.editingGroup = group;
         this.showBuilderModal = true;
-      } else {
-        // Create copy
-        this.currentPattern = {
-          ...group.pattern,
-          id: undefined,
-          name: group.name + ' - Copia',
-        };
-        this.isEditMode = false;
-        this.editingGroup = null;
-        this.showBuilderModal = true;
       }
-    } else {
-      // No operators using it, safe to edit
-      this.currentPattern = group.pattern;
-      this.isEditMode = true;
-      this.editingGroup = group;
-      this.showBuilderModal = true;
-    }
+    });
   }
 
   duplicateTemplate(group: TemplateGroup) {
-    if (!group.pattern) return;
+    this.ngZone.run(() => {
+      if (!group.pattern) return;
 
-    this.currentPattern = {
-      ...group.pattern,
-      id: undefined,
-      name: group.name + ' - Copia',
-    };
-    this.isEditMode = false;
-    this.showBuilderModal = true;
+      this.currentPattern = {
+        ...group.pattern,
+        id: undefined,
+        name: group.name + ' - Copia',
+      };
+      this.isEditMode = false;
+      this.showBuilderModal = true;
+    });
   }
 
   deleteTemplate(group: TemplateGroup) {
-    if (group.operatorCount > 0) {
-      alert(
-        `Impossibile eliminare: questo template è utilizzato da ${group.operatorCount} operatore/i.\n` +
-          'Rimuovi prima le assegnazioni agli operatori.'
+    this.ngZone.run(() => {
+      if (group.operatorCount > 0) {
+        alert(
+          `Impossibile eliminare: questo template è utilizzato da ${group.operatorCount} operatore/i.\n` +
+            'Rimuovi prima le assegnazioni agli operatori.'
+        );
+        return;
+      }
+
+      if (!confirm(`Sei sicuro di voler eliminare il template "${group.name}"?`)) {
+        return;
+      }
+
+      this.loading = true;
+      this.error = null;
+
+      // Delete all templates in the group
+      const deleteObservables = group.templates.map((template) =>
+        this.templateService.deleteTemplate(template.id!)
       );
-      return;
-    }
 
-    if (!confirm(`Sei sicuro di voler eliminare il template "${group.name}"?`)) {
-      return;
-    }
-
-    this.loading = true;
-    this.error = null;
-
-    // Delete all templates in the group
-    const deleteObservables = group.templates.map((template) =>
-      this.templateService.deleteTemplate(template.id!)
-    );
-
-    // Execute all deletions
-    Promise.all(deleteObservables.map((obs) => obs.toPromise()))
-      .then(() => {
-        this.loadTemplates();
-      })
-      .catch((err) => {
-        this.error = 'Errore durante l\'eliminazione: ' + err.message;
-        this.loading = false;
-      });
+      // Execute all deletions using forkJoin instead of Promise.all
+      forkJoin(deleteObservables)
+        .pipe(
+          takeUntil(this.destroy$),
+          finalize(() => (this.loading = false))
+        )
+        .subscribe({
+          next: () => {
+            this.ngZone.run(() => this.loadTemplates());
+          },
+          error: (err) => {
+            this.ngZone.run(() => {
+              this.error = 'Errore durante l\'eliminazione: ' + err.message;
+            });
+          }
+        });
+    });
   }
 
   onBuilderSave(pattern: TemplatePattern) {
     // Validate template name
     this.templateService
       .checkTemplateName(pattern.name)
+      .pipe(takeUntil(this.destroy$))
       .subscribe((exists) => {
         // If template name exists
         if (exists) {
@@ -244,6 +272,7 @@ export class TemplateManagement implements OnInit {
       this.templateService
         .updatePatternGroup(patternGroupId, pattern)
         .pipe(
+          takeUntil(this.destroy$),
           catchError((err) => {
             const errorMsg = err?.error?.message || err?.message || 'Errore sconosciuto';
             this.error = 'Errore nell\'aggiornamento: ' + errorMsg;
@@ -270,6 +299,7 @@ export class TemplateManagement implements OnInit {
     this.templateService
       .createTemplateFromPattern(pattern)
       .pipe(
+        takeUntil(this.destroy$),
         catchError((err) => {
           // Extract meaningful error message
           const errorMsg = err?.error?.message || err?.message || 'Errore sconosciuto';
@@ -293,10 +323,12 @@ export class TemplateManagement implements OnInit {
   }
 
   onBuilderCancel() {
-    this.showBuilderModal = false;
-    this.currentPattern = null;
-    this.isEditMode = false;
-    this.editingGroup = null;
+    this.ngZone.run(() => {
+      this.showBuilderModal = false;
+      this.currentPattern = null;
+      this.isEditMode = false;
+      this.editingGroup = null;
+    });
   }
 
   getPatternWeeksLabel(pattern: TemplatePattern | null): string {

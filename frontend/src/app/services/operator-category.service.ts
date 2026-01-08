@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   GET_OPERATOR_CATEGORIES,
   GET_OPERATOR_CATEGORY,
@@ -22,8 +22,10 @@ import {
 @Injectable({
   providedIn: 'root',
 })
-export class OperatorCategoryService {
-  constructor(private apollo: Apollo) {}
+export class OperatorCategoryService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene tutte le categorie operatore, opzionalmente filtrate per macroCategory
@@ -31,26 +33,20 @@ export class OperatorCategoryService {
   getOperatorCategories(
     macroCategory?: OperatorMacroCategory
   ): Observable<OperatorCategory[]> {
-    return this.apollo
-      .query<{ operatorCategories: OperatorCategory[] }>({
-        query: GET_OPERATOR_CATEGORIES,
-        variables: { macroCategory },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.operatorCategories || []));
+    return this.query<{ operatorCategories: OperatorCategory[] }>(
+      GET_OPERATOR_CATEGORIES,
+      { macroCategory }
+    ).pipe(map((result) => result.operatorCategories || []));
   }
 
   /**
    * Ottiene una singola categoria operatore per ID
    */
   getOperatorCategory(id: string): Observable<OperatorCategory | null> {
-    return this.apollo
-      .query<{ operatorCategory: OperatorCategory }>({
-        query: GET_OPERATOR_CATEGORY,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.operatorCategory || null));
+    return this.query<{ operatorCategory: OperatorCategory }>(
+      GET_OPERATOR_CATEGORY,
+      { id }
+    ).pipe(map((result) => result.operatorCategory || null));
   }
 
   /**
@@ -59,14 +55,11 @@ export class OperatorCategoryService {
   createOperatorCategory(
     input: CreateOperatorCategoryInput
   ): Observable<OperatorCategory> {
-    return this.apollo
-      .mutate<{ createOperatorCategory: OperatorCategory }>({
-        mutation: CREATE_OPERATOR_CATEGORY,
-        variables: input,
-        refetchQueries: [{ query: GET_OPERATOR_CATEGORIES }],
-        awaitRefetchQueries: true,
-      })
-      .pipe(map((result) => result.data!.createOperatorCategory));
+    return this.mutate<{ createOperatorCategory: OperatorCategory }>(
+      CREATE_OPERATOR_CATEGORY,
+      input,
+      [{ query: GET_OPERATOR_CATEGORIES }]
+    ).pipe(map((result) => result.createOperatorCategory));
   }
 
   /**
@@ -76,27 +69,21 @@ export class OperatorCategoryService {
     id: string,
     input: UpdateOperatorCategoryInput
   ): Observable<OperatorCategory> {
-    return this.apollo
-      .mutate<{ updateOperatorCategory: OperatorCategory }>({
-        mutation: UPDATE_OPERATOR_CATEGORY,
-        variables: { id, ...input },
-        refetchQueries: [{ query: GET_OPERATOR_CATEGORIES }],
-        awaitRefetchQueries: true,
-      })
-      .pipe(map((result) => result.data!.updateOperatorCategory));
+    return this.mutate<{ updateOperatorCategory: OperatorCategory }>(
+      UPDATE_OPERATOR_CATEGORY,
+      { id, ...input },
+      [{ query: GET_OPERATOR_CATEGORIES }]
+    ).pipe(map((result) => result.updateOperatorCategory));
   }
 
   /**
    * Elimina una categoria operatore
    */
   deleteOperatorCategory(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteOperatorCategory: boolean }>({
-        mutation: DELETE_OPERATOR_CATEGORY,
-        variables: { id },
-        refetchQueries: [{ query: GET_OPERATOR_CATEGORIES }],
-        awaitRefetchQueries: true,
-      })
-      .pipe(map((result) => result.data!.deleteOperatorCategory));
+    return this.mutate<{ deleteOperatorCategory: boolean }>(
+      DELETE_OPERATOR_CATEGORY,
+      { id },
+      [{ query: GET_OPERATOR_CATEGORIES }]
+    ).pipe(map((result) => result.deleteOperatorCategory));
   }
 }

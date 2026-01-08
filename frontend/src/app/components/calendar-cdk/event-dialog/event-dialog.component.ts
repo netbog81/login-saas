@@ -9,6 +9,7 @@ import { InstrumentCategory, Service } from '../../../graphql/generated/types';
 import { PatientService } from '../../../services/patient.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { ServiceService } from '../../../services/service.service';
+import { BaseComponent } from '../../../core/components/base.component';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -55,7 +56,7 @@ export interface EventDialogResult {
   templateUrl: './event-dialog.component.html',
   styleUrls: ['./event-dialog.component.scss']
 })
-export class EventDialogComponent implements OnInit, OnChanges {
+export class EventDialogComponent extends BaseComponent implements OnInit, OnChanges {
   @Input() data!: EventDialogData;
   @Output() result = new EventEmitter<EventDialogResult>();
 
@@ -84,7 +85,9 @@ export class EventDialogComponent implements OnInit, OnChanges {
     private patientService: PatientService,
     private appointmentService: AvailabilityAppointmentService,
     private serviceService: ServiceService
-  ) {}
+  ) {
+    super();
+  }
 
   // Instrument management
   instrumentsEnabled: boolean = false;
@@ -231,11 +234,14 @@ export class EventDialogComponent implements OnInit, OnChanges {
             this.serviceId = null;
           }
         }
+        // Force change detection (Apollo watchQuery() callback may run outside NgZone)
+        this.detectChanges();
       },
       error: (error) => {
         console.error('Error loading operator services:', error);
         this.operatorServices = [];
         this.loadingServices = false;
+        this.detectChanges();
       }
     });
   }
@@ -635,7 +641,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
       untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
     } : undefined;
 
-    this.result.emit({
+    this.emit(this.result, {
       action: 'save',
       appointment,
       instruments: instruments.length > 0 ? instruments : undefined,
@@ -718,7 +724,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
 
   onDelete(): void {
     if (confirm('Sei sicuro di voler eliminare questo appuntamento?')) {
-      this.result.emit({
+      this.emit(this.result, {
         action: 'delete',
         appointment: this.data.appointment
       });
@@ -726,7 +732,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
   }
 
   onCancel(): void {
-    this.result.emit({
+    this.emit(this.result, {
       action: 'cancel'
     });
   }
@@ -815,7 +821,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
       await firstValueFrom(
         this.appointmentService.markAsAttended(String(this.data.appointment.id))
       );
-      this.result.emit({
+      this.emit(this.result, {
         action: 'save',
         appointment: { ...this.data.appointment, bookingStatus: 'attended' } as Appointment
       });
@@ -843,7 +849,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
       await firstValueFrom(
         this.appointmentService.revertAttended(String(this.data.appointment.id))
       );
-      this.result.emit({
+      this.emit(this.result, {
         action: 'save',
         appointment: { ...this.data.appointment, bookingStatus: 'confirmed' } as Appointment
       });
@@ -863,7 +869,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
       await firstValueFrom(
         this.appointmentService.markAsNoShow(String(this.data.appointment.id))
       );
-      this.result.emit({
+      this.emit(this.result, {
         action: 'save',
         appointment: { ...this.data.appointment, bookingStatus: 'no_show' } as Appointment
       });
@@ -890,7 +896,7 @@ export class EventDialogComponent implements OnInit, OnChanges {
           'system' // TODO: sostituire con ID utente corrente
         )
       );
-      this.result.emit({ action: 'delete' });
+      this.emit(this.result, { action: 'delete' });
     } catch (error) {
       console.error('Error cancelling appointment:', error);
       alert('Errore nella cancellazione dell\'appuntamento');

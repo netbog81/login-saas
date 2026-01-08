@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -40,7 +40,7 @@ export class GymManagementComponent implements OnInit, OnDestroy {
   selectedGymRoom: GymRoom | null = null;
   gymRooms: GymRoom[] = [];
 
-  constructor() {}
+  constructor(private ngZone: NgZone) {}
 
   ngOnInit() {
     // I dati delle palestre saranno caricati dal GymRoomListComponent
@@ -53,29 +53,39 @@ export class GymManagementComponent implements OnInit, OnDestroy {
   }
 
   setActiveTab(tab: GymTabType) {
-    this.activeTab = tab;
+    this.ngZone.run(() => {
+      this.activeTab = tab;
+    });
   }
 
   onGymRoomSelect(gymRoom: GymRoom) {
-    this.selectedGymRoom = gymRoom;
+    this.ngZone.run(() => {
+      this.selectedGymRoom = gymRoom;
+    });
   }
 
   onGymRoomsLoaded(gymRooms: GymRoom[]) {
-    this.gymRooms = gymRooms;
-    // Seleziona la prima palestra se disponibile e nessuna è selezionata
-    if (gymRooms.length > 0 && !this.selectedGymRoom) {
-      this.selectedGymRoom = gymRooms[0];
-    }
+    this.ngZone.run(() => {
+      this.gymRooms = gymRooms;
+      // Seleziona la prima palestra se disponibile e nessuna è selezionata
+      if (gymRooms.length > 0 && !this.selectedGymRoom) {
+        this.selectedGymRoom = gymRooms[0];
+      }
+    });
   }
 
   openTemplateEditor(gymRoom: GymRoom) {
-    this.selectedGymRoom = gymRoom;
-    this.activeTab = 'templates';
+    this.ngZone.run(() => {
+      this.selectedGymRoom = gymRoom;
+      this.activeTab = 'templates';
+    });
   }
 
   openExceptionManager(gymRoom: GymRoom) {
-    this.selectedGymRoom = gymRoom;
-    this.activeTab = 'exceptions';
+    this.ngZone.run(() => {
+      this.selectedGymRoom = gymRoom;
+      this.activeTab = 'exceptions';
+    });
   }
 
   compareGymRooms(a: GymRoom | null, b: GymRoom | null): boolean {

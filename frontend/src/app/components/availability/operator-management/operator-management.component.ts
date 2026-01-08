@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -91,7 +91,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     private operatorService: OperatorService,
     private operatorCategoryService: OperatorCategoryService,
     private serviceService: ServiceService,
-    private serviceSubcategoryService: ServiceSubcategoryService
+    private serviceSubcategoryService: ServiceSubcategoryService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit() {
@@ -210,24 +211,49 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   }
 
   openOperatorForm(operator?: Operator) {
-    if (operator) {
-      this.isEditMode = true;
-      this.editingOperatorId = operator.id;
-      this.editingOperator = {
-        name: operator.name,
-        surname: operator.surname,
-        email: operator.email,
-        phone: operator.phone,
-        color: operator.color || '#4A90E2',
-        macroCategory: operator.macroCategory,
-        categoryId: operator.categoryId,
-        preferredDurations: operator.preferredDurations || [],
-        maxConcurrentAppointments: operator.maxConcurrentAppointments,
-        isActive: operator.isActive,
-      };
-      this.preferredDurationsString =
-        (operator.preferredDurations || []).join(', ');
-    } else {
+    this.ngZone.run(() => {
+      if (operator) {
+        this.isEditMode = true;
+        this.editingOperatorId = operator.id;
+        this.editingOperator = {
+          name: operator.name,
+          surname: operator.surname,
+          email: operator.email,
+          phone: operator.phone,
+          color: operator.color || '#4A90E2',
+          macroCategory: operator.macroCategory,
+          categoryId: operator.categoryId,
+          preferredDurations: operator.preferredDurations || [],
+          maxConcurrentAppointments: operator.maxConcurrentAppointments,
+          isActive: operator.isActive,
+        };
+        this.preferredDurationsString =
+          (operator.preferredDurations || []).join(', ');
+      } else {
+        this.isEditMode = false;
+        this.editingOperatorId = null;
+        this.editingOperator = {
+          name: '',
+          surname: '',
+          email: '',
+          phone: '',
+          color: '#4A90E2',
+          macroCategory: OperatorMacroCategory.Physiotherapist,
+          categoryId: undefined,
+          preferredDurations: [],
+          maxConcurrentAppointments: 1,
+          isActive: true,
+        };
+        this.preferredDurationsString = '';
+      }
+      this.showOperatorForm = true;
+      this.error = null;
+    });
+  }
+
+  closeOperatorForm() {
+    this.ngZone.run(() => {
+      this.showOperatorForm = false;
       this.isEditMode = false;
       this.editingOperatorId = null;
       this.editingOperator = {
@@ -243,29 +269,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         isActive: true,
       };
       this.preferredDurationsString = '';
-    }
-    this.showOperatorForm = true;
-    this.error = null;
-  }
-
-  closeOperatorForm() {
-    this.showOperatorForm = false;
-    this.isEditMode = false;
-    this.editingOperatorId = null;
-    this.editingOperator = {
-      name: '',
-      surname: '',
-      email: '',
-      phone: '',
-      color: '#4A90E2',
-      macroCategory: OperatorMacroCategory.Physiotherapist,
-      categoryId: undefined,
-      preferredDurations: [],
-      maxConcurrentAppointments: 1,
-      isActive: true,
-    };
-    this.preferredDurationsString = '';
-    this.error = null;
+      this.error = null;
+    });
   }
 
   saveOperator() {
@@ -418,40 +423,50 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   }
 
   deleteOperator(operator: Operator) {
-    if (!confirm(`Sei sicuro di voler eliminare l'operatore ${operator.name}?`)) {
-      return;
-    }
+    this.ngZone.run(() => {
+      if (!confirm(`Sei sicuro di voler eliminare l'operatore ${operator.name}?`)) {
+        return;
+      }
 
-    this.loading = true;
-    this.operatorService.deleteOperator(operator.id).subscribe({
-      next: () => {
-        this.availabilityState.removeOperator(operator.id);
-        if (this.selectedOperator?.id === operator.id) {
-          this.availabilityState.selectOperator(null);
-        }
-        this.loading = false;
-      },
-      error: (error) => {
-        console.error('Error deleting operator:', error);
-        this.error = "Errore durante l'eliminazione dell'operatore";
-        this.loading = false;
-      },
+      this.loading = true;
+      this.operatorService.deleteOperator(operator.id).subscribe({
+        next: () => {
+          this.ngZone.run(() => {
+            this.availabilityState.removeOperator(operator.id);
+            if (this.selectedOperator?.id === operator.id) {
+              this.availabilityState.selectOperator(null);
+            }
+            this.loading = false;
+          });
+        },
+        error: (error) => {
+          this.ngZone.run(() => {
+            console.error('Error deleting operator:', error);
+            this.error = "Errore durante l'eliminazione dell'operatore";
+            this.loading = false;
+          });
+        },
+      });
     });
   }
 
   openServiceAssignment(operator: Operator) {
-    this.selectedOperator = operator;
-    // Reset filters
-    this.filterMacroCategory = null;
-    this.filterSubcategoryId = null;
-    this.filteredSubcategoriesForModal = [];
-    this.loadOperatorServices(operator.id);
-    this.showServiceAssignment = true;
+    this.ngZone.run(() => {
+      this.selectedOperator = operator;
+      // Reset filters
+      this.filterMacroCategory = null;
+      this.filterSubcategoryId = null;
+      this.filteredSubcategoriesForModal = [];
+      this.loadOperatorServices(operator.id);
+      this.showServiceAssignment = true;
+    });
   }
 
   closeServiceAssignment() {
-    this.showServiceAssignment = false;
-    this.selectedServices = [];
+    this.ngZone.run(() => {
+      this.showServiceAssignment = false;
+      this.selectedServices = [];
+    });
   }
 
   loadOperatorServices(operatorId: string) {

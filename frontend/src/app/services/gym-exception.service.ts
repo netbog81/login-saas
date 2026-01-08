@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   GET_GYM_EXCEPTIONS,
   GET_GYM_EXCEPTIONS_BY_DATE,
@@ -90,8 +90,10 @@ export interface GymException {
 @Injectable({
   providedIn: 'root',
 })
-export class GymExceptionService {
-  constructor(private apollo: Apollo) {}
+export class GymExceptionService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene le eccezioni per una palestra in un range di date
@@ -101,120 +103,102 @@ export class GymExceptionService {
     startDate: string,
     endDate: string
   ): Observable<GymException[]> {
-    return this.apollo
-      .query<{ gymExceptions: GymException[] }>({
-        query: GET_GYM_EXCEPTIONS,
-        variables: { gymRoomId, startDate, endDate },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymExceptions || []));
+    return this.query<{ gymExceptions: GymException[] }>(
+      GET_GYM_EXCEPTIONS,
+      { gymRoomId, startDate, endDate }
+    ).pipe(map((result) => result.gymExceptions || []));
   }
 
   /**
    * Ottiene le eccezioni per una palestra in una data specifica
    */
   getByDate(gymRoomId: string, date: string): Observable<GymException[]> {
-    return this.apollo
-      .query<{ gymExceptionsByDate: GymException[] }>({
-        query: GET_GYM_EXCEPTIONS_BY_DATE,
-        variables: { gymRoomId, date },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymExceptionsByDate || []));
+    return this.query<{ gymExceptionsByDate: GymException[] }>(
+      GET_GYM_EXCEPTIONS_BY_DATE,
+      { gymRoomId, date }
+    ).pipe(map((result) => result.gymExceptionsByDate || []));
   }
 
   /**
    * Ottiene una singola eccezione per ID
    */
   getById(id: string): Observable<GymException | null> {
-    return this.apollo
-      .query<{ gymException: GymException | null }>({
-        query: GET_GYM_EXCEPTION,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymException || null));
+    return this.query<{ gymException: GymException | null }>(
+      GET_GYM_EXCEPTION,
+      { id }
+    ).pipe(map((result) => result.gymException || null));
   }
 
   /**
    * Crea una nuova eccezione per la palestra
    */
   create(input: CreateGymExceptionInput): Observable<GymException> {
-    return this.apollo
-      .mutate<{ createGymException: GymException }>({
-        mutation: CREATE_GYM_EXCEPTION,
-        variables: { input },
-        refetchQueries: [
-          {
-            query: GET_GYM_EXCEPTIONS,
-            variables: {
-              gymRoomId: input.gymRoomId,
-              startDate: this.getMonthStart(input.exceptionDate),
-              endDate: this.getMonthEnd(input.exceptionDate),
-            },
+    return this.mutate<{ createGymException: GymException }>(
+      CREATE_GYM_EXCEPTION,
+      { input },
+      [
+        {
+          query: GET_GYM_EXCEPTIONS,
+          variables: {
+            gymRoomId: input.gymRoomId,
+            startDate: this.getMonthStart(input.exceptionDate),
+            endDate: this.getMonthEnd(input.exceptionDate),
           },
-        ],
-        awaitRefetchQueries: true,
+        },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.createGymException) {
+          throw new Error('Errore nella creazione dell\'eccezione');
+        }
+        return result.createGymException;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nella creazione dell\'eccezione');
-          }
-          return result.data.createGymException;
-        })
-      );
+    );
   }
 
   /**
    * Aggiorna un'eccezione esistente
    */
   update(id: string, input: UpdateGymExceptionInput): Observable<GymException> {
-    return this.apollo
-      .mutate<{ updateGymException: GymException }>({
-        mutation: UPDATE_GYM_EXCEPTION,
-        variables: { id, input },
-        refetchQueries: [{ query: GET_GYM_EXCEPTION, variables: { id } }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ updateGymException: GymException }>(
+      UPDATE_GYM_EXCEPTION,
+      { id, input },
+      [{ query: GET_GYM_EXCEPTION, variables: { id } }]
+    ).pipe(
+      map((result) => {
+        if (!result.updateGymException) {
+          throw new Error('Errore nell\'aggiornamento dell\'eccezione');
+        }
+        return result.updateGymException;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'aggiornamento dell\'eccezione');
-          }
-          return result.data.updateGymException;
-        })
-      );
+    );
   }
 
   /**
    * Elimina un'eccezione
    */
   delete(id: string, gymRoomId: string, exceptionDate: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteGymException: boolean }>({
-        mutation: DELETE_GYM_EXCEPTION,
-        variables: { id },
-        refetchQueries: [
-          {
-            query: GET_GYM_EXCEPTIONS,
-            variables: {
-              gymRoomId,
-              startDate: this.getMonthStart(exceptionDate),
-              endDate: this.getMonthEnd(exceptionDate),
-            },
+    return this.mutate<{ deleteGymException: boolean }>(
+      DELETE_GYM_EXCEPTION,
+      { id },
+      [
+        {
+          query: GET_GYM_EXCEPTIONS,
+          variables: {
+            gymRoomId,
+            startDate: this.getMonthStart(exceptionDate),
+            endDate: this.getMonthEnd(exceptionDate),
           },
-        ],
-        awaitRefetchQueries: true,
+        },
+      ]
+    ).pipe(
+      map((result) => {
+        if (result.deleteGymException === undefined) {
+          throw new Error('Errore nell\'eliminazione dell\'eccezione');
+        }
+        return result.deleteGymException;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'eliminazione dell\'eccezione');
-          }
-          return result.data.deleteGymException;
-        })
-      );
+    );
   }
 
   /**

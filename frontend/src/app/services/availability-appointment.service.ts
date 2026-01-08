@@ -1,5 +1,4 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { AvailabilityAppointment, BookingStatus } from '../graphql/generated/types';
 import {
@@ -19,6 +18,7 @@ import {
   MARK_APPOINTMENT_ATTENDED,
   REVERT_APPOINTMENT_ATTENDED,
 } from '../graphql/operations/availability-appointment.mutations';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
 export interface AppointmentInstrumentInput {
   instrumentCategoryId: string;
@@ -72,39 +72,33 @@ export interface UpdateAvailabilityAppointmentInput {
 @Injectable({
   providedIn: 'root',
 })
-export class AvailabilityAppointmentService {
-  constructor(private apollo: Apollo) {}
+export class AvailabilityAppointmentService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene un singolo appuntamento per ID
    */
   getAppointment(id: string): Observable<AvailabilityAppointment | null> {
-    return this.apollo
-      .query<{ availabilityAppointment: AvailabilityAppointment | null }>({
-        query: GET_AVAILABILITY_APPOINTMENT,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.availabilityAppointment || null));
+    return this.query<{ availabilityAppointment: AvailabilityAppointment | null }>(
+      GET_AVAILABILITY_APPOINTMENT,
+      { id }
+    ).pipe(map((result) => result.availabilityAppointment || null));
   }
 
   /**
-   * Ottiene appuntamenti per operatore e range di date
+   * Ottiene appuntamenti per operatore e range di date.
    */
   getAppointmentsByOperator(
     operatorId: string,
     startDate: string,
     endDate: string
   ): Observable<AvailabilityAppointment[]> {
-    return this.apollo
-      .query<{ availabilityAppointmentsByOperator: AvailabilityAppointment[] }>({
-        query: GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR,
-        variables: { operatorId, startDate, endDate },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(
-        map((result) => result.data?.availabilityAppointmentsByOperator || [])
-      );
+    return this.query<{ availabilityAppointmentsByOperator: AvailabilityAppointment[] }>(
+      GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR,
+      { operatorId, startDate, endDate }
+    ).pipe(map((result) => result.availabilityAppointmentsByOperator || []));
   }
 
   /**
@@ -115,13 +109,10 @@ export class AvailabilityAppointmentService {
     endDate: string,
     operatorIds?: string[]
   ): Observable<AvailabilityAppointment[]> {
-    return this.apollo
-      .query<{ availabilityAppointments: AvailabilityAppointment[] }>({
-        query: GET_AVAILABILITY_APPOINTMENTS,
-        variables: { startDate, endDate, operatorIds },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.availabilityAppointments || []));
+    return this.query<{ availabilityAppointments: AvailabilityAppointment[] }>(
+      GET_AVAILABILITY_APPOINTMENTS,
+      { startDate, endDate, operatorIds }
+    ).pipe(map((result) => result.availabilityAppointments || []));
   }
 
   /**
@@ -130,19 +121,10 @@ export class AvailabilityAppointmentService {
   createAppointment(
     input: CreateAvailabilityAppointmentInput
   ): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ createAvailabilityAppointment: AvailabilityAppointment }>({
-        mutation: CREATE_AVAILABILITY_APPOINTMENT,
-        variables: { input },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to create appointment');
-          }
-          return result.data.createAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ createAvailabilityAppointment: AvailabilityAppointment }>(
+      CREATE_AVAILABILITY_APPOINTMENT,
+      { input }
+    ).pipe(map((result) => result.createAvailabilityAppointment));
   }
 
   /**
@@ -152,19 +134,10 @@ export class AvailabilityAppointmentService {
     id: string,
     input: UpdateAvailabilityAppointmentInput
   ): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ updateAvailabilityAppointment: AvailabilityAppointment }>({
-        mutation: UPDATE_AVAILABILITY_APPOINTMENT,
-        variables: { id, input },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to update appointment');
-          }
-          return result.data.updateAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ updateAvailabilityAppointment: AvailabilityAppointment }>(
+      UPDATE_AVAILABILITY_APPOINTMENT,
+      { id, input }
+    ).pipe(map((result) => result.updateAvailabilityAppointment));
   }
 
   /**
@@ -174,76 +147,40 @@ export class AvailabilityAppointmentService {
     id: string,
     cancellationReason?: string
   ): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ cancelAvailabilityAppointment: AvailabilityAppointment }>({
-        mutation: CANCEL_AVAILABILITY_APPOINTMENT,
-        variables: { id, cancellationReason },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to cancel appointment');
-          }
-          return result.data.cancelAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ cancelAvailabilityAppointment: AvailabilityAppointment }>(
+      CANCEL_AVAILABILITY_APPOINTMENT,
+      { id, cancellationReason }
+    ).pipe(map((result) => result.cancelAvailabilityAppointment));
   }
 
   /**
    * Elimina definitivamente un appuntamento
    */
   deleteAppointment(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteAvailabilityAppointment: boolean }>({
-        mutation: DELETE_AVAILABILITY_APPOINTMENT,
-        variables: { id },
-      })
-      .pipe(
-        map((result) => {
-          if (result.data === undefined) {
-            throw new Error('Failed to delete appointment');
-          }
-          return result.data.deleteAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ deleteAvailabilityAppointment: boolean }>(
+      DELETE_AVAILABILITY_APPOINTMENT,
+      { id }
+    ).pipe(map((result) => result.deleteAvailabilityAppointment));
   }
 
   /**
    * Conferma un appuntamento
    */
   confirmAppointment(id: string): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ confirmAvailabilityAppointment: AvailabilityAppointment }>({
-        mutation: CONFIRM_AVAILABILITY_APPOINTMENT,
-        variables: { id },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to confirm appointment');
-          }
-          return result.data.confirmAvailabilityAppointment;
-        })
-      );
+    return this.mutate<{ confirmAvailabilityAppointment: AvailabilityAppointment }>(
+      CONFIRM_AVAILABILITY_APPOINTMENT,
+      { id }
+    ).pipe(map((result) => result.confirmAvailabilityAppointment));
   }
 
   /**
    * Segna come no-show
    */
   markAsNoShow(id: string): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ markAppointmentAsNoShow: AvailabilityAppointment }>({
-        mutation: MARK_APPOINTMENT_AS_NO_SHOW,
-        variables: { id },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to mark appointment as no-show');
-          }
-          return result.data.markAppointmentAsNoShow;
-        })
-      );
+    return this.mutate<{ markAppointmentAsNoShow: AvailabilityAppointment }>(
+      MARK_APPOINTMENT_AS_NO_SHOW,
+      { id }
+    ).pipe(map((result) => result.markAppointmentAsNoShow));
   }
 
   /**
@@ -256,38 +193,20 @@ export class AvailabilityAppointmentService {
     reason: string,
     cancelledBy: string
   ): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ cancelAppointmentWithNotice: AvailabilityAppointment }>({
-        mutation: CANCEL_APPOINTMENT_WITH_NOTICE,
-        variables: { id, reason, cancelledBy },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to cancel appointment');
-          }
-          return result.data.cancelAppointmentWithNotice;
-        })
-      );
+    return this.mutate<{ cancelAppointmentWithNotice: AvailabilityAppointment }>(
+      CANCEL_APPOINTMENT_WITH_NOTICE,
+      { id, reason, cancelledBy }
+    ).pipe(map((result) => result.cancelAppointmentWithNotice));
   }
 
   /**
    * Segna paziente come presentato (abilita creazione trattamento)
    */
   markAsAttended(id: string): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ markAppointmentAttended: AvailabilityAppointment }>({
-        mutation: MARK_APPOINTMENT_ATTENDED,
-        variables: { id },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to mark appointment as attended');
-          }
-          return result.data.markAppointmentAttended;
-        })
-      );
+    return this.mutate<{ markAppointmentAttended: AvailabilityAppointment }>(
+      MARK_APPOINTMENT_ATTENDED,
+      { id }
+    ).pipe(map((result) => result.markAppointmentAttended));
   }
 
   /**
@@ -295,19 +214,10 @@ export class AvailabilityAppointmentService {
    * Utile per correggere click accidentali
    */
   revertAttended(id: string): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ revertAppointmentAttended: AvailabilityAppointment }>({
-        mutation: REVERT_APPOINTMENT_ATTENDED,
-        variables: { id },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to revert attended status');
-          }
-          return result.data.revertAppointmentAttended;
-        })
-      );
+    return this.mutate<{ revertAppointmentAttended: AvailabilityAppointment }>(
+      REVERT_APPOINTMENT_ATTENDED,
+      { id }
+    ).pipe(map((result) => result.revertAppointmentAttended));
   }
 
   /**
@@ -321,19 +231,16 @@ export class AvailabilityAppointmentService {
     endOffsetMinutes: number,
     excludeAppointmentId?: string
   ): Observable<boolean> {
-    return this.apollo
-      .query<{ isInstrumentAvailable: boolean }>({
-        query: IS_INSTRUMENT_AVAILABLE,
-        variables: {
-          instrumentId,
-          appointmentDate,
-          startTime,
-          startOffsetMinutes,
-          endOffsetMinutes,
-          excludeAppointmentId,
-        },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.isInstrumentAvailable ?? false));
+    return this.query<{ isInstrumentAvailable: boolean }>(
+      IS_INSTRUMENT_AVAILABLE,
+      {
+        instrumentId,
+        appointmentDate,
+        startTime,
+        startOffsetMinutes,
+        endOffsetMinutes,
+        excludeAppointmentId,
+      }
+    ).pipe(map((result) => result.isInstrumentAvailable ?? false));
   }
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, OnChanges, SimpleChanges, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule, CdkDragDrop } from '@angular/cdk/drag-drop';
@@ -74,6 +74,7 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
   constructor(
     private patternGroupService: GymPatternGroupService,
     private operatorService: OperatorService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit() {
@@ -171,7 +172,9 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
   }
 
   onPatternGroupChange() {
-    this.buildPatternsByDay();
+    this.ngZone.run(() => {
+      this.buildPatternsByDay();
+    });
   }
 
   // Normalizza orario a formato HH:mm (rimuove secondi se presenti)
@@ -225,40 +228,46 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
   }
 
   openPatternForm(dayIndex: number, time: string, operator?: Operator) {
-    this.selectedDayIndex = dayIndex;
-    const slotDuration = this.gymRoom?.slotDuration || 60;
-    const [h, m] = time.split(':').map(Number);
-    const endMinutes = h * 60 + m + slotDuration;
-    const endH = Math.floor(endMinutes / 60);
-    const endM = endMinutes % 60;
+    this.ngZone.run(() => {
+      this.selectedDayIndex = dayIndex;
+      const slotDuration = this.gymRoom?.slotDuration || 60;
+      const [h, m] = time.split(':').map(Number);
+      const endMinutes = h * 60 + m + slotDuration;
+      const endH = Math.floor(endMinutes / 60);
+      const endM = endMinutes % 60;
 
-    this.editingPattern = {
-      operatorId: operator?.id || '',
-      dayInPattern: dayIndex,
-      startTime: time,
-      endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`,
-    };
-    this.showPatternForm = true;
-    this.error = null;
+      this.editingPattern = {
+        operatorId: operator?.id || '',
+        dayInPattern: dayIndex,
+        startTime: time,
+        endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`,
+      };
+      this.showPatternForm = true;
+      this.error = null;
+    });
   }
 
   editPattern(pattern: GymTemplatePattern, dayIndex: number) {
-    this.selectedDayIndex = dayIndex;
-    this.editingPattern = {
-      id: pattern.id,
-      operatorId: pattern.operatorId,
-      dayInPattern: pattern.dayInPattern,
-      startTime: pattern.startTime,
-      endTime: pattern.endTime,
-    };
-    this.showPatternForm = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      this.selectedDayIndex = dayIndex;
+      this.editingPattern = {
+        id: pattern.id,
+        operatorId: pattern.operatorId,
+        dayInPattern: pattern.dayInPattern,
+        startTime: pattern.startTime,
+        endTime: pattern.endTime,
+      };
+      this.showPatternForm = true;
+      this.error = null;
+    });
   }
 
   closePatternForm() {
-    this.showPatternForm = false;
-    this.editingPattern = {};
-    this.error = null;
+    this.ngZone.run(() => {
+      this.showPatternForm = false;
+      this.editingPattern = {};
+      this.error = null;
+    });
   }
 
   savePattern() {
@@ -337,51 +346,57 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
   }
 
   deletePattern(pattern: GymTemplatePattern) {
-    if (!this.selectedPatternGroup) return;
-    if (!confirm('Sei sicuro di voler eliminare questa fascia oraria?')) return;
+    this.ngZone.run(() => {
+      if (!this.selectedPatternGroup) return;
+      if (!confirm('Sei sicuro di voler eliminare questa fascia oraria?')) return;
 
-    this.loading = true;
+      this.loading = true;
 
-    const patterns: CreateGymTemplatePatternInput[] = [];
-    if (this.selectedPatternGroup.patterns) {
-      for (const p of this.selectedPatternGroup.patterns) {
-        if (p.id === pattern.id) continue;
-        patterns.push({
-          operatorId: p.operatorId,
-          dayInPattern: p.dayInPattern,
-          startTime: p.startTime,
-          endTime: p.endTime,
-        });
+      const patterns: CreateGymTemplatePatternInput[] = [];
+      if (this.selectedPatternGroup.patterns) {
+        for (const p of this.selectedPatternGroup.patterns) {
+          if (p.id === pattern.id) continue;
+          patterns.push({
+            operatorId: p.operatorId,
+            dayInPattern: p.dayInPattern,
+            startTime: p.startTime,
+            endTime: p.endTime,
+          });
+        }
       }
-    }
 
-    this.patternGroupService.update(this.selectedPatternGroup.id, { patterns })
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (updated) => {
-          this.selectedPatternGroup = updated;
-          this.buildPatternsByDay();
-          this.loading = false;
-        },
-        error: (error) => {
-          console.error('Error deleting pattern:', error);
-          this.error = 'Errore nell\'eliminazione del pattern';
-          this.loading = false;
-        },
-      });
+      this.patternGroupService.update(this.selectedPatternGroup.id, { patterns })
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: (updated) => {
+            this.selectedPatternGroup = updated;
+            this.buildPatternsByDay();
+            this.loading = false;
+          },
+          error: (error) => {
+            console.error('Error deleting pattern:', error);
+            this.error = 'Errore nell\'eliminazione del pattern';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   // Template management
   openCreateTemplateForm() {
-    this.newTemplateName = '';
-    this.showCreateTemplateForm = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      this.newTemplateName = '';
+      this.showCreateTemplateForm = true;
+      this.error = null;
+    });
   }
 
   closeCreateTemplateForm() {
-    this.showCreateTemplateForm = false;
-    this.newTemplateName = '';
-    this.error = null;
+    this.ngZone.run(() => {
+      this.showCreateTemplateForm = false;
+      this.newTemplateName = '';
+      this.error = null;
+    });
   }
 
   createTemplate() {
@@ -423,88 +438,96 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
   }
 
   activateTemplate() {
-    if (!this.selectedPatternGroup) return;
+    this.ngZone.run(() => {
+      if (!this.selectedPatternGroup) return;
 
-    this.loading = true;
-    this.patternGroupService.activate(this.selectedPatternGroup.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadPatternGroups();
-        },
-        error: (error) => {
-          console.error('Error activating template:', error);
-          this.error = 'Errore nell\'attivazione del template';
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.patternGroupService.activate(this.selectedPatternGroup.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadPatternGroups();
+          },
+          error: (error) => {
+            console.error('Error activating template:', error);
+            this.error = 'Errore nell\'attivazione del template';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   duplicateTemplate() {
-    if (!this.selectedPatternGroup) return;
+    this.ngZone.run(() => {
+      if (!this.selectedPatternGroup) return;
 
-    const name = prompt('Nome del nuovo template:', `${this.selectedPatternGroup.name} (copia)`);
-    if (!name) return;
+      const name = prompt('Nome del nuovo template:', `${this.selectedPatternGroup.name} (copia)`);
+      if (!name) return;
 
-    this.loading = true;
-    this.patternGroupService.duplicate(this.selectedPatternGroup.id, name)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadPatternGroups();
-        },
-        error: (error) => {
-          console.error('Error duplicating template:', error);
-          this.error = 'Errore nella duplicazione del template';
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.patternGroupService.duplicate(this.selectedPatternGroup.id, name)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadPatternGroups();
+          },
+          error: (error) => {
+            console.error('Error duplicating template:', error);
+            this.error = 'Errore nella duplicazione del template';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   deleteTemplate() {
-    if (!this.selectedPatternGroup) return;
+    this.ngZone.run(() => {
+      if (!this.selectedPatternGroup) return;
 
-    // Template corrente non può essere eliminato direttamente
-    if (this.selectedPatternGroup.isCurrent) {
-      this.error = 'Il template attivo non può essere eliminato. Disattivalo prima o attiva un altro template.';
-      return;
-    }
+      // Template corrente non può essere eliminato direttamente
+      if (this.selectedPatternGroup.isCurrent) {
+        this.error = 'Il template attivo non può essere eliminato. Disattivalo prima o attiva un altro template.';
+        return;
+      }
 
-    if (!confirm(`Sei sicuro di voler eliminare il template "${this.selectedPatternGroup.name}"?`)) return;
+      if (!confirm(`Sei sicuro di voler eliminare il template "${this.selectedPatternGroup.name}"?`)) return;
 
-    this.loading = true;
-    this.patternGroupService.delete(this.selectedPatternGroup.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadPatternGroups();
-        },
-        error: (error) => {
-          console.error('Error deleting template:', error);
-          this.error = error.message || 'Errore nell\'eliminazione del template';
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.patternGroupService.delete(this.selectedPatternGroup.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadPatternGroups();
+          },
+          error: (error) => {
+            console.error('Error deleting template:', error);
+            this.error = error.message || 'Errore nell\'eliminazione del template';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   deactivateTemplate() {
-    if (!this.selectedPatternGroup) return;
+    this.ngZone.run(() => {
+      if (!this.selectedPatternGroup) return;
 
-    if (!confirm(`Vuoi disattivare il template "${this.selectedPatternGroup.name}"?\n\nDopo la disattivazione potrai eliminarlo.`)) return;
+      if (!confirm(`Vuoi disattivare il template "${this.selectedPatternGroup.name}"?\n\nDopo la disattivazione potrai eliminarlo.`)) return;
 
-    this.loading = true;
-    this.patternGroupService.deactivate(this.selectedPatternGroup.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.loadPatternGroups();
-        },
-        error: (error) => {
-          console.error('Error deactivating template:', error);
-          this.error = 'Errore nella disattivazione del template';
-          this.loading = false;
-        },
-      });
+      this.loading = true;
+      this.patternGroupService.deactivate(this.selectedPatternGroup.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.loadPatternGroups();
+          },
+          error: (error) => {
+            console.error('Error deactivating template:', error);
+            this.error = 'Errore nella disattivazione del template';
+            this.loading = false;
+          },
+        });
+    });
   }
 
   compareGymRooms(a: any, b: any): boolean {
@@ -513,34 +536,42 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
 
   // Navigation between views
   openEditor(template: GymPatternGroup) {
-    this.selectedPatternGroup = template;
-    this.buildPatternsByDay();
-    this.viewMode = 'editor';
-    // Debug: log patterns
-    console.log('Opening editor for template:', template.name);
-    console.log('Patterns:', template.patterns);
-    console.log('PatternsByDay:', this.patternsByDay);
-    console.log('TimeSlots:', this.timeSlots);
+    this.ngZone.run(() => {
+      this.selectedPatternGroup = template;
+      this.buildPatternsByDay();
+      this.viewMode = 'editor';
+      // Debug: log patterns
+      console.log('Opening editor for template:', template.name);
+      console.log('Patterns:', template.patterns);
+      console.log('PatternsByDay:', this.patternsByDay);
+      console.log('TimeSlots:', this.timeSlots);
+    });
   }
 
   backToList() {
-    this.viewMode = 'list';
-    this.selectedPatternGroup = null;
-    this.loadPatternGroups();
+    this.ngZone.run(() => {
+      this.viewMode = 'list';
+      this.selectedPatternGroup = null;
+      this.loadPatternGroups();
+    });
   }
 
   // Rename template
   openRenameForm() {
-    if (!this.selectedPatternGroup) return;
-    this.renameTemplateName = this.selectedPatternGroup.name;
-    this.showRenameForm = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      if (!this.selectedPatternGroup) return;
+      this.renameTemplateName = this.selectedPatternGroup.name;
+      this.showRenameForm = true;
+      this.error = null;
+    });
   }
 
   closeRenameForm() {
-    this.showRenameForm = false;
-    this.renameTemplateName = '';
-    this.error = null;
+    this.ngZone.run(() => {
+      this.showRenameForm = false;
+      this.renameTemplateName = '';
+      this.error = null;
+    });
   }
 
   renameTemplate() {

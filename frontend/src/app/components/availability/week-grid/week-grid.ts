@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, HostListener } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, HostListener, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DragDropModule, CdkDragEnd, CdkDragStart } from '@angular/cdk/drag-drop';
 import { GridConfig, DaySchedule, TimeSlot, DAY_COLORS, DAY_NAMES } from '../../../graphql/ui-types';
@@ -23,6 +23,8 @@ export class WeekGrid implements OnInit, OnChanges {
   @Input() weekNumber: number = 1;
   @Input() schedule: DaySchedule[] = [];
   @Output() scheduleChange = new EventEmitter<DaySchedule[]>();
+
+  constructor(private ngZone: NgZone) {}
 
   dayNames = DAY_NAMES;
   dayColors = DAY_COLORS;
@@ -145,35 +147,41 @@ export class WeekGrid implements OnInit, OnChanges {
   }
 
   onMouseDown(day: number, timeIndex: number, event: MouseEvent) {
-    // Prevent if clicking on existing slot (to allow hover delete)
-    const cell = this.cells[day][timeIndex];
-    if (cell.inSlot) {
-      return;
-    }
+    this.ngZone.run(() => {
+      // Prevent if clicking on existing slot (to allow hover delete)
+      const cell = this.cells[day][timeIndex];
+      if (cell.inSlot) {
+        return;
+      }
 
-    event.preventDefault();
-    this.isDragging = true;
-    this.dragStartCell = { day, timeIndex };
-    this.dragEndCell = { day, timeIndex };
-    this.cells[day][timeIndex].selected = true;
+      event.preventDefault();
+      this.isDragging = true;
+      this.dragStartCell = { day, timeIndex };
+      this.dragEndCell = { day, timeIndex };
+      this.cells[day][timeIndex].selected = true;
+    });
   }
 
   onMouseEnter(day: number, timeIndex: number) {
-    if (this.isDragging && this.dragStartCell && this.dragStartCell.day === day) {
-      this.dragEndCell = { day, timeIndex };
-      this.updateSelection();
-    }
+    this.ngZone.run(() => {
+      if (this.isDragging && this.dragStartCell && this.dragStartCell.day === day) {
+        this.dragEndCell = { day, timeIndex };
+        this.updateSelection();
+      }
+    });
   }
 
   @HostListener('document:mouseup')
   onMouseUp() {
-    if (this.isDragging && this.dragStartCell && this.dragEndCell) {
-      this.createSlotFromSelection();
-    }
-    this.isDragging = false;
-    this.dragStartCell = null;
-    this.dragEndCell = null;
-    this.clearSelection();
+    this.ngZone.run(() => {
+      if (this.isDragging && this.dragStartCell && this.dragEndCell) {
+        this.createSlotFromSelection();
+      }
+      this.isDragging = false;
+      this.dragStartCell = null;
+      this.dragEndCell = null;
+      this.clearSelection();
+    });
   }
 
   private updateSelection() {
@@ -245,30 +253,34 @@ export class WeekGrid implements OnInit, OnChanges {
   }
 
   onSlotHover(day: number, slotIndex: number, isEnter: boolean) {
-    if (isEnter) {
-      this.hoveredSlot = { day, slotIndex };
-    } else {
-      this.hoveredSlot = null;
-    }
+    this.ngZone.run(() => {
+      if (isEnter) {
+        this.hoveredSlot = { day, slotIndex };
+      } else {
+        this.hoveredSlot = null;
+      }
+    });
   }
 
   onDeleteSlot(day: number, slotIndex: number, event: MouseEvent) {
     event.stopPropagation();
 
-    const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
-    if (daySchedule) {
-      daySchedule.slots.splice(slotIndex, 1);
+    this.ngZone.run(() => {
+      const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
+      if (daySchedule) {
+        daySchedule.slots.splice(slotIndex, 1);
 
-      // Remove day if no slots left
-      if (daySchedule.slots.length === 0) {
-        const dayIndex = this.schedule.indexOf(daySchedule);
-        this.schedule.splice(dayIndex, 1);
+        // Remove day if no slots left
+        if (daySchedule.slots.length === 0) {
+          const dayIndex = this.schedule.indexOf(daySchedule);
+          this.schedule.splice(dayIndex, 1);
+        }
       }
-    }
 
-    this.applySlotsToGrid();
-    this.scheduleChange.emit(this.schedule);
-    this.hoveredSlot = null;
+      this.applySlotsToGrid();
+      this.scheduleChange.emit(this.schedule);
+      this.hoveredSlot = null;
+    });
   }
 
   getSlotsByDay(day: number): TimeSlot[] {
@@ -329,85 +341,91 @@ export class WeekGrid implements OnInit, OnChanges {
 
   // CDK Drag handlers
   onSlotDragStarted(event: CdkDragStart, day: number, slotIndex: number) {
-    this.isDraggingSlot = true;
-    this.currentDraggedSlot = { day, slotIndex };
+    this.ngZone.run(() => {
+      this.isDraggingSlot = true;
+      this.currentDraggedSlot = { day, slotIndex };
+    });
   }
 
   onSlotDragMoved(event: any, day: number, slotIndex: number) {
-    // Apply snap during drag for visual feedback
-    const cellHeight = 40;
-    const snapSize = cellHeight;
+    this.ngZone.run(() => {
+      // Apply snap during drag for visual feedback
+      const cellHeight = 40;
+      const snapSize = cellHeight;
 
-    // Get current position from the drag event
-    const currentY = event.distance.y;
+      // Get current position from the drag event
+      const currentY = event.distance.y;
 
-    // Snap to nearest grid position
-    const snappedY = Math.round(currentY / snapSize) * snapSize;
+      // Snap to nearest grid position
+      const snappedY = Math.round(currentY / snapSize) * snapSize;
 
-    // Apply the snapped position to the element
-    const element = event.source.element.nativeElement;
-    element.style.transform = `translate3d(0px, ${snappedY}px, 0px)`;
+      // Apply the snapped position to the element
+      const element = event.source.element.nativeElement;
+      element.style.transform = `translate3d(0px, ${snappedY}px, 0px)`;
+    });
   }
 
   onSlotDragEnded(event: CdkDragEnd, day: number, slotIndex: number) {
-    this.isDraggingSlot = false;
-    this.currentDraggedSlot = null;
+    this.ngZone.run(() => {
+      this.isDraggingSlot = false;
+      this.currentDraggedSlot = null;
 
-    const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
-    if (!daySchedule || !daySchedule.slots[slotIndex]) return;
+      const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
+      if (!daySchedule || !daySchedule.slots[slotIndex]) return;
 
-    const slot = daySchedule.slots[slotIndex];
-    const cellHeight = 40; // 40px per cell
+      const slot = daySchedule.slots[slotIndex];
+      const cellHeight = 40; // 40px per cell
 
-    // Calculate minutes moved using pixels and cell duration
-    const movedPixels = event.distance.y;
-    const pixelsPerMinute = cellHeight / this.config.cellDuration;
-    const movedMinutes = Math.round(movedPixels / pixelsPerMinute);
+      // Calculate minutes moved using pixels and cell duration
+      const movedPixels = event.distance.y;
+      const pixelsPerMinute = cellHeight / this.config.cellDuration;
+      const movedMinutes = Math.round(movedPixels / pixelsPerMinute);
 
-    if (movedMinutes === 0) {
-      // Reset position if no actual movement
+      if (movedMinutes === 0) {
+        // Reset position if no actual movement
+        event.source.element.nativeElement.style.transform = 'none';
+        return;
+      }
+
+      // Parse current times
+      const [startHours, startMinutes] = slot.startTime.split(':').map(Number);
+      const [endHours, endMinutes] = slot.endTime.split(':').map(Number);
+
+      // Calculate new times in total minutes
+      let newStartMinutes = startHours * 60 + startMinutes + movedMinutes;
+      const slotDuration = (endHours * 60 + endMinutes) - (startHours * 60 + startMinutes);
+
+      // SNAP to cell duration grid (30 or 60 min intervals)
+      newStartMinutes = Math.round(newStartMinutes / this.config.cellDuration) * this.config.cellDuration;
+      const newEndMinutes = newStartMinutes + slotDuration;
+
+      // Validate times are within working hours
+      const [workStartHours, workStartMinutes] = this.config.workingHours.start.split(':').map(Number);
+      const [workEndHours, workEndMinutes] = this.config.workingHours.end.split(':').map(Number);
+      const workStartMinutesTotal = workStartHours * 60 + workStartMinutes;
+      const workEndMinutesTotal = workEndHours * 60 + workEndMinutes;
+
+      if (newStartMinutes < workStartMinutesTotal || newEndMinutes > workEndMinutesTotal) {
+        // Reset if out of bounds
+        event.source.element.nativeElement.style.transform = 'none';
+        return;
+      }
+
+      // Format new times
+      const formatTime = (totalMinutes: number): string => {
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+      };
+
+      slot.startTime = formatTime(newStartMinutes);
+      slot.endTime = formatTime(newEndMinutes);
+
+      // Reset transform and update grid
       event.source.element.nativeElement.style.transform = 'none';
-      return;
-    }
-
-    // Parse current times
-    const [startHours, startMinutes] = slot.startTime.split(':').map(Number);
-    const [endHours, endMinutes] = slot.endTime.split(':').map(Number);
-
-    // Calculate new times in total minutes
-    let newStartMinutes = startHours * 60 + startMinutes + movedMinutes;
-    const slotDuration = (endHours * 60 + endMinutes) - (startHours * 60 + startMinutes);
-
-    // SNAP to cell duration grid (30 or 60 min intervals)
-    newStartMinutes = Math.round(newStartMinutes / this.config.cellDuration) * this.config.cellDuration;
-    const newEndMinutes = newStartMinutes + slotDuration;
-
-    // Validate times are within working hours
-    const [workStartHours, workStartMinutes] = this.config.workingHours.start.split(':').map(Number);
-    const [workEndHours, workEndMinutes] = this.config.workingHours.end.split(':').map(Number);
-    const workStartMinutesTotal = workStartHours * 60 + workStartMinutes;
-    const workEndMinutesTotal = workEndHours * 60 + workEndMinutes;
-
-    if (newStartMinutes < workStartMinutesTotal || newEndMinutes > workEndMinutesTotal) {
-      // Reset if out of bounds
-      event.source.element.nativeElement.style.transform = 'none';
-      return;
-    }
-
-    // Format new times
-    const formatTime = (totalMinutes: number): string => {
-      const hours = Math.floor(totalMinutes / 60);
-      const mins = totalMinutes % 60;
-      return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-    };
-
-    slot.startTime = formatTime(newStartMinutes);
-    slot.endTime = formatTime(newEndMinutes);
-
-    // Reset transform and update grid
-    event.source.element.nativeElement.style.transform = 'none';
-    this.applySlotsToGrid();
-    this.scheduleChange.emit(this.schedule);
+      this.applySlotsToGrid();
+      this.scheduleChange.emit(this.schedule);
+    });
   }
 
   // Resize handlers
@@ -415,71 +433,77 @@ export class WeekGrid implements OnInit, OnChanges {
     event.preventDefault();
     event.stopPropagation();
 
-    this.isResizing = true;
-    this.resizingSlot = { day, slotIndex };
-    this.resizeStartY = event.clientY;
+    this.ngZone.run(() => {
+      this.isResizing = true;
+      this.resizingSlot = { day, slotIndex };
+      this.resizeStartY = event.clientY;
 
-    const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
-    if (daySchedule && daySchedule.slots[slotIndex]) {
-      this.resizeInitialEndTime = daySchedule.slots[slotIndex].endTime;
-    }
+      const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
+      if (daySchedule && daySchedule.slots[slotIndex]) {
+        this.resizeInitialEndTime = daySchedule.slots[slotIndex].endTime;
+      }
 
-    document.addEventListener('mousemove', this.handleResize);
-    document.addEventListener('mouseup', this.handleResizeEnd);
+      document.addEventListener('mousemove', this.handleResize);
+      document.addEventListener('mouseup', this.handleResizeEnd);
+    });
   }
 
   private handleResize = (event: MouseEvent) => {
-    if (!this.isResizing || !this.resizingSlot) return;
+    this.ngZone.run(() => {
+      if (!this.isResizing || !this.resizingSlot) return;
 
-    const { day, slotIndex } = this.resizingSlot;
-    const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
-    if (!daySchedule || !daySchedule.slots[slotIndex]) return;
+      const { day, slotIndex } = this.resizingSlot;
+      const daySchedule = this.schedule.find(d => d.dayOfWeek === day);
+      if (!daySchedule || !daySchedule.slots[slotIndex]) return;
 
-    const slot = daySchedule.slots[slotIndex];
-    const cellHeight = 40;
-    const movedPixels = event.clientY - this.resizeStartY;
+      const slot = daySchedule.slots[slotIndex];
+      const cellHeight = 40;
+      const movedPixels = event.clientY - this.resizeStartY;
 
-    // Snap to cellDuration intervals (5, 10, 15, 20, 30, 45, 60 min)
-    const pixelsPerMinute = cellHeight / this.config.cellDuration;
-    const movedMinutes = Math.round(movedPixels / pixelsPerMinute / this.config.cellDuration) * this.config.cellDuration;
+      // Snap to cellDuration intervals (5, 10, 15, 20, 30, 45, 60 min)
+      const pixelsPerMinute = cellHeight / this.config.cellDuration;
+      const movedMinutes = Math.round(movedPixels / pixelsPerMinute / this.config.cellDuration) * this.config.cellDuration;
 
-    // Parse initial end time
-    const [endHours, endMinutes] = this.resizeInitialEndTime.split(':').map(Number);
-    const newEndMinutes = endHours * 60 + endMinutes + movedMinutes;
+      // Parse initial end time
+      const [endHours, endMinutes] = this.resizeInitialEndTime.split(':').map(Number);
+      const newEndMinutes = endHours * 60 + endMinutes + movedMinutes;
 
-    // Parse start time for minimum duration check
-    const [startHours, startMinutes] = slot.startTime.split(':').map(Number);
-    const startMinutesTotal = startHours * 60 + startMinutes;
+      // Parse start time for minimum duration check
+      const [startHours, startMinutes] = slot.startTime.split(':').map(Number);
+      const startMinutesTotal = startHours * 60 + startMinutes;
 
-    // Validate minimum duration (at least one cell)
-    if (newEndMinutes <= startMinutesTotal + this.config.cellDuration) {
-      return;
-    }
+      // Validate minimum duration (at least one cell)
+      if (newEndMinutes <= startMinutesTotal + this.config.cellDuration) {
+        return;
+      }
 
-    // Validate within working hours
-    const [workEndHours, workEndMinutes] = this.config.workingHours.end.split(':').map(Number);
-    const workEndMinutesTotal = workEndHours * 60 + workEndMinutes;
+      // Validate within working hours
+      const [workEndHours, workEndMinutes] = this.config.workingHours.end.split(':').map(Number);
+      const workEndMinutesTotal = workEndHours * 60 + workEndMinutes;
 
-    if (newEndMinutes > workEndMinutesTotal) {
-      return;
-    }
+      if (newEndMinutes > workEndMinutesTotal) {
+        return;
+      }
 
-    // Update end time
-    const hours = Math.floor(newEndMinutes / 60);
-    const mins = newEndMinutes % 60;
-    slot.endTime = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+      // Update end time
+      const hours = Math.floor(newEndMinutes / 60);
+      const mins = newEndMinutes % 60;
+      slot.endTime = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 
-    this.applySlotsToGrid();
+      this.applySlotsToGrid();
+    });
   }
 
   private handleResizeEnd = (event: MouseEvent) => {
-    this.isResizing = false;
-    this.resizingSlot = null;
+    this.ngZone.run(() => {
+      this.isResizing = false;
+      this.resizingSlot = null;
 
-    document.removeEventListener('mousemove', this.handleResize);
-    document.removeEventListener('mouseup', this.handleResizeEnd);
+      document.removeEventListener('mousemove', this.handleResize);
+      document.removeEventListener('mouseup', this.handleResizeEnd);
 
-    this.scheduleChange.emit(this.schedule);
+      this.scheduleChange.emit(this.schedule);
+    });
   }
 
   getCdkDragBoundary(): string {

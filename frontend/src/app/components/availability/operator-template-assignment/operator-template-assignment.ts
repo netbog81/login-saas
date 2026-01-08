@@ -1,11 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OperatorService } from '../../../services/operator.service';
 import { TemplateService } from '../../../services/template.service';
 import { Operator, OperatorMacroCategory } from '../../../graphql/generated/types';
 import { TemplateAssignment, PatternGroup, getMacroCategoryLabel } from '../../../graphql/types';
-import { catchError, finalize, forkJoin, of, switchMap } from 'rxjs';
+import { catchError, finalize, forkJoin, of, Subject, switchMap, takeUntil } from 'rxjs';
 
 interface OperatorWithAssignment {
   operator: Operator;
@@ -23,7 +23,8 @@ interface OperatorWithAssignment {
   templateUrl: './operator-template-assignment.html',
   styleUrl: './operator-template-assignment.scss',
 })
-export class OperatorTemplateAssignment implements OnInit {
+export class OperatorTemplateAssignment implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   operators: OperatorWithAssignment[] = [];
   filteredOperators: OperatorWithAssignment[] = [];
   patternGroups: PatternGroup[] = [];
@@ -43,12 +44,18 @@ export class OperatorTemplateAssignment implements OnInit {
 
   constructor(
     private operatorService: OperatorService,
-    private templateService: TemplateService
+    private templateService: TemplateService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit() {
     console.log('OperatorTemplateAssignment component initialized');
     this.loadData();
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadData() {
@@ -61,6 +68,7 @@ export class OperatorTemplateAssignment implements OnInit {
       assignments: this.templateService.getTemplateAssignments(undefined, true), // Get all current assignments
     })
       .pipe(
+        takeUntil(this.destroy$),
         catchError((err) => {
           console.error('Errore nel caricamento dei dati:', err);
           this.error = 'Errore nel caricamento dei dati: ' + err.message;
@@ -176,17 +184,21 @@ export class OperatorTemplateAssignment implements OnInit {
   }
 
   selectOperator(operator: OperatorWithAssignment) {
-    this.selectedOperator =
-      this.selectedOperator === operator ? null : operator;
+    this.ngZone.run(() => {
+      this.selectedOperator =
+        this.selectedOperator === operator ? null : operator;
+    });
   }
 
   openAssignModal(operator: OperatorWithAssignment) {
-    this.currentOperator = operator;
-    this.selectedPatternGroupId = operator.assignment?.patternGroupId || '';
-    this.assignPatternStartDate = this.getTodayString();
-    this.assignValidFrom = operator.validFrom || this.getTodayString();
-    this.assignValidUntil = operator.validUntil || '';
-    this.showAssignModal = true;
+    this.ngZone.run(() => {
+      this.currentOperator = operator;
+      this.selectedPatternGroupId = operator.assignment?.patternGroupId || '';
+      this.assignPatternStartDate = this.getTodayString();
+      this.assignValidFrom = operator.validFrom || this.getTodayString();
+      this.assignValidUntil = operator.validUntil || '';
+      this.showAssignModal = true;
+    });
   }
 
   private getTodayString(): string {
@@ -225,6 +237,7 @@ export class OperatorTemplateAssignment implements OnInit {
 
     deactivateObs$
       .pipe(
+        takeUntil(this.destroy$),
         switchMap(() =>
           this.templateService.assignTemplateToOperator({
             operatorId: this.currentOperator!.operator.id,
@@ -253,43 +266,48 @@ export class OperatorTemplateAssignment implements OnInit {
   }
 
   onAssignCancel() {
-    this.showAssignModal = false;
-    this.currentOperator = null;
-    this.selectedPatternGroupId = '';
+    this.ngZone.run(() => {
+      this.showAssignModal = false;
+      this.currentOperator = null;
+      this.selectedPatternGroupId = '';
+    });
   }
 
   removeAssignment(operator: OperatorWithAssignment) {
-    if (
-      !confirm(
-        `Vuoi rimuovere l'assegnazione del template da ${operator.operator.name}?`
-      )
-    ) {
-      return;
-    }
+    this.ngZone.run(() => {
+      if (
+        !confirm(
+          `Vuoi rimuovere l'assegnazione del template da ${operator.operator.name}?`
+        )
+      ) {
+        return;
+      }
 
-    if (!operator.assignment) {
-      return;
-    }
+      if (!operator.assignment) {
+        return;
+      }
 
-    this.loading = true;
-    this.error = null;
+      this.loading = true;
+      this.error = null;
 
-    this.templateService
-      .deactivateTemplateAssignment(operator.assignment.id)
-      .pipe(
-        catchError((err) => {
-          this.error = 'Errore nella rimozione: ' + err.message;
-          return of(null);
-        }),
-        finalize(() => {
-          this.loading = false;
-        })
-      )
-      .subscribe((result) => {
-        if (result) {
-          this.loadData();
-        }
-      });
+      this.templateService
+        .deactivateTemplateAssignment(operator.assignment.id)
+        .pipe(
+          takeUntil(this.destroy$),
+          catchError((err) => {
+            this.error = 'Errore nella rimozione: ' + err.message;
+            return of(null);
+          }),
+          finalize(() => {
+            this.loading = false;
+          })
+        )
+        .subscribe((result) => {
+          if (result) {
+            this.ngZone.run(() => this.loadData());
+          }
+        });
+    });
   }
 
   getStatusIcon(status: 'active' | 'expiring' | 'none'): string {

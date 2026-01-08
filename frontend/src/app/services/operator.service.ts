@@ -1,5 +1,4 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import {
   Operator,
@@ -24,12 +23,15 @@ import {
   UPDATE_OPERATOR,
   DELETE_OPERATOR,
 } from '../graphql/operations/operator.mutations';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
 @Injectable({
   providedIn: 'root',
 })
-export class OperatorService {
-  constructor(private apollo: Apollo) {}
+export class OperatorService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene tutti gli operatori con filtri opzionali
@@ -39,109 +41,53 @@ export class OperatorService {
     categoryId?: string,
     onlyActive?: boolean
   ): Observable<Operator[]> {
-    return this.apollo
-      .query<{ operators: any[] }>({
-        query: GET_OPERATORS,
-        variables: { macroCategory, categoryId, onlyActive },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => (result.data?.operators || []) as Operator[]));
+    return this.query<{ operators: Operator[] }>(
+      GET_OPERATORS,
+      { macroCategory, categoryId, onlyActive }
+    ).pipe(map((result) => result.operators || []));
   }
 
   /**
    * Ottiene un singolo operatore per ID
    */
   getOperator(id: string): Observable<Operator | null> {
-    return this.apollo
-      .watchQuery<{ operator: any | null }>({
-        query: GET_OPERATOR,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .valueChanges.pipe(map((result) => (result.data?.operator || null) as Operator | null));
+    return this.query<{ operator: Operator | null }>(
+      GET_OPERATOR,
+      { id }
+    ).pipe(map((result) => result.operator || null));
   }
 
   /**
    * Crea un nuovo operatore
    */
   createOperator(input: CreateOperatorInput): Observable<Operator> {
-    return this.apollo
-      .mutate<{ createOperator: Operator }>({
-        mutation: CREATE_OPERATOR,
-        variables: { input },
-        refetchQueries: [{ query: GET_OPERATORS }],
-        awaitRefetchQueries: true,
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to create operator');
-          }
-          return result.data.createOperator;
-        })
-      );
+    return this.mutate<{ createOperator: Operator }>(
+      CREATE_OPERATOR,
+      { input },
+      [{ query: GET_OPERATORS }]
+    ).pipe(map((result) => result.createOperator));
   }
 
   /**
    * Aggiorna un operatore esistente
    */
-  updateOperator(
-    id: string,
-    input: UpdateOperatorInput
-  ): Observable<Operator> {
-    return this.apollo
-      .mutate<{ updateOperator: Operator }>({
-        mutation: UPDATE_OPERATOR,
-        variables: { id, input },
-        refetchQueries: [
-          { query: GET_OPERATORS },
-          { query: GET_OPERATOR, variables: { id } },
-        ],
-        awaitRefetchQueries: true,
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to update operator');
-          }
-          return result.data.updateOperator;
-        })
-      );
+  updateOperator(id: string, input: UpdateOperatorInput): Observable<Operator> {
+    return this.mutate<{ updateOperator: Operator }>(
+      UPDATE_OPERATOR,
+      { id, input },
+      [{ query: GET_OPERATORS }, { query: GET_OPERATOR, variables: { id } }]
+    ).pipe(map((result) => result.updateOperator));
   }
 
   /**
    * Elimina un operatore
    */
   deleteOperator(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteOperator: boolean }>({
-        mutation: DELETE_OPERATOR,
-        variables: { id },
-        refetchQueries: [{ query: GET_OPERATORS }],
-        awaitRefetchQueries: true,
-        update: (cache) => {
-          // Remove the deleted operator from cache
-          const data = cache.readQuery<{ operators: Operator[] }>({
-            query: GET_OPERATORS,
-          });
-          if (data) {
-            cache.writeQuery({
-              query: GET_OPERATORS,
-              data: {
-                operators: data.operators.filter((op) => op.id !== id),
-              },
-            });
-          }
-        },
-      })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to delete operator');
-          }
-          return result.data.deleteOperator;
-        })
-      );
+    return this.mutate<{ deleteOperator: boolean }>(
+      DELETE_OPERATOR,
+      { id },
+      [{ query: GET_OPERATORS }]
+    ).pipe(map((result) => result.deleteOperator));
   }
 
   /**
@@ -152,47 +98,31 @@ export class OperatorService {
     startDate: string,
     endDate: string
   ): Observable<DailyAvailability[]> {
-    return this.apollo
-      .query<{ operatorAvailability: any[] }>({
-        query: GET_OPERATOR_AVAILABILITY,
-        variables: { operatorId, startDate, endDate },
-        fetchPolicy: 'network-only', // Always fetch fresh availability data
-      })
-      .pipe(
-        map((result) => (result.data?.operatorAvailability || []) as DailyAvailability[])
-      );
+    return this.query<{ operatorAvailability: DailyAvailability[] }>(
+      GET_OPERATOR_AVAILABILITY,
+      { operatorId, startDate, endDate }
+    ).pipe(map((result) => result.operatorAvailability || []));
   }
 
   /**
    * Controlla se esistono operatori con nome simile (per warning duplicati)
    */
   checkDuplicateOperator(name: string, surname?: string): Observable<Operator[]> {
-    return this.apollo
-      .query<{ checkDuplicateOperator: any[] }>({
-        query: CHECK_DUPLICATE_OPERATOR,
-        variables: { name, surname },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(
-        map((result) => (result.data?.checkDuplicateOperator || []) as Operator[])
-      );
+    return this.query<{ checkDuplicateOperator: Operator[] }>(
+      CHECK_DUPLICATE_OPERATOR,
+      { name, surname }
+    ).pipe(map((result) => result.checkDuplicateOperator || []));
   }
 
   /**
    * Ottiene gli slot disponibili per un fisioterapista con supporto strumenti
-   * @param input Parametri per la ricerca degli slot
    */
   getPhysiotherapistAvailableSlots(
     input: CheckPhysiotherapistAvailabilityInput
   ): Observable<PhysiotherapistSlotOutput[]> {
-    return this.apollo
-      .query<{ physiotherapistAvailableSlots: PhysiotherapistSlotOutput[] }>({
-        query: GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
-        variables: { input },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(
-        map((result) => result.data?.physiotherapistAvailableSlots || [])
-      );
+    return this.query<{ physiotherapistAvailableSlots: PhysiotherapistSlotOutput[] }>(
+      GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
+      { input }
+    ).pipe(map((result) => result.physiotherapistAvailableSlots || []));
   }
 }

@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   AvailabilityAppointment,
   ConflictStatsOutput,
@@ -25,8 +25,10 @@ export interface ConflictFilters {
 @Injectable({
   providedIn: 'root',
 })
-export class ConflictService {
-  constructor(private apollo: Apollo) {}
+export class ConflictService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene appuntamenti in conflitto con filtri opzionali
@@ -34,52 +36,43 @@ export class ConflictService {
   getConflictedAppointments(
     filters?: ConflictFilters
   ): Observable<AvailabilityAppointment[]> {
-    return this.apollo
-      .query<{ conflictedAppointments: AvailabilityAppointment[] }>({
-        query: GET_CONFLICTED_APPOINTMENTS,
-        variables: {
-          operatorId: filters?.operatorId,
-          dateFrom: filters?.dateFrom,
-          dateTo: filters?.dateTo,
-          conflictReason: filters?.conflictReason,
-        },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(
-        map((result) => result.data?.conflictedAppointments || [])
-      );
+    return this.query<{ conflictedAppointments: AvailabilityAppointment[] }>(
+      GET_CONFLICTED_APPOINTMENTS,
+      {
+        operatorId: filters?.operatorId,
+        dateFrom: filters?.dateFrom,
+        dateTo: filters?.dateTo,
+        conflictReason: filters?.conflictReason,
+      }
+    ).pipe(
+      map((result) => result.conflictedAppointments || [])
+    );
   }
 
   /**
    * Ottiene statistiche sui conflitti
    */
   getConflictStats(): Observable<ConflictStatsOutput> {
-    return this.apollo
-      .query<{ conflictStats: ConflictStatsOutput }>({
-        query: GET_CONFLICT_STATS,
-        fetchPolicy: 'network-only',
+    return this.query<{ conflictStats: ConflictStatsOutput }>(
+      GET_CONFLICT_STATS
+    ).pipe(
+      map((result) => result.conflictStats ?? {
+        totalConflicts: 0,
+        byReason: {},
+        byOperator: []
       })
-      .pipe(
-        map((result) => result.data?.conflictStats ?? {
-          totalConflicts: 0,
-          byReason: {},
-          byOperator: []
-        })
-      );
+    );
   }
 
   /**
    * Ottiene il conteggio dei conflitti (per badge/notifiche)
    */
   getConflictedAppointmentsCount(): Observable<number> {
-    return this.apollo
-      .query<{ conflictedAppointmentsCount: number }>({
-        query: GET_CONFLICTED_APPOINTMENTS_COUNT,
-        fetchPolicy: 'network-only',
-      })
-      .pipe(
-        map((result) => result.data?.conflictedAppointmentsCount || 0)
-      );
+    return this.query<{ conflictedAppointmentsCount: number }>(
+      GET_CONFLICTED_APPOINTMENTS_COUNT
+    ).pipe(
+      map((result) => result.conflictedAppointmentsCount || 0)
+    );
   }
 
   /**
@@ -96,33 +89,30 @@ export class ConflictService {
       notes?: string;
     }
   ): Observable<AvailabilityAppointment> {
-    return this.apollo
-      .mutate<{ resolveAppointmentConflict: AvailabilityAppointment }>({
-        mutation: RESOLVE_APPOINTMENT_CONFLICT,
-        variables: {
-          appointmentId,
-          action,
-          resolvedBy,
-          newDate: options?.newDate,
-          newStartTime: options?.newStartTime,
-          newEndTime: options?.newEndTime,
-          notes: options?.notes,
-        },
-        refetchQueries: [
-          { query: GET_CONFLICTED_APPOINTMENTS },
-          { query: GET_CONFLICT_STATS },
-          { query: GET_CONFLICTED_APPOINTMENTS_COUNT },
-        ],
-        awaitRefetchQueries: true,
+    return this.mutate<{ resolveAppointmentConflict: AvailabilityAppointment }>(
+      RESOLVE_APPOINTMENT_CONFLICT,
+      {
+        appointmentId,
+        action,
+        resolvedBy,
+        newDate: options?.newDate,
+        newStartTime: options?.newStartTime,
+        newEndTime: options?.newEndTime,
+        notes: options?.notes,
+      },
+      [
+        { query: GET_CONFLICTED_APPOINTMENTS },
+        { query: GET_CONFLICT_STATS },
+        { query: GET_CONFLICTED_APPOINTMENTS_COUNT },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.resolveAppointmentConflict) {
+          throw new Error('Failed to resolve conflict');
+        }
+        return result.resolveAppointmentConflict;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to resolve conflict');
-          }
-          return result.data.resolveAppointmentConflict;
-        })
-      );
+    );
   }
 
   /**
@@ -135,29 +125,26 @@ export class ConflictService {
     resolvedBy: string,
     notes?: string
   ): Observable<AvailabilityAppointment[]> {
-    return this.apollo
-      .mutate<{ resolveMultipleConflicts: AvailabilityAppointment[] }>({
-        mutation: RESOLVE_MULTIPLE_CONFLICTS,
-        variables: {
-          appointmentIds,
-          action,
-          resolvedBy,
-          notes,
-        },
-        refetchQueries: [
-          { query: GET_CONFLICTED_APPOINTMENTS },
-          { query: GET_CONFLICT_STATS },
-          { query: GET_CONFLICTED_APPOINTMENTS_COUNT },
-        ],
-        awaitRefetchQueries: true,
+    return this.mutate<{ resolveMultipleConflicts: AvailabilityAppointment[] }>(
+      RESOLVE_MULTIPLE_CONFLICTS,
+      {
+        appointmentIds,
+        action,
+        resolvedBy,
+        notes,
+      },
+      [
+        { query: GET_CONFLICTED_APPOINTMENTS },
+        { query: GET_CONFLICT_STATS },
+        { query: GET_CONFLICTED_APPOINTMENTS_COUNT },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.resolveMultipleConflicts) {
+          throw new Error('Failed to resolve conflicts');
+        }
+        return result.resolveMultipleConflicts;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Failed to resolve conflicts');
-          }
-          return result.data.resolveMultipleConflicts;
-        })
-      );
+    );
   }
 }

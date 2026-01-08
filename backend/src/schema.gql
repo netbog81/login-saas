@@ -234,6 +234,37 @@ input CreateAvailabilityTemplateInput {
   validUntil: String
 }
 
+input CreateDocumentInput {
+  category: DocumentCategory!
+  description: String
+  externalDoctorName: String
+  fileName: String!
+  fileSize: Int!
+  mimeType: String!
+  notes: String
+  originalFileName: String
+  storagePath: String!
+  therapeuticPathId: ID!
+  thumbnailPath: String
+  type: DocumentType!
+  uploadedBy: ID
+}
+
+input CreateEvaluationInput {
+  aggravatingFactors: String
+  chiefComplaint: String
+  conclusions: String
+  fieldValues: JSON
+  functionalAssessment: String
+  historyOfPresentIllness: String
+  operatorId: ID!
+  patientGoals: String
+  relievingFactors: String
+  templateId: ID
+  therapeuticPathId: ID!
+  therapistGoals: String
+}
+
 input CreateGymAppointmentInput {
   appointmentDate: String!
   clientEmail: String
@@ -429,6 +460,17 @@ input CreateTemplatePatternInput {
   startTime: String!
 }
 
+input CreateTherapeuticPathInput {
+  diagnosis: String
+  externalDoctorName: String
+  externalPrescriptionRef: String
+  icdCode: String
+  name: String!
+  notes: String
+  patientId: Int!
+  primaryOperatorId: ID!
+}
+
 type DailyAvailability {
   date: String!
   hasAvailability: Boolean!
@@ -439,6 +481,23 @@ type DailyAvailability {
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
 scalar DateTime
+
+"""Category of attached document"""
+enum DocumentCategory {
+  CONSENT
+  OTHER
+  PRESCRIPTION
+  RADIOLOGY
+  REPORT
+}
+
+"""Type of attached document"""
+enum DocumentType {
+  IMAGE
+  OTHER
+  PDF
+  VIDEO
+}
 
 """Type of availability exception"""
 enum ExceptionType {
@@ -687,15 +746,18 @@ type Mutation {
   createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
   createOperator(input: CreateOperatorInput!): Operator!
   createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
+  createPathDocument(input: CreateDocumentInput!): PathDocument!
 
   """Create a new patient record"""
   createPatient(createPatientInput: CreatePatientInput!): PatientModel!
+  createPatientEvaluation(input: CreateEvaluationInput!): PatientEvaluation!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
   createRoom(capacity: Int, color: String, name: String!): Room!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, subcategoryId: ID): Service!
   createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
+  createTherapeuticPath(input: CreateTherapeuticPathInput!): TherapeuticPath!
   createTreatment(appointmentId: ID!): Treatment!
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
@@ -716,15 +778,18 @@ type Mutation {
   deleteInstrumentCategory(id: ID!): Boolean!
   deleteOperator(id: ID!): Boolean!
   deleteOperatorCategory(id: ID!): Boolean!
+  deletePathDocument(id: ID!): Boolean!
 
   """Delete patient (performs GDPR-compliant anonymization)"""
   deletePatient(id: ID!): Boolean!
+  deletePatientEvaluation(id: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
   deleteServiceSubcategory(id: ID!): Boolean!
   deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
+  deleteTherapeuticPath(id: ID!): Boolean!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
@@ -772,6 +837,7 @@ type Mutation {
 
   """Update an existing patient record"""
   updatePatient(id: ID!, updatePatientInput: UpdatePatientInput!): PatientModel!
+  updatePatientEvaluation(id: ID!, input: UpdateEvaluationInput!): PatientEvaluation!
 
   """Update patient privacy documentation status"""
   updatePatientPrivacyStatus(id: ID!, status: String!): PatientModel!
@@ -785,6 +851,7 @@ type Mutation {
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
+  updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 }
@@ -849,6 +916,66 @@ type OperatorService {
   operatorId: ID!
   service: Service!
   serviceId: ID!
+}
+
+type PathDocument {
+  category: DocumentCategory!
+  description: String
+
+  """Name of external doctor (for prescriptions/reports)"""
+  externalDoctorName: String
+  fileName: String!
+  fileSize: Int!
+  id: ID!
+  mimeType: String!
+  notes: String
+  originalFileName: String
+  storagePath: String!
+  therapeuticPath: TherapeuticPath!
+  therapeuticPathId: ID!
+  thumbnailPath: String
+  type: DocumentType!
+  uploadedAt: DateTime!
+  uploadedBy: ID
+}
+
+type PatientEvaluation {
+  """Fattori aggravanti"""
+  aggravatingFactors: String
+
+  """Motivo della visita"""
+  chiefComplaint: String
+
+  """Conclusioni della valutazione"""
+  conclusions: String
+  createdAt: DateTime!
+
+  """Dynamic field values from template (JSON)"""
+  fieldValues: JSON
+
+  """Valutazione funzionale"""
+  functionalAssessment: String
+
+  """Storia della malattia attuale"""
+  historyOfPresentIllness: String
+  id: ID!
+  operator: Operator!
+  operatorId: ID!
+
+  """Obiettivi del paziente"""
+  patientGoals: String
+
+  """Fattori allevianti"""
+  relievingFactors: String
+
+  """Template ID for dynamic forms (future use)"""
+  templateId: ID
+  therapeuticPath: TherapeuticPath!
+  therapeuticPathId: ID!
+
+  """Obiettivi del terapista"""
+  therapistGoals: String
+  updatedAt: DateTime!
 }
 
 """Anagrafica paziente completa"""
@@ -1060,6 +1187,7 @@ type PhysiotherapistSlotOutput {
 }
 
 type Query {
+  activeTherapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
   availabilityAppointment(id: ID!): AvailabilityAppointment
@@ -1078,6 +1206,9 @@ type Query {
   conflictedAppointmentsCount: Int!
   currentGymPatternGroup(gymRoomId: ID!): GymPatternGroup
   currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
+  documentsByPath(pathId: ID!): [PathDocument!]!
+  documentsByPathAndCategory(category: DocumentCategory!, pathId: ID!): [PathDocument!]!
+  evaluationsByPath(pathId: ID!): [PatientEvaluation!]!
   generalSetting(key: String!): GeneralSettings
   generalSettings: [GeneralSettings!]!
   generalSettingsByCategory(category: String!): [GeneralSettings!]!
@@ -1111,6 +1242,7 @@ type Query {
   operatorExceptions(endDate: String, operatorId: ID!, startDate: String): [AvailabilityException!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
   operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
+  pathDocument(id: ID!): PathDocument
 
   """Get a single patient by ID"""
   patient(id: ID!): PatientModel
@@ -1120,6 +1252,7 @@ type Query {
 
   """Find patient by email address"""
   patientByEmail(email: String!): PatientModel
+  patientEvaluation(id: ID!): PatientEvaluation
 
   """Get all patients with optional pagination"""
   patients(limit: Int = 20, offset: Int = 0): [PatientModel!]!
@@ -1151,6 +1284,9 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+  therapeuticPath(id: ID!): TherapeuticPath
+  therapeuticPathsByOperator(operatorId: ID!): [TherapeuticPath!]!
+  therapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
   treatment(id: ID!): Treatment
   treatmentByAppointment(appointmentId: ID!): Treatment
   treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
@@ -1401,6 +1537,34 @@ type TemplatePattern {
   updatedAt: DateTime!
 }
 
+type TherapeuticPath {
+  closedAt: DateTime
+  createdAt: DateTime!
+  diagnosis: String
+  documents: [PathDocument!]
+  evaluations: [PatientEvaluation!]
+  externalDoctorName: String
+  externalPrescriptionRef: String
+  icdCode: String
+  id: ID!
+  name: String!
+  notes: String
+  patient: PatientModel!
+  patientId: Int!
+  primaryOperator: Operator!
+  primaryOperatorId: ID!
+  status: TherapeuticPathStatus!
+  updatedAt: DateTime!
+}
+
+"""Therapeutic path status"""
+enum TherapeuticPathStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
+  SUSPENDED
+}
+
 """Tipo di paziente per gestione consensi"""
 enum TipoPaziente {
   """Adulto autonomo - può fornire consenso in autonomia"""
@@ -1498,6 +1662,18 @@ input UpdateAvailabilityAppointmentInput {
   patientId: Int
   serviceId: ID
   startTime: String
+}
+
+input UpdateEvaluationInput {
+  aggravatingFactors: String
+  chiefComplaint: String
+  conclusions: String
+  fieldValues: JSON
+  functionalAssessment: String
+  historyOfPresentIllness: String
+  patientGoals: String
+  relievingFactors: String
+  therapistGoals: String
 }
 
 input UpdateGymExceptionInput {
@@ -1660,4 +1836,14 @@ input UpdatePatternGroupInput {
   name: String
   patternDuration: Float
   patterns: [PatternInput!]
+}
+
+input UpdateTherapeuticPathInput {
+  diagnosis: String
+  externalDoctorName: String
+  externalPrescriptionRef: String
+  icdCode: String
+  name: String
+  notes: String
+  status: TherapeuticPathStatus
 }

@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { ContextPreservationService } from './core/services/context-preservation.service';
 
 @Component({
   selector: 'app-root',
@@ -147,6 +148,23 @@ import { RouterModule, RouterOutlet, RouterLink, RouterLinkActive } from '@angul
     }
   `]
 })
-export class AppComponent {
+export class AppComponent implements OnInit, OnDestroy {
   title = 'Calendario Poliambulatorio CDK';
+
+  /** Funzione di cleanup per il contesto preservato */
+  private cleanupContext: (() => void) | null = null;
+
+  constructor(private contextService: ContextPreservationService) {}
+
+  ngOnInit(): void {
+    // Preserva il contesto root per tutta l'app.
+    // Questo garantisce che tutti i componenti dinamici (dialog, modal, overlay)
+    // vengano creati dentro NgZone anche se aperti da contesti async.
+    this.cleanupContext = this.contextService.preserveContext('AppComponent');
+  }
+
+  ngOnDestroy(): void {
+    // Pulisce il contesto quando l'app viene distrutta
+    this.cleanupContext?.();
+  }
 }

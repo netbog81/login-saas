@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ElementRef, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil, combineLatest, debounceTime, firstValueFrom } from 'rxjs';
 import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
@@ -158,7 +158,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
@@ -323,14 +324,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
       // Load patients via GraphQL
       const patients = await firstValueFrom(this.patientService.getPatients());
-      this.patients = patients || [];
 
+      this.patients = patients || [];
       this.isLoading = false;
-      this.cdr.markForCheck();
     } catch (error) {
       console.error('Error loading initial data:', error);
       this.isLoading = false;
-      this.cdr.markForCheck();
     }
   }
 
@@ -351,6 +350,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         true // onlyActive
       )
     );
+
     this.allUsers = this.mapOperatorsToUsers(operators);
 
     // Try to restore previously selected operators from storage
@@ -365,7 +365,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       if (restoredOperators.length > 0) {
         console.log('[Calendar] Restored operator selection:', restoredOperators.length);
         this.stateService.setSelectedOperators(restoredOperators);
-        this.cdr.markForCheck();
         return;
       } else {
         console.log('[Calendar] Stored operators no longer valid, using defaults');
@@ -375,7 +374,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     // Default: select all active users (only on first load or if stored selection is invalid)
     const activeUsers = this.allUsers.filter(u => u.active);
     this.stateService.setSelectedOperators(activeUsers);
-    this.cdr.markForCheck();
   }
 
   private mapOperatorsToUsers(operators: Operator[]): User[] {
@@ -1277,12 +1275,15 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   // Dialog events
   openEventDialog(data: EventDialogData): void {
-    // Add instrument categories to dialog data
-    this.eventDialogData = {
-      ...data,
-      instrumentCategories: this.instrumentCategories
-    };
-    this.showEventDialog = true;
+    // Forza esecuzione dentro NgZone per garantire change detection
+    // Il doppio click sullo slot può arrivare da contesto fuori zona
+    this.ngZone.run(() => {
+      this.eventDialogData = {
+        ...data,
+        instrumentCategories: this.instrumentCategories
+      };
+      this.showEventDialog = true;
+    });
   }
 
   async onDialogResult(result: EventDialogResult): Promise<void> {

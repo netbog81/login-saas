@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OperatorCategoryService } from '../../../services/operator-category.service';
@@ -11,7 +11,7 @@ import {
   UpdateOperatorCategoryInput,
   getMacroCategoryLabel,
 } from '../../../graphql/types';
-import { catchError, finalize, of } from 'rxjs';
+import { catchError, finalize, of, Subject, takeUntil } from 'rxjs';
 
 @Component({
   selector: 'app-operator-category-management',
@@ -20,7 +20,8 @@ import { catchError, finalize, of } from 'rxjs';
   templateUrl: './operator-category-management.component.html',
   styleUrls: ['./operator-category-management.component.scss'],
 })
-export class OperatorCategoryManagementComponent implements OnInit {
+export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   categories: OperatorCategory[] = [];
   filteredCategories: OperatorCategory[] = [];
   loading = false;
@@ -44,10 +45,18 @@ export class OperatorCategoryManagementComponent implements OnInit {
   // Expose enum to template
   OperatorMacroCategory = OperatorMacroCategory;
 
-  constructor(private categoryService: OperatorCategoryService) {}
+  constructor(
+    private categoryService: OperatorCategoryService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit() {
     this.loadCategories();
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadCategories() {
@@ -57,6 +66,7 @@ export class OperatorCategoryManagementComponent implements OnInit {
     this.categoryService
       .getOperatorCategories()
       .pipe(
+        takeUntil(this.destroy$),
         catchError((err) => {
           this.error = 'Errore nel caricamento delle categorie: ' + err.message;
           return of([]);
@@ -80,43 +90,49 @@ export class OperatorCategoryManagementComponent implements OnInit {
   }
 
   onFilterChange() {
-    this.applyFilter();
+    this.ngZone.run(() => {
+      this.applyFilter();
+    });
   }
 
   openCategoryForm(category?: OperatorCategory) {
-    if (category) {
-      this.isEditMode = true;
-      this.editingCategoryId = category.id;
-      this.editingCategory = {
-        macroCategory: category.macroCategory,
-        name: category.name,
-        description: category.description ?? undefined,
-        isActive: category.isActive,
-      };
-    } else {
+    this.ngZone.run(() => {
+      if (category) {
+        this.isEditMode = true;
+        this.editingCategoryId = category.id;
+        this.editingCategory = {
+          macroCategory: category.macroCategory,
+          name: category.name,
+          description: category.description ?? undefined,
+          isActive: category.isActive,
+        };
+      } else {
+        this.isEditMode = false;
+        this.editingCategoryId = null;
+        this.editingCategory = {
+          macroCategory: OperatorMacroCategory.Physiotherapist,
+          name: '',
+          description: '',
+          isActive: true,
+        };
+      }
+      this.showCategoryForm = true;
+      this.error = null;
+    });
+  }
+
+  closeCategoryForm() {
+    this.ngZone.run(() => {
+      this.showCategoryForm = false;
       this.isEditMode = false;
       this.editingCategoryId = null;
       this.editingCategory = {
         macroCategory: OperatorMacroCategory.Physiotherapist,
         name: '',
         description: '',
-        isActive: true,
       };
-    }
-    this.showCategoryForm = true;
-    this.error = null;
-  }
-
-  closeCategoryForm() {
-    this.showCategoryForm = false;
-    this.isEditMode = false;
-    this.editingCategoryId = null;
-    this.editingCategory = {
-      macroCategory: OperatorMacroCategory.Physiotherapist,
-      name: '',
-      description: '',
-    };
-    this.error = null;
+      this.error = null;
+    });
   }
 
   saveCategory() {
@@ -147,6 +163,7 @@ export class OperatorCategoryManagementComponent implements OnInit {
       this.categoryService
         .updateOperatorCategory(this.editingCategoryId, input)
         .pipe(
+          takeUntil(this.destroy$),
           catchError((err) => {
             const errorMsg =
               err?.error?.message || err?.message || 'Errore sconosciuto';
@@ -173,6 +190,7 @@ export class OperatorCategoryManagementComponent implements OnInit {
       this.categoryService
         .createOperatorCategory(input)
         .pipe(
+          takeUntil(this.destroy$),
           catchError((err) => {
             const errorMsg =
               err?.error?.message || err?.message || 'Errore sconosciuto';
@@ -192,67 +210,73 @@ export class OperatorCategoryManagementComponent implements OnInit {
   }
 
   deleteCategory(category: OperatorCategory) {
-    if (category.operators && category.operators.length > 0) {
-      alert(
-        `Impossibile eliminare: questa categoria è utilizzata da ${category.operators.length} operatore/i.\n` +
-          'Rimuovi prima le assegnazioni agli operatori.'
-      );
-      return;
-    }
+    this.ngZone.run(() => {
+      if (category.operators && category.operators.length > 0) {
+        alert(
+          `Impossibile eliminare: questa categoria è utilizzata da ${category.operators.length} operatore/i.\n` +
+            'Rimuovi prima le assegnazioni agli operatori.'
+        );
+        return;
+      }
 
-    if (
-      !confirm(`Sei sicuro di voler eliminare la categoria "${category.name}"?`)
-    ) {
-      return;
-    }
+      if (
+        !confirm(`Sei sicuro di voler eliminare la categoria "${category.name}"?`)
+      ) {
+        return;
+      }
 
-    this.loading = true;
-    this.error = null;
+      this.loading = true;
+      this.error = null;
 
-    this.categoryService
-      .deleteOperatorCategory(category.id)
-      .pipe(
-        catchError((err) => {
-          const errorMsg =
-            err?.error?.message || err?.message || 'Errore sconosciuto';
-          this.error = `Errore durante l'eliminazione: ${errorMsg}`;
-          this.loading = false;
-          return of(false);
-        }),
-        finalize(() => (this.loading = false))
-      )
-      .subscribe((success) => {
-        if (success) {
-          this.loadCategories();
-        }
-      });
+      this.categoryService
+        .deleteOperatorCategory(category.id)
+        .pipe(
+          takeUntil(this.destroy$),
+          catchError((err) => {
+            const errorMsg =
+              err?.error?.message || err?.message || 'Errore sconosciuto';
+            this.error = `Errore durante l'eliminazione: ${errorMsg}`;
+            this.loading = false;
+            return of(false);
+          }),
+          finalize(() => (this.loading = false))
+        )
+        .subscribe((success) => {
+          if (success) {
+            this.ngZone.run(() => this.loadCategories());
+          }
+        });
+    });
   }
 
   toggleCategoryActive(category: OperatorCategory) {
-    this.loading = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      this.loading = true;
+      this.error = null;
 
-    const input: UpdateOperatorCategoryInput = {
-      isActive: !category.isActive,
-    };
+      const input: UpdateOperatorCategoryInput = {
+        isActive: !category.isActive,
+      };
 
-    this.categoryService
-      .updateOperatorCategory(category.id, input)
-      .pipe(
-        catchError((err) => {
-          const errorMsg =
-            err?.error?.message || err?.message || 'Errore sconosciuto';
-          this.error = `Errore durante l'aggiornamento: ${errorMsg}`;
-          this.loading = false;
-          return of(null);
-        }),
-        finalize(() => (this.loading = false))
-      )
-      .subscribe((updatedCategory) => {
-        if (updatedCategory) {
-          this.loadCategories();
-        }
-      });
+      this.categoryService
+        .updateOperatorCategory(category.id, input)
+        .pipe(
+          takeUntil(this.destroy$),
+          catchError((err) => {
+            const errorMsg =
+              err?.error?.message || err?.message || 'Errore sconosciuto';
+            this.error = `Errore durante l'aggiornamento: ${errorMsg}`;
+            this.loading = false;
+            return of(null);
+          }),
+          finalize(() => (this.loading = false))
+        )
+        .subscribe((updatedCategory) => {
+          if (updatedCategory) {
+            this.ngZone.run(() => this.loadCategories());
+          }
+        });
+    });
   }
 
   getMacroCategoryLabel(macroCategory: OperatorMacroCategory): string {

@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil, firstValueFrom } from 'rxjs';
+import { Subject, takeUntil, forkJoin } from 'rxjs';
 
 // Components
 import { OperatorSelectorComponent } from '../operator-selector/operator-selector.component';
@@ -74,75 +74,81 @@ export class OperatorWorkspaceComponent implements OnInit, OnDestroy {
 
   // ============ DATA LOADING ============
 
-  async loadOperators(): Promise<void> {
+  loadOperators(): void {
     this.loadingOperators = true;
     this.error = null;
 
-    try {
-      const operators = await firstValueFrom(
-        this.operatorService.getOperators(undefined, undefined, true)
-      );
-      this.operators = operators || [];
+    this.operatorService.getOperators(undefined, undefined, true)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (operators) => {
+          this.operators = operators || [];
+          this.loadingOperators = false;
 
-      // Auto-select first operator if available
-      if (this.operators.length > 0 && !this.selectedOperator) {
-        this.onOperatorChange(this.operators[0]);
-      }
-    } catch (err) {
-      console.error('Error loading operators:', err);
-      this.error = 'Errore nel caricamento degli operatori';
-    } finally {
-      this.loadingOperators = false;
-    }
+          // Auto-select first operator if available
+          if (this.operators.length > 0 && !this.selectedOperator) {
+            this.onOperatorChange(this.operators[0]);
+          }
+        },
+        error: (err) => {
+          console.error('Error loading operators:', err);
+          this.error = 'Errore nel caricamento degli operatori';
+          this.loadingOperators = false;
+        }
+      });
   }
 
-  async loadTodayAppointments(): Promise<void> {
+  loadTodayAppointments(): void {
     if (!this.selectedOperator) return;
 
     this.loadingAppointments = true;
     const todayStr = this.formatDate(this.today);
 
-    try {
-      const appointments = await firstValueFrom(
-        this.appointmentService.getAppointmentsByOperator(
-          this.selectedOperator.id,
-          todayStr,
-          todayStr
-        )
-      );
-
-      // Map to frontend model and sort by time
-      this.todayAppointments = (appointments || [])
-        .map(mapAvailabilityAppointmentToAppointment)
-        .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
-    } catch (err) {
-      console.error('Error loading appointments:', err);
-      this.error = 'Errore nel caricamento degli appuntamenti';
-      this.todayAppointments = [];
-    } finally {
-      this.loadingAppointments = false;
-    }
+    this.appointmentService.getAppointmentsByOperator(
+      this.selectedOperator.id,
+      todayStr,
+      todayStr
+    )
+    .pipe(takeUntil(this.destroy$))
+    .subscribe({
+      next: (appointments) => {
+        // Map to frontend model and sort by time
+        this.todayAppointments = (appointments || [])
+          .map(mapAvailabilityAppointmentToAppointment)
+          .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
+        this.loadingAppointments = false;
+      },
+      error: (err) => {
+        console.error('Error loading appointments:', err);
+        this.error = 'Errore nel caricamento degli appuntamenti';
+        this.todayAppointments = [];
+        this.loadingAppointments = false;
+      }
+    });
   }
 
-  async loadPatientData(patientId: number): Promise<void> {
+  loadPatientData(patientId: number): void {
     this.loadingPatient = true;
 
-    try {
-      // Load patient and paths in parallel
-      const [patient, paths] = await Promise.all([
-        firstValueFrom(this.patientService.getPatient(patientId)),
-        firstValueFrom(this.pathService.getPathsByPatient(patientId)),
-      ]);
-
-      this.selectedPatient = patient;
-      this.patientPaths = paths;
-    } catch (err) {
-      console.error('Error loading patient data:', err);
-      this.selectedPatient = null;
-      this.patientPaths = [];
-    } finally {
-      this.loadingPatient = false;
-    }
+    // Load patient and paths in parallel using forkJoin
+    forkJoin({
+      patient: this.patientService.getPatient(patientId),
+      paths: this.pathService.getPathsByPatient(patientId)
+    })
+    .pipe(takeUntil(this.destroy$))
+    .subscribe({
+      next: ({ patient, paths }) => {
+        this.selectedPatient = patient;
+        this.patientPaths = paths;
+        this.loadingPatient = false;
+      },
+      error: (err) => {
+        console.error('Error loading patient data:', err);
+        this.selectedPatient = null;
+        this.patientPaths = [];
+        this.loadingPatient = false;
+      }
+    });
   }
 
   // ============ EVENT HANDLERS ============
@@ -167,33 +173,33 @@ export class OperatorWorkspaceComponent implements OnInit, OnDestroy {
     }
   }
 
-  async onStartTreatment(): Promise<void> {
+  onStartTreatment(): void {
     if (!this.selectedAppointment) return;
 
-    try {
-      // Mark as attended
-      await firstValueFrom(
-        this.appointmentService.markAsAttended(this.selectedAppointment.id as string)
-      );
+    this.appointmentService.markAsAttended(this.selectedAppointment.id as string)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          // Update local state
+          this.selectedAppointment = {
+            ...this.selectedAppointment!,
+            bookingStatus: 'attended',
+          };
 
-      // Update local state
-      this.selectedAppointment = {
-        ...this.selectedAppointment,
-        bookingStatus: 'attended',
-      };
-
-      // Update in list
-      const index = this.todayAppointments.findIndex(
-        (a) => a.id === this.selectedAppointment?.id
-      );
-      if (index >= 0) {
-        this.todayAppointments[index] = this.selectedAppointment;
-        this.todayAppointments = [...this.todayAppointments]; // Trigger change detection
-      }
-    } catch (err) {
-      console.error('Error starting treatment:', err);
-      this.error = 'Errore nell\'avvio del trattamento';
-    }
+          // Update in list
+          const index = this.todayAppointments.findIndex(
+            (a) => a.id === this.selectedAppointment?.id
+          );
+          if (index >= 0) {
+            this.todayAppointments[index] = this.selectedAppointment;
+            this.todayAppointments = [...this.todayAppointments]; // Trigger change detection
+          }
+        },
+        error: (err) => {
+          console.error('Error starting treatment:', err);
+          this.error = 'Errore nell\'avvio del trattamento';
+        }
+      });
   }
 
   onCompleteTreatment(data: TreatmentCompletionData): void {
@@ -244,43 +250,66 @@ export class OperatorWorkspaceComponent implements OnInit, OnDestroy {
     folderElement?.scrollIntoView({ behavior: 'smooth' });
   }
 
-  async onCancelAppointment(): Promise<void> {
+  onCancelAppointment(): void {
     if (!this.selectedAppointment) return;
 
     const reason = prompt('Motivo della cancellazione:');
     if (reason === null) return; // User cancelled
 
-    try {
-      await firstValueFrom(
-        this.appointmentService.cancelAppointment(
-          this.selectedAppointment.id as string,
-          reason || undefined
-        )
-      );
+    this.appointmentService.cancelAppointment(
+      this.selectedAppointment.id as string,
+      reason || undefined
+    )
+    .pipe(takeUntil(this.destroy$))
+    .subscribe({
+      next: () => {
+        // Update local state
+        this.selectedAppointment = {
+          ...this.selectedAppointment!,
+          bookingStatus: 'cancelled',
+        };
 
-      // Update local state
-      this.selectedAppointment = {
-        ...this.selectedAppointment,
-        bookingStatus: 'cancelled',
-      };
-
-      // Update in list
-      const index = this.todayAppointments.findIndex(
-        (a) => a.id === this.selectedAppointment?.id
-      );
-      if (index >= 0) {
-        this.todayAppointments[index] = this.selectedAppointment;
-        this.todayAppointments = [...this.todayAppointments];
+        // Update in list
+        const index = this.todayAppointments.findIndex(
+          (a) => a.id === this.selectedAppointment?.id
+        );
+        if (index >= 0) {
+          this.todayAppointments[index] = this.selectedAppointment;
+          this.todayAppointments = [...this.todayAppointments];
+        }
+      },
+      error: (err) => {
+        console.error('Error cancelling appointment:', err);
+        this.error = 'Errore nella cancellazione dell\'appuntamento';
       }
-    } catch (err) {
-      console.error('Error cancelling appointment:', err);
-      this.error = 'Errore nella cancellazione dell\'appuntamento';
-    }
+    });
   }
 
   onPathSelect(path: TherapeuticPath): void {
     // Could be used to sync selection between timeline and accordion
     console.log('Path selected:', path.name);
+  }
+
+  onPathCreated(newPath: TherapeuticPath): void {
+    // Add the new path to the list
+    this.patientPaths = [newPath, ...this.patientPaths];
+    console.log('Path created:', newPath.name);
+  }
+
+  onPathUpdated(updatedPath: TherapeuticPath): void {
+    // Update the path in the list
+    const index = this.patientPaths.findIndex(p => p.id === updatedPath.id);
+    if (index >= 0) {
+      this.patientPaths[index] = updatedPath;
+      this.patientPaths = [...this.patientPaths]; // Trigger change detection
+    }
+    console.log('Path updated:', updatedPath.name);
+  }
+
+  onPathDeleted(pathId: string): void {
+    // Remove the path from the list
+    this.patientPaths = this.patientPaths.filter(p => p.id !== pathId);
+    console.log('Path deleted:', pathId);
   }
 
   onViewPatientDetails(patient: Patient): void {

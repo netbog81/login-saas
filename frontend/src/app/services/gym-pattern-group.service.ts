@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Apollo } from 'apollo-angular';
+import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   GET_GYM_PATTERN_GROUPS,
   GET_GYM_PATTERN_GROUP,
@@ -113,20 +113,19 @@ export interface GymPatternGroup {
 @Injectable({
   providedIn: 'root',
 })
-export class GymPatternGroupService {
-  constructor(private apollo: Apollo) {}
+export class GymPatternGroupService extends BaseGraphQLService {
+  constructor(injector: Injector) {
+    super(injector);
+  }
 
   /**
    * Ottiene tutti i GymPatternGroup per una palestra (opzionale)
    */
   getAll(gymRoomId?: string): Observable<GymPatternGroup[]> {
-    return this.apollo
-      .query<{ gymPatternGroups: GymPatternGroup[] }>({
-        query: GET_GYM_PATTERN_GROUPS,
-        variables: { gymRoomId },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymPatternGroups || []));
+    return this.query<{ gymPatternGroups: GymPatternGroup[] }>(
+      GET_GYM_PATTERN_GROUPS,
+      { gymRoomId }
+    ).pipe(map((result) => result.gymPatternGroups || []));
   }
 
   /**
@@ -140,157 +139,133 @@ export class GymPatternGroupService {
    * Ottiene un singolo GymPatternGroup per ID
    */
   getById(id: string): Observable<GymPatternGroup | null> {
-    return this.apollo
-      .query<{ gymPatternGroup: GymPatternGroup | null }>({
-        query: GET_GYM_PATTERN_GROUP,
-        variables: { id },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.gymPatternGroup || null));
+    return this.query<{ gymPatternGroup: GymPatternGroup | null }>(
+      GET_GYM_PATTERN_GROUP,
+      { id }
+    ).pipe(map((result) => result.gymPatternGroup || null));
   }
 
   /**
    * Ottiene il GymPatternGroup corrente (attivo) per una palestra
    */
   getCurrent(gymRoomId: string): Observable<GymPatternGroup | null> {
-    return this.apollo
-      .query<{ currentGymPatternGroup: GymPatternGroup | null }>({
-        query: GET_CURRENT_GYM_PATTERN_GROUP,
-        variables: { gymRoomId },
-        fetchPolicy: 'network-only',
-      })
-      .pipe(map((result) => result.data?.currentGymPatternGroup || null));
+    return this.query<{ currentGymPatternGroup: GymPatternGroup | null }>(
+      GET_CURRENT_GYM_PATTERN_GROUP,
+      { gymRoomId }
+    ).pipe(map((result) => result.currentGymPatternGroup || null));
   }
 
   /**
    * Crea un nuovo GymPatternGroup
    */
   create(input: CreateGymPatternGroupInput): Observable<GymPatternGroup> {
-    return this.apollo
-      .mutate<{ createGymPatternGroup: GymPatternGroup }>({
-        mutation: CREATE_GYM_PATTERN_GROUP,
-        variables: { input },
-        refetchQueries: [
-          { query: GET_GYM_PATTERN_GROUPS, variables: { gymRoomId: input.gymRoomId } },
-          { query: GET_GYM_PATTERN_GROUPS },
-        ],
-        awaitRefetchQueries: true,
+    return this.mutate<{ createGymPatternGroup: GymPatternGroup }>(
+      CREATE_GYM_PATTERN_GROUP,
+      { input },
+      [
+        { query: GET_GYM_PATTERN_GROUPS, variables: { gymRoomId: input.gymRoomId } },
+        { query: GET_GYM_PATTERN_GROUPS },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.createGymPatternGroup) {
+          throw new Error('Errore nella creazione del template palestra');
+        }
+        return result.createGymPatternGroup;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nella creazione del template palestra');
-          }
-          return result.data.createGymPatternGroup;
-        })
-      );
+    );
   }
 
   /**
    * Aggiorna un GymPatternGroup esistente
    */
   update(id: string, input: UpdateGymPatternGroupInput): Observable<GymPatternGroup> {
-    return this.apollo
-      .mutate<{ updateGymPatternGroup: GymPatternGroup }>({
-        mutation: UPDATE_GYM_PATTERN_GROUP,
-        variables: { id, input },
-        refetchQueries: [
-          { query: GET_GYM_PATTERN_GROUPS },
-          { query: GET_GYM_PATTERN_GROUP, variables: { id } },
-        ],
-        awaitRefetchQueries: true,
+    return this.mutate<{ updateGymPatternGroup: GymPatternGroup }>(
+      UPDATE_GYM_PATTERN_GROUP,
+      { id, input },
+      [
+        { query: GET_GYM_PATTERN_GROUPS },
+        { query: GET_GYM_PATTERN_GROUP, variables: { id } },
+      ]
+    ).pipe(
+      map((result) => {
+        if (!result.updateGymPatternGroup) {
+          throw new Error('Errore nell\'aggiornamento del template palestra');
+        }
+        return result.updateGymPatternGroup;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'aggiornamento del template palestra');
-          }
-          return result.data.updateGymPatternGroup;
-        })
-      );
+    );
   }
 
   /**
    * Elimina un GymPatternGroup
    */
   delete(id: string): Observable<boolean> {
-    return this.apollo
-      .mutate<{ deleteGymPatternGroup: boolean }>({
-        mutation: DELETE_GYM_PATTERN_GROUP,
-        variables: { id },
-        refetchQueries: [{ query: GET_GYM_PATTERN_GROUPS }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ deleteGymPatternGroup: boolean }>(
+      DELETE_GYM_PATTERN_GROUP,
+      { id },
+      [{ query: GET_GYM_PATTERN_GROUPS }]
+    ).pipe(
+      map((result) => {
+        if (result.deleteGymPatternGroup === undefined) {
+          throw new Error('Errore nell\'eliminazione del template palestra');
+        }
+        return result.deleteGymPatternGroup;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'eliminazione del template palestra');
-          }
-          return result.data.deleteGymPatternGroup;
-        })
-      );
+    );
   }
 
   /**
    * Attiva un GymPatternGroup (imposta come corrente per la palestra)
    */
   activate(id: string): Observable<GymPatternGroup> {
-    return this.apollo
-      .mutate<{ activateGymPatternGroup: GymPatternGroup }>({
-        mutation: ACTIVATE_GYM_PATTERN_GROUP,
-        variables: { id },
-        refetchQueries: [{ query: GET_GYM_PATTERN_GROUPS }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ activateGymPatternGroup: GymPatternGroup }>(
+      ACTIVATE_GYM_PATTERN_GROUP,
+      { id },
+      [{ query: GET_GYM_PATTERN_GROUPS }]
+    ).pipe(
+      map((result) => {
+        if (!result.activateGymPatternGroup) {
+          throw new Error('Errore nell\'attivazione del template palestra');
+        }
+        return result.activateGymPatternGroup;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nell\'attivazione del template palestra');
-          }
-          return result.data.activateGymPatternGroup;
-        })
-      );
+    );
   }
 
   /**
    * Disattiva un GymPatternGroup
    */
   deactivate(id: string): Observable<GymPatternGroup> {
-    return this.apollo
-      .mutate<{ deactivateGymPatternGroup: GymPatternGroup }>({
-        mutation: DEACTIVATE_GYM_PATTERN_GROUP,
-        variables: { id },
-        refetchQueries: [{ query: GET_GYM_PATTERN_GROUPS }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ deactivateGymPatternGroup: GymPatternGroup }>(
+      DEACTIVATE_GYM_PATTERN_GROUP,
+      { id },
+      [{ query: GET_GYM_PATTERN_GROUPS }]
+    ).pipe(
+      map((result) => {
+        if (!result.deactivateGymPatternGroup) {
+          throw new Error('Errore nella disattivazione del template palestra');
+        }
+        return result.deactivateGymPatternGroup;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nella disattivazione del template palestra');
-          }
-          return result.data.deactivateGymPatternGroup;
-        })
-      );
+    );
   }
 
   /**
    * Duplica un GymPatternGroup con un nuovo nome
    */
   duplicate(id: string, name: string): Observable<GymPatternGroup> {
-    return this.apollo
-      .mutate<{ duplicateGymPatternGroup: GymPatternGroup }>({
-        mutation: DUPLICATE_GYM_PATTERN_GROUP,
-        variables: { id, newName: name },
-        refetchQueries: [{ query: GET_GYM_PATTERN_GROUPS }],
-        awaitRefetchQueries: true,
+    return this.mutate<{ duplicateGymPatternGroup: GymPatternGroup }>(
+      DUPLICATE_GYM_PATTERN_GROUP,
+      { id, newName: name },
+      [{ query: GET_GYM_PATTERN_GROUPS }]
+    ).pipe(
+      map((result) => {
+        if (!result.duplicateGymPatternGroup) {
+          throw new Error('Errore nella duplicazione del template palestra');
+        }
+        return result.duplicateGymPatternGroup;
       })
-      .pipe(
-        map((result) => {
-          if (!result.data) {
-            throw new Error('Errore nella duplicazione del template palestra');
-          }
-          return result.data.duplicateGymPatternGroup;
-        })
-      );
+    );
   }
 }

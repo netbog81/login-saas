@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -62,7 +62,8 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   constructor(
     private availabilityState: AvailabilityStateService,
     private serviceService: ServiceService,
-    private subcategoryService: ServiceSubcategoryService
+    private subcategoryService: ServiceSubcategoryService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit() {
@@ -122,27 +123,66 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   }
 
   selectService(service: Service) {
-    this.selectedService = service;
+    this.ngZone.run(() => {
+      this.selectedService = service;
+    });
   }
 
   openServiceForm(service?: Service) {
-    if (service) {
-      this.selectedService = service;
-      this.editingService = {
-        name: service.name,
-        description: service.description,
-        defaultDuration: service.defaultDuration,
-        defaultPrice: service.defaultPrice,
-        bufferTimeBefore: service.bufferTimeBefore,
-        bufferTimeAfter: service.bufferTimeAfter,
-        isActive: service.isActive,
-        color: service.color || '#007bff',
-        macroCategory: service.macroCategory || OperatorMacroCategory.Other,
-        subcategoryId: (service as any).subcategoryId || null,
-        discountFE: (service as any).discountFE || null
-      };
+    this.ngZone.run(() => {
+      if (service) {
+        this.selectedService = service;
+        this.editingService = {
+          name: service.name,
+          description: service.description,
+          defaultDuration: service.defaultDuration,
+          defaultPrice: service.defaultPrice,
+          bufferTimeBefore: service.bufferTimeBefore,
+          bufferTimeAfter: service.bufferTimeAfter,
+          isActive: service.isActive,
+          color: service.color || '#007bff',
+          macroCategory: service.macroCategory || OperatorMacroCategory.Other,
+          subcategoryId: (service as any).subcategoryId || null,
+          discountFE: (service as any).discountFE || null
+        };
+        this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
+      } else {
+        this.selectedService = null;
+        this.editingService = {
+          name: '',
+          description: '',
+          defaultDuration: 30,
+          defaultPrice: 0,
+          bufferTimeBefore: 0,
+          bufferTimeAfter: 0,
+          isActive: true,
+          color: '#007bff',
+          macroCategory: OperatorMacroCategory.Other,
+          subcategoryId: null,
+          discountFE: null
+        };
+        this.filterSubcategoriesByMacroCategory(OperatorMacroCategory.Other);
+      }
+      this.showServiceForm = true;
+    });
+  }
+
+  onMacroCategoryChange() {
+    this.ngZone.run(() => {
+      this.editingService.subcategoryId = null;
       this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
-    } else {
+    });
+  }
+
+  filterSubcategoriesByMacroCategory(macroCategory: OperatorMacroCategory) {
+    this.filteredSubcategories = this.allSubcategories.filter(
+      sub => sub.macroCategory === macroCategory
+    );
+  }
+
+  closeServiceForm() {
+    this.ngZone.run(() => {
+      this.showServiceForm = false;
       this.selectedService = null;
       this.editingService = {
         name: '',
@@ -157,39 +197,8 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         subcategoryId: null,
         discountFE: null
       };
-      this.filterSubcategoriesByMacroCategory(OperatorMacroCategory.Other);
-    }
-    this.showServiceForm = true;
-  }
-
-  onMacroCategoryChange() {
-    this.editingService.subcategoryId = null;
-    this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
-  }
-
-  filterSubcategoriesByMacroCategory(macroCategory: OperatorMacroCategory) {
-    this.filteredSubcategories = this.allSubcategories.filter(
-      sub => sub.macroCategory === macroCategory
-    );
-  }
-
-  closeServiceForm() {
-    this.showServiceForm = false;
-    this.selectedService = null;
-    this.editingService = {
-      name: '',
-      description: '',
-      defaultDuration: 30,
-      defaultPrice: 0,
-      bufferTimeBefore: 0,
-      bufferTimeAfter: 0,
-      isActive: true,
-      color: '#007bff',
-      macroCategory: OperatorMacroCategory.Other,
-      subcategoryId: null,
-      discountFE: null
-    };
-    this.filteredSubcategories = [];
+      this.filteredSubcategories = [];
+    });
   }
 
   saveService() {
@@ -261,44 +270,52 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   }
 
   deleteService(service: Service) {
-    if (!confirm(`Sei sicuro di voler eliminare il servizio "${service.name}"?\n\nQuesto rimuoverà anche tutte le assegnazioni agli operatori.`)) {
-      return;
-    }
+    this.ngZone.run(() => {
+      if (!confirm(`Sei sicuro di voler eliminare il servizio "${service.name}"?\n\nQuesto rimuoverà anche tutte le assegnazioni agli operatori.`)) {
+        return;
+      }
 
-    this.loading = true;
-    this.serviceService.deleteService(service.id)
-      .subscribe({
-        next: () => {
-          this.availabilityState.removeService(service.id);
-          if (this.selectedService?.id === service.id) {
-            this.selectedService = null;
+      this.loading = true;
+      this.serviceService.deleteService(service.id)
+        .subscribe({
+          next: () => {
+            this.ngZone.run(() => {
+              this.availabilityState.removeService(service.id);
+              if (this.selectedService?.id === service.id) {
+                this.selectedService = null;
+              }
+              this.loading = false;
+            });
+          },
+          error: (error) => {
+            this.ngZone.run(() => {
+              console.error('Error deleting service:', error);
+              this.error = 'Errore durante l\'eliminazione del servizio';
+              this.loading = false;
+            });
           }
-          this.loading = false;
-        },
-        error: (error) => {
-          console.error('Error deleting service:', error);
-          this.error = 'Errore durante l\'eliminazione del servizio';
-          this.loading = false;
-        }
-      });
+        });
+    });
   }
 
   duplicateService(service: Service) {
-    this.openServiceForm();
-    this.editingService = {
-      name: `${service.name} (copia)`,
-      description: service.description,
-      defaultDuration: service.defaultDuration,
-      defaultPrice: service.defaultPrice,
-      bufferTimeBefore: service.bufferTimeBefore,
-      bufferTimeAfter: service.bufferTimeAfter,
-      isActive: service.isActive,
-      color: service.color,
-      macroCategory: service.macroCategory || OperatorMacroCategory.Other,
-      subcategoryId: (service as any).subcategoryId || null,
-      discountFE: (service as any).discountFE || null
-    };
-    this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
+    this.ngZone.run(() => {
+      this.openServiceForm();
+      this.editingService = {
+        name: `${service.name} (copia)`,
+        description: service.description,
+        defaultDuration: service.defaultDuration,
+        defaultPrice: service.defaultPrice,
+        bufferTimeBefore: service.bufferTimeBefore,
+        bufferTimeAfter: service.bufferTimeAfter,
+        isActive: service.isActive,
+        color: service.color,
+        macroCategory: service.macroCategory || OperatorMacroCategory.Other,
+        subcategoryId: (service as any).subcategoryId || null,
+        discountFE: (service as any).discountFE || null
+      };
+      this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
+    });
   }
 
   formatDuration(minutes: number): string {

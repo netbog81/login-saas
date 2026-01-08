@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -52,7 +52,10 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
     [OperatorMacroCategory.Other]: 'Altro'
   };
 
-  constructor(private subcategoryService: ServiceSubcategoryService) {}
+  constructor(
+    private subcategoryService: ServiceSubcategoryService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit() {
     this.loadSubcategories();
@@ -83,33 +86,37 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
   }
 
   openSubcategoryForm(subcategory?: ServiceSubcategory) {
-    if (subcategory) {
-      this.isEditMode = true;
-      this.editingSubcategoryId = subcategory.id;
-      this.editingSubcategory = {
-        macroCategory: subcategory.macroCategory,
-        name: subcategory.name,
-        description: subcategory.description || '',
-        isActive: subcategory.isActive
-      };
-    } else {
-      this.isEditMode = false;
-      this.editingSubcategoryId = null;
-      this.editingSubcategory = {
-        macroCategory: this.filterMacroCategory || OperatorMacroCategory.Physiotherapist,
-        name: '',
-        description: '',
-        isActive: true
-      };
-    }
-    this.showSubcategoryForm = true;
-    this.error = null;
+    this.ngZone.run(() => {
+      if (subcategory) {
+        this.isEditMode = true;
+        this.editingSubcategoryId = subcategory.id;
+        this.editingSubcategory = {
+          macroCategory: subcategory.macroCategory,
+          name: subcategory.name,
+          description: subcategory.description || '',
+          isActive: subcategory.isActive
+        };
+      } else {
+        this.isEditMode = false;
+        this.editingSubcategoryId = null;
+        this.editingSubcategory = {
+          macroCategory: this.filterMacroCategory || OperatorMacroCategory.Physiotherapist,
+          name: '',
+          description: '',
+          isActive: true
+        };
+      }
+      this.showSubcategoryForm = true;
+      this.error = null;
+    });
   }
 
   closeSubcategoryForm() {
-    this.showSubcategoryForm = false;
-    this.editingSubcategoryId = null;
-    this.error = null;
+    this.ngZone.run(() => {
+      this.showSubcategoryForm = false;
+      this.editingSubcategoryId = null;
+      this.error = null;
+    });
   }
 
   saveSubcategory() {
@@ -158,24 +165,42 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
   }
 
   deleteSubcategory(subcategory: ServiceSubcategory) {
-    if (!confirm(`Sei sicuro di voler eliminare la sotto-categoria "${subcategory.name}"?`)) {
-      return;
-    }
+    this.ngZone.run(() => {
+      if (!confirm(`Sei sicuro di voler eliminare la sotto-categoria "${subcategory.name}"?`)) {
+        return;
+      }
 
-    this.loading = true;
-    this.subcategoryService.deleteServiceSubcategory(subcategory.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => this.loadSubcategories(),
-        error: () => {
-          this.error = 'Errore nell\'eliminazione della sotto-categoria';
-          this.loading = false;
-        }
-      });
+      this.loading = true;
+      this.subcategoryService.deleteServiceSubcategory(subcategory.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.ngZone.run(() => this.loadSubcategories());
+          },
+          error: () => {
+            this.ngZone.run(() => {
+              this.error = 'Errore nell\'eliminazione della sotto-categoria';
+              this.loading = false;
+            });
+          }
+        });
+    });
   }
 
   getSubcategoryCount(macroCategory: OperatorMacroCategory): number {
     return this.subcategories.filter(s => s.macroCategory === macroCategory).length;
+  }
+
+  setFilterMacroCategory(category: OperatorMacroCategory | null) {
+    this.ngZone.run(() => {
+      this.filterMacroCategory = category;
+    });
+  }
+
+  toggleShowInactive() {
+    this.ngZone.run(() => {
+      this.showInactive = !this.showInactive;
+    });
   }
 
   ngOnDestroy() {
