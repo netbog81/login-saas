@@ -1131,31 +1131,37 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
   // Grid cell events
   onCellMouseDown(event: CellEvent): void {
-    // If summary is open, close it and don't start dragging
-    if (this.isSummaryOpen) {
-      this.closeSummary();
-      return;
-    }
+    this.ngZone.run(() => {
+      // If summary is open, close it and don't start dragging
+      if (this.isSummaryOpen) {
+        this.closeSummary();
+        return;
+      }
 
-    this.dragStartCell = event;
-    this.dragCurrentCell = event;
-    this.isDragging = true;
+      this.dragStartCell = event;
+      this.dragCurrentCell = event;
+      this.isDragging = true;
+    });
   }
 
   onCellMouseEnter(event: CellEvent): void {
-    if (this.isDragging) {
-      this.dragCurrentCell = event;
-    }
+    this.ngZone.run(() => {
+      if (this.isDragging) {
+        this.dragCurrentCell = event;
+      }
+    });
   }
 
   onCellMouseUp(event: CellEvent): void {
-    // Don't create appointment if we just closed the summary
-    if (this.isDragging && this.dragStartCell && !this.isSummaryOpen) {
-      this.createAppointmentFromDrag();
-    }
-    this.isDragging = false;
-    this.dragStartCell = null;
-    this.dragCurrentCell = null;
+    this.ngZone.run(() => {
+      // Don't create appointment if we just closed the summary
+      if (this.isDragging && this.dragStartCell && !this.isSummaryOpen) {
+        this.createAppointmentFromDrag();
+      }
+      this.isDragging = false;
+      this.dragStartCell = null;
+      this.dragCurrentCell = null;
+    });
   }
 
   onCellDblClick(event: CellEvent): void {
