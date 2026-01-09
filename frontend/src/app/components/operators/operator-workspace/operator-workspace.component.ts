@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 
@@ -54,13 +54,14 @@ export class OperatorWorkspaceComponent implements OnInit, OnDestroy {
   sidebarCollapsed = false;
 
   // Date
-  today = new Date();
+  selectedDate = new Date();
 
   constructor(
     private operatorService: OperatorService,
     private appointmentService: AvailabilityAppointmentService,
     private patientService: PatientService,
-    private pathService: TherapeuticPathService
+    private pathService: TherapeuticPathService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
@@ -102,12 +103,12 @@ export class OperatorWorkspaceComponent implements OnInit, OnDestroy {
     if (!this.selectedOperator) return;
 
     this.loadingAppointments = true;
-    const todayStr = this.formatDate(this.today);
+    const dateStr = this.formatDate(this.selectedDate);
 
     this.appointmentService.getAppointmentsByOperator(
       this.selectedOperator.id,
-      todayStr,
-      todayStr
+      dateStr,
+      dateStr
     )
     .pipe(takeUntil(this.destroy$))
     .subscribe({
@@ -338,5 +339,44 @@ export class OperatorWorkspaceComponent implements OnInit, OnDestroy {
       month: 'long',
       year: 'numeric',
     });
+  }
+
+  // ============ DATE NAVIGATION ============
+
+  navigatePrevious(): void {
+    this.ngZone.run(() => {
+      this.selectedDate = new Date(this.selectedDate);
+      this.selectedDate.setDate(this.selectedDate.getDate() - 1);
+      this.selectedAppointment = null;
+      this.selectedPatient = null;
+      this.patientPaths = [];
+      this.loadTodayAppointments();
+    });
+  }
+
+  navigateNext(): void {
+    this.ngZone.run(() => {
+      this.selectedDate = new Date(this.selectedDate);
+      this.selectedDate.setDate(this.selectedDate.getDate() + 1);
+      this.selectedAppointment = null;
+      this.selectedPatient = null;
+      this.patientPaths = [];
+      this.loadTodayAppointments();
+    });
+  }
+
+  navigateToToday(): void {
+    this.ngZone.run(() => {
+      this.selectedDate = new Date();
+      this.selectedAppointment = null;
+      this.selectedPatient = null;
+      this.patientPaths = [];
+      this.loadTodayAppointments();
+    });
+  }
+
+  isToday(): boolean {
+    const today = new Date();
+    return this.selectedDate.toDateString() === today.toDateString();
   }
 }

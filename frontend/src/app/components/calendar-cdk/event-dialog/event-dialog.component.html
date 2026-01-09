@@ -94,6 +94,7 @@
         <input
           type="text"
           [(ngModel)]="patientSearch"
+          (input)="onPatientSearchChange()"
           placeholder="Cerca paziente..."
           class="form-input">
 

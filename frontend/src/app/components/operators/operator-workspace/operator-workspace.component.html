@@ -15,7 +15,32 @@
     </div>
 
     <div class="header-right">
-      <span class="current-date">{{ formatFullDate(today) }}</span>
+      <div class="date-navigation">
+        <button
+          class="btn-nav"
+          (click)="navigatePrevious()"
+          title="Giorno precedente">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button
+          class="btn-today"
+          (click)="navigateToToday()"
+          [disabled]="isToday()"
+          title="Vai a oggi">
+          Oggi
+        </button>
+        <button
+          class="btn-nav"
+          (click)="navigateNext()"
+          title="Giorno successivo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
+      <span class="current-date">{{ formatFullDate(selectedDate) }}</span>
     </div>
   </header>
 

@@ -387,21 +387,25 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
    * Gestisce il toggle degli strumenti
    */
   onInstrumentsToggle(): void {
-    if (!this.instrumentsEnabled) {
-      // Reset instrument config when disabled
-      this.selectedInstrumentCategoryId = '';
-      this.selectedInstrument2CategoryId = '';
-      this.instrumentPosition = 'first';
-      this.instrumentOrderMatters = false;
-    }
+    this.runInZone(() => {
+      if (!this.instrumentsEnabled) {
+        // Reset instrument config when disabled
+        this.selectedInstrumentCategoryId = '';
+        this.selectedInstrument2CategoryId = '';
+        this.instrumentPosition = 'first';
+        this.instrumentOrderMatters = false;
+      }
+    });
   }
 
   /**
    * Rimuove il secondo strumento
    */
   removeSecondInstrument(): void {
-    this.selectedInstrument2CategoryId = '';
-    this.instrumentOrderMatters = false;
+    this.runInZone(() => {
+      this.selectedInstrument2CategoryId = '';
+      this.instrumentOrderMatters = false;
+    });
   }
 
   // ==================== RECURRING METHODS ====================
@@ -410,22 +414,24 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
    * Gestisce il toggle della ricorrenza
    */
   onRepeatToggle(): void {
-    if (!this.repeatEnabled) {
-      // Reset config when disabled
-      this.repeatConfig = {
-        type: 'weekly',
-        interval: 1,
-        selectedDays: [],
-        endType: 'after',
-        occurrences: 4,
-        untilDate: ''
-      };
-    } else {
-      // Pre-select current day of week
-      const selectedDate = this.date ? new Date(this.date) : new Date();
-      const dayOfWeek = selectedDate.getDay();
-      this.repeatConfig.selectedDays = [dayOfWeek];
-    }
+    this.runInZone(() => {
+      if (!this.repeatEnabled) {
+        // Reset config when disabled
+        this.repeatConfig = {
+          type: 'weekly',
+          interval: 1,
+          selectedDays: [],
+          endType: 'after',
+          occurrences: 4,
+          untilDate: ''
+        };
+      } else {
+        // Pre-select current day of week
+        const selectedDate = this.date ? new Date(this.date) : new Date();
+        const dayOfWeek = selectedDate.getDay();
+        this.repeatConfig.selectedDays = [dayOfWeek];
+      }
+    });
   }
 
   /**
@@ -439,17 +445,19 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
    * Toggle di un giorno della settimana
    */
   toggleDay(dayIndex: number): void {
-    if (!this.repeatConfig.selectedDays) {
-      this.repeatConfig.selectedDays = [];
-    }
+    this.runInZone(() => {
+      if (!this.repeatConfig.selectedDays) {
+        this.repeatConfig.selectedDays = [];
+      }
 
-    const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
-    if (index === -1) {
-      this.repeatConfig.selectedDays.push(dayIndex);
-      this.repeatConfig.selectedDays.sort();
-    } else {
-      this.repeatConfig.selectedDays.splice(index, 1);
-    }
+      const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
+      if (index === -1) {
+        this.repeatConfig.selectedDays.push(dayIndex);
+        this.repeatConfig.selectedDays.sort();
+      } else {
+        this.repeatConfig.selectedDays.splice(index, 1);
+      }
+    });
   }
 
   /**
@@ -503,36 +511,48 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
     return count > 0 ? `(circa ${count} appuntamenti)` : '';
   }
 
+  onPatientSearchChange(): void {
+    this.runInZone(() => {
+      // Force change detection for filtered patients
+    });
+  }
+
   onPatientSelect(patientId: number | null): void {
-    this.patientId = patientId;
-    this.patientSearch = '';  // Chiude il dropdown di ricerca
-    if (patientId) {
-      // Usa == per confronto loose (GraphQL può restituire ID come stringa)
-      const patient = this.data.patients.find(p => p.id == patientId);
-      if (patient) {
-        this.title = `${patient.nome} ${patient.cognome}`;
+    this.runInZone(() => {
+      this.patientId = patientId;
+      this.patientSearch = '';  // Chiude il dropdown di ricerca
+      if (patientId) {
+        // Usa == per confronto loose (GraphQL può restituire ID come stringa)
+        const patient = this.data.patients.find(p => p.id == patientId);
+        if (patient) {
+          this.title = `${patient.nome} ${patient.cognome}`;
+        }
       }
-    }
+    });
   }
 
   onShowNewPatientForm(): void {
-    this.showNewPatientForm = true;
-    this.newPatient = {
-      nome: '',
-      cognome: '',
-      telefono: '',
-      cellulare: '',
-      email: '',
-      notes: '',
-      genere: 'NON_SPECIFICATO',  // GraphQL enum key name (required)
-      tipoPaziente: 'ADULTO_AUTONOMO'  // GraphQL enum key name (required)
-    };
+    this.runInZone(() => {
+      this.showNewPatientForm = true;
+      this.newPatient = {
+        nome: '',
+        cognome: '',
+        telefono: '',
+        cellulare: '',
+        email: '',
+        notes: '',
+        genere: 'NON_SPECIFICATO',  // GraphQL enum key name (required)
+        tipoPaziente: 'ADULTO_AUTONOMO'  // GraphQL enum key name (required)
+      };
+    });
   }
 
   onCancelNewPatient(): void {
-    this.showNewPatientForm = false;
-    this.newPatient = {};
-    this.newPatientError = '';
+    this.runInZone(() => {
+      this.showNewPatientForm = false;
+      this.newPatient = {};
+      this.newPatientError = '';
+    });
   }
 
   async onSaveNewPatient(): Promise<void> {
