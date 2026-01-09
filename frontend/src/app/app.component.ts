@@ -40,6 +40,12 @@ import { ContextPreservationService } from './core/services/context-preservation
           </a>
           <a
             class="nav-item"
+            routerLink="/operatori-new"
+            routerLinkActive="active">
+            Operatori New
+          </a>
+          <a
+            class="nav-item"
             routerLink="/availability"
             routerLinkActive="active">
             Disponibilità

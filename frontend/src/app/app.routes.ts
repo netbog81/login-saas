@@ -5,6 +5,7 @@ import { ConflictDashboardComponent } from './components/conflict-dashboard/conf
 import { SettingsComponent } from './components/settings/settings.component';
 import { PatientManagementComponent } from './components/patients/patient-management/patient-management.component';
 import { OperatorWorkspaceComponent } from './components/operators/operator-workspace/operator-workspace.component';
+import { OperatorWorkspaceContainer } from './features/operators-new/containers/operator-workspace.container';
 
 export const routes: Routes = [
   {
@@ -21,6 +22,11 @@ export const routes: Routes = [
     path: 'operatori',
     component: OperatorWorkspaceComponent,
     title: 'Workspace Operatore'
+  },
+  {
+    path: 'operatori-new',
+    component: OperatorWorkspaceContainer,
+    title: 'Workspace Operatore (New)'
   },
   {
     path: 'availability',
