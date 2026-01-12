@@ -31,10 +31,18 @@ import {
   MARK_TREATMENT_INVOICED_TO_PATIENT,
   MARK_TREATMENT_INVOICED_BY_OPERATOR,
   UPDATE_TREATMENT_INSTRUMENTS,
-  CANCEL_APPOINTMENT_WITH_NOTICE,
-  MARK_APPOINTMENT_NO_SHOW,
-  MARK_APPOINTMENT_ATTENDED,
+  DELETE_TREATMENT,
 } from '../graphql/operations/treatment.mutations';
+
+// Appointment mutations (for status changes)
+import {
+  CANCEL_APPOINTMENT_WITH_NOTICE,
+  MARK_APPOINTMENT_ATTENDED,
+} from '../graphql/operations/availability-appointment.mutations';
+
+import {
+  MARK_APPOINTMENT_AS_NO_SHOW,
+} from '../graphql/operations/availability-appointment.mutations';
 
 @Injectable({
   providedIn: 'root',
@@ -128,9 +136,16 @@ export class TreatmentService extends BaseGraphQLService {
   /**
    * Create treatment from appointment (when patient arrives)
    */
-  createTreatment(appointmentId: string): Observable<Treatment> {
-    return this.mutate<{ createTreatment: Treatment }>(CREATE_TREATMENT, { appointmentId })
-      .pipe(map((result) => result.createTreatment));
+  createTreatment(
+    appointmentId: string,
+    therapeuticPathId: string,
+    scontoFE: boolean = false
+  ): Observable<Treatment> {
+    return this.mutate<{ createTreatment: Treatment }>(CREATE_TREATMENT, {
+      appointmentId,
+      therapeuticPathId,
+      scontoFE
+    }).pipe(map((result) => result.createTreatment));
   }
 
   /**
@@ -187,6 +202,14 @@ export class TreatmentService extends BaseGraphQLService {
     ).pipe(map((result) => result.updateTreatmentInstruments));
   }
 
+  /**
+   * Delete a treatment (for cancelling in-progress treatments)
+   */
+  deleteTreatment(id: string): Observable<boolean> {
+    return this.mutate<{ deleteTreatment: boolean }>(DELETE_TREATMENT, { id })
+      .pipe(map((result) => result.deleteTreatment));
+  }
+
   // ==================== APPOINTMENT STATUS MUTATIONS ====================
 
   /**
@@ -203,8 +226,8 @@ export class TreatmentService extends BaseGraphQLService {
    * Mark appointment as no-show
    */
   markAppointmentNoShow(id: string): Observable<Appointment> {
-    return this.mutate<{ markAppointmentNoShow: Appointment }>(MARK_APPOINTMENT_NO_SHOW, { id })
-      .pipe(map((result) => result.markAppointmentNoShow));
+    return this.mutate<{ markAppointmentAsNoShow: Appointment }>(MARK_APPOINTMENT_AS_NO_SHOW, { id })
+      .pipe(map((result) => result.markAppointmentAsNoShow));
   }
 
   /**

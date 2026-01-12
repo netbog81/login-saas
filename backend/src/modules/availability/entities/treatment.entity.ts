@@ -6,6 +6,7 @@ import { Service } from './service.entity';
 import { Patient } from '../../../entities/patient.entity';
 import { PatientModel } from '../../../patients/models/patient.model';
 import { TreatmentInstrument } from './treatment-instrument.entity';
+import { TherapeuticPath } from './therapeutic-path.entity';
 import { TreatmentStatus, PaymentMethod } from './treatment-enums';
 
 // Re-export enums for backward compatibility
@@ -19,6 +20,7 @@ export { TreatmentStatus, PaymentMethod } from './treatment-enums';
 @Index('IDX_treatments_patient', ['patientId'])
 @Index('IDX_treatments_status', ['status'])
 @Index('IDX_treatments_started_at', ['startedAt'])
+@Index('IDX_treatments_therapeutic_path', ['therapeuticPathId'])
 export class Treatment {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
@@ -42,6 +44,16 @@ export class Treatment {
   @Field(() => ID, { nullable: true })
   @Column('uuid', { nullable: true })
   serviceId?: string;
+
+  @Field(() => ID)
+  @Column('uuid')
+  therapeuticPathId: string;
+
+  // ==================== FLAGS ====================
+
+  @Field()
+  @Column({ default: false })
+  scontoFE: boolean;
 
   // ==================== STATUS ====================
 
@@ -177,4 +189,9 @@ export class Treatment {
   @Field(() => [TreatmentInstrument], { nullable: true })
   @OneToMany(() => TreatmentInstrument, instrument => instrument.treatment)
   instruments?: TreatmentInstrument[];
+
+  @Field(() => TherapeuticPath)
+  @ManyToOne(() => TherapeuticPath, path => path.treatments, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'therapeuticPathId' })
+  therapeuticPath: TherapeuticPath;
 }

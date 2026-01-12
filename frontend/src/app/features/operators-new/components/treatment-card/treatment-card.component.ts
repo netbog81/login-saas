@@ -30,6 +30,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/generated/types';
 import { Patient } from '../../../../models/patient.model';
+import { Treatment, TreatmentStatus, getTreatmentStatusLabel } from '../../../../models/treatment.model';
 
 // Interfaccia per i dati di completamento trattamento
 export interface TreatmentCompletionData {
@@ -228,18 +229,64 @@ export type ReschedulingType = 'days' | 'range' | 'none';
 
         <!-- Actions -->
         <mat-card-actions class="card-actions">
-          @if (canStartTreatment()) {
-            <button mat-raised-button color="primary" (click)="onStartTreatment()">
-              <mat-icon>play_arrow</mat-icon>
-              Inizia Trattamento
-            </button>
+          <!-- Trattamento in corso -->
+          @if (hasTreatmentInProgress()) {
+            <div class="treatment-in-progress-badge">
+              <mat-icon>hourglass_empty</mat-icon>
+              <span>Trattamento in corso</span>
+            </div>
+
+            <div class="action-buttons-row">
+              <button mat-raised-button (click)="onEditTreatment()" matTooltip="Modifica dati trattamento">
+                <mat-icon>edit</mat-icon>
+                Modifica
+              </button>
+
+              <div class="spacer"></div>
+
+              <button mat-button color="warn" (click)="onCancelTreatment()" matTooltip="Annulla trattamento in corso">
+                <mat-icon>close</mat-icon>
+                Annulla
+              </button>
+
+              <button mat-raised-button color="accent" (click)="onFinishTreatment()" matTooltip="Completa il trattamento">
+                <mat-icon>check_circle</mat-icon>
+                Completa Trattamento
+              </button>
+            </div>
           }
 
-          @if (canCompleteTreatment()) {
-            <button mat-raised-button color="accent" (click)="onCompleteTreatment()">
-              <mat-icon>check</mat-icon>
-              Completa
-            </button>
+          <!-- Trattamento completato da operatore (in attesa segreteria) -->
+          @if (isTreatmentOperatorCompleted()) {
+            <div class="treatment-completed-badge">
+              <mat-icon>pending</mat-icon>
+              <span>{{ getTreatmentStatusLabel() }}</span>
+            </div>
+          }
+
+          <!-- Trattamento chiuso -->
+          @if (isTreatmentClosed()) {
+            <div class="treatment-closed-badge">
+              <mat-icon>task_alt</mat-icon>
+              <span>{{ getTreatmentStatusLabel() }}</span>
+            </div>
+          }
+
+          <!-- Nessun trattamento in corso: mostra pulsanti standard -->
+          @if (!hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
+            @if (canStartTreatment()) {
+              <button mat-raised-button color="primary" (click)="onStartTreatment()">
+                <mat-icon>play_arrow</mat-icon>
+                Inizia Trattamento
+              </button>
+            }
+
+            @if (canCompleteTreatment()) {
+              <button mat-raised-button color="accent" (click)="onCompleteTreatment()">
+                <mat-icon>check</mat-icon>
+                Completa
+              </button>
+            }
           }
 
           <button mat-button (click)="onViewPatientFolder()" matTooltip="Vedi cartella paziente">
@@ -247,7 +294,7 @@ export type ReschedulingType = 'days' | 'range' | 'none';
             Cartella
           </button>
 
-          @if (!isCancelled()) {
+          @if (!isCancelled() && !hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
             <button mat-button color="warn" (click)="onCancelAppointment()" matTooltip="Annulla appuntamento">
               <mat-icon>cancel</mat-icon>
               Annulla
@@ -549,6 +596,74 @@ export type ReschedulingType = 'days' | 'range' | 'none';
       background: #f8fafc;
     }
 
+    .action-buttons-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .treatment-in-progress-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border-radius: 8px;
+      color: #92400e;
+      font-weight: 500;
+      font-size: 0.875rem;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #d97706;
+      }
+    }
+
+    .treatment-completed-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+      border-radius: 8px;
+      color: #1e40af;
+      font-weight: 500;
+      font-size: 0.875rem;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #3b82f6;
+      }
+    }
+
+    .treatment-closed-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+      border-radius: 8px;
+      color: #166534;
+      font-weight: 500;
+      font-size: 0.875rem;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #16a34a;
+      }
+    }
+
     /* Responsive */
     @media (max-width: 599px) {
       .header-content {
@@ -584,10 +699,14 @@ export type ReschedulingType = 'days' | 'range' | 'none';
 export class TreatmentCardComponent {
   @Input() appointment: AvailabilityAppointment | null = null;
   @Input() patient: Patient | null = null;
+  @Input() currentTreatment: Treatment | null = null;  // Trattamento in corso
   @Input() loading = false;
 
   @Output() startTreatment = new EventEmitter<void>();
   @Output() completeTreatment = new EventEmitter<TreatmentCompletionData>();
+  @Output() editTreatment = new EventEmitter<Treatment>();  // Modifica trattamento in corso
+  @Output() finishTreatment = new EventEmitter<Treatment>(); // Completa trattamento (chiude)
+  @Output() cancelTreatment = new EventEmitter<Treatment>(); // Annulla trattamento in corso
   @Output() viewPatientFolder = new EventEmitter<void>();
   @Output() cancelAppointment = new EventEmitter<void>();
 
@@ -628,6 +747,45 @@ export class TreatmentCardComponent {
 
   onCancelAppointment(): void {
     this.cancelAppointment.emit();
+  }
+
+  onEditTreatment(): void {
+    if (this.currentTreatment) {
+      this.editTreatment.emit(this.currentTreatment);
+    }
+  }
+
+  onFinishTreatment(): void {
+    if (this.currentTreatment) {
+      this.finishTreatment.emit(this.currentTreatment);
+    }
+  }
+
+  onCancelTreatment(): void {
+    if (this.currentTreatment) {
+      this.cancelTreatment.emit(this.currentTreatment);
+    }
+  }
+
+  // Metodi per stato trattamento (case-insensitive per compatibilità con GraphQL)
+  hasTreatmentInProgress(): boolean {
+    return this.currentTreatment !== null &&
+           this.currentTreatment.status?.toLowerCase() === 'in_progress';
+  }
+
+  isTreatmentOperatorCompleted(): boolean {
+    return this.currentTreatment !== null &&
+           this.currentTreatment.status?.toLowerCase() === 'operator_completed';
+  }
+
+  isTreatmentClosed(): boolean {
+    return this.currentTreatment !== null &&
+           this.currentTreatment.status?.toLowerCase() === 'closed';
+  }
+
+  getTreatmentStatusLabel(): string {
+    if (!this.currentTreatment) return '';
+    return getTreatmentStatusLabel(this.currentTreatment.status);
   }
 
   getClientName(): string {
@@ -682,10 +840,12 @@ export class TreatmentCardComponent {
   getStatusClass(): string {
     if (!this.appointment) return 'status-scheduled';
 
-    switch (this.appointment.bookingStatus) {
+    const status = this.appointment.bookingStatus?.toUpperCase();
+    switch (status) {
       case BookingStatus.Scheduled: return 'status-scheduled';
       case BookingStatus.Confirmed: return 'status-confirmed';
-      case BookingStatus.NoShow: return 'status-attended';
+      case BookingStatus.Attended: return 'status-attended';
+      case BookingStatus.NoShow: return 'status-noshow';
       case BookingStatus.Cancelled: return 'status-cancelled';
       default: return 'status-scheduled';
     }
@@ -694,9 +854,11 @@ export class TreatmentCardComponent {
   getStatusIcon(): string {
     if (!this.appointment) return 'event';
 
-    switch (this.appointment.bookingStatus) {
+    const status = this.appointment.bookingStatus?.toUpperCase();
+    switch (status) {
       case BookingStatus.Scheduled: return 'event';
       case BookingStatus.Confirmed: return 'check_circle';
+      case BookingStatus.Attended: return 'check_circle';
       case BookingStatus.NoShow: return 'person_off';
       case BookingStatus.Cancelled: return 'cancel';
       default: return 'event';
@@ -706,9 +868,11 @@ export class TreatmentCardComponent {
   getStatusLabel(): string {
     if (!this.appointment) return 'Programmato';
 
-    switch (this.appointment.bookingStatus) {
+    const status = this.appointment.bookingStatus?.toUpperCase();
+    switch (status) {
       case BookingStatus.Scheduled: return 'Programmato';
       case BookingStatus.Confirmed: return 'Confermato';
+      case BookingStatus.Attended: return 'Presentato';
       case BookingStatus.NoShow: return 'Non presentato';
       case BookingStatus.Cancelled: return 'Annullato';
       default: return 'Programmato';
@@ -717,20 +881,37 @@ export class TreatmentCardComponent {
 
   canStartTreatment(): boolean {
     if (!this.appointment) return false;
-    return this.appointment.bookingStatus === BookingStatus.Scheduled ||
-           this.appointment.bookingStatus === BookingStatus.Confirmed;
+    const status = this.appointment.bookingStatus?.toUpperCase();
+    return status === BookingStatus.Scheduled ||
+           status === BookingStatus.Confirmed ||
+           status === BookingStatus.Attended;
   }
 
   canCompleteTreatment(): boolean {
-    // Per ora usiamo NoShow come "in progress" dato che non c'è uno stato "attended" nell'enum
-    return this.appointment?.bookingStatus === BookingStatus.NoShow;
+    // L'appuntamento può essere completato solo se è in stato SCHEDULED o CONFIRMED
+    // (cioè non è già ATTENDED, NO_SHOW o CANCELLED)
+    const status = this.appointment?.bookingStatus?.toUpperCase();
+    return status === BookingStatus.Scheduled || status === BookingStatus.Confirmed;
   }
 
   isInProgress(): boolean {
-    return this.appointment?.bookingStatus === BookingStatus.NoShow;
+    // Non esiste un vero stato "in progress" nel backend
+    // Restituisce false perché gli appuntamenti passano direttamente da SCHEDULED/CONFIRMED a ATTENDED
+    return false;
+  }
+
+  isCompleted(): boolean {
+    const status = this.appointment?.bookingStatus?.toUpperCase();
+    return status === BookingStatus.Attended;
+  }
+
+  isNoShow(): boolean {
+    const status = this.appointment?.bookingStatus?.toUpperCase();
+    return status === BookingStatus.NoShow;
   }
 
   isCancelled(): boolean {
-    return this.appointment?.bookingStatus === BookingStatus.Cancelled;
+    const status = this.appointment?.bookingStatus?.toUpperCase();
+    return status === BookingStatus.Cancelled;
   }
 }

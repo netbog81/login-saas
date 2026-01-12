@@ -25,8 +25,10 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { Patient } from '../../../models/patient.model';
-import { TherapeuticPath, PathTreatment, Anamnesis, PathDocument } from '../../../models/therapeutic-path.model';
+import { TherapeuticPath, Anamnesis, PathDocument } from '../../../models/therapeutic-path.model';
+import { Treatment } from '../../../models/treatment.model';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
+import { TreatmentService } from '../../../services/treatment.service';
 
 import { PatientHeaderComponent } from '../components/patient-header/patient-header.component';
 import { PathContentComponent, PathContentTab } from '../components/path-content/path-content.component';
@@ -113,7 +115,7 @@ import {
             <app-path-content
               [path]="selectedPath"
               [activeTab]="uiState.activeTab"
-              [treatments]="selectedPath?.treatments || []"
+              [treatments]="filteredTreatments"
               [anamnesis]="selectedPath?.anamnesis || null"
               [documents]="selectedPath?.documents || []"
               [selectedTreatmentId]="uiState.selectedTreatmentId"
@@ -360,6 +362,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   uiState: PatientFolderUIState = createInitialPatientFolderUIState();
   paths: TherapeuticPath[] = [];
   selectedPath: TherapeuticPath | null = null;
+  treatments: Treatment[] = [];
 
   // Dialog state
   showPathDialog = false;
@@ -367,6 +370,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   constructor(
     private pathService: TherapeuticPathService,
+    private treatmentService: TreatmentService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
@@ -374,9 +378,11 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['patient'] && this.patient) {
       this.loadPaths();
+      this.loadTreatments();
     } else if (changes['patient'] && !this.patient) {
       this.paths = [];
       this.selectedPath = null;
+      this.treatments = [];
       this.uiState = createInitialPatientFolderUIState();
     }
   }
@@ -420,6 +426,33 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
               loadingPaths: false,
               error: 'Errore nel caricamento dei percorsi'
             };
+            this.cdr.markForCheck();
+          });
+        }
+      });
+  }
+
+  private loadTreatments(): void {
+    if (!this.patient?.id) return;
+
+    this.uiState = { ...this.uiState, loadingTreatments: true };
+    this.cdr.markForCheck();
+
+    this.treatmentService.getTreatmentsByPatient(Number(this.patient.id))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (treatments) => {
+          this.ngZone.run(() => {
+            this.treatments = treatments || [];
+            this.uiState = { ...this.uiState, loadingTreatments: false };
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error loading treatments:', err);
+          this.ngZone.run(() => {
+            this.treatments = [];
+            this.uiState = { ...this.uiState, loadingTreatments: false };
             this.cdr.markForCheck();
           });
         }
@@ -547,12 +580,12 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       });
   }
 
-  onTreatmentSelect(treatment: PathTreatment): void {
+  onTreatmentSelect(treatment: Treatment): void {
     this.uiState = { ...this.uiState, selectedTreatmentId: treatment.id };
     this.cdr.markForCheck();
   }
 
-  onTreatmentDoubleClick(treatment: PathTreatment): void {
+  onTreatmentDoubleClick(treatment: Treatment): void {
     // TODO: Aprire dialog dettaglio trattamento
     console.log('[PatientFolderContainer] Treatment double click:', treatment.id);
     this.uiState = { ...this.uiState, showTreatmentDetail: true, selectedTreatmentId: treatment.id };
@@ -608,7 +641,23 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   getTotalTreatmentsCount(): number {
-    // TODO: Implementare conteggio trattamenti
-    return 0;
+    return this.treatments.length;
+  }
+
+  /**
+   * Ricarica i trattamenti del paziente - metodo pubblico per refresh esterno
+   */
+  reloadTreatments(): void {
+    this.loadTreatments();
+  }
+
+  /**
+   * Filtra i trattamenti in base al percorso terapeutico selezionato
+   */
+  get filteredTreatments(): Treatment[] {
+    if (!this.selectedPath) {
+      return this.treatments;
+    }
+    return this.treatments.filter(t => t.therapeuticPathId === this.selectedPath!.id);
   }
 }

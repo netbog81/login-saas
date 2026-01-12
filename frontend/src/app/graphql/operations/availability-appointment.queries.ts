@@ -117,8 +117,8 @@ export const IS_INSTRUMENT_AVAILABLE = gql`
     $instrumentId: ID!
     $appointmentDate: String!
     $startTime: String!
-    $startOffsetMinutes: Int!
-    $endOffsetMinutes: Int!
+    $startOffsetMinutes: Float!
+    $endOffsetMinutes: Float!
     $excludeAppointmentId: ID
   ) {
     isInstrumentAvailable(

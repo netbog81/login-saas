@@ -48,6 +48,9 @@ export class ApolloZoneService {
    * Esegue una query GraphQL one-time con integrazione NgZone.
    * Restituisce direttamente i dati (non il wrapper QueryResult).
    *
+   * IMPORTANTE: Filtriamo emissioni con data undefined/null per evitare
+   * errori nei consumatori quando la query fallisce o restituisce dati vuoti.
+   *
    * @param options - Opzioni della query Apollo
    * @returns Observable<TData> - I dati della query
    */
@@ -57,6 +60,8 @@ export class ApolloZoneService {
     return this.wrapInZone(
       this.apollo.query<TData, TVariables>(options)
     ).pipe(
+      // Filtra emissioni con data undefined/null per evitare errori nei consumatori
+      filter(result => result.data !== undefined && result.data !== null),
       map(result => result.data as TData)
     );
   }
@@ -64,6 +69,9 @@ export class ApolloZoneService {
   /**
    * Esegue una mutation GraphQL con integrazione NgZone.
    * Restituisce direttamente i dati (non il wrapper MutationResult).
+   *
+   * IMPORTANTE: Filtriamo emissioni con data undefined/null per evitare
+   * errori nei consumatori quando la mutation fallisce o restituisce dati vuoti.
    *
    * @param options - Opzioni della mutation Apollo
    * @returns Observable<TData> - I dati della mutation
@@ -74,6 +82,8 @@ export class ApolloZoneService {
     return this.wrapInZone(
       this.apollo.mutate<TData, TVariables>(options)
     ).pipe(
+      // Filtra emissioni con data undefined/null per evitare errori nei consumatori
+      filter(result => result.data !== undefined && result.data !== null),
       map(result => result.data as TData)
     );
   }

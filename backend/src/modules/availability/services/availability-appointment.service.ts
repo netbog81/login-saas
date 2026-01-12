@@ -824,7 +824,8 @@ export class AvailabilityAppointmentService {
 
   /**
    * Annulla lo stato attended e ripristina a confirmed
-   * Utile per correggere click accidentali
+   * Utile per correggere click accidentali.
+   * Resetta anche il flag autoStatusChanged per permettere un nuovo cambio automatico.
    */
   async revertAttended(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
@@ -836,6 +837,8 @@ export class AvailabilityAppointmentService {
     }
 
     appointment.bookingStatus = BookingStatus.CONFIRMED;
+    // Reset del flag per permettere un nuovo cambio automatico se l'impostazione è attiva
+    appointment.autoStatusChanged = false;
     await this.appointmentRepo.save(appointment);
 
     return this.findById(id);

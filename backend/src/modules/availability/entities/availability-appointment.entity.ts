@@ -341,6 +341,15 @@ export class AvailabilityAppointment {
   @Column('timestamp', { nullable: true })
   closedAt?: Date;
 
+  /**
+   * Flag che indica se lo stato è stato cambiato automaticamente dal cron job.
+   * Evita loop infiniti tra cambio automatico e manuale.
+   * Resettato quando la segreteria reverte lo stato.
+   */
+  @Field()
+  @Column({ default: false })
+  autoStatusChanged: boolean;
+
   // ==================== RELATIONS ====================
 
   @Field(() => Operator, { nullable: true })

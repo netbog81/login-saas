@@ -19,6 +19,11 @@ interface CalendarSettingsForm {
   showUnavailableCellsBackground: boolean;
 }
 
+interface AutoAttendanceSettings {
+  enabled: boolean;
+  offsetMinutes: number;
+}
+
 @Component({
   selector: 'app-settings',
   standalone: true,
@@ -46,6 +51,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
     showUnavailableCellsBackground: true,
   };
   originalCalendarSettings: CalendarSettingsForm = { ...this.calendarSettings };
+
+  autoAttendanceSettings: AutoAttendanceSettings = {
+    enabled: false,
+    offsetMinutes: 0,
+  };
+  originalAutoAttendanceSettings: AutoAttendanceSettings = { ...this.autoAttendanceSettings };
 
   // UI State
   loading = false;
@@ -91,6 +102,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       duration: this.settingsService.getSetting('appointment.defaultSlotDuration'),
       priority: this.settingsService.getSetting('appointment.slotDurationPriority'),
       calendarSettings: this.settingsService.getCalendarSettings(),
+      autoAttendanceEnabled: this.settingsService.getSetting('autoAttendance.enabled'),
+      autoAttendanceOffset: this.settingsService.getSetting('autoAttendance.offsetMinutes'),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -109,6 +122,15 @@ export class SettingsComponent implements OnInit, OnDestroy {
             this.calendarSettings = { ...results.calendarSettings };
             this.originalCalendarSettings = { ...results.calendarSettings };
           }
+
+          // Auto Attendance settings
+          if (results.autoAttendanceEnabled) {
+            this.autoAttendanceSettings.enabled = results.autoAttendanceEnabled.value as boolean;
+          }
+          if (results.autoAttendanceOffset) {
+            this.autoAttendanceSettings.offsetMinutes = results.autoAttendanceOffset.value as number;
+          }
+          this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
 
           this.loading = false;
         },
@@ -166,12 +188,22 @@ export class SettingsComponent implements OnInit, OnDestroy {
         'calendar.showUnavailableCellsBackground',
         this.calendarSettings.showUnavailableCellsBackground
       ),
+      // Auto Attendance settings
+      autoAttendanceEnabled: this.settingsService.updateSetting(
+        'autoAttendance.enabled',
+        this.autoAttendanceSettings.enabled
+      ),
+      autoAttendanceOffset: this.settingsService.updateSetting(
+        'autoAttendance.offsetMinutes',
+        this.autoAttendanceSettings.offsetMinutes
+      ),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
           this.originalSettings = { ...this.appointmentSettings };
           this.originalCalendarSettings = { ...this.calendarSettings };
+          this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
           this.saving = false;
           this.successMessage = 'Impostazioni salvate con successo';
           setTimeout(() => {
@@ -190,6 +222,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.ngZone.run(() => {
       this.appointmentSettings = { ...this.originalSettings };
       this.calendarSettings = { ...this.originalCalendarSettings };
+      this.autoAttendanceSettings = { ...this.originalAutoAttendanceSettings };
       this.error = null;
       this.successMessage = null;
     });
@@ -209,7 +242,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.calendarSettings.defaultView !== this.originalCalendarSettings.defaultView ||
       this.calendarSettings.showUnavailableCellsBackground !== this.originalCalendarSettings.showUnavailableCellsBackground;
 
-    return appointmentChanged || calendarChanged;
+    const autoAttendanceChanged =
+      this.autoAttendanceSettings.enabled !== this.originalAutoAttendanceSettings.enabled ||
+      this.autoAttendanceSettings.offsetMinutes !== this.originalAutoAttendanceSettings.offsetMinutes;
+
+    return appointmentChanged || calendarChanged || autoAttendanceChanged;
   }
 
   // Force change detection when settings change

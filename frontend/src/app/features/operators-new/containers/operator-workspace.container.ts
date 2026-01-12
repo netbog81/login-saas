@@ -15,7 +15,8 @@ import {
   OnDestroy,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  NgZone
+  NgZone,
+  ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject } from 'rxjs';
@@ -34,6 +35,9 @@ import { WorkspaceHeaderComponent } from '../components/workspace-header/workspa
 import { AppointmentsSidebarComponent } from '../components/appointments-sidebar/appointments-sidebar.component';
 import { TreatmentCardComponent, TreatmentCompletionData } from '../components/treatment-card/treatment-card.component';
 import { PatientFolderContainer } from './patient-folder.container';
+import { StartTreatmentDialogContainer, StartTreatmentResult } from './start-treatment-dialog.container';
+import { Treatment } from '../../../models/treatment.model';
+import { TreatmentService } from '../../../services/treatment.service';
 
 @Component({
   selector: 'app-operator-workspace-container',
@@ -43,7 +47,8 @@ import { PatientFolderContainer } from './patient-folder.container';
     WorkspaceHeaderComponent,
     AppointmentsSidebarComponent,
     TreatmentCardComponent,
-    PatientFolderContainer
+    PatientFolderContainer,
+    StartTreatmentDialogContainer
   ],
   template: `
     <div class="operator-workspace-new">
@@ -87,9 +92,13 @@ import { PatientFolderContainer } from './patient-folder.container';
             <app-treatment-card
               [appointment]="selectedAppointment"
               [patient]="selectedPatient"
+              [currentTreatment]="currentTreatment"
               [loading]="uiState.loadingPatient"
               (startTreatment)="onStartTreatment()"
               (completeTreatment)="onCompleteTreatment($event)"
+              (editTreatment)="onEditTreatment($event)"
+              (finishTreatment)="onFinishTreatment($event)"
+              (cancelTreatment)="onCancelTreatment($event)"
               (viewPatientFolder)="onViewPatientFolder()"
               (cancelAppointment)="onCancelAppointment()">
             </app-treatment-card>
@@ -105,6 +114,22 @@ import { PatientFolderContainer } from './patient-folder.container';
           </section>
         </main>
       </div>
+
+      <!-- Start Treatment Dialog Container -->
+      <app-start-treatment-dialog-container
+        #startTreatmentDialog
+        [appointmentId]="selectedAppointment?.id?.toString() || ''"
+        [patientId]="selectedPatient?.id || 0"
+        [patientName]="getPatientFullName()"
+        [operatorId]="selectedOperator?.id || ''"
+        [serviceId]="getServiceId()"
+        [serviceName]="getServiceName()"
+        [servicePrice]="getServicePrice()"
+        [appointmentStatus]="selectedAppointment?.bookingStatus"
+        (treatmentStarted)="onTreatmentStarted($event)"
+        (cancel)="onStartTreatmentDialogCancel()"
+        (createPath)="onCreatePathFromTreatmentDialog()">
+      </app-start-treatment-dialog-container>
     </div>
   `,
   styles: [`
@@ -174,6 +199,9 @@ import { PatientFolderContainer } from './patient-folder.container';
 export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
+  @ViewChild('startTreatmentDialog') startTreatmentDialog!: StartTreatmentDialogContainer;
+  @ViewChild(PatientFolderContainer) patientFolderContainer!: PatientFolderContainer;
+
   // Stato UI
   uiState: WorkspaceUIState = createInitialWorkspaceUIState();
 
@@ -183,9 +211,11 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   appointments: AvailabilityAppointment[] = [];
   selectedAppointment: AvailabilityAppointment | null = null;
   selectedPatient: Patient | null = null;
+  currentTreatment: Treatment | null = null;  // Trattamento in corso
 
   constructor(
     private workspaceService: OperatorWorkspaceService,
+    private treatmentService: TreatmentService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
@@ -273,6 +303,26 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
       });
   }
 
+  private loadTreatmentForAppointment(appointmentId: string): void {
+    this.treatmentService.getTreatmentByAppointment(appointmentId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (treatment) => {
+          this.ngZone.run(() => {
+            this.currentTreatment = treatment;
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('[OperatorWorkspaceContainer] Error loading treatment:', err);
+          this.ngZone.run(() => {
+            this.currentTreatment = null;
+            this.cdr.markForCheck();
+          });
+        }
+      });
+  }
+
   // ============ EVENT HANDLERS ============
 
   onOperatorChange(operator: Operator): void {
@@ -296,6 +346,9 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
       selectedAppointmentId: String(appointment.id)
     };
 
+    // Reset trattamento corrente quando cambia appuntamento
+    this.currentTreatment = null;
+
     // Carica paziente se presente - patientId potrebbe essere in participant o nell'appointment
     const patientId = (appointment as any).patientId || (appointment as any).participant?.id;
     if (patientId) {
@@ -303,6 +356,9 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     } else {
       this.selectedPatient = null;
     }
+
+    // Carica trattamento esistente per questo appuntamento
+    this.loadTreatmentForAppointment(String(appointment.id));
 
     this.cdr.markForCheck();
   }
@@ -322,10 +378,68 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
 
   // Treatment handlers
   onStartTreatment(): void {
-    if (!this.selectedAppointment) return;
-    // TODO: Implementare chiamata al service per avviare trattamento
-    console.log('[OperatorWorkspaceContainer] Start treatment:', this.selectedAppointment.id);
-    // Per ora simula il cambio di stato
+    if (!this.selectedAppointment || !this.selectedPatient) {
+      console.warn('[OperatorWorkspaceContainer] Cannot start treatment: no appointment or patient selected');
+      return;
+    }
+
+    console.log('[OperatorWorkspaceContainer] Opening start treatment dialog');
+    this.startTreatmentDialog.open();
+  }
+
+  onTreatmentStarted(result: StartTreatmentResult): void {
+    console.log('[OperatorWorkspaceContainer] Treatment started:', result);
+    this.currentTreatment = result.treatment;
+
+    // Il trattamento è stato creato con successo
+    // La TreatmentCard mostrerà automaticamente lo stato "in corso"
+    this.cdr.markForCheck();
+
+    // Ricarica la lista trattamenti nella cartella paziente
+    if (this.patientFolderContainer) {
+      this.patientFolderContainer.reloadTreatments();
+    }
+  }
+
+  onStartTreatmentDialogCancel(): void {
+    console.log('[OperatorWorkspaceContainer] Start treatment dialog cancelled');
+  }
+
+  onCreatePathFromTreatmentDialog(): void {
+    console.log('[OperatorWorkspaceContainer] Create path requested from treatment dialog');
+    // Apri il dialog per la creazione del percorso
+    // Puoi accedere al PatientFolderContainer tramite ViewChild se necessario
+    // oppure gestire l'evento qui direttamente
+    alert('Funzionalità "Crea Percorso" - Il dialog di creazione percorso verrà aperto dalla scheda paziente');
+    // Dopo la creazione del percorso, si può chiamare:
+    // this.startTreatmentDialog.retryAfterPathCreated();
+  }
+
+  // Helper methods for dialog data
+  getPatientFullName(): string {
+    if (!this.selectedPatient) return '';
+    return `${this.selectedPatient.nome} ${this.selectedPatient.cognome}`;
+  }
+
+  getServiceName(): string | undefined {
+    if (!this.selectedAppointment) return undefined;
+    // Cerca il nome del servizio nell'appuntamento
+    const apt = this.selectedAppointment as any;
+    return apt.serviceName || apt.service?.name || apt.title || undefined;
+  }
+
+  getServicePrice(): number | undefined {
+    if (!this.selectedAppointment) return undefined;
+    // Cerca il prezzo del servizio nell'appuntamento
+    const apt = this.selectedAppointment as any;
+    return apt.servicePrice || apt.service?.price || undefined;
+  }
+
+  getServiceId(): string | undefined {
+    if (!this.selectedAppointment) return undefined;
+    // Cerca l'ID del servizio nell'appuntamento
+    const apt = this.selectedAppointment as any;
+    return apt.serviceId || apt.service?.id || undefined;
   }
 
   onCompleteTreatment(data: TreatmentCompletionData): void {
@@ -333,6 +447,56 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     console.log('[OperatorWorkspaceContainer] Complete treatment:', data);
     // TODO: Implementare chiamata al service per completare trattamento
     alert('Trattamento completato!\n\n' + this.buildCompletionSummary(data));
+  }
+
+  onEditTreatment(treatment: Treatment): void {
+    console.log('[OperatorWorkspaceContainer] Edit treatment:', treatment.id);
+    // TODO: Aprire dialog modifica trattamento
+    alert('Modifica trattamento - Questa funzionalità aprirà il dialog di modifica');
+  }
+
+  onFinishTreatment(treatment: Treatment): void {
+    console.log('[OperatorWorkspaceContainer] Finish treatment:', treatment.id);
+    // TODO: Chiamare service per completare il trattamento (status -> operator_completed)
+    if (confirm('Confermi di voler completare il trattamento?')) {
+      // Simula il completamento
+      this.currentTreatment = {
+        ...treatment,
+        status: 'operator_completed' as any
+      };
+      this.cdr.markForCheck();
+    }
+  }
+
+  onCancelTreatment(treatment: Treatment): void {
+    if (!confirm('Sei sicuro di voler annullare questo trattamento in corso?')) {
+      return;
+    }
+
+    this.treatmentService.deleteTreatment(treatment.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (success) => {
+          this.ngZone.run(() => {
+            if (success) {
+              console.log('[OperatorWorkspaceContainer] Treatment cancelled:', treatment.id);
+              this.currentTreatment = null;
+              // Ricarica trattamenti nella cartella paziente
+              if (this.patientFolderContainer) {
+                this.patientFolderContainer.reloadTreatments();
+              }
+            }
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('[OperatorWorkspaceContainer] Error cancelling treatment:', err);
+          this.ngZone.run(() => {
+            alert('Errore durante l\'annullamento del trattamento');
+            this.cdr.markForCheck();
+          });
+        }
+      });
   }
 
   onViewPatientFolder(): void {

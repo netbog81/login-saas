@@ -9,6 +9,8 @@ export const TREATMENT_FRAGMENT = gql`
     operatorId
     patientId
     serviceId
+    therapeuticPathId
+    scontoFE
     status
     isTest
     startedAt
@@ -44,8 +46,8 @@ export const TREATMENT_WITH_RELATIONS_FRAGMENT = gql`
     }
     operator {
       id
-      firstName
-      lastName
+      name
+      surname
       email
       royaltyPercentage
     }
@@ -71,6 +73,12 @@ export const TREATMENT_WITH_RELATIONS_FRAGMENT = gql`
       startOffsetMinutes
       endOffsetMinutes
       orderPosition
+    }
+    therapeuticPath {
+      id
+      name
+      status
+      diagnosis
     }
   }
   ${TREATMENT_FRAGMENT}
@@ -135,6 +143,15 @@ export const GET_TREATMENTS_NOT_INVOICED_TO_PATIENT = gql`
 export const GET_TREATMENTS_NOT_INVOICED_BY_OPERATOR = gql`
   query GetTreatmentsNotInvoicedByOperator($operatorId: ID, $dateFrom: String, $dateTo: String) {
     treatmentsNotInvoicedByOperator(operatorId: $operatorId, dateFrom: $dateFrom, dateTo: $dateTo) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
+export const GET_TREATMENTS_BY_THERAPEUTIC_PATH = gql`
+  query GetTreatmentsByTherapeuticPath($therapeuticPathId: ID!) {
+    treatmentsByTherapeuticPath(therapeuticPathId: $therapeuticPathId) {
       ...TreatmentWithRelationsFields
     }
   }

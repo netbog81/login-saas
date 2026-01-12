@@ -40,6 +40,18 @@ export class ServiceService extends BaseGraphQLService {
     );
   }
 
+  /**
+   * Get all services (one-time query, non-reactive)
+   * Use this for operations that need a single emission (e.g., forkJoin)
+   */
+  getServicesOnce(): Observable<Service[]> {
+    return this.query<{ services: Service[] }>(
+      GET_SERVICES
+    ).pipe(
+      map(result => (result.services || []) as Service[])
+    );
+  }
+
   getService(id: string): Observable<Service | null> {
     return this.watch<{ service: Service | null }>(
       GET_SERVICE,

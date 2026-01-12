@@ -50,6 +50,7 @@ type AvailabilityAppointment {
   """Data appuntamento in formato YYYY-MM-DD"""
   appointmentDate: String!
   appointmentType: AppointmentType!
+  autoStatusChanged: Boolean!
   bookingStatus: BookingStatus!
   cancellationHoursNotice: Float
   cancellationReason: String
@@ -758,11 +759,12 @@ type Mutation {
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   createTherapeuticPath(input: CreateTherapeuticPathInput!): TherapeuticPath!
-  createTreatment(appointmentId: ID!): Treatment!
+  createTreatment(appointmentId: ID!, scontoFE: Boolean = false, therapeuticPathId: ID!): Treatment!
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
+  deleteAllTreatments: Int!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
   deleteException(id: ID!): Boolean!
@@ -790,6 +792,7 @@ type Mutation {
   deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
   deleteTherapeuticPath(id: ID!): Boolean!
+  deleteTreatment(id: ID!): Boolean!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
@@ -1212,6 +1215,7 @@ type Query {
   generalSetting(key: String!): GeneralSettings
   generalSettings: [GeneralSettings!]!
   generalSettingsByCategory(category: String!): [GeneralSettings!]!
+  getAllTreatments: [Treatment!]!
   groupExceptions: [GroupException!]!
   gymAvailableSlots(date: String!, gymRoomId: ID!): [GymSlotOutput!]!
   gymException(id: ID!): GymException
@@ -1291,6 +1295,7 @@ type Query {
   treatmentByAppointment(appointmentId: ID!): Treatment
   treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
   treatmentsByPatient(limit: Int, offset: Int, patientId: Int!): [Treatment!]!
+  treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
   treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
   treatmentsPendingClosure: [Treatment!]!
@@ -1554,6 +1559,7 @@ type TherapeuticPath {
   primaryOperator: Operator!
   primaryOperatorId: ID!
   status: TherapeuticPathStatus!
+  treatments: [Treatment!]
   updatedAt: DateTime!
 }
 
@@ -1606,11 +1612,14 @@ type Treatment {
   patientInvoiceNumber: String
   paymentMethod: PaymentMethod
   price: Float!
+  scontoFE: Boolean!
   secretaryNotes: String
   service: Service
   serviceId: ID
   startedAt: DateTime!
   status: TreatmentStatus!
+  therapeuticPath: TherapeuticPath!
+  therapeuticPathId: ID!
   updatedAt: DateTime!
 }
 

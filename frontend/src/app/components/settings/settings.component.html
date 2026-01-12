@@ -192,6 +192,65 @@
       </div>
     </section>
 
+    <!-- Auto Attendance Section -->
+    <section class="settings-section">
+      <h2>Conferma Automatica Arrivo Paziente</h2>
+      <p class="section-description">
+        Configura il cambio automatico dello stato dell'appuntamento da "Confermato" a "Paziente Presentato"
+        quando scatta l'ora di inizio.
+      </p>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="autoAttendanceSettings.enabled"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Abilita conferma automatica arrivo paziente</span>
+        </label>
+        <small class="hint">
+          Se abilitato, gli appuntamenti passeranno automaticamente allo stato "Paziente Presentato"
+          quando scatta l'ora di inizio (con l'offset configurato). La segreteria puo sempre modificare
+          manualmente lo stato.
+        </small>
+      </div>
+
+      <div class="form-group" *ngIf="autoAttendanceSettings.enabled">
+        <label for="autoAttendanceOffset">Offset in Minuti</label>
+        <div class="offset-input-group">
+          <input
+            type="number"
+            id="autoAttendanceOffset"
+            [(ngModel)]="autoAttendanceSettings.offsetMinutes"
+            (ngModelChange)="onSettingChange()"
+            class="form-control offset-input"
+            min="-60"
+            max="60"
+          />
+          <span class="offset-unit">minuti</span>
+        </div>
+        <small class="hint">
+          <strong>Valori negativi:</strong> il cambio avviene PRIMA dell'ora di inizio (es. -5 = 5 minuti prima).<br>
+          <strong>Valori positivi:</strong> il cambio avviene DOPO l'ora di inizio (es. 10 = 10 minuti dopo).<br>
+          <strong>Zero:</strong> il cambio avviene esattamente all'ora di inizio.
+        </small>
+      </div>
+
+      <div class="info-box" *ngIf="autoAttendanceSettings.enabled">
+        <span class="info-icon">i</span>
+        <div class="info-content">
+          <strong>Come funziona:</strong>
+          <ul>
+            <li>Un processo automatico controlla ogni minuto gli appuntamenti</li>
+            <li>Gli appuntamenti "Prenotati" o "Confermati" vengono aggiornati a "Paziente Presentato"</li>
+            <li>Ogni appuntamento viene aggiornato automaticamente solo una volta</li>
+            <li>La segreteria puo sempre cambiare lo stato manualmente</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <!-- Actions -->
     <div class="settings-actions">
       <button

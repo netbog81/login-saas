@@ -344,3 +344,60 @@
     }
   }
 }
+
+// Offset input group for Auto Attendance
+.offset-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 200px;
+}
+
+.offset-input {
+  width: 100px;
+  text-align: center;
+}
+
+.offset-unit {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+// Info box for explanations
+.info-box {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #e8f4fd;
+  border: 1px solid #b8daff;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.info-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0066cc;
+  color: white;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.info-content {
+  font-size: 0.9rem;
+  color: #333;
+
+  ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1.2rem;
+  }
+
+  li {
+    margin-bottom: 0.25rem;
+  }
+}

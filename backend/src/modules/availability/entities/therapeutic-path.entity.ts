@@ -5,6 +5,7 @@ import { Patient } from '../../../entities/patient.entity';
 import { PatientModel } from '../../../patients/models/patient.model';
 import { PatientEvaluation } from './patient-evaluation.entity';
 import { PathDocument } from './path-document.entity';
+import { Treatment } from './treatment.entity';
 import { TherapeuticPathStatus } from './therapeutic-path-enums';
 
 // Re-export enums for convenience
@@ -103,4 +104,8 @@ export class TherapeuticPath {
   @Field(() => [PathDocument], { nullable: true })
   @OneToMany(() => PathDocument, document => document.therapeuticPath)
   documents?: PathDocument[];
+
+  @Field(() => [Treatment], { nullable: true })
+  @OneToMany(() => Treatment, treatment => treatment.therapeuticPath)
+  treatments?: Treatment[];
 }

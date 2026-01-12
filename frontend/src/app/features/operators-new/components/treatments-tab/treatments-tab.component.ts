@@ -19,7 +19,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { PathTreatment, getTreatmentTypeLabel, getTreatmentTypeColor } from '../../../../models/therapeutic-path.model';
+import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../../../../models/treatment.model';
 
 @Component({
   selector: 'app-treatments-tab',
@@ -54,35 +54,47 @@ import { PathTreatment, getTreatmentTypeLabel, getTreatmentTypeColor } from '../
               (dblclick)="onTreatmentDoubleClick(treatment)">
 
               <div class="treatment-date">
-                <span class="day">{{ formatDay(treatment.date) }}</span>
-                <span class="month">{{ formatMonth(treatment.date) }}</span>
+                <span class="day">{{ formatDay(treatment.startedAt) }}</span>
+                <span class="month">{{ formatMonth(treatment.startedAt) }}</span>
               </div>
 
               <div class="treatment-content">
                 <div class="treatment-header">
-                  <span class="treatment-type" [style.background-color]="getTreatmentColor(treatment.type)">
-                    {{ getTreatmentLabel(treatment.type) }}
+                  <span class="treatment-status" [style.background-color]="getStatusColor(treatment.status)">
+                    {{ getStatusLabel(treatment.status) }}
                   </span>
-                  @if (treatment.startTime) {
-                    <span class="treatment-time">{{ treatment.startTime }}</span>
+                  <span class="treatment-time">{{ formatTime(treatment.startedAt) }}</span>
+                  @if (treatment.price > 0) {
+                    <span class="treatment-price">€{{ treatment.price }}</span>
                   }
                 </div>
 
                 <div class="treatment-info">
-                  @if (treatment.title) {
-                    <h4>{{ treatment.title }}</h4>
+                  @if (treatment.service?.name) {
+                    <h4>{{ treatment.service?.name }}</h4>
                   }
-                  @if (treatment.treatmentDescription) {
-                    <p class="description">{{ treatment.treatmentDescription | slice:0:100 }}{{ treatment.treatmentDescription.length > 100 ? '...' : '' }}</p>
+                  @if (treatment.operator) {
+                    <p class="operator-name">
+                      <mat-icon>person</mat-icon>
+                      {{ treatment.operator.name }} {{ treatment.operator.surname }}
+                    </p>
+                  }
+                  @if (treatment.clinicalNotes) {
+                    <p class="description">{{ treatment.clinicalNotes | slice:0:100 }}{{ treatment.clinicalNotes.length > 100 ? '...' : '' }}</p>
                   }
                 </div>
 
-                @if (treatment.painScaleBefore !== undefined || treatment.painScaleAfter !== undefined) {
-                  <div class="pain-indicator">
-                    <mat-icon>trending_down</mat-icon>
-                    <span>{{ treatment.painScaleBefore ?? '-' }} → {{ treatment.painScaleAfter ?? '-' }}</span>
-                  </div>
-                }
+                <div class="treatment-badges">
+                  @if (treatment.isPaid) {
+                    <span class="badge badge-paid">
+                      <mat-icon>check_circle</mat-icon>
+                      Pagato
+                    </span>
+                  }
+                  @if (treatment.isTest) {
+                    <span class="badge badge-test">Test</span>
+                  }
+                </div>
               </div>
 
               <div class="treatment-actions">
@@ -203,7 +215,7 @@ import { PathTreatment, getTreatmentTypeLabel, getTreatmentTypeColor } from '../
       margin-bottom: 8px;
     }
 
-    .treatment-type {
+    .treatment-status {
       font-size: 0.6875rem;
       font-weight: 600;
       color: white;
@@ -219,12 +231,36 @@ import { PathTreatment, getTreatmentTypeLabel, getTreatmentTypeColor } from '../
       font-family: 'SF Mono', 'Roboto Mono', monospace;
     }
 
+    .treatment-price {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #059669;
+      background: #d1fae5;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
     .treatment-info {
       h4 {
         margin: 0 0 4px;
         font-size: 0.9375rem;
         font-weight: 600;
         color: #1e293b;
+      }
+
+      .operator-name {
+        margin: 0 0 4px;
+        font-size: 0.8125rem;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+
+        mat-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+        }
       }
 
       .description {
@@ -235,22 +271,36 @@ import { PathTreatment, getTreatmentTypeLabel, getTreatmentTypeColor } from '../
       }
     }
 
-    .pain-indicator {
+    .treatment-badges {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .badge {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      margin-top: 8px;
-      padding: 4px 8px;
-      background: #dcfce7;
+      padding: 2px 8px;
       border-radius: 4px;
-      font-size: 0.75rem;
-      color: #166534;
+      font-size: 0.6875rem;
+      font-weight: 500;
 
       mat-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
+        font-size: 12px;
+        width: 12px;
+        height: 12px;
       }
+    }
+
+    .badge-paid {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .badge-test {
+      background: #fef3c7;
+      color: #92400e;
     }
 
     .treatment-actions {
@@ -299,18 +349,18 @@ import { PathTreatment, getTreatmentTypeLabel, getTreatmentTypeColor } from '../
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TreatmentsTabComponent {
-  @Input() treatments: PathTreatment[] = [];
+  @Input() treatments: Treatment[] = [];
   @Input() loading = false;
   @Input() selectedTreatmentId: string | null = null;
 
-  @Output() treatmentSelect = new EventEmitter<PathTreatment>();
-  @Output() treatmentDoubleClick = new EventEmitter<PathTreatment>();
+  @Output() treatmentSelect = new EventEmitter<Treatment>();
+  @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
 
-  onTreatmentClick(treatment: PathTreatment): void {
+  onTreatmentClick(treatment: Treatment): void {
     this.treatmentSelect.emit(treatment);
   }
 
-  onTreatmentDoubleClick(treatment: PathTreatment): void {
+  onTreatmentDoubleClick(treatment: Treatment): void {
     this.treatmentDoubleClick.emit(treatment);
   }
 
@@ -325,11 +375,16 @@ export class TreatmentsTabComponent {
     return months[d.getMonth()];
   }
 
-  getTreatmentLabel(type: string): string {
-    return getTreatmentTypeLabel(type as any);
+  formatTime(date: Date | string): string {
+    const d = new Date(date);
+    return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
 
-  getTreatmentColor(type: string): string {
-    return getTreatmentTypeColor(type as any);
+  getStatusLabel(status: string): string {
+    return getTreatmentStatusLabel(status?.toLowerCase() as any);
+  }
+
+  getStatusColor(status: string): string {
+    return getTreatmentStatusColor(status?.toLowerCase() as any);
   }
 }

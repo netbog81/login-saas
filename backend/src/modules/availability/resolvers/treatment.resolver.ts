@@ -88,6 +88,24 @@ export class TreatmentResolver {
     return this.treatmentService.getNotInvoicedByOperator(operatorId, dateFrom, dateTo);
   }
 
+  /**
+   * Query: Ottiene tutti i trattamenti
+   */
+  @Query(() => [Treatment], { name: 'getAllTreatments' })
+  async getAllTreatments(): Promise<Treatment[]> {
+    return this.treatmentService.findAll();
+  }
+
+  /**
+   * Query: Trattamenti di un percorso terapeutico
+   */
+  @Query(() => [Treatment], { name: 'treatmentsByTherapeuticPath' })
+  async getTreatmentsByTherapeuticPath(
+    @Args('therapeuticPathId', { type: () => ID }) therapeuticPathId: string,
+  ): Promise<Treatment[]> {
+    return this.treatmentService.getByTherapeuticPath(therapeuticPathId);
+  }
+
   // ==================== MUTATIONS ====================
 
   /**
@@ -96,8 +114,10 @@ export class TreatmentResolver {
   @Mutation(() => Treatment, { name: 'createTreatment' })
   async createTreatment(
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
+    @Args('therapeuticPathId', { type: () => ID }) therapeuticPathId: string,
+    @Args('scontoFE', { type: () => Boolean, nullable: true, defaultValue: false }) scontoFE: boolean,
   ): Promise<Treatment> {
-    return this.treatmentService.createFromAppointment(appointmentId);
+    return this.treatmentService.createFromAppointment(appointmentId, therapeuticPathId, scontoFE);
   }
 
   /**
@@ -164,5 +184,24 @@ export class TreatmentResolver {
     @Args('instruments', { type: () => [TreatmentInstrumentInput] }) instruments: TreatmentInstrumentInput[],
   ): Promise<Treatment> {
     return this.treatmentService.updateInstruments(id, instruments);
+  }
+
+  /**
+   * Mutation: Elimina un singolo trattamento
+   */
+  @Mutation(() => Boolean, { name: 'deleteTreatment' })
+  async deleteTreatment(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.treatmentService.delete(id);
+  }
+
+  /**
+   * Mutation: Elimina TUTTI i trattamenti (operazione distruttiva)
+   * Returns: numero di trattamenti eliminati
+   */
+  @Mutation(() => Int, { name: 'deleteAllTreatments' })
+  async deleteAllTreatments(): Promise<number> {
+    return this.treatmentService.deleteAll();
   }
 }

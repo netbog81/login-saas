@@ -4,8 +4,8 @@ import { TREATMENT_WITH_RELATIONS_FRAGMENT } from './treatment.queries';
 // ==================== TREATMENT MUTATIONS ====================
 
 export const CREATE_TREATMENT = gql`
-  mutation CreateTreatment($appointmentId: ID!) {
-    createTreatment(appointmentId: $appointmentId) {
+  mutation CreateTreatment($appointmentId: ID!, $therapeuticPathId: ID!, $scontoFE: Boolean) {
+    createTreatment(appointmentId: $appointmentId, therapeuticPathId: $therapeuticPathId, scontoFE: $scontoFE) {
       ...TreatmentWithRelationsFields
     }
   }
@@ -66,35 +66,8 @@ export const UPDATE_TREATMENT_INSTRUMENTS = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
-// ==================== APPOINTMENT STATUS MUTATIONS ====================
-
-export const CANCEL_APPOINTMENT_WITH_NOTICE = gql`
-  mutation CancelAppointmentWithNotice($id: ID!, $input: CancelAppointmentInput!) {
-    cancelAppointmentWithNotice(id: $id, input: $input) {
-      id
-      bookingStatus
-      cancelledAt
-      cancelledBy
-      cancellationHoursNotice
-      notes
-    }
-  }
-`;
-
-export const MARK_APPOINTMENT_NO_SHOW = gql`
-  mutation MarkAppointmentNoShow($id: ID!) {
-    markAppointmentNoShow(id: $id) {
-      id
-      bookingStatus
-    }
-  }
-`;
-
-export const MARK_APPOINTMENT_ATTENDED = gql`
-  mutation MarkAppointmentAttended($id: ID!) {
-    markAppointmentAttended(id: $id) {
-      id
-      bookingStatus
-    }
+export const DELETE_TREATMENT = gql`
+  mutation DeleteTreatment($id: ID!) {
+    deleteTreatment(id: $id)
   }
 `;

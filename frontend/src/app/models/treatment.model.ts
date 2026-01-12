@@ -1,7 +1,7 @@
 import { Appointment } from './appointment.model';
-import { Operator } from './operator.model';
+import { Operator, Service } from '../graphql/generated/types';
 import { Patient } from './patient.model';
-import { Service } from './service.model';
+import { TherapeuticPath } from './therapeutic-path.model';
 
 // ==================== ENUMS ====================
 
@@ -37,6 +37,10 @@ export interface Treatment {
   operatorId: string;
   patientId?: number;
   serviceId?: string;
+  therapeuticPathId: string;
+
+  // Flags
+  scontoFE: boolean;
 
   // Status
   status: TreatmentStatus;
@@ -77,6 +81,7 @@ export interface Treatment {
   patient?: Patient;
   service?: Service;
   instruments?: TreatmentInstrument[];
+  therapeuticPath?: TherapeuticPath;
 }
 
 // ==================== INPUT TYPES ====================
@@ -131,13 +136,13 @@ export function getTreatmentStatusLabel(status: TreatmentStatus): string {
 export function getTreatmentStatusColor(status: TreatmentStatus): string {
   switch (status) {
     case 'in_progress':
-      return 'primary';
+      return '#3b82f6'; // blue
     case 'operator_completed':
-      return 'warn';
+      return '#f59e0b'; // amber/orange
     case 'closed':
-      return 'accent';
+      return '#10b981'; // green
     default:
-      return '';
+      return '#6b7280'; // gray
   }
 }
 

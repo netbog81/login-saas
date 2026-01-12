@@ -30,6 +30,10 @@ export const SETTINGS_KEYS = {
   CALENDAR_SLOT_DURATION: 'calendar.slotDuration',
   CALENDAR_DEFAULT_VIEW: 'calendar.defaultView',
   CALENDAR_SHOW_UNAVAILABLE_BACKGROUND: 'calendar.showUnavailableCellsBackground',
+
+  // Auto Attendance (cambio automatico stato appuntamento)
+  AUTO_ATTENDANCE_ENABLED: 'autoAttendance.enabled',
+  AUTO_ATTENDANCE_OFFSET_MINUTES: 'autoAttendance.offsetMinutes',
 } as const;
 
 @Injectable()
@@ -234,6 +238,21 @@ export class GeneralSettingsService {
         description: 'Mostra sfondo evidenziato per celle non disponibili',
         valueType: 'boolean',
         category: 'calendar'
+      },
+      // Auto Attendance
+      {
+        key: SETTINGS_KEYS.AUTO_ATTENDANCE_ENABLED,
+        value: false,
+        description: 'Abilita cambio automatico stato appuntamento a ATTENDED quando scatta l\'ora di inizio',
+        valueType: 'boolean',
+        category: 'autoAttendance'
+      },
+      {
+        key: SETTINGS_KEYS.AUTO_ATTENDANCE_OFFSET_MINUTES,
+        value: 0,
+        description: 'Minuti di offset per cambio automatico stato (negativo = prima dell\'ora, positivo = dopo)',
+        valueType: 'number',
+        category: 'autoAttendance'
       }
     ];
 
@@ -315,6 +334,38 @@ export class GeneralSettingsService {
       defaultView,
       showUnavailableCellsBackground,
     };
+  }
+
+  // ==================== AUTO ATTENDANCE HELPERS ====================
+
+  /**
+   * Helper: verifica se auto attendance è abilitato
+   */
+  async isAutoAttendanceEnabled(): Promise<boolean> {
+    return this.getValue<boolean>(SETTINGS_KEYS.AUTO_ATTENDANCE_ENABLED, false);
+  }
+
+  /**
+   * Helper: ottieni offset minuti per auto attendance
+   * Negativo = prima dell'ora di inizio, Positivo = dopo
+   */
+  async getAutoAttendanceOffsetMinutes(): Promise<number> {
+    return this.getValue<number>(SETTINGS_KEYS.AUTO_ATTENDANCE_OFFSET_MINUTES, 0);
+  }
+
+  /**
+   * Helper: ottieni configurazione completa auto attendance
+   */
+  async getAutoAttendanceSettings(): Promise<{
+    enabled: boolean;
+    offsetMinutes: number;
+  }> {
+    const [enabled, offsetMinutes] = await Promise.all([
+      this.isAutoAttendanceEnabled(),
+      this.getAutoAttendanceOffsetMinutes()
+    ]);
+
+    return { enabled, offsetMinutes };
   }
 
   // ==================== PRIVATE HELPERS ====================

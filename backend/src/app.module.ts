@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { ScheduleModule } from '@nestjs/schedule';
 import { join } from 'path';
 import { UsersModule } from './users/users.module';
 import { PazientiModule } from './patients/patients.module';
@@ -17,6 +18,8 @@ import { Availability } from './entities/availability.entity';
 import { AvailabilityModule } from './modules/availability/availability.module';
 // Settings module
 import { SettingsModule } from './modules/settings/settings.module';
+// Tasks module (cron jobs)
+import { TasksModule } from './modules/tasks/tasks.module';
 // Import new entities for availability management
 import { Operator } from './modules/availability/entities/operator.entity';
 import { OperatorCategory } from './modules/availability/entities/operator-category.entity';
@@ -58,6 +61,8 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // Schedule module for cron jobs
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -130,6 +135,8 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
     AvailabilityModule,
     // Settings module
     SettingsModule,
+    // Tasks module (cron jobs)
+    TasksModule,
   ],
 })
 export class AppModule {}

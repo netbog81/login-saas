@@ -23,13 +23,13 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatBadgeModule } from '@angular/material/badge';
 import {
   TherapeuticPath,
-  PathTreatment,
   Anamnesis,
   PathDocument,
   getPathStatusLabel,
   getPathStatusColor,
   formatPathProgress
 } from '../../../../models/therapeutic-path.model';
+import { Treatment } from '../../../../models/treatment.model';
 
 import { TreatmentsTabComponent } from '../treatments-tab/treatments-tab.component';
 import { AnamnesisTabComponent } from '../anamnesis-tab/anamnesis-tab.component';
@@ -360,7 +360,7 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
 export class PathContentComponent {
   @Input() path: TherapeuticPath | null = null;
   @Input() activeTab: PathContentTab = 'treatments';
-  @Input() treatments: PathTreatment[] = [];
+  @Input() treatments: Treatment[] = [];
   @Input() anamnesis: Anamnesis | null = null;
   @Input() documents: PathDocument[] = [];
   @Input() selectedTreatmentId: string | null = null;
@@ -370,8 +370,8 @@ export class PathContentComponent {
 
   @Output() tabChange = new EventEmitter<PathContentTab>();
   @Output() editPath = new EventEmitter<void>();
-  @Output() treatmentSelect = new EventEmitter<PathTreatment>();
-  @Output() treatmentDoubleClick = new EventEmitter<PathTreatment>();
+  @Output() treatmentSelect = new EventEmitter<Treatment>();
+  @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
   @Output() editAnamnesis = new EventEmitter<void>();
   @Output() documentOpen = new EventEmitter<PathDocument>();
   @Output() documentUpload = new EventEmitter<void>();
@@ -397,11 +397,11 @@ export class PathContentComponent {
     this.deletePath.emit();
   }
 
-  onTreatmentSelect(treatment: PathTreatment): void {
+  onTreatmentSelect(treatment: Treatment): void {
     this.treatmentSelect.emit(treatment);
   }
 
-  onTreatmentDoubleClick(treatment: PathTreatment): void {
+  onTreatmentDoubleClick(treatment: Treatment): void {
     this.treatmentDoubleClick.emit(treatment);
   }
 

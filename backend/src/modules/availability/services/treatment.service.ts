@@ -5,6 +5,7 @@ import { Treatment, TreatmentStatus, PaymentMethod } from '../entities/treatment
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
 import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
 import { AppointmentInstrument } from '../entities/appointment-instrument.entity';
+import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { Patient } from '../../../entities/patient.entity';
 
 // ==================== INPUT INTERFACES ====================
@@ -51,6 +52,8 @@ export class TreatmentService {
     private appointmentInstrumentRepo: Repository<AppointmentInstrument>,
     @InjectRepository(Patient)
     private patientRepo: Repository<Patient>,
+    @InjectRepository(TherapeuticPath)
+    private pathRepo: Repository<TherapeuticPath>,
     private dataSource: DataSource,
   ) {}
 
@@ -60,10 +63,15 @@ export class TreatmentService {
    * Crea un trattamento da un appuntamento quando il paziente si presenta
    * Copia automaticamente gli strumenti dall'appuntamento
    */
-  async createFromAppointment(appointmentId: string): Promise<Treatment> {
+  async createFromAppointment(
+    appointmentId: string,
+    therapeuticPathId: string,
+    scontoFE: boolean = false
+  ): Promise<Treatment> {
     return this.dataSource.transaction(async (manager: EntityManager) => {
       const treatmentRepo = manager.getRepository(Treatment);
       const appointmentRepo = manager.getRepository(AvailabilityAppointment);
+      const pathRepo = manager.getRepository(TherapeuticPath);
 
       // Verifica che l'appuntamento esista
       const appointment = await appointmentRepo.findOne({
@@ -73,6 +81,15 @@ export class TreatmentService {
 
       if (!appointment) {
         throw new NotFoundException(`Appuntamento ${appointmentId} non trovato`);
+      }
+
+      // Verifica che il percorso terapeutico esista
+      const path = await pathRepo.findOne({
+        where: { id: therapeuticPathId }
+      });
+
+      if (!path) {
+        throw new NotFoundException(`Percorso terapeutico ${therapeuticPathId} non trovato`);
       }
 
       // Verifica che l'appuntamento sia in stato ATTENDED
@@ -97,6 +114,8 @@ export class TreatmentService {
         operatorId: appointment.operatorId!,
         patientId: appointment.patientId,
         serviceId: appointment.serviceId,
+        therapeuticPathId,
+        scontoFE,
         status: TreatmentStatus.IN_PROGRESS,
         isTest: false,
         startedAt: new Date(),
@@ -119,7 +138,7 @@ export class TreatmentService {
   async findById(id: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments']
+      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath']
     });
   }
 
@@ -129,7 +148,7 @@ export class TreatmentService {
   private async findByIdWithManager(manager: EntityManager, id: string): Promise<Treatment> {
     const treatment = await manager.getRepository(Treatment).findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments']
+      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath']
     });
 
     if (!treatment) {
@@ -145,7 +164,7 @@ export class TreatmentService {
   async findByAppointmentId(appointmentId: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { appointmentId },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments']
+      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath']
     });
   }
 
@@ -346,6 +365,7 @@ export class TreatmentService {
       .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.instruments', 'instruments')
+      .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .where('treatment.operatorId = :operatorId', { operatorId })
       .andWhere('treatment.status IN (:...statuses)', {
         statuses: [TreatmentStatus.IN_PROGRESS, TreatmentStatus.OPERATOR_COMPLETED]
@@ -366,7 +386,7 @@ export class TreatmentService {
   async getPendingForSecretary(): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { status: TreatmentStatus.OPERATOR_COMPLETED },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments'],
+      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath'],
       order: { completedAt: 'ASC' }
     });
   }
@@ -377,7 +397,7 @@ export class TreatmentService {
   async getByPatient(patientId: number, limit?: number, offset?: number): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { patientId },
-      relations: ['appointment', 'operator', 'service', 'instruments'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath'],
       order: { startedAt: 'DESC' },
       take: limit,
       skip: offset
@@ -393,6 +413,7 @@ export class TreatmentService {
       .leftJoinAndSelect('treatment.operator', 'operator')
       .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
+      .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .where('treatment.isInvoicedToPatient = :invoiced', { invoiced: false })
       .andWhere('treatment.status = :status', { status: TreatmentStatus.CLOSED })
       .andWhere('treatment.isTest = :isTest', { isTest: false });
@@ -418,6 +439,7 @@ export class TreatmentService {
       .leftJoinAndSelect('treatment.operator', 'operator')
       .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
+      .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .where('treatment.isInvoicedByOperator = :invoiced', { invoiced: false })
       .andWhere('treatment.status = :status', { status: TreatmentStatus.CLOSED })
       .andWhere('treatment.isTest = :isTest', { isTest: false });
@@ -435,5 +457,55 @@ export class TreatmentService {
     return queryBuilder
       .orderBy('treatment.startedAt', 'ASC')
       .getMany();
+  }
+
+  /**
+   * Trova tutti i trattamenti con relazioni
+   */
+  async findAll(): Promise<Treatment[]> {
+    return this.treatmentRepo.find({
+      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath'],
+      order: { startedAt: 'DESC' }
+    });
+  }
+
+  /**
+   * Trattamenti di un percorso terapeutico
+   */
+  async getByTherapeuticPath(therapeuticPathId: string): Promise<Treatment[]> {
+    return this.treatmentRepo.find({
+      where: { therapeuticPathId },
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath'],
+      order: { startedAt: 'DESC' }
+    });
+  }
+
+  /**
+   * Elimina un singolo trattamento per ID
+   * TreatmentInstrument vengono eliminati automaticamente via CASCADE
+   */
+  async delete(id: string): Promise<boolean> {
+    const treatment = await this.treatmentRepo.findOne({ where: { id } });
+
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+
+    const result = await this.treatmentRepo.delete(id);
+    return result.affected ? result.affected > 0 : false;
+  }
+
+  /**
+   * Elimina TUTTI i trattamenti (operazione distruttiva)
+   * TreatmentInstrument vengono eliminati automaticamente via CASCADE
+   */
+  async deleteAll(): Promise<number> {
+    const result = await this.treatmentRepo
+      .createQueryBuilder()
+      .delete()
+      .from(Treatment)
+      .execute();
+
+    return result.affected || 0;
   }
 }
