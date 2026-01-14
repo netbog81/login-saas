@@ -652,6 +652,14 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   /**
+   * Restituisce l'ID del percorso terapeutico selezionato
+   * Usato per pre-selezionare il percorso nel dialog "Inizia Trattamento"
+   */
+  getSelectedPathId(): string | null {
+    return this.uiState.selectedPathId;
+  }
+
+  /**
    * Filtra i trattamenti in base al percorso terapeutico selezionato
    */
   get filteredTreatments(): Treatment[] {

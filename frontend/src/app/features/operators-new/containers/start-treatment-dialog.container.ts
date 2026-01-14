@@ -363,6 +363,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
   @Input() serviceName?: string;
   @Input() servicePrice?: number;
   @Input() appointmentStatus?: string;  // Stato dell'appuntamento per verificare se è ATTENDED
+  @Input() defaultPathId?: string;      // Percorso terapeutico da pre-selezionare (dalla scheda paziente)
 
   // Output events
   @Output() treatmentStarted = new EventEmitter<StartTreatmentResult>();
@@ -513,7 +514,8 @@ export class StartTreatmentDialogContainer implements OnDestroy {
       serviceName: this.serviceName,
       servicePrice: this.servicePrice,
       availableServices: this.availableServices,
-      defaultServiceId: this.serviceId
+      defaultServiceId: this.serviceId,
+      defaultPathId: this.defaultPathId
     };
     this.showDialog = true;
     this.cdr.markForCheck();

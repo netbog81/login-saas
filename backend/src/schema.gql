@@ -855,6 +855,7 @@ type Mutation {
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
   updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
+  updateTreatment(input: UpdateTreatmentInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 }
@@ -1607,11 +1608,15 @@ type Treatment {
   operatorInvoiceNumber: String
   operatorNotes: String
   paidAt: DateTime
+  painAfter: Int
+  painBefore: Int
+  painLevel: Int
   patient: PatientModel
   patientId: Int
   patientInvoiceNumber: String
   paymentMethod: PaymentMethod
   price: Float!
+  rescheduleRequested: Boolean
   scontoFE: Boolean!
   secretaryNotes: String
   service: Service
@@ -1855,4 +1860,34 @@ input UpdateTherapeuticPathInput {
   name: String
   notes: String
   status: TherapeuticPathStatus
+}
+
+input UpdateTreatmentInput {
+  clinicalNotes: String
+  id: ID!
+  instruments: [UpdateTreatmentInstrumentInput!]
+
+  """
+  Se false, resetta lo stato di pagamento (paymentMethod, paidAt, collectedBy)
+  """
+  isPaid: Boolean
+  painAfter: Int
+  painBefore: Int
+  painLevel: Int
+  price: Float
+  rescheduleRequested: Boolean
+  scontoFE: Boolean
+  secretaryNotes: String
+  serviceId: ID
+  therapeuticPathId: ID
+}
+
+input UpdateTreatmentInstrumentInput {
+  endOffsetMinutes: Int
+  instrumentCategoryId: ID
+  instrumentId: ID!
+  notes: String
+  quantity: Int
+  startOffsetMinutes: Int
+  wasUsed: Boolean
 }

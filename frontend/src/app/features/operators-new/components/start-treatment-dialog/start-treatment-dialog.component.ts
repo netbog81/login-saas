@@ -491,18 +491,18 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['data'] && this.data && this.form) {
-      // Se cambia il prezzo del servizio, aggiorna il form
-      if (this.data.servicePrice) {
-        this.form.patchValue({ price: this.data.servicePrice });
-      }
-      // Auto-seleziona il primo percorso se ce n'è solo uno
-      if (this.data.activePaths?.length === 1) {
+      // Pre-seleziona il percorso: prima defaultPathId, poi il primo se uno solo
+      if (this.data.defaultPathId) {
+        this.form.patchValue({ pathId: this.data.defaultPathId });
+      } else if (this.data.activePaths?.length === 1) {
         this.form.patchValue({ pathId: this.data.activePaths[0].id });
       }
       // Imposta il servizio di default se presente
       if (this.data.defaultServiceId) {
         this.form.patchValue({ serviceId: this.data.defaultServiceId });
       }
+      // Aggiorna il prezzo in base al servizio selezionato e sconto FE
+      this.updatePrice();
     }
   }
 
@@ -524,18 +524,44 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       patientNotes: ['']
     });
 
-    // Auto-seleziona il primo percorso se ce n'è solo uno
-    if (this.data?.activePaths?.length === 1) {
+    // Pre-seleziona il percorso: prima defaultPathId, poi il primo se uno solo
+    if (this.data?.defaultPathId) {
+      this.form.patchValue({ pathId: this.data.defaultPathId });
+    } else if (this.data?.activePaths?.length === 1) {
       this.form.patchValue({ pathId: this.data.activePaths[0].id });
     }
 
-    // Aggiorna prezzo quando cambia servizio
-    this.form.get('serviceId')?.valueChanges.subscribe(serviceId => {
-      const service = this.data.availableServices?.find(s => s.id === serviceId);
-      if (service?.defaultPrice != null) {
-        this.form.patchValue({ price: service.defaultPrice });
+    // Aggiorna prezzo quando cambia servizio o sconto FE
+    this.form.get('serviceId')?.valueChanges.subscribe(() => this.updatePrice());
+    this.form.get('isScontoFE')?.valueChanges.subscribe(() => {
+      this.updatePrice();
+      // Reset cash collection quando si disattiva sconto FE
+      if (!this.form.get('isScontoFE')?.value) {
+        this.resetCashCollection();
       }
     });
+
+    // Aggiorna il prezzo iniziale basato sul servizio default
+    this.updatePrice();
+  }
+
+  /**
+   * Aggiorna il prezzo in base al servizio selezionato e allo sconto FE
+   */
+  private updatePrice(): void {
+    const serviceId = this.form.get('serviceId')?.value;
+    const isScontoFE = this.form.get('isScontoFE')?.value;
+    const service = this.data?.availableServices?.find(s => s.id === serviceId);
+
+    if (service) {
+      // Usa discountFE se sconto FE attivo, altrimenti defaultPrice
+      const price = isScontoFE && service.discountFE != null
+        ? service.discountFE
+        : service.defaultPrice;
+      if (price != null) {
+        this.form.patchValue({ price });
+      }
+    }
   }
 
   onOverlayClick(event: MouseEvent): void {

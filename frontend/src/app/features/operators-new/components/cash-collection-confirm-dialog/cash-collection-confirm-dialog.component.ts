@@ -60,7 +60,7 @@ import { CashCollectionData } from '../../models/start-treatment-dialog.model';
 
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Metodo di Pagamento</mat-label>
-          <mat-select [(value)]="selectedPaymentMethod" required>
+          <mat-select [(value)]="selectedPaymentMethod" required panelClass="payment-method-panel">
             @for (method of paymentMethods; track method.value) {
               <mat-option [value]="method.value">
                 <mat-icon>{{ method.icon }}</mat-icon>
@@ -100,9 +100,11 @@ import { CashCollectionData } from '../../models/start-treatment-dialog.model';
     .cash-collection-dialog {
       background: white;
       border-radius: 16px;
-      overflow: hidden;
+      overflow: visible;
       max-width: 400px;
       box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+      position: relative;
+      z-index: 1200;
     }
 
     .dialog-header {
@@ -246,9 +248,10 @@ export class CashCollectionConfirmDialogComponent {
 
   onConfirm(): void {
     if (this.selectedPaymentMethod) {
+      // Converti in maiuscolo per compatibilità con GraphQL enum (es. 'cash' -> 'CASH')
       this.confirm.emit({
         amount: this.amount || 0,
-        paymentMethod: this.selectedPaymentMethod,
+        paymentMethod: this.selectedPaymentMethod.toUpperCase() as PaymentMethod,
         collectedBy: this.operatorId
       });
     }

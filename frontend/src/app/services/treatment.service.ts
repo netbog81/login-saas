@@ -31,6 +31,7 @@ import {
   MARK_TREATMENT_INVOICED_TO_PATIENT,
   MARK_TREATMENT_INVOICED_BY_OPERATOR,
   UPDATE_TREATMENT_INSTRUMENTS,
+  UPDATE_TREATMENT,
   DELETE_TREATMENT,
 } from '../graphql/operations/treatment.mutations';
 
@@ -200,6 +201,36 @@ export class TreatmentService extends BaseGraphQLService {
       UPDATE_TREATMENT_INSTRUMENTS,
       { id, instruments }
     ).pipe(map((result) => result.updateTreatmentInstruments));
+  }
+
+  /**
+   * Update an in-progress treatment
+   */
+  updateTreatment(input: {
+    id: string;
+    therapeuticPathId?: string;
+    serviceId?: string;
+    clinicalNotes?: string;
+    secretaryNotes?: string;
+    price?: number;
+    scontoFE?: boolean;
+    painLevel?: number;
+    painBefore?: number;
+    painAfter?: number;
+    rescheduleRequested?: boolean;
+    isPaid?: boolean; // Se false, resetta lo stato di pagamento
+    instruments?: {
+      instrumentId: string;
+      instrumentCategoryId?: string;
+      quantity?: number;
+      wasUsed?: boolean;
+      startOffsetMinutes?: number;
+      endOffsetMinutes?: number;
+      notes?: string;
+    }[];
+  }): Observable<Treatment> {
+    return this.mutate<{ updateTreatment: Treatment }>(UPDATE_TREATMENT, { input })
+      .pipe(map((result) => result.updateTreatment));
   }
 
   /**

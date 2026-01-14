@@ -66,6 +66,15 @@ export const UPDATE_TREATMENT_INSTRUMENTS = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+export const UPDATE_TREATMENT = gql`
+  mutation UpdateTreatment($input: UpdateTreatmentInput!) {
+    updateTreatment(input: $input) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
 export const DELETE_TREATMENT = gql`
   mutation DeleteTreatment($id: ID!) {
     deleteTreatment(id: $id)

@@ -6,6 +6,7 @@ import {
   CloseTreatmentInput,
   RecordPaymentInput,
   TreatmentInstrumentInput,
+  UpdateTreatmentInput,
 } from '../dto/treatment.input';
 
 @Resolver(() => Treatment)
@@ -118,6 +119,16 @@ export class TreatmentResolver {
     @Args('scontoFE', { type: () => Boolean, nullable: true, defaultValue: false }) scontoFE: boolean,
   ): Promise<Treatment> {
     return this.treatmentService.createFromAppointment(appointmentId, therapeuticPathId, scontoFE);
+  }
+
+  /**
+   * Mutation: Aggiorna un trattamento in corso
+   */
+  @Mutation(() => Treatment, { name: 'updateTreatment' })
+  async updateTreatment(
+    @Args('input') input: UpdateTreatmentInput,
+  ): Promise<Treatment> {
+    return this.treatmentService.update(input);
   }
 
   /**

@@ -36,6 +36,7 @@ import { AppointmentsSidebarComponent } from '../components/appointments-sidebar
 import { TreatmentCardComponent, TreatmentCompletionData } from '../components/treatment-card/treatment-card.component';
 import { PatientFolderContainer } from './patient-folder.container';
 import { StartTreatmentDialogContainer, StartTreatmentResult } from './start-treatment-dialog.container';
+import { EditTreatmentDialogContainerComponent } from './edit-treatment-dialog.container';
 import { Treatment } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
 
@@ -48,7 +49,8 @@ import { TreatmentService } from '../../../services/treatment.service';
     AppointmentsSidebarComponent,
     TreatmentCardComponent,
     PatientFolderContainer,
-    StartTreatmentDialogContainer
+    StartTreatmentDialogContainer,
+    EditTreatmentDialogContainerComponent
   ],
   template: `
     <div class="operator-workspace-new">
@@ -126,10 +128,19 @@ import { TreatmentService } from '../../../services/treatment.service';
         [serviceName]="getServiceName()"
         [servicePrice]="getServicePrice()"
         [appointmentStatus]="selectedAppointment?.bookingStatus"
+        [defaultPathId]="getSelectedPathId()"
         (treatmentStarted)="onTreatmentStarted($event)"
         (cancel)="onStartTreatmentDialogCancel()"
         (createPath)="onCreatePathFromTreatmentDialog()">
       </app-start-treatment-dialog-container>
+
+      <!-- Edit Treatment Dialog Container -->
+      <app-edit-treatment-dialog-container
+        #editTreatmentDialog
+        [patientId]="selectedPatient?.id || 0"
+        (treatmentUpdated)="onTreatmentUpdated($event)"
+        (cancel)="onEditTreatmentDialogCancel()">
+      </app-edit-treatment-dialog-container>
     </div>
   `,
   styles: [`
@@ -200,6 +211,7 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   @ViewChild('startTreatmentDialog') startTreatmentDialog!: StartTreatmentDialogContainer;
+  @ViewChild('editTreatmentDialog') editTreatmentDialog!: EditTreatmentDialogContainerComponent;
   @ViewChild(PatientFolderContainer) patientFolderContainer!: PatientFolderContainer;
 
   // Stato UI
@@ -442,6 +454,11 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     return apt.serviceId || apt.service?.id || undefined;
   }
 
+  getSelectedPathId(): string | undefined {
+    // Recupera l'ID del percorso selezionato dalla cartella paziente
+    return this.patientFolderContainer?.getSelectedPathId() || undefined;
+  }
+
   onCompleteTreatment(data: TreatmentCompletionData): void {
     if (!this.selectedAppointment) return;
     console.log('[OperatorWorkspaceContainer] Complete treatment:', data);
@@ -451,8 +468,31 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
 
   onEditTreatment(treatment: Treatment): void {
     console.log('[OperatorWorkspaceContainer] Edit treatment:', treatment.id);
-    // TODO: Aprire dialog modifica trattamento
-    alert('Modifica trattamento - Questa funzionalità aprirà il dialog di modifica');
+    if (this.editTreatmentDialog) {
+      this.editTreatmentDialog.open(treatment);
+    }
+  }
+
+  onTreatmentUpdated(treatment: Treatment): void {
+    console.log('[OperatorWorkspaceContainer] Treatment updated:', {
+      id: treatment.id,
+      therapeuticPathId: treatment.therapeuticPathId,
+      serviceId: treatment.serviceId,
+      price: treatment.price
+    });
+    this.ngZone.run(() => {
+      this.currentTreatment = treatment;
+      this.cdr.markForCheck();
+
+      // Ricarica trattamenti nella cartella paziente
+      if (this.patientFolderContainer) {
+        this.patientFolderContainer.reloadTreatments();
+      }
+    });
+  }
+
+  onEditTreatmentDialogCancel(): void {
+    console.log('[OperatorWorkspaceContainer] Edit treatment dialog cancelled');
   }
 
   onFinishTreatment(treatment: Treatment): void {

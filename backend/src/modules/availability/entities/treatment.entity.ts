@@ -97,6 +97,24 @@ export class Treatment {
   @Column('text', { nullable: true })
   operatorNotes?: string;
 
+  // ==================== CLINICAL DATA ====================
+
+  @Field(() => Int, { nullable: true })
+  @Column('int', { nullable: true })
+  painLevel?: number;
+
+  @Field(() => Int, { nullable: true })
+  @Column('int', { nullable: true })
+  painBefore?: number;
+
+  @Field(() => Int, { nullable: true })
+  @Column('int', { nullable: true })
+  painAfter?: number;
+
+  @Field({ nullable: true })
+  @Column({ default: false })
+  rescheduleRequested: boolean;
+
   // ==================== PAYMENT ====================
 
   @Field(() => Float)

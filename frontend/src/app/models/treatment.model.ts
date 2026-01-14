@@ -58,6 +58,12 @@ export interface Treatment {
   secretaryNotes?: string;
   operatorNotes?: string;
 
+  // Clinical data
+  painLevel?: number;
+  painBefore?: number;
+  painAfter?: number;
+  rescheduleRequested?: boolean;
+
   // Payment (patient)
   price: number;
   isPaid: boolean;

@@ -20,6 +20,7 @@ export interface StartTreatmentDialogData {
   servicePrice?: number;           // Prezzo default del servizio
   availableServices: Service[];    // Lista servizi disponibili
   defaultServiceId?: string;       // ServiceId dell'appuntamento (default)
+  defaultPathId?: string;          // Percorso terapeutico da pre-selezionare (dalla scheda paziente)
 }
 
 /**
@@ -81,7 +82,8 @@ export function createStartTreatmentDialogData(
   serviceName?: string,
   servicePrice?: number,
   availableServices: Service[] = [],
-  defaultServiceId?: string
+  defaultServiceId?: string,
+  defaultPathId?: string
 ): StartTreatmentDialogData {
   return {
     appointmentId,
@@ -92,7 +94,8 @@ export function createStartTreatmentDialogData(
     serviceName,
     servicePrice,
     availableServices,
-    defaultServiceId
+    defaultServiceId,
+    defaultPathId
   };
 }
 

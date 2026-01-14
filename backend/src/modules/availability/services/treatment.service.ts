@@ -37,6 +37,32 @@ export interface TreatmentInstrumentInput {
   orderPosition?: number;
 }
 
+export interface UpdateTreatmentInstrumentInput {
+  instrumentId: string;
+  instrumentCategoryId?: string;
+  quantity?: number;
+  wasUsed?: boolean;
+  startOffsetMinutes?: number;
+  endOffsetMinutes?: number;
+  notes?: string;
+}
+
+export interface UpdateTreatmentInput {
+  id: string;
+  therapeuticPathId?: string;
+  serviceId?: string;
+  clinicalNotes?: string;
+  secretaryNotes?: string;
+  price?: number;
+  scontoFE?: boolean;
+  painLevel?: number;
+  painBefore?: number;
+  painAfter?: number;
+  rescheduleRequested?: boolean;
+  instruments?: UpdateTreatmentInstrumentInput[];
+  isPaid?: boolean; // Se false, resetta paymentMethod, paidAt, collectedBy
+}
+
 // ==================== SERVICE ====================
 
 @Injectable()
@@ -165,6 +191,93 @@ export class TreatmentService {
     return this.treatmentRepo.findOne({
       where: { appointmentId },
       relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath']
+    });
+  }
+
+  // ==================== UPDATE ====================
+
+  /**
+   * Aggiorna un trattamento in corso
+   * Solo i trattamenti con status IN_PROGRESS possono essere modificati
+   */
+  async update(input: UpdateTreatmentInput): Promise<Treatment> {
+    return this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatmentInstrumentRepo = manager.getRepository(TreatmentInstrument);
+
+      const { id, instruments, ...updateData } = input;
+
+      const treatment = await treatmentRepo.findOne({
+        where: { id },
+        relations: ['instruments', 'instruments.instrument', 'therapeuticPath', 'appointment', 'service'],
+      });
+
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      if (treatment.status !== TreatmentStatus.IN_PROGRESS) {
+        throw new BadRequestException(
+          `Solo i trattamenti in corso possono essere modificati. Stato attuale: ${treatment.status}`
+        );
+      }
+
+      // Aggiorna campi base (solo quelli forniti)
+      if (updateData.clinicalNotes !== undefined) treatment.clinicalNotes = updateData.clinicalNotes;
+      if (updateData.secretaryNotes !== undefined) treatment.secretaryNotes = updateData.secretaryNotes;
+      if (updateData.price !== undefined) treatment.price = updateData.price;
+      if (updateData.scontoFE !== undefined) treatment.scontoFE = updateData.scontoFE;
+      if (updateData.painLevel !== undefined) treatment.painLevel = updateData.painLevel;
+      if (updateData.painBefore !== undefined) treatment.painBefore = updateData.painBefore;
+      if (updateData.painAfter !== undefined) treatment.painAfter = updateData.painAfter;
+      if (updateData.rescheduleRequested !== undefined) treatment.rescheduleRequested = updateData.rescheduleRequested;
+
+      // Gestione reset pagamento: se isPaid === false, resetta lo stato di pagamento
+      if (updateData.isPaid === false) {
+        treatment.isPaid = false;
+        treatment.paymentMethod = null as any;
+        treatment.paidAt = null as any;
+        treatment.collectedBy = null as any;
+      }
+
+      // Aggiorna relazioni se specificate
+      if (updateData.therapeuticPathId) {
+        treatment.therapeuticPathId = updateData.therapeuticPathId;
+      }
+      if (updateData.serviceId) {
+        treatment.serviceId = updateData.serviceId;
+      }
+
+      // IMPORTANTE: Rimuovere le relazioni caricate PRIMA del save per evitare che TypeORM
+      // sovrascriva i foreign key con i valori degli oggetti caricati.
+      // Usare delete invece di = null per evitare che TypeORM interpreti null come "set to null"
+      delete (treatment as any).therapeuticPath;
+      delete (treatment as any).service;
+
+      await treatmentRepo.save(treatment);
+
+      // Aggiorna strumenti se specificati
+      if (instruments !== undefined) {
+        // Rimuovi strumenti esistenti
+        await treatmentInstrumentRepo.delete({ treatmentId: id });
+
+        // Aggiungi nuovi strumenti
+        if (instruments.length > 0) {
+          for (const inst of instruments) {
+            const treatmentInstrument = treatmentInstrumentRepo.create({
+              treatmentId: id,
+              instrumentId: inst.instrumentId,
+              instrumentCategoryId: inst.instrumentCategoryId,
+              wasUsed: inst.wasUsed ?? true,
+              startOffsetMinutes: inst.startOffsetMinutes ?? 0,
+              endOffsetMinutes: inst.endOffsetMinutes ?? 0,
+            });
+            await treatmentInstrumentRepo.save(treatmentInstrument);
+          }
+        }
+      }
+
+      return this.findByIdWithManager(manager, id);
     });
   }
 
