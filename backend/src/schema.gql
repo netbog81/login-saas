@@ -1887,7 +1887,6 @@ input UpdateTreatmentInstrumentInput {
   instrumentCategoryId: ID
   instrumentId: ID!
   notes: String
-  quantity: Int
   startOffsetMinutes: Int
   wasUsed: Boolean
 }

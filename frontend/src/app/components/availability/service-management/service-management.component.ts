@@ -43,6 +43,9 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   searchTerm = '';
   showInactive = false;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   // Macro categories and subcategories
   macroCategories: OperatorMacroCategory[] = [
     OperatorMacroCategory.Doctor,
@@ -178,6 +181,20 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
     this.filteredSubcategories = this.allSubcategories.filter(
       sub => sub.macroCategory === macroCategory
     );
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    // Chiudi solo se sia mousedown che click sono avvenuti sull'overlay stesso
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.closeServiceForm();
+    }
+    this.overlayMouseDownTarget = null;
   }
 
   closeServiceForm() {

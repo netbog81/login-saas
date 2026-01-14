@@ -76,8 +76,10 @@
   </div>
 
   <!-- Service Form Modal -->
-  <div *ngIf="showServiceForm" class="modal-overlay" (click)="closeServiceForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showServiceForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ selectedService ? 'Modifica Servizio' : 'Nuovo Servizio' }}</h3>
         <button class="close-btn" (click)="closeServiceForm()">×</button>
