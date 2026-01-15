@@ -63,8 +63,10 @@
   </div>
 
   <!-- Form Modal -->
-  <div *ngIf="showSubcategoryForm" class="modal-overlay" (click)="closeSubcategoryForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showSubcategoryForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ isEditMode ? 'Modifica' : 'Nuova' }} Sotto-Categoria</h3>
         <button class="close-btn" (click)="closeSubcategoryForm()">×</button>

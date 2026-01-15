@@ -53,12 +53,18 @@ export interface UpdateTreatmentInput {
   serviceId?: string;
   clinicalNotes?: string;
   secretaryNotes?: string;
+  patientNotes?: string;
   price?: number;
   scontoFE?: boolean;
   painLevel?: number;
   painBefore?: number;
   painAfter?: number;
   rescheduleRequested?: boolean;
+  reschedulingType?: string;
+  suggestInDays?: number;
+  suggestDateRangeStart?: string;
+  suggestDateRangeEnd?: string;
+  reschedulingNotes?: string;
   instruments?: UpdateTreatmentInstrumentInput[];
   isPaid?: boolean; // Se false, resetta paymentMethod, paidAt, collectedBy
 }
@@ -225,12 +231,18 @@ export class TreatmentService {
       // Aggiorna campi base (solo quelli forniti)
       if (updateData.clinicalNotes !== undefined) treatment.clinicalNotes = updateData.clinicalNotes;
       if (updateData.secretaryNotes !== undefined) treatment.secretaryNotes = updateData.secretaryNotes;
+      if (updateData.patientNotes !== undefined) treatment.patientNotes = updateData.patientNotes;
       if (updateData.price !== undefined) treatment.price = updateData.price;
       if (updateData.scontoFE !== undefined) treatment.scontoFE = updateData.scontoFE;
       if (updateData.painLevel !== undefined) treatment.painLevel = updateData.painLevel;
       if (updateData.painBefore !== undefined) treatment.painBefore = updateData.painBefore;
       if (updateData.painAfter !== undefined) treatment.painAfter = updateData.painAfter;
       if (updateData.rescheduleRequested !== undefined) treatment.rescheduleRequested = updateData.rescheduleRequested;
+      if (updateData.reschedulingType !== undefined) treatment.reschedulingType = updateData.reschedulingType;
+      if (updateData.suggestInDays !== undefined) treatment.suggestInDays = updateData.suggestInDays;
+      if (updateData.suggestDateRangeStart !== undefined) treatment.suggestDateRangeStart = updateData.suggestDateRangeStart ? new Date(updateData.suggestDateRangeStart) : null as any;
+      if (updateData.suggestDateRangeEnd !== undefined) treatment.suggestDateRangeEnd = updateData.suggestDateRangeEnd ? new Date(updateData.suggestDateRangeEnd) : null as any;
+      if (updateData.reschedulingNotes !== undefined) treatment.reschedulingNotes = updateData.reschedulingNotes;
 
       // Gestione reset pagamento: se isPaid === false, resetta lo stato di pagamento
       if (updateData.isPaid === false) {

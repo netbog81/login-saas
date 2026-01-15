@@ -45,6 +45,9 @@ export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
   // Expose enum to template
   OperatorMacroCategory = OperatorMacroCategory;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private categoryService: OperatorCategoryService,
     private ngZone: NgZone
@@ -286,5 +289,18 @@ export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
   getCategoryCount(macroCategory: OperatorMacroCategory): number {
     return this.categories.filter((c) => c.macroCategory === macroCategory)
       .length;
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.closeCategoryForm();
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

@@ -124,6 +124,9 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Category filter
   selectedMacroCategory: OperatorMacroCategory | null = null;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   // Search filters
   searchFilters: AppointmentSearchFilters = { duration: 45, withInstrument: false };
   instrumentCategories: InstrumentCategory[] = [];
@@ -1458,6 +1461,35 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   onDeleteCancel(): void {
     this.showDeleteConfirmDialog = false;
     this.appointmentToDelete = null;
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent, dialogType: 'event' | 'delete' | 'workingHours' | 'gymAppointment' | 'gymDelete'): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      switch (dialogType) {
+        case 'event':
+          this.onDialogResult({ action: 'cancel' });
+          break;
+        case 'delete':
+          this.onDeleteCancel();
+          break;
+        case 'workingHours':
+          this.onWorkingHoursDialogResult({ action: 'cancel' });
+          break;
+        case 'gymAppointment':
+          this.onGymAppointmentDialogResult({ action: 'cancel' });
+          break;
+        case 'gymDelete':
+          this.onGymDeleteCancel();
+          break;
+      }
+    }
+    this.overlayMouseDownTarget = null;
   }
 
   // Working Hours Dialog

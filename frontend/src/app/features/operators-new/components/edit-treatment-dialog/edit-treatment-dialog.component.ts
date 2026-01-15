@@ -35,12 +35,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatExpansionModule } from '@angular/material/expansion';
+import { MatRadioModule } from '@angular/material/radio';
+import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 
 import {
   EditTreatmentDialogData,
   EditTreatmentFormResult,
   EditTreatmentInstrumentInput,
-  BaseInstrumentData
+  BaseInstrumentData,
+  ReschedulingType
 } from '../../models/edit-treatment-dialog.model';
 import { PaymentMethod } from '../../../../models/treatment.model';
 
@@ -62,12 +65,16 @@ import { PaymentMethod } from '../../../../models/treatment.model';
     MatTooltipModule,
     MatDividerModule,
     MatCheckboxModule,
-    MatExpansionModule
+    MatExpansionModule,
+    MatRadioModule,
+    MatDatepickerModule
   ],
   template: `
     @if (isVisible && data) {
-      <div class="dialog-overlay" (click)="onOverlayClick($event)">
-        <div class="dialog-container">
+      <div class="dialog-overlay"
+           (mousedown)="onOverlayMouseDown($event)"
+           (click)="onOverlayClick($event)">
+        <div class="dialog-container" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
           <!-- Header -->
           <header class="dialog-header">
             <div class="header-content">
@@ -203,12 +210,63 @@ import { PaymentMethod } from '../../../../models/treatment.model';
                 </div>
               </mat-expansion-panel>
 
-              <!-- Riprogrammazione richiesta -->
-              <div class="reschedule-section">
-                <mat-checkbox formControlName="rescheduleRequested">
-                  Riprogrammazione richiesta
-                </mat-checkbox>
-              </div>
+              <!-- Sezione Riprogrammazione (espandibile) -->
+              <mat-expansion-panel class="expansion-section">
+                <mat-expansion-panel-header>
+                  <mat-panel-title>
+                    <mat-icon>event_repeat</mat-icon>
+                    Riprogrammazione
+                  </mat-panel-title>
+                </mat-expansion-panel-header>
+
+                <div class="rescheduling-section">
+                  <mat-radio-group formControlName="reschedulingType" class="reschedule-options">
+                    <mat-radio-button value="none">Nessuna</mat-radio-button>
+                    <mat-radio-button value="days">Fra N giorni</mat-radio-button>
+                    <mat-radio-button value="range">Intervallo date</mat-radio-button>
+                  </mat-radio-group>
+
+                  @if (form.get('reschedulingType')?.value === 'days') {
+                    <mat-form-field appearance="outline" class="days-field">
+                      <mat-label>Giorni</mat-label>
+                      <input matInput type="number" formControlName="suggestInDays" min="1">
+                    </mat-form-field>
+                  }
+
+                  @if (form.get('reschedulingType')?.value === 'range') {
+                    <div class="date-range">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Da</mat-label>
+                        <input matInput [matDatepicker]="pickerStart" formControlName="suggestDateRangeStart"
+                               [min]="minDateStart" (dateChange)="onStartDateChange($event)">
+                        <mat-datepicker-toggle matIconSuffix [for]="pickerStart"></mat-datepicker-toggle>
+                        <mat-datepicker #pickerStart></mat-datepicker>
+                      </mat-form-field>
+                      <mat-form-field appearance="outline">
+                        <mat-label>A</mat-label>
+                        <input matInput [matDatepicker]="pickerEnd" formControlName="suggestDateRangeEnd"
+                               [min]="minDateEnd">
+                        <mat-datepicker-toggle matIconSuffix [for]="pickerEnd"></mat-datepicker-toggle>
+                        <mat-datepicker #pickerEnd></mat-datepicker>
+                      </mat-form-field>
+                    </div>
+                  }
+
+                  @if (form.get('reschedulingType')?.value !== 'none') {
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Note riprogrammazione</mat-label>
+                      <textarea matInput formControlName="reschedulingNotes" rows="2"></textarea>
+                    </mat-form-field>
+                  }
+                </div>
+              </mat-expansion-panel>
+
+              <!-- Note Paziente -->
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Note per il Paziente</mat-label>
+                <textarea matInput formControlName="patientNotes" rows="2"
+                          placeholder="Indicazioni per il paziente..."></textarea>
+              </mat-form-field>
 
               <mat-divider></mat-divider>
 
@@ -436,8 +494,39 @@ import { PaymentMethod } from '../../../../models/treatment.model';
       }
     }
 
-    .reschedule-section {
+    .expansion-section {
       margin: 16px 0;
+
+      mat-panel-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+    }
+
+    .rescheduling-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 8px 0;
+    }
+
+    .reschedule-options {
+      display: flex;
+      gap: 16px;
+    }
+
+    .days-field {
+      width: 120px;
+    }
+
+    .date-range {
+      display: flex;
+      gap: 16px;
+
+      mat-form-field {
+        flex: 1;
+      }
     }
 
     mat-divider {
@@ -539,6 +628,16 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   cashCollected = false;
   cashPaymentMethod?: PaymentMethod;
 
+  // Flag per evitare che valueChanges sovrascrivano i dati durante populateForm
+  private isPopulating = false;
+
+  // Date minime per i datepicker riprogrammazione
+  minDateStart: Date = new Date();  // Oggi
+  minDateEnd: Date = new Date();    // Inizialmente oggi, poi aggiornata quando cambia data inizio
+
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private fb: FormBuilder,
     private cdr: ChangeDetectorRef
@@ -574,12 +673,18 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       serviceId: [''],
       clinicalNotes: [''],
       secretaryNotes: [''],
+      patientNotes: [''],
       price: [0, [Validators.min(0)]],
       scontoFE: [false],
       painLevel: [null],
       painBefore: [null],
       painAfter: [null],
-      rescheduleRequested: [false],
+      // Rescheduling fields
+      reschedulingType: ['none'],
+      suggestInDays: [null],
+      suggestDateRangeStart: [null as Date | null],
+      suggestDateRangeEnd: [null as Date | null],
+      reschedulingNotes: [''],
       instruments: this.fb.array([])
     });
 
@@ -595,6 +700,9 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   }
 
   private updatePrice(): void {
+    // Non aggiornare il prezzo durante il caricamento iniziale dei dati
+    if (this.isPopulating) return;
+
     const serviceId = this.form.get('serviceId')?.value;
     const isScontoFE = this.form.get('scontoFE')?.value;
     const service = this.data?.availableServices?.find(s => s.id === serviceId);
@@ -613,6 +721,9 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   private populateForm(): void {
     if (!this.data?.treatment) return;
 
+    // Attiva flag per evitare che valueChanges sovrascrivano il prezzo salvato
+    this.isPopulating = true;
+
     const t = this.data.treatment;
 
     // Log per debug
@@ -621,21 +732,60 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       therapeuticPathId: t.therapeuticPathId,
       serviceId: t.serviceId,
       price: t.price,
-      scontoFE: t.scontoFE
+      scontoFE: t.scontoFE,
+      reschedulingType: t.reschedulingType,
+      suggestInDays: t.suggestInDays
     });
+
+    // Determina il tipo di riprogrammazione basato sui dati esistenti
+    let reschedulingType: ReschedulingType = 'none';
+    if (t.reschedulingType) {
+      reschedulingType = t.reschedulingType as ReschedulingType;
+    } else if (t.rescheduleRequested) {
+      // Fallback per retrocompatibilità
+      reschedulingType = 'days';
+    }
+
+    // Helper per parsare le date dal backend (stringhe "YYYY-MM-DD") a Date
+    const parseDate = (dateStr: Date | string | undefined): Date | null => {
+      if (!dateStr) return null;
+      if (dateStr instanceof Date) return dateStr;
+      // Aggiungi ora per evitare problemi timezone
+      const date = new Date(dateStr + 'T00:00:00');
+      return isNaN(date.getTime()) ? null : date;
+    };
+
+    const startDateParsed = parseDate(t.suggestDateRangeStart);
+    const endDateParsed = parseDate(t.suggestDateRangeEnd);
 
     this.form.patchValue({
       therapeuticPathId: t.therapeuticPathId || '',
       serviceId: t.serviceId || '',
       clinicalNotes: t.clinicalNotes || '',
       secretaryNotes: t.secretaryNotes || '',
+      patientNotes: t.patientNotes || '',
       price: t.price || 0,
       scontoFE: t.scontoFE || false,
       painLevel: t.painLevel || null,
-      painBefore: t.painBefore || null,
-      painAfter: t.painAfter || null,
-      rescheduleRequested: t.rescheduleRequested || false
+      painBefore: t.painBefore ?? null,
+      painAfter: t.painAfter ?? null,
+      // Rescheduling fields - carica dai dati salvati
+      reschedulingType: reschedulingType,
+      suggestInDays: t.suggestInDays ?? null,
+      suggestDateRangeStart: startDateParsed,
+      suggestDateRangeEnd: endDateParsed,
+      reschedulingNotes: t.reschedulingNotes || ''
     });
+
+    // Aggiorna minDateEnd se c'è già una data di inizio
+    if (startDateParsed) {
+      const nextDay = new Date(startDateParsed);
+      nextDay.setDate(nextDay.getDate() + 1);
+      this.minDateEnd = nextDay;
+    }
+
+    // Disattiva flag dopo il patchValue
+    this.isPopulating = false;
 
     // Leggi stato pagamento dal trattamento (invece di resettare sempre)
     if (t.isPaid) {
@@ -715,10 +865,36 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     this.cashPaymentMethod = undefined;
   }
 
+  /**
+   * Gestisce il cambio della data di inizio riprogrammazione
+   * Aggiorna la data minima per la data di fine
+   */
+  onStartDateChange(event: MatDatepickerInputEvent<Date>): void {
+    const startDate = event.value;
+    if (startDate) {
+      // La data minima di fine è il giorno successivo alla data di inizio
+      const nextDay = new Date(startDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      this.minDateEnd = nextDay;
+
+      // Se la data fine attuale è <= data inizio, resettala
+      const endDate = this.form.get('suggestDateRangeEnd')?.value;
+      if (endDate && endDate <= startDate) {
+        this.form.patchValue({ suggestDateRangeEnd: null });
+      }
+    }
+  }
+
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
   onOverlayClick(event: MouseEvent): void {
-    if ((event.target as HTMLElement).classList.contains('dialog-overlay')) {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
       this.onCancel();
     }
+    this.overlayMouseDownTarget = null;
   }
 
   onCancel(): void {
@@ -729,17 +905,31 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     if (!this.form.valid) return;
 
     const formValue = this.form.value;
+
+    // Helper per formattare Date in stringa ISO YYYY-MM-DD
+    const formatDate = (date: Date | null): string | undefined => {
+      if (!date) return undefined;
+      return date.toISOString().split('T')[0];
+    };
+
     const result: EditTreatmentFormResult = {
       therapeuticPathId: formValue.therapeuticPathId || undefined,
       serviceId: formValue.serviceId || undefined,
       clinicalNotes: formValue.clinicalNotes || undefined,
       secretaryNotes: formValue.secretaryNotes || undefined,
+      patientNotes: formValue.patientNotes || undefined,
       price: formValue.price,
       scontoFE: formValue.scontoFE,
       painLevel: formValue.painLevel || undefined,
       painBefore: formValue.painBefore || undefined,
       painAfter: formValue.painAfter || undefined,
-      rescheduleRequested: formValue.rescheduleRequested,
+      // Rescheduling fields
+      reschedulingType: formValue.reschedulingType,
+      suggestInDays: formValue.suggestInDays || undefined,
+      suggestDateRangeStart: formatDate(formValue.suggestDateRangeStart),
+      suggestDateRangeEnd: formatDate(formValue.suggestDateRangeEnd),
+      reschedulingNotes: formValue.reschedulingNotes || undefined,
+      rescheduleRequested: formValue.reschedulingType !== 'none',
       instruments: formValue.instruments.map((i: any) => ({
         instrumentId: i.instrumentId,
         instrumentCategoryId: i.instrumentCategoryId || undefined,

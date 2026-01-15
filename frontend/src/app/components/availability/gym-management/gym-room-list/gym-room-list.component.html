@@ -69,8 +69,10 @@
   </div>
 
   <!-- Modal Form -->
-  <div *ngIf="showForm" class="modal-overlay" (click)="closeForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ isEditMode ? 'Modifica Palestra' : 'Nuova Palestra' }}</h3>
         <button class="close-btn" (click)="closeForm()">&times;</button>

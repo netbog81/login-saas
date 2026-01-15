@@ -217,12 +217,19 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
         serviceId: result.serviceId,
         clinicalNotes: result.clinicalNotes,
         secretaryNotes: result.secretaryNotes,
+        patientNotes: result.patientNotes,
         price: result.price,
         scontoFE: result.scontoFE,
         painLevel: result.painLevel,
         painBefore: result.painBefore,
         painAfter: result.painAfter,
         rescheduleRequested: result.rescheduleRequested,
+        // Campi riprogrammazione
+        reschedulingType: result.reschedulingType,
+        suggestInDays: result.suggestInDays,
+        suggestDateRangeStart: result.suggestDateRangeStart,
+        suggestDateRangeEnd: result.suggestDateRangeEnd,
+        reschedulingNotes: result.reschedulingNotes,
         isPaid: shouldResetPayment ? false : undefined, // Resetta pagamento se necessario
         instruments: result.instruments?.map(inst => ({
           instrumentId: inst.instrumentId,

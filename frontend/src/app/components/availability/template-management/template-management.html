@@ -100,8 +100,10 @@
   </div>
 
   <!-- Template Builder Modal -->
-  <div class="modal-overlay" *ngIf="showBuilderModal" (click)="onBuilderCancel()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div class="modal-overlay" *ngIf="showBuilderModal"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ isEditMode ? 'Modifica Template' : 'Nuovo Template' }}</h3>
         <button class="close-btn" (click)="onBuilderCancel()">×</button>

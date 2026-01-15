@@ -23,8 +23,8 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
-import { Subject, forkJoin } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { Subject, forkJoin, of } from 'rxjs';
+import { takeUntil, switchMap, catchError } from 'rxjs/operators';
 
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
 import { Treatment } from '../../../models/treatment.model';
@@ -624,16 +624,80 @@ export class StartTreatmentDialogContainer implements OnDestroy {
     this.saving = true;
     this.cdr.markForCheck();
 
+    // Step 1: Crea il trattamento con i dati base
     this.treatmentService.createTreatment(
       this.appointmentId,
       formResult.pathId,
       formResult.isScontoFE
     )
-      .pipe(takeUntil(this.destroy$))
+      .pipe(
+        // Step 2: Aggiorna il trattamento con tutti i dati del form
+        switchMap((treatment) => {
+          console.log('[StartTreatmentDialogContainer] Treatment created:', treatment.id);
+
+          // Prepara i dati per l'aggiornamento
+          const hasDataToUpdate = formResult.clinicalNotes ||
+            formResult.secretaryNotes ||
+            formResult.patientNotes ||
+            formResult.price != null ||
+            formResult.serviceId ||
+            formResult.painAssessment?.painBefore != null ||
+            formResult.painAssessment?.painAfter != null ||
+            formResult.rescheduling?.type !== 'none';
+
+          if (!hasDataToUpdate) {
+            // Nessun dato aggiuntivo da salvare
+            return of(treatment);
+          }
+
+          // Chiama updateTreatment per salvare tutti i campi del form
+          return this.treatmentService.updateTreatment({
+            id: treatment.id,
+            serviceId: formResult.serviceId,
+            clinicalNotes: formResult.clinicalNotes,
+            secretaryNotes: formResult.secretaryNotes,
+            patientNotes: formResult.patientNotes,
+            price: formResult.price,
+            painBefore: formResult.painAssessment?.painBefore ?? undefined,
+            painAfter: formResult.painAssessment?.painAfter ?? undefined,
+            rescheduleRequested: formResult.rescheduling?.type !== 'none',
+            // Campi riprogrammazione
+            reschedulingType: formResult.rescheduling?.type,
+            suggestInDays: formResult.rescheduling?.suggestInDays,
+            suggestDateRangeStart: formResult.rescheduling?.suggestDateRangeStart,
+            suggestDateRangeEnd: formResult.rescheduling?.suggestDateRangeEnd,
+            reschedulingNotes: formResult.rescheduling?.secretaryNotes,
+          }).pipe(
+            catchError((updateError) => {
+              console.error('[StartTreatmentDialogContainer] Error updating treatment, but treatment was created:', updateError);
+              // Ritorna comunque il trattamento creato anche se l'update fallisce
+              return of(treatment);
+            })
+          );
+        }),
+        // Step 3: Se c'è stato incasso operatore, registra il pagamento
+        switchMap((treatment) => {
+          if (this.cashCollectionData && formResult.price != null) {
+            console.log('[StartTreatmentDialogContainer] Recording payment for treatment:', treatment.id);
+            return this.treatmentService.recordPayment(treatment.id, {
+              paymentMethod: this.cashCollectionData.paymentMethod as any,
+              collectedBy: this.operatorId,
+              amount: formResult.price,
+            }).pipe(
+              catchError((paymentError) => {
+                console.error('[StartTreatmentDialogContainer] Error recording payment:', paymentError);
+                return of(treatment);
+              })
+            );
+          }
+          return of(treatment);
+        }),
+        takeUntil(this.destroy$)
+      )
       .subscribe({
         next: (treatment) => {
           this.ngZone.run(() => {
-            console.log('[StartTreatmentDialogContainer] Treatment created:', treatment.id);
+            console.log('[StartTreatmentDialogContainer] Treatment process completed:', treatment.id);
 
             // Emetti il risultato completo
             const result: StartTreatmentResult = {
@@ -652,7 +716,6 @@ export class StartTreatmentDialogContainer implements OnDestroy {
           this.ngZone.run(() => {
             console.error('[StartTreatmentDialogContainer] Error creating treatment:', error);
             this.saving = false;
-            // TODO: Mostrare errore all'utente
             alert('Errore nella creazione del trattamento: ' + (error.message || 'Errore sconosciuto'));
             this.cdr.markForCheck();
           });

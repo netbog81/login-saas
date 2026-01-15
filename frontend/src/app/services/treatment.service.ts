@@ -212,12 +212,18 @@ export class TreatmentService extends BaseGraphQLService {
     serviceId?: string;
     clinicalNotes?: string;
     secretaryNotes?: string;
+    patientNotes?: string;
     price?: number;
     scontoFE?: boolean;
     painLevel?: number;
     painBefore?: number;
     painAfter?: number;
     rescheduleRequested?: boolean;
+    reschedulingType?: string;
+    suggestInDays?: number;
+    suggestDateRangeStart?: string;
+    suggestDateRangeEnd?: string;
+    reschedulingNotes?: string;
     isPaid?: boolean; // Se false, resetta lo stato di pagamento
     instruments?: {
       instrumentId: string;

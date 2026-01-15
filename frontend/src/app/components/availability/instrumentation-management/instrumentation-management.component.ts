@@ -66,6 +66,9 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
   OperatorMacroCategory = OperatorMacroCategory;
   InstrumentStatus = InstrumentStatus;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private instrumentService: InstrumentService,
     private ngZone: NgZone
@@ -515,5 +518,22 @@ export class InstrumentationManagementComponent implements OnInit, OnDestroy {
     }
 
     return `Errore durante ${context}: ${errorMsg}`;
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent, modalType: 'category' | 'instrument'): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      if (modalType === 'category') {
+        this.closeCategoryForm();
+      } else {
+        this.closeInstrumentForm();
+      }
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

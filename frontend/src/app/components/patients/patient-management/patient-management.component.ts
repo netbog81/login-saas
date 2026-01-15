@@ -43,6 +43,21 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   completePatients = 0;
   pendingPatients = 0;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.closePatientForm();
+    }
+    this.overlayMouseDownTarget = null;
+  }
+
   constructor(
     private patientService: PatientService,
     private ngZone: NgZone

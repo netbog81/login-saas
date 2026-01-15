@@ -52,16 +52,25 @@ export interface EditTreatmentInstrumentInput {
 /**
  * Result returned when the edit dialog is saved
  */
+export type ReschedulingType = 'none' | 'days' | 'range';
+
 export interface EditTreatmentFormResult {
   therapeuticPathId?: string;
   serviceId?: string;
   clinicalNotes?: string;
   secretaryNotes?: string;
+  patientNotes?: string;
   price?: number;
   scontoFE?: boolean;
   painLevel?: number;
   painBefore?: number;
   painAfter?: number;
+  // Rescheduling fields
+  reschedulingType?: ReschedulingType;
+  suggestInDays?: number;
+  suggestDateRangeStart?: string;
+  suggestDateRangeEnd?: string;
+  reschedulingNotes?: string;
   rescheduleRequested?: boolean;
   instruments: EditTreatmentInstrumentInput[];
   // Cash collection fields

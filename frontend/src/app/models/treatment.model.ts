@@ -57,12 +57,18 @@ export interface Treatment {
   clinicalNotes?: string;
   secretaryNotes?: string;
   operatorNotes?: string;
+  patientNotes?: string;
 
   // Clinical data
   painLevel?: number;
   painBefore?: number;
   painAfter?: number;
   rescheduleRequested?: boolean;
+  reschedulingType?: string;
+  suggestInDays?: number;
+  suggestDateRangeStart?: Date | string;
+  suggestDateRangeEnd?: Date | string;
+  reschedulingNotes?: string;
 
   // Payment (patient)
   price: number;

@@ -86,6 +86,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   // Expose enum to template
   OperatorMacroCategory = OperatorMacroCategory;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private availabilityState: AvailabilityStateService,
     private operatorService: OperatorService,
@@ -560,5 +563,22 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   onMacroCategoryChange() {
     // Reset category when macro category changes
     this.editingOperator.categoryId = undefined;
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent, modalType: 'operator' | 'service'): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      if (modalType === 'operator') {
+        this.closeOperatorForm();
+      } else {
+        this.closeServiceAssignment();
+      }
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

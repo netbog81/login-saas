@@ -38,6 +38,9 @@ export class GymRoomListComponent implements OnInit, OnDestroy {
     isActive: true,
   };
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private gymRoomService: GymRoomService,
     private ngZone: NgZone
@@ -224,5 +227,18 @@ export class GymRoomListComponent implements OnInit, OnDestroy {
     this.ngZone.run(() => {
       this.openExceptions.emit(gymRoom);
     });
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.closeForm();
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

@@ -74,8 +74,10 @@
   </div>
 
   <!-- Operator Form Modal -->
-  <div *ngIf="showOperatorForm" class="modal-overlay" (click)="closeOperatorForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showOperatorForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'operator')">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ isEditMode ? 'Modifica Operatore' : 'Nuovo Operatore' }}</h3>
         <button class="close-btn" (click)="closeOperatorForm()">×</button>
@@ -174,8 +176,10 @@
   </div>
 
   <!-- Service Assignment Modal -->
-  <div *ngIf="showServiceAssignment" class="modal-overlay" (click)="closeServiceAssignment()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showServiceAssignment" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'service')">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>Assegna Servizi a {{ selectedOperator?.name }}</h3>
         <button class="close-btn" (click)="closeServiceAssignment()">×</button>

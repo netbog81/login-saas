@@ -42,6 +42,9 @@ export class OperatorTemplateAssignment implements OnInit, OnDestroy {
   assignValidFrom: string = '';
   assignValidUntil: string = '';
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private operatorService: OperatorService,
     private templateService: TemplateService,
@@ -369,5 +372,18 @@ export class OperatorTemplateAssignment implements OnInit, OnDestroy {
 
   getMacroCategoryLabel(macroCategory: OperatorMacroCategory): string {
     return getMacroCategoryLabel(macroCategory);
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.onAssignCancel();
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

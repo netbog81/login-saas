@@ -99,8 +99,10 @@
   </div>
 
   <!-- Assignment Modal -->
-  <div class="modal-overlay" *ngIf="showAssignModal" (click)="onAssignCancel()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div class="modal-overlay" *ngIf="showAssignModal"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>
           Assegna Template a {{ currentOperator?.operator?.name }}

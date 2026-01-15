@@ -172,8 +172,10 @@
   </div>
 
   <!-- Resolve Dialog -->
-  <div class="dialog-overlay" *ngIf="showResolveDialog" (click)="closeResolveDialog()">
-    <div class="dialog" (click)="$event.stopPropagation()">
+  <div class="dialog-overlay" *ngIf="showResolveDialog"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="dialog" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="dialog-header">
         <h2>Risolvi Conflitto</h2>
         <button class="close-btn" (click)="closeResolveDialog()">×</button>

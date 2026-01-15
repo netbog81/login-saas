@@ -1,5 +1,7 @@
-<div class="confirm-dialog-overlay" (click)="onCancel()">
-  <div class="confirm-dialog" (click)="$event.stopPropagation()">
+<div class="confirm-dialog-overlay"
+     (mousedown)="onOverlayMouseDown($event)"
+     (click)="onOverlayClick($event)">
+  <div class="confirm-dialog" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
     <!-- Dialog Header -->
     <div class="dialog-header">
       <h3 class="dialog-title">{{ title }}</h3>

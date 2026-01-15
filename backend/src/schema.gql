@@ -1614,15 +1614,25 @@ type Treatment {
   patient: PatientModel
   patientId: Int
   patientInvoiceNumber: String
+  patientNotes: String
   paymentMethod: PaymentMethod
   price: Float!
   rescheduleRequested: Boolean
+  reschedulingNotes: String
+  reschedulingType: String
   scontoFE: Boolean!
   secretaryNotes: String
   service: Service
   serviceId: ID
   startedAt: DateTime!
   status: TreatmentStatus!
+
+  """Data fine intervallo riprogrammazione (YYYY-MM-DD)"""
+  suggestDateRangeEnd: String
+
+  """Data inizio intervallo riprogrammazione (YYYY-MM-DD)"""
+  suggestDateRangeStart: String
+  suggestInDays: Int
   therapeuticPath: TherapeuticPath!
   therapeuticPathId: ID!
   updatedAt: DateTime!
@@ -1874,11 +1884,17 @@ input UpdateTreatmentInput {
   painAfter: Int
   painBefore: Int
   painLevel: Int
+  patientNotes: String
   price: Float
   rescheduleRequested: Boolean
+  reschedulingNotes: String
+  reschedulingType: String
   scontoFE: Boolean
   secretaryNotes: String
   serviceId: ID
+  suggestDateRangeEnd: String
+  suggestDateRangeStart: String
+  suggestInDays: Int
   therapeuticPathId: ID
 }
 

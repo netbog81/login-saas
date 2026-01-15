@@ -97,6 +97,10 @@ export class Treatment {
   @Column('text', { nullable: true })
   operatorNotes?: string;
 
+  @Field({ nullable: true })
+  @Column('text', { nullable: true })
+  patientNotes?: string;
+
   // ==================== CLINICAL DATA ====================
 
   @Field(() => Int, { nullable: true })
@@ -114,6 +118,26 @@ export class Treatment {
   @Field({ nullable: true })
   @Column({ default: false })
   rescheduleRequested: boolean;
+
+  @Field({ nullable: true })
+  @Column({ length: 20, nullable: true })
+  reschedulingType?: string;  // 'none' | 'days' | 'range'
+
+  @Field(() => Int, { nullable: true })
+  @Column('int', { nullable: true })
+  suggestInDays?: number;
+
+  @Field(() => String, { nullable: true, description: 'Data inizio intervallo riprogrammazione (YYYY-MM-DD)' })
+  @Column('date', { nullable: true })
+  suggestDateRangeStart?: Date;
+
+  @Field(() => String, { nullable: true, description: 'Data fine intervallo riprogrammazione (YYYY-MM-DD)' })
+  @Column('date', { nullable: true })
+  suggestDateRangeEnd?: Date;
+
+  @Field({ nullable: true })
+  @Column('text', { nullable: true })
+  reschedulingNotes?: string;
 
   // ==================== PAYMENT ====================
 

@@ -167,8 +167,10 @@
   </div>
 
   <!-- Patient Form Modal -->
-  <div *ngIf="showPatientForm" class="modal-overlay" (click)="closePatientForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showPatientForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h2>{{ isEditMode ? 'Modifica Paziente' : 'Nuovo Paziente' }}</h2>
         <button class="btn-close" (click)="closePatientForm()">

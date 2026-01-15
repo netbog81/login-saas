@@ -150,8 +150,10 @@
   </div>
 
   <!-- Category Form Modal -->
-  <div *ngIf="showCategoryForm" class="modal-overlay" (click)="closeCategoryForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showCategoryForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'category')">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ isEditingCategory ? 'Modifica Categoria' : 'Nuova Categoria' }}</h3>
         <button class="close-btn" (click)="closeCategoryForm()">×</button>
@@ -197,8 +199,10 @@
   </div>
 
   <!-- Instrument Form Modal -->
-  <div *ngIf="showInstrumentForm" class="modal-overlay" (click)="closeInstrumentForm()">
-    <div class="modal modal-lg" (click)="$event.stopPropagation()">
+  <div *ngIf="showInstrumentForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'instrument')">
+    <div class="modal modal-lg" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ isEditingInstrument ? 'Modifica Strumento' : 'Nuovo Strumento' }}</h3>
         <button class="close-btn" (click)="closeInstrumentForm()">×</button>

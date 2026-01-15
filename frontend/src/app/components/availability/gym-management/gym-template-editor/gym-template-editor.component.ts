@@ -71,6 +71,9 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
   showRenameForm = false;
   renameTemplateName = '';
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private patternGroupService: GymPatternGroupService,
     private operatorService: OperatorService,
@@ -610,5 +613,28 @@ export class GymTemplateEditorComponent implements OnInit, OnDestroy, OnChanges 
     if (!template.patterns || template.patterns.length === 0) return 0;
     const uniqueOperators = new Set(template.patterns.map(p => p.operatorId));
     return uniqueOperators.size;
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent, modalType: 'pattern' | 'create' | 'rename'): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      switch (modalType) {
+        case 'pattern':
+          this.closePatternForm();
+          break;
+        case 'create':
+          this.closeCreateTemplateForm();
+          break;
+        case 'rename':
+          this.closeRenameForm();
+          break;
+      }
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

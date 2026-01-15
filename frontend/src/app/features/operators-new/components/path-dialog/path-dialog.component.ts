@@ -54,8 +54,10 @@ import {
     MatDividerModule
   ],
   template: `
-    <div class="dialog-overlay" (click)="onCancel()">
-      <div class="dialog-container" (click)="$event.stopPropagation()">
+    <div class="dialog-overlay"
+         (mousedown)="onOverlayMouseDown($event)"
+         (click)="onOverlayClick($event)">
+      <div class="dialog-container" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
         <!-- Header -->
         <div class="dialog-header">
           <h2>{{ isEditMode ? 'Modifica Percorso' : 'Nuovo Percorso Terapeutico' }}</h2>
@@ -352,6 +354,9 @@ export class PathDialogComponent implements OnInit, OnChanges {
   form!: FormGroup;
   statusOptions: PathStatusOption[] = PATH_STATUS_OPTIONS;
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(private fb: FormBuilder) {}
 
   ngOnInit(): void {
@@ -415,5 +420,17 @@ export class PathDialogComponent implements OnInit, OnChanges {
     if (!this.saving) {
       this.cancel.emit();
     }
+  }
+
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.onCancel();
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

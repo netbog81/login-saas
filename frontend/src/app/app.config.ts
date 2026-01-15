@@ -1,4 +1,5 @@
 import { ApplicationConfig, importProvidersFrom, APP_INITIALIZER, LOCALE_ID } from '@angular/core';
+import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { provideRouter } from '@angular/router';
 import { HttpClientModule } from '@angular/common/http';
 import { registerLocaleData } from '@angular/common';
@@ -19,6 +20,9 @@ export const appConfig: ApplicationConfig = {
     ApiService,
     // Locale italiano per DatePipe e altri pipe
     { provide: LOCALE_ID, useValue: 'it' },
+    // Provider per mat-datepicker con locale italiano
+    provideNativeDateAdapter(),
+    { provide: MAT_DATE_LOCALE, useValue: 'it-IT' },
     // Assicura che ApolloZoneService sia pronto prima che l'app inizi
     {
       provide: APP_INITIALIZER,

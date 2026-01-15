@@ -18,6 +18,9 @@ export class ConfirmDialogComponent {
   @Output() confirm = new EventEmitter<void>();
   @Output() cancel = new EventEmitter<void>();
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(private ngZone: NgZone) {}
 
   onConfirm(): void {
@@ -30,5 +33,17 @@ export class ConfirmDialogComponent {
     this.ngZone.run(() => {
       this.cancel.emit();
     });
+  }
+
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.onCancel();
+    }
+    this.overlayMouseDownTarget = null;
   }
 }

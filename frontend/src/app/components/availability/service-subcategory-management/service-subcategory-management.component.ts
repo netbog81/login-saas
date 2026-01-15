@@ -52,6 +52,9 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
     [OperatorMacroCategory.Other]: 'Altro'
   };
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(
     private subcategoryService: ServiceSubcategoryService,
     private ngZone: NgZone
@@ -201,6 +204,19 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
     this.ngZone.run(() => {
       this.showInactive = !this.showInactive;
     });
+  }
+
+  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.closeSubcategoryForm();
+    }
+    this.overlayMouseDownTarget = null;
   }
 
   ngOnDestroy() {

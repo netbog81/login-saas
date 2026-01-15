@@ -170,8 +170,10 @@
   </div>
 
   <!-- Event Dialog (Modal) -->
-  <div class="dialog-overlay" *ngIf="showEventDialog" (click)="onDialogResult({action: 'cancel'})">
-    <div class="dialog-content" (click)="$event.stopPropagation()">
+  <div class="dialog-overlay" *ngIf="showEventDialog"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'event')">
+    <div class="dialog-content" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <app-event-dialog
         [data]="eventDialogData"
         (result)="onDialogResult($event)">
@@ -180,8 +182,10 @@
   </div>
 
   <!-- Delete Confirmation Dialog -->
-  <div class="dialog-overlay" *ngIf="showDeleteConfirmDialog" (click)="onDeleteCancel()">
-    <div class="dialog-content" (click)="$event.stopPropagation()">
+  <div class="dialog-overlay" *ngIf="showDeleteConfirmDialog"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'delete')">
+    <div class="dialog-content" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <app-confirm-dialog
         title="Elimina Appuntamento"
         [message]="'Sei sicuro di voler eliminare l\'appuntamento per ' + (appointmentToDelete?.title || 'questo appuntamento') + '?'"
@@ -195,8 +199,10 @@
   </div>
 
   <!-- Working Hours Dialog -->
-  <div class="dialog-overlay" *ngIf="showWorkingHoursDialog" (click)="onWorkingHoursDialogResult({action: 'cancel'})">
-    <div class="dialog-content" (click)="$event.stopPropagation()">
+  <div class="dialog-overlay" *ngIf="showWorkingHoursDialog"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'workingHours')">
+    <div class="dialog-content" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <app-working-hours-dialog
         [data]="workingHoursDialogData"
         (result)="onWorkingHoursDialogResult($event)">
@@ -205,8 +211,10 @@
   </div>
 
   <!-- Gym Appointment Dialog -->
-  <div class="dialog-overlay" *ngIf="showGymAppointmentDialog" (click)="onGymAppointmentDialogResult({action: 'cancel'})">
-    <div class="dialog-content" (click)="$event.stopPropagation()">
+  <div class="dialog-overlay" *ngIf="showGymAppointmentDialog"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'gymAppointment')">
+    <div class="dialog-content" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <app-gym-appointment-dialog
         [data]="gymAppointmentDialogData"
         (result)="onGymAppointmentDialogResult($event)">
@@ -215,8 +223,10 @@
   </div>
 
   <!-- Gym Appointment Delete Confirmation Dialog -->
-  <div class="dialog-overlay" *ngIf="showGymDeleteConfirmDialog" (click)="onGymDeleteCancel()">
-    <div class="dialog-content" (click)="$event.stopPropagation()">
+  <div class="dialog-overlay" *ngIf="showGymDeleteConfirmDialog"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'gymDelete')">
+    <div class="dialog-content" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <app-confirm-dialog
         title="Elimina Prenotazione Palestra"
         [message]="'Sei sicuro di voler eliminare la prenotazione di ' + (gymAppointmentToDelete?.clientName || 'questo partecipante') + '?'"

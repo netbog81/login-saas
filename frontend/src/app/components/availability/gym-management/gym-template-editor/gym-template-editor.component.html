@@ -185,8 +185,10 @@
   </ng-container>
 
   <!-- Pattern Form Modal -->
-  <div *ngIf="showPatternForm" class="modal-overlay" (click)="closePatternForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showPatternForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'pattern')">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>{{ editingPattern.id ? 'Modifica' : 'Nuova' }} Fascia Oraria</h3>
         <button class="close-btn" (click)="closePatternForm()">&times;</button>
@@ -234,8 +236,10 @@
   </div>
 
   <!-- Create Template Modal -->
-  <div *ngIf="showCreateTemplateForm" class="modal-overlay" (click)="closeCreateTemplateForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showCreateTemplateForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'create')">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>Nuovo Template</h3>
         <button class="close-btn" (click)="closeCreateTemplateForm()">&times;</button>
@@ -263,8 +267,10 @@
   </div>
 
   <!-- Rename Template Modal -->
-  <div *ngIf="showRenameForm" class="modal-overlay" (click)="closeRenameForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
+  <div *ngIf="showRenameForm" class="modal-overlay"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event, 'rename')">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>Rinomina Template</h3>
         <button class="close-btn" (click)="closeRenameForm()">&times;</button>

@@ -33,6 +33,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 
 import {
   StartTreatmentDialogData,
@@ -57,11 +58,14 @@ import {
     MatExpansionModule,
     MatRadioModule,
     MatProgressSpinnerModule,
-    MatTooltipModule
+    MatTooltipModule,
+    MatDatepickerModule
   ],
   template: `
-    <div class="dialog-overlay" (click)="onOverlayClick($event)">
-      <div class="dialog-container">
+    <div class="dialog-overlay"
+         (mousedown)="onOverlayMouseDown($event)"
+         (click)="onOverlayClick($event)">
+      <div class="dialog-container" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
         <!-- Header -->
         <header class="dialog-header">
           <div class="header-content">
@@ -220,11 +224,17 @@ import {
                   <div class="date-range">
                     <mat-form-field appearance="outline">
                       <mat-label>Da</mat-label>
-                      <input matInput type="date" formControlName="suggestDateRangeStart">
+                      <input matInput [matDatepicker]="pickerStart" formControlName="suggestDateRangeStart"
+                             [min]="minDateStart" (dateChange)="onStartDateChange($event)">
+                      <mat-datepicker-toggle matIconSuffix [for]="pickerStart"></mat-datepicker-toggle>
+                      <mat-datepicker #pickerStart></mat-datepicker>
                     </mat-form-field>
                     <mat-form-field appearance="outline">
                       <mat-label>A</mat-label>
-                      <input matInput type="date" formControlName="suggestDateRangeEnd">
+                      <input matInput [matDatepicker]="pickerEnd" formControlName="suggestDateRangeEnd"
+                             [min]="minDateEnd">
+                      <mat-datepicker-toggle matIconSuffix [for]="pickerEnd"></mat-datepicker-toggle>
+                      <mat-datepicker #pickerEnd></mat-datepicker>
                     </mat-form-field>
                   </div>
                 }
@@ -483,6 +493,13 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
   cashCollected = false;
   collectedPaymentMethod?: string;
 
+  // Date minime per i datepicker riprogrammazione
+  minDateStart: Date = new Date();  // Oggi
+  minDateEnd: Date = new Date();    // Inizialmente oggi, poi aggiornata quando cambia data inizio
+
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
   constructor(private fb: FormBuilder) {}
 
   ngOnInit(): void {
@@ -518,8 +535,8 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       painAfter: [null],
       reschedulingType: ['none'],
       suggestInDays: [null],
-      suggestDateRangeStart: [''],
-      suggestDateRangeEnd: [''],
+      suggestDateRangeStart: [null as Date | null],
+      suggestDateRangeEnd: [null as Date | null],
       reschedulingNotes: [''],
       patientNotes: ['']
     });
@@ -564,10 +581,36 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
     }
   }
 
+  /**
+   * Gestisce il cambio della data di inizio riprogrammazione
+   * Aggiorna la data minima per la data di fine
+   */
+  onStartDateChange(event: MatDatepickerInputEvent<Date>): void {
+    const startDate = event.value;
+    if (startDate) {
+      // La data minima di fine è il giorno successivo alla data di inizio
+      const nextDay = new Date(startDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      this.minDateEnd = nextDay;
+
+      // Se la data fine attuale è <= data inizio, resettala
+      const endDate = this.form.get('suggestDateRangeEnd')?.value;
+      if (endDate && endDate <= startDate) {
+        this.form.patchValue({ suggestDateRangeEnd: null });
+      }
+    }
+  }
+
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
   onOverlayClick(event: MouseEvent): void {
-    if ((event.target as HTMLElement).classList.contains('dialog-overlay')) {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
       this.onCancel();
     }
+    this.overlayMouseDownTarget = null;
   }
 
   onCancel(): void {
@@ -578,6 +621,13 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
     if (!this.form.valid) return;
 
     const formValue = this.form.value;
+
+    // Helper per formattare Date in stringa ISO YYYY-MM-DD
+    const formatDate = (date: Date | null): string | undefined => {
+      if (!date) return undefined;
+      return date.toISOString().split('T')[0];
+    };
+
     const result: StartTreatmentFormResult = {
       pathId: formValue.pathId,
       serviceId: formValue.serviceId || undefined,
@@ -594,8 +644,8 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       rescheduling: {
         type: formValue.reschedulingType,
         suggestInDays: formValue.suggestInDays,
-        suggestDateRangeStart: formValue.suggestDateRangeStart,
-        suggestDateRangeEnd: formValue.suggestDateRangeEnd,
+        suggestDateRangeStart: formatDate(formValue.suggestDateRangeStart),
+        suggestDateRangeEnd: formatDate(formValue.suggestDateRangeEnd),
         secretaryNotes: formValue.reschedulingNotes
       },
       patientNotes: formValue.patientNotes || undefined

@@ -217,6 +217,38 @@ export class UpdateTreatmentInput {
   @IsBoolean()
   rescheduleRequested?: boolean;
 
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  reschedulingType?: string;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  suggestInDays?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  suggestDateRangeStart?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  suggestDateRangeEnd?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000, { message: 'Le note di riprogrammazione non possono superare 2000 caratteri' })
+  reschedulingNotes?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000, { message: 'Le note per il paziente non possono superare 2000 caratteri' })
+  patientNotes?: string;
+
   @Field(() => [UpdateTreatmentInstrumentInput], { nullable: true })
   @IsOptional()
   @IsArray()

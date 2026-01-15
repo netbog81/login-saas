@@ -57,6 +57,21 @@ export class TherapeuticPathDialogComponent implements OnInit, OnDestroy {
     { value: 'archived', label: 'Archiviato' }
   ];
 
+  // Overlay click tracking (per evitare chiusura durante click-and-drag)
+  overlayMouseDownTarget: EventTarget | null = null;
+
+  onOverlayMouseDown(event: MouseEvent): void {
+    this.overlayMouseDownTarget = event.target;
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (this.overlayMouseDownTarget === event.currentTarget &&
+        event.target === event.currentTarget) {
+      this.onCancel();
+    }
+    this.overlayMouseDownTarget = null;
+  }
+
   constructor(
     private fb: FormBuilder,
     private operatorService: OperatorService

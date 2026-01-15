@@ -19,10 +19,16 @@ export const TREATMENT_FRAGMENT = gql`
     clinicalNotes
     secretaryNotes
     operatorNotes
+    patientNotes
     painLevel
     painBefore
     painAfter
     rescheduleRequested
+    reschedulingType
+    suggestInDays
+    suggestDateRangeStart
+    suggestDateRangeEnd
+    reschedulingNotes
     price
     isPaid
     paymentMethod

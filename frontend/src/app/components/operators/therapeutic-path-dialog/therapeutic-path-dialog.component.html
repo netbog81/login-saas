@@ -1,5 +1,7 @@
-<div class="dialog-overlay" (click)="onCancel()">
-  <div class="dialog" (click)="$event.stopPropagation()">
+<div class="dialog-overlay"
+     (mousedown)="onOverlayMouseDown($event)"
+     (click)="onOverlayClick($event)">
+  <div class="dialog" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
     <!-- Dialog Header -->
     <div class="dialog-header">
       <h3 class="dialog-title">{{ dialogTitle }}</h3>
