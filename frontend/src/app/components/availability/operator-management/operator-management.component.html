@@ -158,6 +158,30 @@
           <small class="form-text">Utile per istruttori palestra che gestiscono classi o per risorse condivise</small>
         </div>
 
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Percentuale su prestazioni (%)</label>
+            <input type="number"
+                   [(ngModel)]="editingOperator.royaltyPercentage"
+                   min="0"
+                   max="100"
+                   step="0.01"
+                   class="form-control"
+                   placeholder="0.00">
+            <small class="form-text">Percentuale royalty per ogni trattamento (0-100)</small>
+          </div>
+
+          <div class="form-group flex-2">
+            <label>Iscrizione all'albo</label>
+            <input type="text"
+                   [(ngModel)]="editingOperator.professionalRegistration"
+                   class="form-control"
+                   placeholder="Es: Albo FT n. 12345"
+                   maxlength="255">
+            <small class="form-text">Iscrizione all'albo professionale</small>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" [(ngModel)]="editingOperator.isActive">

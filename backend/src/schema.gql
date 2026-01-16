@@ -321,6 +321,8 @@ input CreateOperatorInput {
   name: String!
   phone: String
   preferredDurations: [Int!]
+  professionalRegistration: String
+  royaltyPercentage: Float
   surname: String
   userId: Int
 }
@@ -878,6 +880,7 @@ type Operator {
   name: String!
   phone: String
   preferredDurations: [Int!]
+  professionalRegistration: String
   royaltyPercentage: Float!
   services: [OperatorService!]
   surname: String
@@ -1731,6 +1734,8 @@ input UpdateOperatorInput {
   name: String
   phone: String
   preferredDurations: [Int!]
+  professionalRegistration: String
+  royaltyPercentage: Float
   surname: String
   userId: Int
 }

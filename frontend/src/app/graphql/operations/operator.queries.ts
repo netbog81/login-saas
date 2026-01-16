@@ -45,6 +45,8 @@ export const GET_OPERATORS = gql`
       legacyUserId
       maxConcurrentAppointments
       isActive
+      royaltyPercentage
+      professionalRegistration
       createdAt
       updatedAt
       templateAssignments {
@@ -76,6 +78,8 @@ export const GET_OPERATOR = gql`
       legacyUserId
       maxConcurrentAppointments
       isActive
+      royaltyPercentage
+      professionalRegistration
       createdAt
       updatedAt
       availabilityTemplates {

@@ -52,6 +52,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     preferredDurations: [],
     maxConcurrentAppointments: 1,
     isActive: true,
+    royaltyPercentage: 0,
+    professionalRegistration: '',
   };
 
   // Preferred durations as string for input
@@ -229,6 +231,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           preferredDurations: operator.preferredDurations || [],
           maxConcurrentAppointments: operator.maxConcurrentAppointments,
           isActive: operator.isActive,
+          royaltyPercentage: (operator as any).royaltyPercentage || 0,
+          professionalRegistration: (operator as any).professionalRegistration || '',
         };
         this.preferredDurationsString =
           (operator.preferredDurations || []).join(', ');
@@ -246,6 +250,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           preferredDurations: [],
           maxConcurrentAppointments: 1,
           isActive: true,
+          royaltyPercentage: 0,
+          professionalRegistration: '',
         };
         this.preferredDurationsString = '';
       }
@@ -270,6 +276,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         preferredDurations: [],
         maxConcurrentAppointments: 1,
         isActive: true,
+        royaltyPercentage: 0,
+        professionalRegistration: '',
       };
       this.preferredDurationsString = '';
       this.error = null;
@@ -314,6 +322,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         isActive: this.editingOperator.isActive,
         maxConcurrentAppointments:
           this.editingOperator.maxConcurrentAppointments,
+        royaltyPercentage: this.editingOperator.royaltyPercentage,
+        professionalRegistration: this.editingOperator.professionalRegistration?.trim() || undefined,
       };
 
       this.operatorService.updateOperator(this.editingOperatorId, input).subscribe({
@@ -362,6 +372,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           preferredDurations.length > 0 ? preferredDurations : undefined,
         maxConcurrentAppointments:
           this.editingOperator.maxConcurrentAppointments || 1,
+        royaltyPercentage: this.editingOperator.royaltyPercentage,
+        professionalRegistration: this.editingOperator.professionalRegistration?.trim() || undefined,
       };
 
       this.operatorService.createOperator(input).subscribe({

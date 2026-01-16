@@ -81,6 +81,14 @@ export class Operator {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   royaltyPercentage: number;
 
+  /**
+   * Iscrizione all'albo professionale
+   * Es: "Albo FT n. 12345"
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'professional_registration', length: 255, nullable: true })
+  professionalRegistration?: string;
+
   @Field()
   @CreateDateColumn()
   createdAt: Date;

@@ -1,5 +1,5 @@
-import { InputType, Field, Int } from '@nestjs/graphql';
-import { IsNotEmpty, IsString, IsEmail, IsOptional, MaxLength, IsInt, Min, IsArray, IsEnum, IsBoolean } from 'class-validator';
+import { InputType, Field, Int, Float } from '@nestjs/graphql';
+import { IsNotEmpty, IsString, IsEmail, IsOptional, MaxLength, IsInt, Min, Max, IsArray, IsEnum, IsBoolean, IsNumber } from 'class-validator';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 
 @InputType()
@@ -70,4 +70,17 @@ export class CreateOperatorInput {
   @IsOptional()
   @IsBoolean({ message: 'Operatore Attivo deve essere un valore booleano' })
   isActive?: boolean;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: 'La percentuale deve essere almeno 0' })
+  @Max(100, { message: 'La percentuale non può superare 100' })
+  royaltyPercentage?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Iscrizione albo non può superare 255 caratteri' })
+  professionalRegistration?: string;
 }

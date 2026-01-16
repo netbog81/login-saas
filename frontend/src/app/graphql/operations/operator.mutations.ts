@@ -21,6 +21,8 @@ export const CREATE_OPERATOR = gql`
       legacyUserId
       maxConcurrentAppointments
       isActive
+      royaltyPercentage
+      professionalRegistration
       createdAt
       updatedAt
     }
@@ -47,6 +49,8 @@ export const UPDATE_OPERATOR = gql`
       userId
       maxConcurrentAppointments
       isActive
+      royaltyPercentage
+      professionalRegistration
       createdAt
       updatedAt
     }
