@@ -82,6 +82,9 @@ export interface Appointment {
   instruments?: AppointmentInstrument[];
   instrumentOrderMatters?: boolean;
 
+  // Non retribuito (pausa pranzo, rappresentante, etc.)
+  nonRetribuito?: boolean;
+
   // Ricorrenza (legacy - da migrare)
   repeat?: RepeatConfig;
   recurringGroupId?: string;

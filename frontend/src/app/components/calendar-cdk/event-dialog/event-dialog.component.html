@@ -44,8 +44,25 @@
       </div>
     </div>
 
-    <!-- Service selection -->
-    <div class="form-row" *ngIf="operatorId">
+    <!-- Non Retribuito toggle -->
+    <div class="form-group non-retribuito-toggle">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [(ngModel)]="nonRetribuito"
+          (ngModelChange)="onNonRetribuitoChange()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        Non retribuito
+      </label>
+      <span class="toggle-hint" *ngIf="nonRetribuito">(pausa pranzo, rappresentante, ecc.)</span>
+    </div>
+
+    <!-- Service selection - nascondere se nonRetribuito -->
+    <div class="form-row" *ngIf="operatorId && !nonRetribuito">
       <div class="form-group" style="flex: 1;">
         <label for="serviceId">Servizio ({{ operatorServices.length }} disponibili)</label>
         <select
@@ -86,8 +103,8 @@
       </div>
     </div>
 
-    <!-- Patient selection -->
-    <div class="form-group">
+    <!-- Patient selection - nascondere se nonRetribuito -->
+    <div class="form-group" *ngIf="!nonRetribuito">
       <label>Paziente</label>
 
       <div class="patient-selector" *ngIf="!showNewPatientForm">
@@ -167,21 +184,21 @@
       </div>
     </div>
 
-    <!-- Title (fallback if no patient selected) -->
-    <div class="form-group" *ngIf="!patientId">
+    <!-- Title - sempre visibile se nonRetribuito, altrimenti fallback se no paziente -->
+    <div class="form-group" *ngIf="nonRetribuito || !patientId">
       <label for="title">Titolo *</label>
       <input
         type="text"
         id="title"
         [(ngModel)]="title"
         [class.error]="errors['title']"
-        placeholder="Es: Controllo, Consulenza..."
+        [placeholder]="nonRetribuito ? 'Es: Pausa pranzo, Rappresentante...' : 'Es: Controllo, Consulenza...'"
         class="form-input">
       <span class="error-message" *ngIf="errors['title']">{{ errors['title'] }}</span>
     </div>
 
-    <!-- Instruments section -->
-    <div class="form-group instruments-section" *ngIf="canConfigureInstruments">
+    <!-- Instruments section - nascondere se nonRetribuito -->
+    <div class="form-group instruments-section" *ngIf="canConfigureInstruments && !nonRetribuito">
       <label class="checkbox-label">
         <input
           type="checkbox"
@@ -382,8 +399,8 @@
         class="form-input"></textarea>
     </div>
 
-    <!-- Booking Status Actions (solo in edit mode) -->
-    <div class="form-group status-actions" *ngIf="isEditMode">
+    <!-- Booking Status Actions (solo in edit mode e se NON è non retribuito) -->
+    <div class="form-group status-actions" *ngIf="isEditMode && !nonRetribuito">
       <label>Stato Appuntamento</label>
 
       <div class="status-badge" [ngClass]="getStatusClass()">

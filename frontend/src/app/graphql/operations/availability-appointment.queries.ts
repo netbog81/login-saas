@@ -26,6 +26,7 @@ export const AVAILABILITY_APPOINTMENT_FIELDS = gql`
     cancellationHoursNotice
     operatorNotes
     instrumentOrderMatters
+    nonRetribuito
     createdAt
     updatedAt
     operator {

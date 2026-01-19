@@ -107,27 +107,43 @@ export type ReschedulingType = 'days' | 'range' | 'none';
 
         <!-- Content -->
         <mat-card-content class="card-content">
-          <!-- Patient info -->
-          <div class="patient-info">
-            <div class="patient-avatar">
-              <mat-icon>person</mat-icon>
+          <!-- Patient info - SOLO se NON è non retribuito -->
+          @if (!isNonRetribuito()) {
+            <div class="patient-info">
+              <div class="patient-avatar">
+                <mat-icon>person</mat-icon>
+              </div>
+              <div class="patient-details">
+                <h3 class="patient-name">{{ getClientName() }}</h3>
+                @if (getClientPhone()) {
+                  <div class="contact-row">
+                    <mat-icon>phone</mat-icon>
+                    <a [href]="'tel:' + getClientPhone()">{{ getClientPhone() }}</a>
+                  </div>
+                }
+                @if (getClientEmail()) {
+                  <div class="contact-row">
+                    <mat-icon>email</mat-icon>
+                    <a [href]="'mailto:' + getClientEmail()">{{ getClientEmail() }}</a>
+                  </div>
+                }
+              </div>
             </div>
-            <div class="patient-details">
-              <h3 class="patient-name">{{ getClientName() }}</h3>
-              @if (getClientPhone()) {
-                <div class="contact-row">
-                  <mat-icon>phone</mat-icon>
-                  <a [href]="'tel:' + getClientPhone()">{{ getClientPhone() }}</a>
-                </div>
-              }
-              @if (getClientEmail()) {
-                <div class="contact-row">
-                  <mat-icon>email</mat-icon>
-                  <a [href]="'mailto:' + getClientEmail()">{{ getClientEmail() }}</a>
-                </div>
-              }
+          }
+
+          <!-- Non Retribuito Info - SOLO se è non retribuito -->
+          @if (isNonRetribuito()) {
+            <div class="non-retribuito-info">
+              <div class="non-retribuito-badge">
+                <mat-icon>free_cancellation</mat-icon>
+                <span>Non retribuito</span>
+              </div>
+              <div class="event-details">
+                <mat-icon class="event-icon">event_note</mat-icon>
+                <h3 class="event-title">{{ appointment?.clientName }}</h3>
+              </div>
             </div>
-          </div>
+          }
 
           <!-- Completion form (expandable) -->
           @if (isInProgress()) {
@@ -229,76 +245,84 @@ export type ReschedulingType = 'days' | 'range' | 'none';
 
         <!-- Actions -->
         <mat-card-actions class="card-actions">
-          <!-- Trattamento in corso -->
-          @if (hasTreatmentInProgress()) {
-            <div class="treatment-in-progress-badge">
-              <mat-icon>hourglass_empty</mat-icon>
-              <span>Trattamento in corso</span>
-            </div>
+          <!-- Se NON retribuito: solo pulsante Elimina -->
+          @if (isNonRetribuito()) {
+            <button mat-raised-button color="warn" (click)="onDeleteNonRetribuito()" matTooltip="Elimina appuntamento">
+              <mat-icon>delete</mat-icon>
+              Elimina
+            </button>
+          } @else {
+            <!-- Trattamento in corso -->
+            @if (hasTreatmentInProgress()) {
+              <div class="treatment-in-progress-badge">
+                <mat-icon>hourglass_empty</mat-icon>
+                <span>Trattamento in corso</span>
+              </div>
 
-            <div class="action-buttons-row">
-              <button mat-raised-button (click)="onEditTreatment()" matTooltip="Modifica dati trattamento">
-                <mat-icon>edit</mat-icon>
-                Modifica
-              </button>
+              <div class="action-buttons-row">
+                <button mat-raised-button (click)="onEditTreatment()" matTooltip="Modifica dati trattamento">
+                  <mat-icon>edit</mat-icon>
+                  Modifica
+                </button>
 
-              <div class="spacer"></div>
+                <div class="spacer"></div>
 
-              <button mat-button color="warn" (click)="onCancelTreatment()" matTooltip="Annulla trattamento in corso">
-                <mat-icon>close</mat-icon>
+                <button mat-button color="warn" (click)="onCancelTreatment()" matTooltip="Annulla trattamento in corso">
+                  <mat-icon>close</mat-icon>
+                  Annulla
+                </button>
+
+                <button mat-raised-button color="accent" (click)="onFinishTreatment()" matTooltip="Completa il trattamento">
+                  <mat-icon>check_circle</mat-icon>
+                  Completa Trattamento
+                </button>
+              </div>
+            }
+
+            <!-- Trattamento completato da operatore (in attesa segreteria) -->
+            @if (isTreatmentOperatorCompleted()) {
+              <div class="treatment-completed-badge">
+                <mat-icon>pending</mat-icon>
+                <span>{{ getTreatmentStatusLabel() }}</span>
+              </div>
+            }
+
+            <!-- Trattamento chiuso -->
+            @if (isTreatmentClosed()) {
+              <div class="treatment-closed-badge">
+                <mat-icon>task_alt</mat-icon>
+                <span>{{ getTreatmentStatusLabel() }}</span>
+              </div>
+            }
+
+            <!-- Nessun trattamento in corso: mostra pulsanti standard -->
+            @if (!hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
+              @if (canStartTreatment()) {
+                <button mat-raised-button color="primary" (click)="onStartTreatment()">
+                  <mat-icon>play_arrow</mat-icon>
+                  Inizia Trattamento
+                </button>
+              }
+
+              @if (canCompleteTreatment()) {
+                <button mat-raised-button color="accent" (click)="onCompleteTreatment()">
+                  <mat-icon>check</mat-icon>
+                  Completa
+                </button>
+              }
+            }
+
+            <button mat-button (click)="onViewPatientFolder()" matTooltip="Vedi cartella paziente">
+              <mat-icon>folder_open</mat-icon>
+              Cartella
+            </button>
+
+            @if (!isCancelled() && !hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
+              <button mat-button color="warn" (click)="onCancelAppointment()" matTooltip="Annulla appuntamento">
+                <mat-icon>cancel</mat-icon>
                 Annulla
               </button>
-
-              <button mat-raised-button color="accent" (click)="onFinishTreatment()" matTooltip="Completa il trattamento">
-                <mat-icon>check_circle</mat-icon>
-                Completa Trattamento
-              </button>
-            </div>
-          }
-
-          <!-- Trattamento completato da operatore (in attesa segreteria) -->
-          @if (isTreatmentOperatorCompleted()) {
-            <div class="treatment-completed-badge">
-              <mat-icon>pending</mat-icon>
-              <span>{{ getTreatmentStatusLabel() }}</span>
-            </div>
-          }
-
-          <!-- Trattamento chiuso -->
-          @if (isTreatmentClosed()) {
-            <div class="treatment-closed-badge">
-              <mat-icon>task_alt</mat-icon>
-              <span>{{ getTreatmentStatusLabel() }}</span>
-            </div>
-          }
-
-          <!-- Nessun trattamento in corso: mostra pulsanti standard -->
-          @if (!hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
-            @if (canStartTreatment()) {
-              <button mat-raised-button color="primary" (click)="onStartTreatment()">
-                <mat-icon>play_arrow</mat-icon>
-                Inizia Trattamento
-              </button>
             }
-
-            @if (canCompleteTreatment()) {
-              <button mat-raised-button color="accent" (click)="onCompleteTreatment()">
-                <mat-icon>check</mat-icon>
-                Completa
-              </button>
-            }
-          }
-
-          <button mat-button (click)="onViewPatientFolder()" matTooltip="Vedi cartella paziente">
-            <mat-icon>folder_open</mat-icon>
-            Cartella
-          </button>
-
-          @if (!isCancelled() && !hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
-            <button mat-button color="warn" (click)="onCancelAppointment()" matTooltip="Annulla appuntamento">
-              <mat-icon>cancel</mat-icon>
-              Annulla
-            </button>
           }
         </mat-card-actions>
       }
@@ -495,6 +519,54 @@ export type ReschedulingType = 'days' | 'range' | 'none';
           &:hover {
             text-decoration: underline;
           }
+        }
+      }
+    }
+
+    /* Non Retribuito Info Styles */
+    .non-retribuito-info {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+
+      .non-retribuito-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #fef3c7;
+        color: #92400e;
+        padding: 6px 14px;
+        border-radius: 16px;
+        font-weight: 500;
+        font-size: 0.8125rem;
+        width: fit-content;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          color: #d97706;
+        }
+      }
+
+      .event-details {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .event-icon {
+          color: #6b7280;
+          font-size: 32px;
+          width: 32px;
+          height: 32px;
+        }
+
+        .event-title {
+          font-size: 1.25rem;
+          font-weight: 600;
+          color: #1e293b;
+          margin: 0;
         }
       }
     }
@@ -709,6 +781,7 @@ export class TreatmentCardComponent {
   @Output() cancelTreatment = new EventEmitter<Treatment>(); // Annulla trattamento in corso
   @Output() viewPatientFolder = new EventEmitter<void>();
   @Output() cancelAppointment = new EventEmitter<void>();
+  @Output() deleteNonRetribuito = new EventEmitter<AvailabilityAppointment>(); // Elimina appuntamento non retribuito
 
   // Stato form completamento
   completionFormExpanded = false;
@@ -765,6 +838,24 @@ export class TreatmentCardComponent {
     if (this.currentTreatment) {
       this.cancelTreatment.emit(this.currentTreatment);
     }
+  }
+
+  /**
+   * Emette evento per eliminare appuntamento non retribuito
+   * Layer 1: Presentational - delega al parent
+   */
+  onDeleteNonRetribuito(): void {
+    if (this.appointment) {
+      this.deleteNonRetribuito.emit(this.appointment);
+    }
+  }
+
+  /**
+   * Helper per appuntamenti non retribuiti
+   * Layer 1: UI logic only
+   */
+  isNonRetribuito(): boolean {
+    return this.appointment?.nonRetribuito === true;
   }
 
   // Metodi per stato trattamento (case-insensitive per compatibilità con GraphQL)

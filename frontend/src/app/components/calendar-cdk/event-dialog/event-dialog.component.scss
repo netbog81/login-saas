@@ -332,6 +332,44 @@ textarea.form-input {
   }
 }
 
+// Non retribuito toggle
+.non-retribuito-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background-color: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  margin-bottom: 16px;
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    color: #92400e;
+    margin-bottom: 0;
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    svg {
+      color: #d97706;
+    }
+  }
+
+  .toggle-hint {
+    font-size: 12px;
+    color: #92400e;
+    font-style: italic;
+  }
+}
+
 // Instruments section
 .instruments-section {
   .checkbox-label {

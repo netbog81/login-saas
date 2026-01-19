@@ -170,4 +170,9 @@ export class CreateAvailabilityAppointmentInput {
   @ValidateNested()
   @Type(() => RepeatConfigInput)
   repeatConfig?: RepeatConfigInput;
+
+  @Field({ nullable: true, description: 'Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)' })
+  @IsOptional()
+  @IsBoolean()
+  nonRetribuito?: boolean;
 }

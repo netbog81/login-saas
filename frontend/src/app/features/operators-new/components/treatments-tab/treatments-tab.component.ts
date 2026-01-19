@@ -98,6 +98,9 @@ import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../
               </div>
 
               <div class="treatment-actions">
+                <button mat-icon-button matTooltip="Modifica" (click)="onTreatmentEdit(treatment); $event.stopPropagation()">
+                  <mat-icon>edit</mat-icon>
+                </button>
                 <button mat-icon-button matTooltip="Vedi dettagli" (click)="onTreatmentDoubleClick(treatment); $event.stopPropagation()">
                   <mat-icon>visibility</mat-icon>
                 </button>
@@ -355,6 +358,7 @@ export class TreatmentsTabComponent {
 
   @Output() treatmentSelect = new EventEmitter<Treatment>();
   @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
+  @Output() treatmentEdit = new EventEmitter<Treatment>();
 
   onTreatmentClick(treatment: Treatment): void {
     this.treatmentSelect.emit(treatment);
@@ -362,6 +366,10 @@ export class TreatmentsTabComponent {
 
   onTreatmentDoubleClick(treatment: Treatment): void {
     this.treatmentDoubleClick.emit(treatment);
+  }
+
+  onTreatmentEdit(treatment: Treatment): void {
+    this.treatmentEdit.emit(treatment);
   }
 
   formatDay(date: Date | string): string {

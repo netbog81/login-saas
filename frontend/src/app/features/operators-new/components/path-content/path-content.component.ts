@@ -121,7 +121,8 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
                 [loading]="loadingTreatments"
                 [selectedTreatmentId]="selectedTreatmentId"
                 (treatmentSelect)="onTreatmentSelect($event)"
-                (treatmentDoubleClick)="onTreatmentDoubleClick($event)">
+                (treatmentDoubleClick)="onTreatmentDoubleClick($event)"
+                (treatmentEdit)="onTreatmentEdit($event)">
               </app-treatments-tab>
             </div>
           </mat-tab>
@@ -372,6 +373,7 @@ export class PathContentComponent {
   @Output() editPath = new EventEmitter<void>();
   @Output() treatmentSelect = new EventEmitter<Treatment>();
   @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
+  @Output() treatmentEdit = new EventEmitter<Treatment>();
   @Output() editAnamnesis = new EventEmitter<void>();
   @Output() documentOpen = new EventEmitter<PathDocument>();
   @Output() documentUpload = new EventEmitter<void>();
@@ -403,6 +405,10 @@ export class PathContentComponent {
 
   onTreatmentDoubleClick(treatment: Treatment): void {
     this.treatmentDoubleClick.emit(treatment);
+  }
+
+  onTreatmentEdit(treatment: Treatment): void {
+    this.treatmentEdit.emit(treatment);
   }
 
   onEditAnamnesis(): void {

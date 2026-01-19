@@ -28,6 +28,9 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     instruments: mapInstruments(aa.instruments),
     instrumentOrderMatters: aa.instrumentOrderMatters || false,
 
+    // Non retribuito
+    nonRetribuito: aa.nonRetribuito || false,
+
     // Timestamps
     createdAt: aa.createdAt ? new Date(aa.createdAt) : undefined,
     updatedAt: aa.updatedAt ? new Date(aa.updatedAt) : undefined,

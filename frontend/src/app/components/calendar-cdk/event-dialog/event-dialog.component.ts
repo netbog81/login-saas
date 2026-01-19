@@ -47,6 +47,7 @@ export interface EventDialogResult {
   instruments?: AppointmentInstrumentData[];
   instrumentOrderMatters?: boolean;
   repeatConfig?: RepeatConfig;
+  nonRetribuito?: boolean;
 }
 
 @Component({
@@ -69,6 +70,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   serviceId: string | null = null;
   patientId: number | null = null;
   notes: string = '';
+  nonRetribuito: boolean = false;
 
   // Service selection
   operatorServices: Service[] = [];
@@ -143,6 +145,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       this.patientId = apt.patientId ? Number(apt.patientId) : null;
       this.notes = apt.notes || '';
       this.bookingStatus = (apt.bookingStatus as BookingStatus) || 'scheduled';
+      this.nonRetribuito = apt.nonRetribuito || false;
 
       // Load existing instruments
       if (apt.instruments && apt.instruments.length > 0) {
@@ -394,6 +397,25 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
         this.selectedInstrument2CategoryId = '';
         this.instrumentPosition = 'first';
         this.instrumentOrderMatters = false;
+      }
+    });
+  }
+
+  /**
+   * Gestisce il toggle dell'appuntamento non retribuito
+   * Reset dei campi paziente, servizio e strumenti quando attivato
+   */
+  onNonRetribuitoChange(): void {
+    this.runInZone(() => {
+      if (this.nonRetribuito) {
+        // Reset campi non necessari per appuntamento non retribuito
+        this.serviceId = null;
+        this.patientId = null;
+        this.instrumentsEnabled = false;
+        this.selectedInstrumentCategoryId = '';
+        this.selectedInstrument2CategoryId = '';
+        this.instrumentOrderMatters = false;
+        // Il campo titolo rimane visibile per inserire "Pausa pranzo", etc.
       }
     });
   }
@@ -666,7 +688,8 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       appointment,
       instruments: instruments.length > 0 ? instruments : undefined,
       instrumentOrderMatters: this.instrumentOrderMatters,
-      repeatConfig
+      repeatConfig,
+      nonRetribuito: this.nonRetribuito
     });
   }
 

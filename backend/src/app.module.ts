@@ -20,6 +20,8 @@ import { AvailabilityModule } from './modules/availability/availability.module';
 import { SettingsModule } from './modules/settings/settings.module';
 // Tasks module (cron jobs)
 import { TasksModule } from './modules/tasks/tasks.module';
+// Events module (SSE)
+import { EventsModule } from './modules/events/events.module';
 // Import new entities for availability management
 import { Operator } from './modules/availability/entities/operator.entity';
 import { OperatorCategory } from './modules/availability/entities/operator-category.entity';
@@ -137,6 +139,8 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
     SettingsModule,
     // Tasks module (cron jobs)
     TasksModule,
+    // Events module (SSE)
+    EventsModule,
   ],
 })
 export class AppModule {}

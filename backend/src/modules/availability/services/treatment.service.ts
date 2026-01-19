@@ -7,6 +7,7 @@ import { AvailabilityAppointment, BookingStatus } from '../entities/availability
 import { AppointmentInstrument } from '../entities/appointment-instrument.entity';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { Patient } from '../../../entities/patient.entity';
+import { EventsService } from '../../events/events.service';
 
 // ==================== INPUT INTERFACES ====================
 
@@ -87,6 +88,7 @@ export class TreatmentService {
     @InjectRepository(TherapeuticPath)
     private pathRepo: Repository<TherapeuticPath>,
     private dataSource: DataSource,
+    private eventsService: EventsService,
   ) {}
 
   // ==================== CRUD ====================
@@ -150,7 +152,7 @@ export class TreatmentService {
         scontoFE,
         status: TreatmentStatus.IN_PROGRESS,
         isTest: false,
-        startedAt: new Date(),
+        startedAt: new Date(appointment.appointmentDate + 'T' + appointment.startTime),
         price: appointment.service?.defaultPrice || 0,
       });
 
@@ -160,7 +162,17 @@ export class TreatmentService {
       await this.copyInstrumentsFromAppointment(manager, savedTreatment.id, appointmentId);
 
       // Ritorna il trattamento con le relazioni
-      return this.findByIdWithManager(manager, savedTreatment.id);
+      const result = await this.findByIdWithManager(manager, savedTreatment.id);
+
+      // Emetti evento SSE per notificare il frontend (dopo commit transazione)
+      this.eventsService.emit({
+        type: 'treatment_created',
+        treatmentId: result.id,
+        operatorId: result.operatorId,
+        timestamp: new Date(),
+      });
+
+      return result;
     });
   }
 
@@ -321,7 +333,18 @@ export class TreatmentService {
       treatment.isTest = input.isTest;
     }
 
-    return this.treatmentRepo.save(treatment);
+    const result = await this.treatmentRepo.save(treatment);
+
+    // Emetti evento SSE per notificare il frontend
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.status,
+      timestamp: new Date(),
+    });
+
+    return result;
   }
 
   /**
@@ -346,7 +369,18 @@ export class TreatmentService {
       treatment.secretaryNotes = input.secretaryNotes;
     }
 
-    return this.treatmentRepo.save(treatment);
+    const result = await this.treatmentRepo.save(treatment);
+
+    // Emetti evento SSE per notificare il frontend
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.status,
+      timestamp: new Date(),
+    });
+
+    return result;
   }
 
   // ==================== PAYMENT ====================
@@ -487,14 +521,12 @@ export class TreatmentService {
   async getActiveByOperator(operatorId: string, date?: string): Promise<Treatment[]> {
     const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
       .leftJoinAndSelect('treatment.appointment', 'appointment')
+      .leftJoinAndSelect('treatment.operator', 'operator')
       .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.instruments', 'instruments')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
-      .where('treatment.operatorId = :operatorId', { operatorId })
-      .andWhere('treatment.status IN (:...statuses)', {
-        statuses: [TreatmentStatus.IN_PROGRESS, TreatmentStatus.OPERATOR_COMPLETED]
-      });
+      .where('treatment.operatorId = :operatorId', { operatorId });
 
     if (date) {
       queryBuilder.andWhere('DATE(treatment.startedAt) = :date', { date });
@@ -616,8 +648,21 @@ export class TreatmentService {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
     }
 
+    const operatorId = treatment.operatorId;
     const result = await this.treatmentRepo.delete(id);
-    return result.affected ? result.affected > 0 : false;
+    const success = result.affected ? result.affected > 0 : false;
+
+    // Emetti evento SSE per notificare il frontend
+    if (success) {
+      this.eventsService.emit({
+        type: 'treatment_deleted',
+        treatmentId: id,
+        operatorId: operatorId,
+        timestamp: new Date(),
+      });
+    }
+
+    return success;
   }
 
   /**

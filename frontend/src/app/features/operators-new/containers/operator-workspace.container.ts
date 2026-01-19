@@ -39,6 +39,7 @@ import { StartTreatmentDialogContainer, StartTreatmentResult } from './start-tre
 import { EditTreatmentDialogContainerComponent } from './edit-treatment-dialog.container';
 import { Treatment } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 
 @Component({
   selector: 'app-operator-workspace-container',
@@ -102,7 +103,8 @@ import { TreatmentService } from '../../../services/treatment.service';
               (finishTreatment)="onFinishTreatment($event)"
               (cancelTreatment)="onCancelTreatment($event)"
               (viewPatientFolder)="onViewPatientFolder()"
-              (cancelAppointment)="onCancelAppointment()">
+              (cancelAppointment)="onCancelAppointment()"
+              (deleteNonRetribuito)="onDeleteNonRetribuito($event)">
             </app-treatment-card>
           </section>
 
@@ -111,7 +113,8 @@ import { TreatmentService } from '../../../services/treatment.service';
             <app-patient-folder-container
               [patient]="selectedPatient"
               [currentOperatorId]="selectedOperator?.id"
-              (viewPatientDetails)="onViewPatientDetails($event)">
+              (viewPatientDetails)="onViewPatientDetails($event)"
+              (editTreatment)="onEditTreatmentFromFolder($event)">
             </app-patient-folder-container>
           </section>
         </main>
@@ -228,6 +231,7 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   constructor(
     private workspaceService: OperatorWorkspaceService,
     private treatmentService: TreatmentService,
+    private appointmentService: AvailabilityAppointmentService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
@@ -473,6 +477,13 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     }
   }
 
+  onEditTreatmentFromFolder(treatment: Treatment): void {
+    console.log('[OperatorWorkspaceContainer] Edit treatment from folder:', treatment.id);
+    if (this.editTreatmentDialog) {
+      this.editTreatmentDialog.open(treatment);
+    }
+  }
+
   onTreatmentUpdated(treatment: Treatment): void {
     console.log('[OperatorWorkspaceContainer] Treatment updated:', {
       id: treatment.id,
@@ -557,6 +568,45 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     if (reason === null) return;
     // TODO: Implementare chiamata al service per cancellare appuntamento
     console.log('[OperatorWorkspaceContainer] Cancel appointment:', this.selectedAppointment.id, reason);
+  }
+
+  /**
+   * Gestisce l'eliminazione di un appuntamento non retribuito
+   * Layer 3: Business logic orchestration
+   */
+  onDeleteNonRetribuito(appointment: AvailabilityAppointment): void {
+    const confirmed = window.confirm(`Eliminare "${appointment.clientName}"?`);
+    if (!confirmed) return;
+
+    this.appointmentService.deleteAppointment(String(appointment.id))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (success) => {
+          this.ngZone.run(() => {
+            if (success) {
+              console.log('[OperatorWorkspaceContainer] Non-retribuito appointment deleted:', appointment.id);
+              // Ricarica appuntamenti
+              this.loadAppointments();
+              // Deseleziona appuntamento
+              this.selectedAppointment = null;
+              this.selectedPatient = null;
+              this.currentTreatment = null;
+              this.uiState = {
+                ...this.uiState,
+                selectedAppointmentId: null
+              };
+            }
+            this.cdr.markForCheck();
+          });
+        },
+        error: (error) => {
+          console.error('[OperatorWorkspaceContainer] Error deleting non-retribuito appointment:', error);
+          this.ngZone.run(() => {
+            alert('Errore durante l\'eliminazione dell\'appuntamento');
+            this.cdr.markForCheck();
+          });
+        }
+      });
   }
 
   private buildCompletionSummary(data: TreatmentCompletionData): string {

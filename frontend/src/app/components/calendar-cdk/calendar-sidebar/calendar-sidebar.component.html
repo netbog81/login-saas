@@ -245,7 +245,10 @@
     <div class="collapsible-panel">
       <!-- Panel header -->
       <div class="panel-header" (click)="toggleTreatmentsExpanded()">
-        <h3 class="panel-title">Trattamenti in corso</h3>
+        <h3 class="panel-title">
+          Trattamenti in corso
+          <span class="treatment-badge" *ngIf="filteredTreatments.length > 0">{{ filteredTreatments.length }}</span>
+        </h3>
         <svg *ngIf="treatmentsExpanded" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="18 15 12 9 6 15"></polyline>
         </svg>
@@ -256,10 +259,62 @@
 
       <!-- Panel content -->
       <div class="panel-content treatments-content" *ngIf="treatmentsExpanded">
-        <!-- Placeholder - contenuto da implementare -->
-        <div class="empty-state">
-          <p>Nessun trattamento in corso</p>
-        </div>
+        <!-- Loading state -->
+        <ng-container *ngIf="loadingTreatments">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span>Caricamento...</span>
+          </div>
+        </ng-container>
+
+        <!-- Empty state -->
+        <ng-container *ngIf="!loadingTreatments && filteredTreatments.length === 0">
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+            </svg>
+            <p>Nessun trattamento in corso</p>
+          </div>
+        </ng-container>
+
+        <!-- Treatments list -->
+        <ng-container *ngIf="!loadingTreatments && filteredTreatments.length > 0">
+          <div class="treatments-list">
+            <div class="treatment-item" *ngFor="let treatment of filteredTreatments">
+              <!-- Data e ora inizio + Stato -->
+              <div class="treatment-header">
+                <div class="treatment-datetime">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  <span>{{ formatTreatmentDate(treatment.startedAt) }}</span>
+                  <span class="time">{{ formatTreatmentTime(treatment.startedAt) }}</span>
+                </div>
+                <!-- Stato trattamento -->
+                <span class="status-badge" [style.background-color]="getTreatmentStatusColor(treatment.status)">
+                  {{ getTreatmentStatusLabel(treatment.status) }}
+                </span>
+              </div>
+
+              <!-- Info paziente -->
+              <div class="treatment-patient">
+                <span class="patient-name">{{ treatment.patient?.nome }} {{ treatment.patient?.cognome }}</span>
+              </div>
+
+              <!-- Operatore -->
+              <div class="treatment-operator" *ngIf="treatment.operator">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <span>{{ treatment.operator.name }} {{ treatment.operator.surname }}</span>
+              </div>
+            </div>
+          </div>
+        </ng-container>
       </div>
     </div>
   </div>

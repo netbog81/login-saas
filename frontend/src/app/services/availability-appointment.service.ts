@@ -50,6 +50,7 @@ export interface CreateAvailabilityAppointmentInput {
   instrumentOrderMatters?: boolean;
   instruments?: AppointmentInstrumentInput[];
   repeatConfig?: RepeatConfigInput;
+  nonRetribuito?: boolean;
 }
 
 export interface UpdateAvailabilityAppointmentInput {
@@ -67,6 +68,7 @@ export interface UpdateAvailabilityAppointmentInput {
   operatorNotes?: string;
   instrumentOrderMatters?: boolean;
   instruments?: AppointmentInstrumentInput[];
+  nonRetribuito?: boolean;
 }
 
 @Injectable({

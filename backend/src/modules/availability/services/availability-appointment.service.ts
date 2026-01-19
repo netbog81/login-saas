@@ -43,6 +43,7 @@ export interface CreateAvailabilityAppointmentInput {
   instrumentOrderMatters?: boolean;
   instruments?: CreateAppointmentInstrumentInput[];
   repeatConfig?: RepeatConfigInput;
+  nonRetribuito?: boolean;
 }
 
 export interface UpdateAvailabilityAppointmentInput {
@@ -60,6 +61,7 @@ export interface UpdateAvailabilityAppointmentInput {
   operatorNotes?: string;
   instrumentOrderMatters?: boolean;
   instruments?: CreateAppointmentInstrumentInput[];
+  nonRetribuito?: boolean;
 }
 
 @Injectable()
@@ -784,6 +786,11 @@ export class AvailabilityAppointmentService {
   async markNoShow(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
 
+    // Blocca cambio stato per appuntamenti non retribuiti
+    if (appointment.nonRetribuito) {
+      throw new BadRequestException('Gli appuntamenti non retribuiti non hanno gestione degli stati');
+    }
+
     // Verifica che l'appuntamento sia in uno stato appropriato
     if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
       throw new BadRequestException(
@@ -808,6 +815,11 @@ export class AvailabilityAppointmentService {
    */
   async markAttended(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
+
+    // Blocca cambio stato per appuntamenti non retribuiti
+    if (appointment.nonRetribuito) {
+      throw new BadRequestException('Gli appuntamenti non retribuiti non hanno gestione degli stati');
+    }
 
     // Verifica che l'appuntamento sia in uno stato appropriato
     if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {

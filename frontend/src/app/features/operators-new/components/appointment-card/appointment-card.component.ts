@@ -38,6 +38,7 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
       [class.status-confirmed]="isConfirmed()"
       [class.status-attended]="isNoShow()"
       [class.status-cancelled]="isCancelled()"
+      [class.status-non-retribuito]="isNonRetribuito()"
       (click)="onSelect()">
 
       <div class="card-content">
@@ -102,6 +103,11 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
         .patient-name {
           text-decoration: line-through;
         }
+      }
+
+      &.status-non-retribuito {
+        border-left-color: #f59e0b;
+        background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
       }
     }
 
@@ -183,6 +189,7 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
     .status-confirmed .status-icon { color: #22c55e; }
     .status-attended .status-icon { color: #f59e0b; }
     .status-cancelled .status-icon { color: #ef4444; }
+    .status-non-retribuito .status-icon { color: #d97706; }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -213,12 +220,23 @@ export class AppointmentCardComponent {
     return this.appointment.bookingStatus === BookingStatus.Cancelled;
   }
 
+  /**
+   * Helper per appuntamenti non retribuiti (Layer 1 - UI logic only)
+   */
+  isNonRetribuito(): boolean {
+    return this.appointment.nonRetribuito === true;
+  }
+
   getServiceName(): string | null {
     // serviceName potrebbe essere in un campo diverso o non presente
     return (this.appointment as any).serviceName || null;
   }
 
   getStatusIcon(): string {
+    // Se non retribuito, icona specifica
+    if (this.isNonRetribuito()) {
+      return 'free_cancellation';
+    }
     switch (this.appointment.bookingStatus) {
       case BookingStatus.Scheduled: return 'event';
       case BookingStatus.Confirmed: return 'check_circle';
@@ -229,6 +247,10 @@ export class AppointmentCardComponent {
   }
 
   getStatusLabel(): string {
+    // Se non retribuito, tooltip specifico
+    if (this.isNonRetribuito()) {
+      return 'Non retribuito';
+    }
     switch (this.appointment.bookingStatus) {
       case BookingStatus.Scheduled: return 'Prenotato';
       case BookingStatus.Confirmed: return 'Confermato';

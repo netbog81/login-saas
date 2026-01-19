@@ -306,6 +306,16 @@ export class AvailabilityAppointment {
   @Column('text', { nullable: true })
   operatorNotes?: string;
 
+  // ==================== NON RETRIBUITO ====================
+
+  /**
+   * Flag che indica se l'appuntamento è non retribuito
+   * (es. pausa pranzo, incontro rappresentante, etc.)
+   */
+  @Field()
+  @Column({ name: 'non_retribuito', default: false })
+  nonRetribuito: boolean;
+
   // ==================== TIMESTAMPS ====================
 
   @Field(() => ID, { nullable: true })

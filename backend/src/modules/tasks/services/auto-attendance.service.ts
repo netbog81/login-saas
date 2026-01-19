@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AvailabilityAppointment, BookingStatus } from '../../availability/entities/availability-appointment.entity';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
+import { EventsService } from '../../events/events.service';
 
 /**
  * Service per il cambio automatico dello stato appuntamento da SCHEDULED/CONFIRMED a ATTENDED
@@ -23,6 +24,7 @@ export class AutoAttendanceService {
     @InjectRepository(AvailabilityAppointment)
     private appointmentRepo: Repository<AvailabilityAppointment>,
     private settingsService: GeneralSettingsService,
+    private eventsService: EventsService,
   ) {}
 
   /**
@@ -46,14 +48,16 @@ export class AutoAttendanceService {
       // Formatta per il confronto con il database
       const targetDate = this.formatDate(targetTime);
       const targetTimeStr = this.formatTime(targetTime);
-
+      this.logger.log(`Marco Auto attendance check at ${this.formatTime(now)} (target: ${targetDate} ${targetTimeStr})`);
       // 3. Trova gli appuntamenti da aggiornare
+      // Esclude gli appuntamenti non retribuiti (pausa pranzo, rappresentante, ecc.)
       const appointmentsToUpdate = await this.appointmentRepo
         .createQueryBuilder('apt')
         .where('apt.bookingStatus IN (:...statuses)', {
           statuses: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED]
         })
         .andWhere('apt.autoStatusChanged = false')
+        .andWhere('apt.nonRetribuito = false')
         .andWhere(`
           (apt.appointmentDate < :targetDate) OR
           (apt.appointmentDate = :targetDate AND apt.startTime <= :targetTime)
@@ -82,6 +86,16 @@ export class AutoAttendanceService {
       }
 
       this.logger.log(`Auto-attendance: ${appointmentsToUpdate.length} appuntamenti aggiornati con successo`);
+
+      // Emetti evento SSE per notificare il frontend
+      const updatedIds = appointmentsToUpdate.map(apt => apt.id);
+      this.eventsService.emit({
+        type: 'appointment_status_changed',
+        appointmentIds: updatedIds,
+        newStatus: BookingStatus.ATTENDED,
+        timestamp: new Date(),
+      });
+      this.logger.debug(`Evento SSE emesso per ${updatedIds.length} appuntamenti`);
     } catch (error) {
       this.logger.error('Errore durante auto-attendance cron job', error);
     }
@@ -91,15 +105,18 @@ export class AutoAttendanceService {
    * Formatta una data in formato YYYY-MM-DD
    */
   private formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    return date.toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' });
   }
 
   /**
    * Formatta un'ora in formato HH:mm
    */
   private formatTime(date: Date): string {
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
+    return date.toLocaleTimeString('it-IT', {
+      timeZone: 'Europe/Rome',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
   }
 }

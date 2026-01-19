@@ -18,7 +18,8 @@ import {
   SimpleChanges,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  NgZone
+  NgZone,
+  ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject } from 'rxjs';
@@ -33,6 +34,7 @@ import { TreatmentService } from '../../../services/treatment.service';
 import { PatientHeaderComponent } from '../components/patient-header/patient-header.component';
 import { PathContentComponent, PathContentTab } from '../components/path-content/path-content.component';
 import { PathDialogContainer } from './path-dialog.container';
+import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dialog.container';
 import {
   PatientFolderUIState,
   PatientFolderTab,
@@ -51,7 +53,8 @@ import {
     CommonModule,
     PatientHeaderComponent,
     PathContentComponent,
-    PathDialogContainer
+    PathDialogContainer,
+    TreatmentDetailDialogContainerComponent
   ],
   template: `
     <div class="patient-folder" [class.no-patient]="!patient">
@@ -127,6 +130,7 @@ import {
               (deletePath)="onDeletePath()"
               (treatmentSelect)="onTreatmentSelect($event)"
               (treatmentDoubleClick)="onTreatmentDoubleClick($event)"
+              (treatmentEdit)="onTreatmentEdit($event)"
               (editAnamnesis)="onEditAnamnesis()"
               (documentOpen)="onDocumentOpen($event)"
               (documentUpload)="onDocumentUpload()"
@@ -147,6 +151,13 @@ import {
         (close)="closePathDialog()">
       </app-path-dialog-container>
     }
+
+    <!-- Treatment Detail Dialog Container -->
+    <app-treatment-detail-dialog-container
+      #treatmentDetailDialog
+      (close)="onTreatmentDetailClose()"
+      (editTreatment)="onTreatmentEdit($event)">
+    </app-treatment-detail-dialog-container>
   `,
   styles: [`
     .patient-folder {
@@ -357,6 +368,9 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   @Output() pathCreated = new EventEmitter<TherapeuticPath>();
   @Output() pathUpdated = new EventEmitter<TherapeuticPath>();
   @Output() pathDeleted = new EventEmitter<string>();
+  @Output() editTreatment = new EventEmitter<Treatment>();
+
+  @ViewChild('treatmentDetailDialog') treatmentDetailDialog!: TreatmentDetailDialogContainerComponent;
 
   // State
   uiState: PatientFolderUIState = createInitialPatientFolderUIState();
@@ -586,10 +600,22 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   onTreatmentDoubleClick(treatment: Treatment): void {
-    // TODO: Aprire dialog dettaglio trattamento
     console.log('[PatientFolderContainer] Treatment double click:', treatment.id);
-    this.uiState = { ...this.uiState, showTreatmentDetail: true, selectedTreatmentId: treatment.id };
+    this.uiState = { ...this.uiState, selectedTreatmentId: treatment.id };
+    // Apre il dialog container per vedi dettagli
+    if (this.treatmentDetailDialog) {
+      this.treatmentDetailDialog.open(treatment);
+    }
     this.cdr.markForCheck();
+  }
+
+  onTreatmentEdit(treatment: Treatment): void {
+    console.log('[PatientFolderContainer] Edit treatment:', treatment.id);
+    this.editTreatment.emit(treatment);
+  }
+
+  onTreatmentDetailClose(): void {
+    console.log('[PatientFolderContainer] Treatment detail dialog closed');
   }
 
   onEditAnamnesis(): void {

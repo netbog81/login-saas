@@ -274,7 +274,8 @@ export class CalendarStateService {
 
   // Appointments
   setAppointments(appointments: Map<string, Map<string, Appointment[]>>): void {
-    this.appointmentsSubject.next(appointments);
+    // Crea nuova istanza per forzare OnPush a rilevare il cambiamento
+    this.appointmentsSubject.next(new Map(appointments));
   }
 
   addAppointment(appointment: Appointment): void {

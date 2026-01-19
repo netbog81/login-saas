@@ -74,6 +74,7 @@ type AvailabilityAppointment {
   isRecurring: Boolean!
   isSubstitution: Boolean!
   maxParticipants: Int
+  nonRetribuito: Boolean!
   notes: String
   operator: Operator
   operatorId: ID
@@ -212,6 +213,9 @@ input CreateAvailabilityAppointmentInput {
   endTime: String!
   instrumentOrderMatters: Boolean
   instruments: [AppointmentInstrumentInput!]
+
+  """Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)"""
+  nonRetribuito: Boolean
   notes: String
   operatorId: ID!
   patientId: Int
@@ -1684,6 +1688,9 @@ input UpdateAvailabilityAppointmentInput {
   endTime: String
   instrumentOrderMatters: Boolean
   instruments: [AppointmentInstrumentInput!]
+
+  """Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)"""
+  nonRetribuito: Boolean
   notes: String
   operatorNotes: String
   patientId: Int

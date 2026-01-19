@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil, combineLatest, debounceTime, firstValueFrom } from 'rxjs';
+import { Subject, takeUntil, combineLatest, debounceTime, firstValueFrom, forkJoin } from 'rxjs';
 import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -14,6 +14,8 @@ import { SettingsService } from '../../../services/settings.service';
 import { AvailabilityAppointmentService, AppointmentInstrumentInput } from '../../../services/availability-appointment.service';
 import { GymRoomService, GymRoom, GymSlotInfo, GymAppointment } from '../../../services/gym-room.service';
 import { PatientService } from '../../../services/patient.service';
+import { TreatmentService } from '../../../services/treatment.service';
+import { SseService, AppointmentEvent } from '../../../services/sse.service';
 
 // GraphQL types
 import { Operator, OperatorMacroCategory, InstrumentCategory, InstrumentSlotInput } from '../../../graphql/generated/types';
@@ -42,6 +44,7 @@ import { Appointment } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 import { Patient } from '../../../models/patient.model';
 import { Availability } from '../../../models/availability.model';
+import { Treatment } from '../../../models/treatment.model';
 
 // Utils
 import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
@@ -133,6 +136,10 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   availableSlots: AvailableSlot[] = [];
   slotSearchEnabled: boolean = false;
 
+  // Treatments in progress state (for sidebar)
+  ongoingTreatments: Treatment[] = [];
+  loadingTreatments: boolean = false;
+
   // Gym view state
   gymRooms: GymRoom[] = [];
   // Vista giornaliera: gymRoomId -> slots
@@ -158,6 +165,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     private availabilityAppointmentService: AvailabilityAppointmentService,
     private gymRoomService: GymRoomService,
     private patientService: PatientService,
+    private treatmentService: TreatmentService,
+    private sseService: SseService,
     private overlay: Overlay,
     private viewContainerRef: ViewContainerRef,
     private injector: Injector,
@@ -168,6 +177,46 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.subscribeToState();
     this.loadInitialData();
+    this.subscribeToSseEvents();
+  }
+
+  /**
+   * Sottoscrive agli eventi SSE per aggiornamenti real-time
+   * Gestisce sia eventi appuntamenti che eventi trattamenti
+   */
+  private subscribeToSseEvents(): void {
+    this.sseService.getAppointmentEvents()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (event: AppointmentEvent) => {
+          // Eventi appuntamenti (auto-attendance)
+          if (event.type === 'appointment_status_changed') {
+            console.log('[Calendar] SSE: Appointment status changed, reloading...');
+            // Esegui tutto dentro NgZone per garantire change detection
+            // I componenti figli usano OnPush, quindi serve forzare l'aggiornamento
+            this.ngZone.run(async () => {
+              this.invalidateOperatorCache();
+              await this.loadAppointmentsForCurrentView();
+              // Forza change detection dopo il caricamento async
+              this.cdr.detectChanges();
+            });
+          }
+
+          // Eventi trattamenti (creazione, completamento, chiusura, cancellazione)
+          if (['treatment_created', 'treatment_status_changed', 'treatment_deleted'].includes(event.type)) {
+            console.log('[Calendar] SSE: Treatment event:', event.type);
+            this.ngZone.run(() => {
+              // Ricarica la lista dei trattamenti in corso nella sidebar
+              this.loadOngoingTreatments();
+              this.cdr.detectChanges();
+            });
+          }
+        },
+        error: (err) => {
+          console.warn('[Calendar] SSE connection error:', err);
+          // Non propagare l'errore - SSE si riconnetterà automaticamente
+        }
+      });
   }
 
   ngOnDestroy(): void {
@@ -504,6 +553,9 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       this.stateService.setAvailabilities(availabilitiesMap);
       this.isLoading = false;
       this.cdr.markForCheck();
+
+      // Carica anche i trattamenti in corso per la sidebar
+      this.loadOngoingTreatments();
     } catch (error) {
       console.error('Error loading appointments:', error);
       this.isLoading = false;
@@ -550,6 +602,61 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     } catch (error) {
       console.error(`Error loading availability for operator ${user.operatorId}:`, error);
     }
+  }
+
+  // ==========================================
+  // TREATMENTS IN PROGRESS - Per sidebar calendario
+  // ==========================================
+
+  /**
+   * Carica i trattamenti in corso per tutti gli operatori.
+   * Filtra per data corrente e stato 'in_progress'.
+   */
+  private loadOngoingTreatments(): void {
+    // Solo per vista operatori
+    if (this.config?.viewMode !== 'operators') {
+      this.ongoingTreatments = [];
+      return;
+    }
+
+    // Prendi tutti gli operatori con operatorId valido
+    const operatorsWithId = this.allUsers.filter(u => u.operatorId);
+
+    if (operatorsWithId.length === 0) {
+      this.ongoingTreatments = [];
+      this.loadingTreatments = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.loadingTreatments = true;
+    this.cdr.markForCheck();
+
+    const date = this.formatDate(this.currentDate);
+
+    // Carica trattamenti per tutti gli operatori in parallelo
+    const observables = operatorsWithId.map(op =>
+      this.treatmentService.getTreatmentsByOperator(op.operatorId!, date)
+    );
+
+    forkJoin(observables)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (results) => {
+          this.ngZone.run(() => {
+            // Unisci tutti i trattamenti - crea nuovo array per forzare change detection
+            this.ongoingTreatments = [...results.flat()];
+            this.loadingTreatments = false;
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('Errore caricamento trattamenti in corso:', err);
+          this.loadingTreatments = false;
+          this.ongoingTreatments = [];
+          this.cdr.markForCheck();
+        }
+      });
   }
 
   // ==========================================
@@ -1307,7 +1414,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
 
     if (result.action === 'save' && result.appointment) {
-      await this.saveAppointment(result.appointment, result.instruments, result.instrumentOrderMatters, result.repeatConfig);
+      await this.saveAppointment(result.appointment, result.instruments, result.instrumentOrderMatters, result.repeatConfig, result.nonRetribuito);
     }
   }
 
@@ -1319,7 +1426,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     appointment: Appointment,
     instruments?: AppointmentInstrumentInput[],
     instrumentOrderMatters?: boolean,
-    repeatConfig?: any
+    repeatConfig?: any,
+    nonRetribuito?: boolean
   ): Promise<void> {
     try {
       const isUpdate = appointment.id && typeof appointment.id === 'string' && appointment.id.length > 10;
@@ -1335,7 +1443,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           endTime: appointment.endTime,
           notes: appointment.notes,
           instrumentOrderMatters: instrumentOrderMatters,
-          instruments: instruments
+          instruments: instruments,
+          nonRetribuito: nonRetribuito
         };
         console.log('[Calendar] Updating appointment with input:', JSON.stringify(updateInput, null, 2));
         await firstValueFrom(
@@ -1359,7 +1468,8 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
             notes: appointment.notes,
             instrumentOrderMatters: instrumentOrderMatters,
             instruments: instruments,
-            repeatConfig: repeatConfig
+            repeatConfig: repeatConfig,
+            nonRetribuito: nonRetribuito
           })
         );
         console.log('[Calendar] Created appointment:', created.id, repeatConfig ? '(recurring)' : '');

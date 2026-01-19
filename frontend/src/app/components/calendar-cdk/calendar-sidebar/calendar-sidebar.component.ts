@@ -1,7 +1,8 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, Input, Output, EventEmitter, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { User } from '../../../models/user.model';
+import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../../../models/treatment.model';
 import { OperatorMacroCategory, InstrumentCategory } from '../../../graphql/generated/types';
 import { AppointmentSearchFilters } from '../services/calendar-state.service';
 
@@ -13,6 +14,11 @@ import { AppointmentSearchFilters } from '../services/calendar-state.service';
   styleUrls: ['./calendar-sidebar.component.scss']
 })
 export class CalendarSidebarComponent {
+  constructor(
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef
+  ) {}
+
   @Input() allUsers: User[] = [];
   @Input() selectedUsers: User[] = [];
   @Input() collapsed: boolean = false;
@@ -20,6 +26,8 @@ export class CalendarSidebarComponent {
   @Input() searchFilters: AppointmentSearchFilters = { duration: 45, withInstrument: false };
   @Input() instrumentCategories: InstrumentCategory[] = [];
   @Input() slotSearchEnabled: boolean = false;
+  @Input() ongoingTreatments: Treatment[] = [];
+  @Input() loadingTreatments = false;
 
   @Output() userToggle = new EventEmitter<User>();
   @Output() selectAll = new EventEmitter<void>();
@@ -93,15 +101,24 @@ export class CalendarSidebarComponent {
   // ============ PANEL TOGGLES ============
 
   toggleOperatorsExpanded(): void {
-    this.operatorsExpanded = !this.operatorsExpanded;
+    this.ngZone.run(() => {
+      this.operatorsExpanded = !this.operatorsExpanded;
+      this.cdr.markForCheck();
+    });
   }
 
   toggleFiltersExpanded(): void {
-    this.filtersExpanded = !this.filtersExpanded;
+    this.ngZone.run(() => {
+      this.filtersExpanded = !this.filtersExpanded;
+      this.cdr.markForCheck();
+    });
   }
 
   toggleTreatmentsExpanded(): void {
-    this.treatmentsExpanded = !this.treatmentsExpanded;
+    this.ngZone.run(() => {
+      this.treatmentsExpanded = !this.treatmentsExpanded;
+      this.cdr.markForCheck();
+    });
   }
 
   // Computed properties per visibilità condizionale dei filtri
@@ -182,5 +199,47 @@ export class CalendarSidebarComponent {
         return 'Secondi 30 min (30-60)';
       }
     }
+  }
+
+  // ============ TRATTAMENTI IN CORSO ============
+
+  /**
+   * Getter per filtrare i trattamenti in base agli operatori selezionati.
+   * Se selectedUsers è vuoto, mostra tutti i trattamenti.
+   * Altrimenti mostra solo quelli degli operatori selezionati.
+   */
+  get filteredTreatments(): Treatment[] {
+    if (!this.ongoingTreatments || this.ongoingTreatments.length === 0) {
+      return [];
+    }
+
+    // Se nessun operatore selezionato, mostra tutti
+    if (!this.selectedUsers || this.selectedUsers.length === 0) {
+      return this.ongoingTreatments;
+    }
+
+    // Filtra per operatori selezionati
+    const selectedOperatorIds = this.selectedUsers.map(u => u.operatorId).filter(Boolean);
+    return this.ongoingTreatments.filter(t =>
+      t.operatorId && selectedOperatorIds.includes(t.operatorId)
+    );
+  }
+
+  getTreatmentStatusLabel(status: string): string {
+    return getTreatmentStatusLabel(status as any);
+  }
+
+  getTreatmentStatusColor(status: string): string {
+    return getTreatmentStatusColor(status as any);
+  }
+
+  formatTreatmentDate(date: Date | string): string {
+    const d = new Date(date);
+    return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
+  }
+
+  formatTreatmentTime(date: Date | string): string {
+    const d = new Date(date);
+    return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
 }

@@ -83,4 +83,9 @@ export class UpdateAvailabilityAppointmentInput {
   @ValidateNested({ each: true })
   @Type(() => AppointmentInstrumentInput)
   instruments?: AppointmentInstrumentInput[];
+
+  @Field({ nullable: true, description: 'Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)' })
+  @IsOptional()
+  @IsBoolean()
+  nonRetribuito?: boolean;
 }
