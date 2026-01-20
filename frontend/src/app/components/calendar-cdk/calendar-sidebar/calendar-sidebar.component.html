@@ -280,7 +280,10 @@
         <!-- Treatments list -->
         <ng-container *ngIf="!loadingTreatments && filteredTreatments.length > 0">
           <div class="treatments-list">
-            <div class="treatment-item" *ngFor="let treatment of filteredTreatments">
+            <div class="treatment-item"
+                 *ngFor="let treatment of filteredTreatments"
+                 [class.selected]="isTreatmentSelected(treatment)"
+                 (click)="onTreatmentCardClick(treatment, $event)">
               <!-- Data e ora inizio + Stato -->
               <div class="treatment-header">
                 <div class="treatment-datetime">
@@ -311,6 +314,93 @@
                   <circle cx="12" cy="7" r="4"></circle>
                 </svg>
                 <span>{{ treatment.operator.name }} {{ treatment.operator.surname }}</span>
+              </div>
+
+              <!-- Popup Dettagli (solo se selezionato E status = operator_completed) -->
+              <div class="treatment-details-popup"
+                   *ngIf="isTreatmentSelected(treatment) && isOperatorCompleted(treatment)"
+                   (click)="$event.stopPropagation()">
+                <div class="popup-header">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                  <h4>Dettagli per la Segreteria</h4>
+                </div>
+
+                <!-- Servizio -->
+                <div class="popup-row" *ngIf="treatment.service">
+                  <span class="row-label">Servizio:</span>
+                  <span class="row-value service-name">{{ treatment.service.name }}</span>
+                </div>
+
+                <!-- Note per la segreteria -->
+                <div class="popup-row notes-row" *ngIf="treatment.secretaryNotes">
+                  <span class="row-label">Note segreteria:</span>
+                  <div class="notes-content">{{ treatment.secretaryNotes }}</div>
+                </div>
+
+                <!-- Riprogrammazione -->
+                <div class="popup-row reschedule-row" *ngIf="hasReschedulingInfo(treatment)">
+                  <span class="row-label">Riprogrammazione:</span>
+                  <div class="reschedule-content">
+                    <span *ngIf="treatment.suggestInDays" class="reschedule-days">
+                      Fra {{ treatment.suggestInDays }} giorni
+                    </span>
+                    <span *ngIf="treatment.suggestDateRangeStart && treatment.suggestDateRangeEnd" class="reschedule-range">
+                      Dal {{ formatShortDate(treatment.suggestDateRangeStart) }} al {{ formatShortDate(treatment.suggestDateRangeEnd) }}
+                    </span>
+                    <span *ngIf="treatment.reschedulingNotes" class="reschedule-notes">
+                      {{ treatment.reschedulingNotes }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Prezzo -->
+                <div class="popup-row pricing-row">
+                  <span class="row-label">Prezzo:</span>
+                  <div class="pricing-content">
+                    <span class="price-amount">{{ treatment.price | number:'1.2-2' }} &euro;</span>
+                    <span class="badge badge-sconto" *ngIf="treatment.scontoFE">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="8" y1="15" x2="16" y2="9"></line>
+                      </svg>
+                      Sconto FE
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Pagamento -->
+                <div class="popup-row payment-row">
+                  <span class="row-label">Pagamento:</span>
+                  <div class="payment-content">
+                    <ng-container *ngIf="treatment.isPaid; else notPaid">
+                      <span class="badge badge-paid">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        {{ isCollectedByOperator(treatment) ? 'Incassato dall\'operatore' : 'Incassato dalla segreteria' }}
+                      </span>
+                      <span class="payment-method" *ngIf="treatment.paymentMethod">
+                        ({{ getPaymentMethodLabelForTreatment(treatment.paymentMethod) }})
+                      </span>
+                    </ng-container>
+                    <ng-template #notPaid>
+                      <span class="badge badge-unpaid">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="15" y1="9" x2="9" y2="15"></line>
+                          <line x1="9" y1="9" x2="15" y2="15"></line>
+                        </svg>
+                        Da incassare
+                      </span>
+                    </ng-template>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

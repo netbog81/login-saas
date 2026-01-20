@@ -764,6 +764,7 @@ export type ReschedulingType = 'days' | 'range' | 'none';
           width: 100%;
         }
       }
+
     }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush

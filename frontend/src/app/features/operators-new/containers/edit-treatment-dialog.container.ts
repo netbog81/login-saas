@@ -263,6 +263,17 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
           console.error('[EditTreatmentDialogContainer] Error updating treatment:', err);
           this.ngZone.run(() => {
             this.isSaving = false;
+            // Estrai messaggio di errore dal backend
+            const errorMessage = err?.graphQLErrors?.[0]?.message
+              || err?.message
+              || 'Errore durante il salvataggio del trattamento';
+
+            // Se il trattamento non è modificabile, suggerisci di riaprirlo
+            if (errorMessage.includes('Solo i trattamenti in corso')) {
+              alert(errorMessage + '\n\nPer modificare il trattamento, usa prima il pulsante "Riapri Trattamento".');
+            } else {
+              alert(errorMessage);
+            }
             this.cdr.markForCheck();
           });
         },

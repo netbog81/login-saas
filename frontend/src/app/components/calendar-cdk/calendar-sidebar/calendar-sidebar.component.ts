@@ -1,8 +1,8 @@
-import { Component, Input, Output, EventEmitter, NgZone, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, NgZone, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { User } from '../../../models/user.model';
-import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../../../models/treatment.model';
+import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor, PaymentMethod, getPaymentMethodLabel } from '../../../models/treatment.model';
 import { OperatorMacroCategory, InstrumentCategory } from '../../../graphql/generated/types';
 import { AppointmentSearchFilters } from '../services/calendar-state.service';
 
@@ -18,6 +18,9 @@ export class CalendarSidebarComponent {
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
+
+  // Stato per popup dettagli trattamento
+  selectedTreatmentForDetails: Treatment | null = null;
 
   @Input() allUsers: User[] = [];
   @Input() selectedUsers: User[] = [];
@@ -241,5 +244,102 @@ export class CalendarSidebarComponent {
   formatTreatmentTime(date: Date | string): string {
     const d = new Date(date);
     return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ============ TREATMENT DETAILS POPUP ============
+
+  /**
+   * Click handler per card trattamento - toggle popup dettagli
+   * Solo per status = operator_completed mostra dettagli extra
+   */
+  onTreatmentCardClick(treatment: Treatment, event: MouseEvent): void {
+    event.stopPropagation();
+    this.ngZone.run(() => {
+      if (this.selectedTreatmentForDetails?.id === treatment.id) {
+        // Toggle off se stesso trattamento
+        this.selectedTreatmentForDetails = null;
+      } else {
+        this.selectedTreatmentForDetails = treatment;
+      }
+      this.cdr.markForCheck();
+    });
+  }
+
+  /**
+   * Chiude il popup dettagli
+   */
+  closeTreatmentDetails(): void {
+    this.ngZone.run(() => {
+      this.selectedTreatmentForDetails = null;
+      this.cdr.markForCheck();
+    });
+  }
+
+  /**
+   * HostListener per chiudere popup quando si clicca fuori
+   */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    // Se il click non è dentro un treatment-item, chiudi il popup
+    if (!target.closest('.treatment-item')) {
+      this.closeTreatmentDetails();
+    }
+  }
+
+  /**
+   * Verifica se un trattamento è selezionato per mostrare dettagli
+   */
+  isTreatmentSelected(treatment: Treatment): boolean {
+    return this.selectedTreatmentForDetails?.id === treatment.id;
+  }
+
+  /**
+   * Verifica se il trattamento ha status operator_completed (case-insensitive)
+   */
+  isOperatorCompleted(treatment: Treatment): boolean {
+    return treatment.status?.toLowerCase() === 'operator_completed';
+  }
+
+  /**
+   * Verifica se ci sono info di riprogrammazione
+   */
+  hasReschedulingInfo(treatment: Treatment): boolean {
+    return !!(
+      treatment.rescheduleRequested ||
+      treatment.suggestInDays ||
+      (treatment.suggestDateRangeStart && treatment.suggestDateRangeEnd) ||
+      (treatment.reschedulingType && treatment.reschedulingType !== 'none')
+    );
+  }
+
+  /**
+   * Verifica se il pagamento è stato incassato dall'operatore
+   * Confronta collectedBy con operatorId
+   */
+  isCollectedByOperator(treatment: Treatment): boolean {
+    if (!treatment.isPaid) return false;
+    return treatment.collectedBy === treatment.operatorId;
+  }
+
+  /**
+   * Formatta data in formato breve italiano
+   */
+  formatShortDate(date: Date | string | undefined): string {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+
+  /**
+   * Label per metodo di pagamento
+   */
+  getPaymentMethodLabelForTreatment(method: PaymentMethod | string | undefined): string {
+    if (!method) return '';
+    return getPaymentMethodLabel(method as PaymentMethod);
   }
 }
