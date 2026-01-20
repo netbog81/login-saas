@@ -30,6 +30,15 @@ export const CLOSE_TREATMENT = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+export const REOPEN_TREATMENT = gql`
+  mutation ReopenTreatment($id: ID!) {
+    reopenTreatment(id: $id) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
 export const RECORD_TREATMENT_PAYMENT = gql`
   mutation RecordTreatmentPayment($id: ID!, $input: RecordPaymentInput!) {
     recordTreatmentPayment(id: $id, input: $input) {

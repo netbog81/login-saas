@@ -383,6 +383,40 @@ export class TreatmentService {
     return result;
   }
 
+  /**
+   * Riapre un trattamento completato (riporta a IN_PROGRESS)
+   * Solo i trattamenti con status OPERATOR_COMPLETED possono essere riaperti
+   */
+  async reopen(id: string): Promise<Treatment> {
+    const treatment = await this.findById(id);
+
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+
+    if (treatment.status !== TreatmentStatus.OPERATOR_COMPLETED) {
+      throw new BadRequestException(
+        `Solo i trattamenti in stato 'operator_completed' possono essere riaperti. Stato attuale: ${treatment.status}`
+      );
+    }
+
+    treatment.status = TreatmentStatus.IN_PROGRESS;
+    treatment.completedAt = null as any;
+
+    const result = await this.treatmentRepo.save(treatment);
+
+    // Emetti evento SSE per notificare il frontend
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.status,
+      timestamp: new Date(),
+    });
+
+    return result;
+  }
+
   // ==================== PAYMENT ====================
 
   /**

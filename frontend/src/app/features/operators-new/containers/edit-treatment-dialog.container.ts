@@ -30,7 +30,7 @@ import { TreatmentService } from '../../../services/treatment.service';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { ServiceService } from '../../../services/service.service';
 import { InstrumentService } from '../../../services/instrument.service';
-import { Treatment } from '../../../models/treatment.model';
+import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.model';
 
 @Component({
   selector: 'app-edit-treatment-dialog-container',
@@ -44,7 +44,9 @@ import { Treatment } from '../../../models/treatment.model';
       [isSaving]="isSaving"
       (save)="onSave($event)"
       (cancel)="onCancel()"
-      (cashCollection)="onOpenCashCollection()">
+      (cashCollection)="onOpenCashCollection()"
+      (completeTreatment)="onCompleteTreatment()"
+      (reopenTreatment)="onReopenTreatment()">
     </app-edit-treatment-dialog>
 
     <!-- Cash Collection Dialog -->
@@ -345,6 +347,93 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
       this.showCashCollectionDialog = false;
       this.cdr.markForCheck();
     });
+  }
+
+  /**
+   * Completa il trattamento (status -> operator_completed)
+   */
+  onCompleteTreatment(): void {
+    if (!this.currentTreatment) return;
+
+    if (!confirm('Confermi di voler completare il trattamento?')) {
+      return;
+    }
+
+    console.log('[EditTreatmentDialogContainer] Completing treatment:', this.currentTreatment.id);
+
+    this.ngZone.run(() => {
+      this.isSaving = true;
+      this.cdr.markForCheck();
+    });
+
+    const input: CompleteTreatmentInput = {
+      price: this.currentTreatment.price || 0,
+      clinicalNotes: this.currentTreatment.clinicalNotes,
+      secretaryNotes: this.currentTreatment.secretaryNotes,
+      operatorNotes: this.currentTreatment.operatorNotes
+    };
+
+    this.treatmentService.completeTreatment(this.currentTreatment.id, input)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedTreatment) => {
+          console.log('[EditTreatmentDialogContainer] Treatment completed:', updatedTreatment.id);
+          this.ngZone.run(() => {
+            this.isSaving = false;
+            this.isVisible = false;
+            this.treatmentUpdated.emit(updatedTreatment);
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('[EditTreatmentDialogContainer] Error completing treatment:', err);
+          this.ngZone.run(() => {
+            this.isSaving = false;
+            alert('Errore durante il completamento del trattamento');
+            this.cdr.markForCheck();
+          });
+        }
+      });
+  }
+
+  /**
+   * Riapre un trattamento completato (status -> in_progress)
+   */
+  onReopenTreatment(): void {
+    if (!this.currentTreatment) return;
+
+    if (!confirm('Confermi di voler rimettere in corso il trattamento?')) {
+      return;
+    }
+
+    console.log('[EditTreatmentDialogContainer] Reopening treatment:', this.currentTreatment.id);
+
+    this.ngZone.run(() => {
+      this.isSaving = true;
+      this.cdr.markForCheck();
+    });
+
+    this.treatmentService.reopenTreatment(this.currentTreatment.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedTreatment) => {
+          console.log('[EditTreatmentDialogContainer] Treatment reopened:', updatedTreatment.id);
+          this.ngZone.run(() => {
+            this.isSaving = false;
+            this.isVisible = false;
+            this.treatmentUpdated.emit(updatedTreatment);
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('[EditTreatmentDialogContainer] Error reopening treatment:', err);
+          this.ngZone.run(() => {
+            this.isSaving = false;
+            alert('Errore durante la riapertura del trattamento');
+            this.cdr.markForCheck();
+          });
+        }
+      });
   }
 
   /**

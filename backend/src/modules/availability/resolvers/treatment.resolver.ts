@@ -154,6 +154,16 @@ export class TreatmentResolver {
   }
 
   /**
+   * Mutation: Riapre un trattamento completato (riporta a IN_PROGRESS)
+   */
+  @Mutation(() => Treatment, { name: 'reopenTreatment' })
+  async reopenTreatment(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.reopen(id);
+  }
+
+  /**
    * Mutation: Registra pagamento del paziente
    */
   @Mutation(() => Treatment, { name: 'recordTreatmentPayment' })

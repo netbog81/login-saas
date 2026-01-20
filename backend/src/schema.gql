@@ -820,6 +820,7 @@ type Mutation {
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   recordTreatmentPayment(id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
+  reopenTreatment(id: ID!): Treatment!
 
   """
   Request patient data deletion (GDPR Article 17 - Right to be Forgotten)

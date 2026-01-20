@@ -36,7 +36,7 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
       [class.selected]="selected"
       [class.status-scheduled]="isScheduled()"
       [class.status-confirmed]="isConfirmed()"
-      [class.status-attended]="isNoShow()"
+      [class.status-attended]="isAttended()"
       [class.status-cancelled]="isCancelled()"
       [class.status-non-retribuito]="isNonRetribuito()"
       (click)="onSelect()">
@@ -220,6 +220,10 @@ export class AppointmentCardComponent {
     return this.appointment.bookingStatus === BookingStatus.Cancelled;
   }
 
+  isAttended(): boolean {
+    return this.appointment.bookingStatus === BookingStatus.Attended;
+  }
+
   /**
    * Helper per appuntamenti non retribuiti (Layer 1 - UI logic only)
    */
@@ -240,6 +244,7 @@ export class AppointmentCardComponent {
     switch (this.appointment.bookingStatus) {
       case BookingStatus.Scheduled: return 'event';
       case BookingStatus.Confirmed: return 'check_circle';
+      case BookingStatus.Attended: return 'how_to_reg';
       case BookingStatus.NoShow: return 'person_off';
       case BookingStatus.Cancelled: return 'cancel';
       default: return 'help';
@@ -254,6 +259,7 @@ export class AppointmentCardComponent {
     switch (this.appointment.bookingStatus) {
       case BookingStatus.Scheduled: return 'Prenotato';
       case BookingStatus.Confirmed: return 'Confermato';
+      case BookingStatus.Attended: return 'Arrivato';
       case BookingStatus.NoShow: return 'Non presentato';
       case BookingStatus.Cancelled: return 'Cancellato';
       default: return 'Sconosciuto';

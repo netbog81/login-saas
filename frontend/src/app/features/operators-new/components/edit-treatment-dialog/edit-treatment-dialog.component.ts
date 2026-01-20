@@ -81,11 +81,18 @@ import { PaymentMethod } from '../../../../models/treatment.model';
               <mat-icon class="header-icon">edit_note</mat-icon>
               <div class="header-text">
                 <h2>Modifica Trattamento</h2>
-                @if (data.treatment.patient) {
-                  <span class="patient-name">
-                    {{ data.treatment.patient.nome }} {{ data.treatment.patient.cognome }}
-                  </span>
-                }
+                <div class="header-meta">
+                  @if (data.treatment.patient) {
+                    <span class="patient-name">
+                      {{ data.treatment.patient.nome }} {{ data.treatment.patient.cognome }}
+                    </span>
+                  }
+                  @if (data.treatment.status) {
+                    <span class="status-badge" [class]="'status-' + data.treatment.status?.toLowerCase()">
+                      {{ getStatusLabel(data.treatment.status) }}
+                    </span>
+                  }
+                </div>
               </div>
             </div>
             <button mat-icon-button (click)="onCancel()" class="close-btn">
@@ -319,19 +326,39 @@ import { PaymentMethod } from '../../../../models/treatment.model';
 
           <!-- Footer -->
           <footer class="dialog-footer">
-            <button mat-button (click)="onCancel()" [disabled]="isSaving">
-              Annulla
-            </button>
-            <button mat-raised-button color="primary"
-                    [disabled]="!form.valid || isSaving"
-                    (click)="onSave()">
-              @if (isSaving) {
-                <mat-spinner diameter="20"></mat-spinner>
-              } @else {
-                <mat-icon>save</mat-icon>
-                Salva Modifiche
+            <div class="footer-left">
+              @if (data.treatment.status?.toLowerCase() === 'in_progress') {
+                <button mat-raised-button color="accent"
+                        [disabled]="isSaving"
+                        (click)="onCompleteTreatment()">
+                  <mat-icon>check_circle</mat-icon>
+                  Completa Trattamento
+                </button>
               }
-            </button>
+              @if (data.treatment.status?.toLowerCase() === 'operator_completed') {
+                <button mat-raised-button color="warn"
+                        [disabled]="isSaving"
+                        (click)="onReopenTreatment()">
+                  <mat-icon>replay</mat-icon>
+                  Riapri Trattamento
+                </button>
+              }
+            </div>
+            <div class="footer-right">
+              <button mat-button (click)="onCancel()" [disabled]="isSaving">
+                Annulla
+              </button>
+              <button mat-raised-button color="primary"
+                      [disabled]="!form.valid || isSaving"
+                      (click)="onSave()">
+                @if (isSaving) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <mat-icon>save</mat-icon>
+                  Salva Modifiche
+                }
+              </button>
+            </div>
           </footer>
         </div>
       </div>
@@ -396,9 +423,40 @@ import { PaymentMethod } from '../../../../models/treatment.model';
       font-weight: 500;
     }
 
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
     .patient-name {
       color: #666;
       font-size: 14px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-in_progress {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .status-operator_completed {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-closed {
+      background: #dcfce7;
+      color: #166534;
     }
 
     .close-btn {
@@ -587,12 +645,22 @@ import { PaymentMethod } from '../../../../models/treatment.model';
 
     .dialog-footer {
       display: flex;
-      justify-content: flex-end;
-      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
       padding: 16px 24px;
       border-top: 1px solid #e0e0e0;
       background: #fafafa;
       border-radius: 0 0 8px 8px;
+    }
+
+    .footer-left {
+      display: flex;
+      gap: 12px;
+    }
+
+    .footer-right {
+      display: flex;
+      gap: 12px;
     }
 
     .path-operator {
@@ -623,6 +691,8 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   @Output() save = new EventEmitter<EditTreatmentFormResult>();
   @Output() cancel = new EventEmitter<void>();
   @Output() cashCollection = new EventEmitter<void>();
+  @Output() completeTreatment = new EventEmitter<void>();
+  @Output() reopenTreatment = new EventEmitter<void>();
 
   form!: FormGroup;
   cashCollected = false;
@@ -899,6 +969,23 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
 
   onCancel(): void {
     this.cancel.emit();
+  }
+
+  onCompleteTreatment(): void {
+    this.completeTreatment.emit();
+  }
+
+  onReopenTreatment(): void {
+    this.reopenTreatment.emit();
+  }
+
+  getStatusLabel(status: string): string {
+    switch (status?.toLowerCase()) {
+      case 'in_progress': return 'In corso';
+      case 'operator_completed': return 'Completato';
+      case 'closed': return 'Chiuso';
+      default: return status || '';
+    }
   }
 
   onSave(): void {

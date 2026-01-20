@@ -27,6 +27,7 @@ import {
   CREATE_TREATMENT,
   COMPLETE_TREATMENT,
   CLOSE_TREATMENT,
+  REOPEN_TREATMENT,
   RECORD_TREATMENT_PAYMENT,
   MARK_TREATMENT_INVOICED_TO_PATIENT,
   MARK_TREATMENT_INVOICED_BY_OPERATOR,
@@ -163,6 +164,14 @@ export class TreatmentService extends BaseGraphQLService {
   closeTreatment(id: string, input: CloseTreatmentInput): Observable<Treatment> {
     return this.mutate<{ closeTreatment: Treatment }>(CLOSE_TREATMENT, { id, input })
       .pipe(map((result) => result.closeTreatment));
+  }
+
+  /**
+   * Reopen a completed treatment (back to in_progress)
+   */
+  reopenTreatment(id: string): Observable<Treatment> {
+    return this.mutate<{ reopenTreatment: Treatment }>(REOPEN_TREATMENT, { id })
+      .pipe(map((result) => result.reopenTreatment));
   }
 
   /**

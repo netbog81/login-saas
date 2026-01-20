@@ -37,7 +37,7 @@ import { TreatmentCardComponent, TreatmentCompletionData } from '../components/t
 import { PatientFolderContainer } from './patient-folder.container';
 import { StartTreatmentDialogContainer, StartTreatmentResult } from './start-treatment-dialog.container';
 import { EditTreatmentDialogContainerComponent } from './edit-treatment-dialog.container';
-import { Treatment } from '../../../models/treatment.model';
+import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 
@@ -508,15 +508,40 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
 
   onFinishTreatment(treatment: Treatment): void {
     console.log('[OperatorWorkspaceContainer] Finish treatment:', treatment.id);
-    // TODO: Chiamare service per completare il trattamento (status -> operator_completed)
-    if (confirm('Confermi di voler completare il trattamento?')) {
-      // Simula il completamento
-      this.currentTreatment = {
-        ...treatment,
-        status: 'operator_completed' as any
-      };
-      this.cdr.markForCheck();
+
+    if (!confirm('Confermi di voler completare il trattamento?')) {
+      return;
     }
+
+    const input: CompleteTreatmentInput = {
+      price: treatment.price || 0,
+      clinicalNotes: treatment.clinicalNotes,
+      secretaryNotes: treatment.secretaryNotes,
+      operatorNotes: treatment.operatorNotes
+    };
+
+    this.treatmentService.completeTreatment(treatment.id, input)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedTreatment) => {
+          this.ngZone.run(() => {
+            console.log('[OperatorWorkspaceContainer] Treatment completed successfully:', updatedTreatment.id);
+            this.currentTreatment = updatedTreatment;
+            this.cdr.markForCheck();
+            // Ricarica trattamenti nella cartella paziente
+            if (this.patientFolderContainer) {
+              this.patientFolderContainer.reloadTreatments();
+            }
+          });
+        },
+        error: (err) => {
+          console.error('[OperatorWorkspaceContainer] Error completing treatment:', err);
+          this.ngZone.run(() => {
+            alert('Errore durante il completamento del trattamento');
+            this.cdr.markForCheck();
+          });
+        }
+      });
   }
 
   onCancelTreatment(treatment: Treatment): void {
