@@ -1,0 +1,248 @@
+.service-multi-select {
+  width: 100%;
+
+  &.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}
+
+// Campo mat-form-field per aggiungere servizi
+.add-service-field {
+  width: 100%;
+  margin-bottom: 8px;
+
+  .option-price {
+    color: #666;
+    font-size: 0.9em;
+  }
+}
+
+// Lista servizi selezionati
+.selected-services {
+  min-height: 40px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  background-color: #f9fafb;
+}
+
+.no-services {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 12px;
+  font-style: italic;
+}
+
+// Singolo item servizio
+.service-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  transition: all 0.2s ease;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  // Stile durante il drag
+  &.cdk-drag-preview {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: #3b82f6;
+  }
+
+  &.cdk-drag-animating {
+    transition: transform 200ms ease;
+  }
+}
+
+// Placeholder durante il drag
+.drag-placeholder {
+  background-color: #e5e7eb;
+  border: 2px dashed #9ca3af;
+  border-radius: 6px;
+  min-height: 44px;
+  margin-bottom: 6px;
+}
+
+.cdk-drop-list-dragging .service-item:not(.cdk-drag-placeholder) {
+  transition: transform 200ms ease;
+}
+
+// Handle per drag (mat-icon)
+.drag-handle {
+  cursor: grab;
+  color: #9ca3af;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+
+  &:hover {
+    color: #6b7280;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// Numero ordinale
+.order-number {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 20px;
+}
+
+// Nome servizio
+.service-name {
+  flex: 1;
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+// Prezzo
+.service-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .price-value {
+    font-size: 14px;
+    color: #374151;
+    font-weight: 500;
+    min-width: 70px;
+    text-align: right;
+
+    &.custom {
+      color: #059669;
+      font-style: italic;
+    }
+  }
+
+  .btn-action {
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+      color: #9ca3af;
+    }
+
+    &:hover mat-icon {
+      color: #6b7280;
+    }
+
+    &.btn-reset:hover mat-icon {
+      color: #dc2626;
+    }
+  }
+}
+
+// Form modifica prezzo
+.price-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .price-input-field {
+    width: 100px;
+
+    // Riduci altezza del mat-form-field
+    ::ng-deep {
+      .mat-mdc-form-field-subscript-wrapper {
+        display: none;
+      }
+
+      .mat-mdc-text-field-wrapper {
+        padding: 0 8px;
+      }
+
+      .mat-mdc-form-field-infix {
+        padding: 6px 0;
+        min-height: 32px;
+      }
+
+      input {
+        font-size: 13px;
+        text-align: right;
+      }
+    }
+  }
+
+  .btn-confirm,
+  .btn-cancel {
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+    }
+  }
+}
+
+// Bottone rimuovi
+.btn-remove {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    color: #9ca3af;
+  }
+
+  &:hover:not(:disabled) mat-icon {
+    color: #dc2626;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
+// Riga totale
+.total-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px 4px;
+  margin-top: 8px;
+  border-top: 1px solid #e5e7eb;
+
+  .total-label {
+    font-size: 14px;
+    color: #6b7280;
+    font-weight: 500;
+  }
+
+  .total-value {
+    font-size: 16px;
+    color: #1f2937;
+    font-weight: 600;
+  }
+}

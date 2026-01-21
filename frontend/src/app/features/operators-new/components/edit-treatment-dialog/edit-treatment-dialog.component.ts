@@ -46,6 +46,11 @@ import {
   ReschedulingType
 } from '../../models/edit-treatment-dialog.model';
 import { PaymentMethod } from '../../../../models/treatment.model';
+import {
+  ServiceMultiSelectComponent,
+  SelectableService,
+  SelectedServiceItem
+} from '../../../../shared/components/service-multi-select';
 
 @Component({
   selector: 'app-edit-treatment-dialog',
@@ -67,7 +72,8 @@ import { PaymentMethod } from '../../../../models/treatment.model';
     MatCheckboxModule,
     MatExpansionModule,
     MatRadioModule,
-    MatDatepickerModule
+    MatDatepickerModule,
+    ServiceMultiSelectComponent
   ],
   template: `
     @if (isVisible && data) {
@@ -118,21 +124,21 @@ import { PaymentMethod } from '../../../../models/treatment.model';
                 </mat-select>
               </mat-form-field>
 
-              <!-- Selezione Servizio -->
-              @if (data.availableServices?.length) {
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Servizio</mat-label>
-                  <mat-select formControlName="serviceId">
-                    @for (service of data.availableServices; track service.id) {
-                      <mat-option [value]="service.id">
-                        {{ service.name }}
-                        @if (service.defaultPrice) {
-                          <span class="service-price"> - {{ service.defaultPrice | currency:'EUR' }}</span>
-                        }
-                      </mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
+              <!-- Selezione Servizi (Multi-select) -->
+              @if (selectableServices.length) {
+                <div class="services-section">
+                  <label class="section-label">Servizi</label>
+                  <app-service-multi-select
+                    [availableServices]="selectableServices"
+                    [selectedServices]="selectedServices"
+                    [useScontoFE]="form.get('scontoFE')?.value"
+                    [showPrices]="true"
+                    [editablePrices]="true"
+                    [disabled]="false"
+                    (selectedServicesChange)="onServicesChange($event)"
+                    (totalPriceChange)="onTotalPriceChange($event)">
+                  </app-service-multi-select>
+                </div>
               }
 
               <!-- Note Cliniche -->
@@ -673,6 +679,18 @@ import { PaymentMethod } from '../../../../models/treatment.model';
       font-size: 12px;
     }
 
+    .services-section {
+      margin-bottom: 16px;
+    }
+
+    .section-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
     /* Fix per notched outline Angular Material */
     ::ng-deep {
       .mdc-notched-outline__notch {
@@ -697,6 +715,12 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   form!: FormGroup;
   cashCollected = false;
   cashPaymentMethod?: PaymentMethod;
+
+  // Servizi selezionati per multi-select
+  selectedServices: SelectedServiceItem[] = [];
+
+  // Servizi disponibili convertiti per il componente multi-select (calcolato una volta sola)
+  selectableServices: SelectableService[] = [];
 
   // Flag per evitare che valueChanges sovrascrivano i dati durante populateForm
   private isPopulating = false;
@@ -773,6 +797,13 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     // Non aggiornare il prezzo durante il caricamento iniziale dei dati
     if (this.isPopulating) return;
 
+    // Usa la logica multi-servizi se ci sono servizi selezionati
+    if (this.selectedServices.length > 0) {
+      this.updatePriceFromServices();
+      return;
+    }
+
+    // Fallback per retrocompatibilità con servizio singolo
     const serviceId = this.form.get('serviceId')?.value;
     const isScontoFE = this.form.get('scontoFE')?.value;
     const service = this.data?.availableServices?.find(s => s.id === serviceId);
@@ -788,6 +819,57 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     }
   }
 
+  /**
+   * Aggiorna il prezzo in base ai servizi selezionati e allo sconto FE
+   */
+  private updatePriceFromServices(): void {
+    const isScontoFE = this.form.get('scontoFE')?.value;
+    let total = 0;
+
+    for (const item of this.selectedServices) {
+      // Se isCustomPrice è true, usa customPrice fisso
+      if (item.isCustomPrice && item.customPrice !== undefined && item.customPrice !== null) {
+        total += item.customPrice;
+      } else {
+        // Altrimenti calcola in base a scontoFE
+        total += this.getCalculatedPriceForService(item, isScontoFE);
+      }
+    }
+
+    this.form.patchValue({ price: total });
+  }
+
+  /**
+   * Calcola il prezzo di un servizio in base al flag scontoFE.
+   * Usato quando il prezzo non è stato personalizzato manualmente.
+   */
+  private getCalculatedPriceForService(item: SelectedServiceItem, isScontoFE: boolean): number {
+    const service = item.service || this.selectableServices.find(s => s.id === item.serviceId);
+    if (!service) return 0;
+
+    if (isScontoFE && service.discountFE !== undefined && service.discountFE !== null) {
+      return service.discountFE;
+    }
+    return service.defaultPrice || 0;
+  }
+
+  /**
+   * Handler per il cambio dei servizi selezionati
+   */
+  onServicesChange(services: SelectedServiceItem[]): void {
+    this.selectedServices = services;
+    this.updatePriceFromServices();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Handler per il cambio del prezzo totale calcolato dal componente multi-select
+   */
+  onTotalPriceChange(totalPrice: number): void {
+    this.form.patchValue({ price: totalPrice });
+    this.cdr.markForCheck();
+  }
+
   private populateForm(): void {
     if (!this.data?.treatment) return;
 
@@ -795,6 +877,16 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     this.isPopulating = true;
 
     const t = this.data.treatment;
+
+    // Calcola selectableServices UNA SOLA VOLTA per evitare cicli infiniti di change detection
+    // (i getter che creano nuovi oggetti causano infinite loops con OnPush)
+    this.selectableServices = (this.data?.availableServices || []).map(s => ({
+      id: s.id,
+      name: s.name,
+      defaultPrice: s.defaultPrice ?? undefined,
+      discountFE: s.discountFE ?? undefined,
+      defaultDuration: s.defaultDuration ?? undefined
+    }));
 
     // Log per debug
     console.log('[EditTreatmentDialog] populateForm called with:', {
@@ -857,6 +949,9 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     // Disattiva flag dopo il patchValue
     this.isPopulating = false;
 
+    // Popola selectedServices dai servizi del trattamento
+    this.populateServicesFromTreatment();
+
     // Leggi stato pagamento dal trattamento (invece di resettare sempre)
     if (t.isPaid) {
       this.cashCollected = true;
@@ -879,6 +974,66 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
         endOffsetMinutes: inst.endOffsetMinutes
       });
     });
+  }
+
+  /**
+   * Popola selectedServices dai servizi del trattamento (treatmentServices)
+   * oppure dal singolo serviceId legacy
+   */
+  private populateServicesFromTreatment(): void {
+    if (!this.data?.treatment) return;
+
+    const t = this.data.treatment;
+
+    // Se ci sono treatmentServices (nuovo sistema), usali
+    if (t.treatmentServices && t.treatmentServices.length > 0) {
+      this.selectedServices = t.treatmentServices.map((ts, idx) => {
+        const fullService = this.data.availableServices?.find(s => s.id === ts.serviceId);
+        // Se isCustomPrice è true, il prezzo è stato personalizzato manualmente
+        // altrimenti lascia customPrice undefined per seguire la logica scontoFE
+        const isCustom = ts.isCustomPrice ?? false;
+        return {
+          serviceId: ts.serviceId,
+          service: fullService ? {
+            id: fullService.id,
+            name: fullService.name,
+            defaultPrice: fullService.defaultPrice ?? undefined,
+            discountFE: fullService.discountFE ?? undefined,
+            defaultDuration: fullService.defaultDuration ?? undefined
+          } : (ts.service ? {
+            id: ts.service.id,
+            name: ts.service.name,
+            defaultPrice: ts.service.defaultPrice ?? undefined,
+            discountFE: ts.service.discountFE ?? undefined,
+            defaultDuration: ts.service.duration ?? undefined
+          } : undefined),
+          customPrice: isCustom ? ts.price : undefined,
+          isCustomPrice: isCustom,
+          orderPosition: ts.orderPosition ?? idx
+        };
+      });
+    }
+    // Fallback: usa serviceId singolo (sistema legacy)
+    else if (t.serviceId) {
+      const service = this.data.availableServices?.find(s => s.id === t.serviceId);
+      if (service) {
+        this.selectedServices = [{
+          serviceId: service.id,
+          service: {
+            id: service.id,
+            name: service.name,
+            defaultPrice: service.defaultPrice ?? undefined,
+            discountFE: service.discountFE ?? undefined,
+            defaultDuration: service.defaultDuration ?? undefined
+          },
+          orderPosition: 0
+        }];
+      } else {
+        this.selectedServices = [];
+      }
+    } else {
+      this.selectedServices = [];
+    }
   }
 
   get instrumentsArray(): FormArray {
@@ -999,9 +1154,30 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       return date.toISOString().split('T')[0];
     };
 
+    // Costruisci array di treatmentServices dai servizi selezionati
+    // Se isCustomPrice è true, usa customPrice; altrimenti calcola in base a scontoFE
+    const isScontoFE = formValue.scontoFE;
+    const treatmentServices = this.selectedServices.map((item, idx) => {
+      let price: number;
+      if (item.isCustomPrice && item.customPrice !== undefined) {
+        // Prezzo personalizzato manualmente
+        price = item.customPrice;
+      } else {
+        // Calcola prezzo in base a scontoFE
+        price = this.getCalculatedPriceForService(item, isScontoFE);
+      }
+      return {
+        serviceId: item.serviceId,
+        price,
+        isCustomPrice: item.isCustomPrice ?? false,
+        orderPosition: item.orderPosition ?? idx
+      };
+    });
+
     const result: EditTreatmentFormResult = {
       therapeuticPathId: formValue.therapeuticPathId || undefined,
-      serviceId: formValue.serviceId || undefined,
+      // Manteniamo serviceId per retrocompatibilità (primo servizio selezionato)
+      serviceId: this.selectedServices.length > 0 ? this.selectedServices[0].serviceId : (formValue.serviceId || undefined),
       clinicalNotes: formValue.clinicalNotes || undefined,
       secretaryNotes: formValue.secretaryNotes || undefined,
       patientNotes: formValue.patientNotes || undefined,
@@ -1010,6 +1186,8 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       painLevel: formValue.painLevel || undefined,
       painBefore: formValue.painBefore || undefined,
       painAfter: formValue.painAfter || undefined,
+      // Nuovo: servizi multipli del trattamento
+      treatmentServices: treatmentServices.length > 0 ? treatmentServices : undefined,
       // Rescheduling fields
       reschedulingType: formValue.reschedulingType,
       suggestInDays: formValue.suggestInDays || undefined,

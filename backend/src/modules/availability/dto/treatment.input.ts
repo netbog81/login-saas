@@ -115,6 +115,40 @@ export class CancelAppointmentInput {
 }
 
 /**
+ * Input per un singolo servizio nel trattamento.
+ * Permette di specificare prezzo personalizzato per ogni servizio.
+ */
+@InputType()
+export class TreatmentServiceInputItem {
+  @Field(() => ID)
+  @IsUUID('4', { message: 'ID servizio non valido' })
+  serviceId: string;
+
+  @Field(() => Float, { nullable: true, description: 'Prezzo personalizzato per questo servizio' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: 'Il prezzo non può essere negativo' })
+  price?: number;
+
+  @Field(() => Int, { nullable: true, description: 'Durata personalizzata in minuti' })
+  @IsOptional()
+  @IsNumber()
+  @Min(5, { message: 'La durata minima è 5 minuti' })
+  duration?: number;
+
+  @Field(() => Int, { nullable: true, description: 'Posizione ordinamento' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  orderPosition?: number;
+
+  @Field(() => Boolean, { nullable: true, description: 'True se il prezzo è stato personalizzato manualmente' })
+  @IsOptional()
+  @IsBoolean()
+  isCustomPrice?: boolean;
+}
+
+/**
  * Input per strumento in aggiornamento trattamento
  */
 @InputType()
@@ -166,10 +200,25 @@ export class UpdateTreatmentInput {
   @IsUUID('4', { message: 'ID percorso terapeutico non valido' })
   therapeuticPathId?: string;
 
-  @Field(() => ID, { nullable: true })
+  /**
+   * @deprecated Usa treatmentServices invece. Mantenuto per retrocompatibilità.
+   */
+  @Field(() => ID, { nullable: true, deprecationReason: 'Usa treatmentServices invece' })
   @IsOptional()
   @IsUUID('4', { message: 'ID servizio non valido' })
   serviceId?: string;
+
+  /**
+   * Lista dei servizi eseguiti nel trattamento.
+   * Se fornito, sostituisce tutti i servizi esistenti.
+   * Ogni servizio può avere un prezzo personalizzato.
+   */
+  @Field(() => [TreatmentServiceInputItem], { nullable: true, description: 'Servizi eseguiti nel trattamento' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TreatmentServiceInputItem)
+  treatmentServices?: TreatmentServiceInputItem[];
 
   @Field({ nullable: true })
   @IsOptional()

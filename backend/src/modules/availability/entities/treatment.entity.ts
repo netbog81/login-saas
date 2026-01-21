@@ -6,6 +6,7 @@ import { Service } from './service.entity';
 import { Patient } from '../../../entities/patient.entity';
 import { PatientModel } from '../../../patients/models/patient.model';
 import { TreatmentInstrument } from './treatment-instrument.entity';
+import { TreatmentService } from './treatment-service.entity';
 import { TherapeuticPath } from './therapeutic-path.entity';
 import { TreatmentStatus, PaymentMethod } from './treatment-enums';
 
@@ -41,7 +42,10 @@ export class Treatment {
   @Column('int', { nullable: true })
   patientId?: number;
 
-  @Field(() => ID, { nullable: true })
+  /**
+   * @deprecated Usa treatmentServices invece. Mantenuto per retrocompatibilità.
+   */
+  @Field(() => ID, { nullable: true, deprecationReason: 'Usa treatmentServices invece' })
   @Column('uuid', { nullable: true })
   serviceId?: string;
 
@@ -236,4 +240,17 @@ export class Treatment {
   @ManyToOne(() => TherapeuticPath, path => path.treatments, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'therapeuticPathId' })
   therapeuticPath: TherapeuticPath;
+
+  // ==================== MULTIPLE SERVICES ====================
+
+  /**
+   * Servizi eseguiti nel trattamento.
+   *
+   * NOTA: I servizi del trattamento possono essere DIVERSI da quelli
+   * dell'appuntamento originale. L'operatore può modificarli quando
+   * arriva il paziente.
+   */
+  @Field(() => [TreatmentService], { nullable: true })
+  @OneToMany(() => TreatmentService, treatmentService => treatmentService.treatment)
+  treatmentServices?: TreatmentService[];
 }

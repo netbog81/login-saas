@@ -8,6 +8,16 @@ import { PaymentMethod } from '../../../models/treatment.model';
 import { Service } from '../../../graphql/generated/types';
 
 /**
+ * Servizio associato all'appuntamento
+ */
+export interface AppointmentServiceData {
+  serviceId: string;
+  customPrice?: number;
+  customDuration?: number;
+  orderPosition?: number;
+}
+
+/**
  * Data passed to the Start Treatment Dialog
  */
 export interface StartTreatmentDialogData {
@@ -19,8 +29,19 @@ export interface StartTreatmentDialogData {
   serviceName?: string;            // Nome del servizio dell'appuntamento
   servicePrice?: number;           // Prezzo default del servizio
   availableServices: Service[];    // Lista servizi disponibili
-  defaultServiceId?: string;       // ServiceId dell'appuntamento (default)
+  defaultServiceId?: string;       // @deprecated - usa appointmentServices
   defaultPathId?: string;          // Percorso terapeutico da pre-selezionare (dalla scheda paziente)
+  appointmentServices?: AppointmentServiceData[];  // Servizi dell'appuntamento (nuovo sistema)
+}
+
+/**
+ * Servizio per il trattamento (output)
+ */
+export interface TreatmentServiceInput {
+  serviceId: string;
+  price?: number;
+  duration?: number;
+  orderPosition: number;
 }
 
 /**
@@ -28,16 +49,17 @@ export interface StartTreatmentDialogData {
  */
 export interface StartTreatmentFormResult {
   pathId: string;                    // Percorso terapeutico selezionato (obbligatorio)
-  serviceId?: string;                // Servizio selezionato
+  serviceId?: string;                // @deprecated - usa treatmentServices
   clinicalNotes?: string;            // Note cliniche operatore
   secretaryNotes?: string;           // Note per la segreteria
-  price?: number;                    // Prezzo del trattamento
+  price?: number;                    // Prezzo totale del trattamento
   isScontoFE: boolean;               // Flag sconto fattura elettronica
   collectedByOperator?: boolean;     // Se l'operatore ha incassato (solo se sconto FE)
   paymentMethod?: PaymentMethod;     // Metodo pagamento se incassato da operatore
   painAssessment?: PainAssessment;   // Valutazione dolore VAS
   rescheduling?: ReschedulingData;   // Dati riprogrammazione
   patientNotes?: string;             // Note per il paziente
+  treatmentServices?: TreatmentServiceInput[];  // Servizi del trattamento (nuovo sistema)
 }
 
 /**

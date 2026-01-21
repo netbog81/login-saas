@@ -1,5 +1,8 @@
-import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Treatment } from '../entities/treatment.entity';
+import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
 import { TreatmentService } from '../services/treatment.service';
 import {
   CompleteTreatmentInput,
@@ -11,7 +14,26 @@ import {
 
 @Resolver(() => Treatment)
 export class TreatmentResolver {
-  constructor(private readonly treatmentService: TreatmentService) {}
+  constructor(
+    private readonly treatmentService: TreatmentService,
+    @InjectRepository(TreatmentServiceEntity)
+    private readonly treatmentServiceRepo: Repository<TreatmentServiceEntity>,
+  ) {}
+
+  /**
+   * ResolveField: Risolve treatmentServices per un trattamento
+   * Caricamento separato per evitare dipendenze circolari TypeORM
+   */
+  @ResolveField(() => [TreatmentServiceEntity], { nullable: true })
+  async treatmentServices(
+    @Parent() treatment: Treatment,
+  ): Promise<TreatmentServiceEntity[]> {
+    return this.treatmentServiceRepo.find({
+      where: { treatmentId: treatment.id },
+      relations: ['service'],
+      order: { orderPosition: 'ASC' },
+    });
+  }
 
   // ==================== QUERIES ====================
 

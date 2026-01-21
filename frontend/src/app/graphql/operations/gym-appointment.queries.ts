@@ -41,6 +41,20 @@ export const GYM_APPOINTMENT_FIELDS = gql`
       id
       name
     }
+    appointmentServices {
+      id
+      serviceId
+      customDuration
+      customPrice
+      orderPosition
+      service {
+        id
+        name
+        defaultPrice
+        discountFE
+        defaultDuration
+      }
+    }
   }
 `;
 

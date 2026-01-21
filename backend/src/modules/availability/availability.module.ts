@@ -29,6 +29,8 @@ import { AppointmentLog } from './entities/appointment-log.entity';
 import { Patient } from '../../entities/patient.entity';
 import { Treatment } from './entities/treatment.entity';
 import { TreatmentInstrument } from './entities/treatment-instrument.entity';
+import { AppointmentService } from './entities/appointment-service.entity';
+import { TreatmentService as TreatmentServiceEntity } from './entities/treatment-service.entity';
 import { ServiceSubcategory } from './entities/service-subcategory.entity';
 import { TherapeuticPath } from './entities/therapeutic-path.entity';
 import { PatientEvaluation } from './entities/patient-evaluation.entity';
@@ -94,7 +96,6 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
       AvailabilityException,
       GroupException,
       AvailabilityCache,
-      AvailabilityAppointment,
       InstrumentCategory,
       Instrument,
       GymRoom,
@@ -105,10 +106,14 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
       Room,
       ServiceInstrument,
       AppointmentInstrument,
+      AppointmentService,       // Junction table - PRIMA del parent per evitare circular dependency
+      TreatmentServiceEntity,   // Junction table - PRIMA del parent per evitare circular dependency
+      TreatmentInstrument,
       AppointmentLog,
       Patient,
+      // Parent entities DOPO le junction tables
+      AvailabilityAppointment,
       Treatment,
-      TreatmentInstrument,
       ServiceSubcategory,
       TherapeuticPath,
       PatientEvaluation,

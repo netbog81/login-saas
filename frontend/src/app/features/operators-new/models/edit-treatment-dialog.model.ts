@@ -50,13 +50,23 @@ export interface EditTreatmentInstrumentInput {
 }
 
 /**
+ * Servizio per il trattamento (output)
+ */
+export interface TreatmentServiceInput {
+  serviceId: string;
+  price?: number;
+  duration?: number;
+  orderPosition: number;
+}
+
+/**
  * Result returned when the edit dialog is saved
  */
 export type ReschedulingType = 'none' | 'days' | 'range';
 
 export interface EditTreatmentFormResult {
   therapeuticPathId?: string;
-  serviceId?: string;
+  serviceId?: string;                // @deprecated - usa treatmentServices
   clinicalNotes?: string;
   secretaryNotes?: string;
   patientNotes?: string;
@@ -65,6 +75,8 @@ export interface EditTreatmentFormResult {
   painLevel?: number;
   painBefore?: number;
   painAfter?: number;
+  // Servizi multipli del trattamento (nuovo sistema)
+  treatmentServices?: TreatmentServiceInput[];
   // Rescheduling fields
   reschedulingType?: ReschedulingType;
   suggestInDays?: number;

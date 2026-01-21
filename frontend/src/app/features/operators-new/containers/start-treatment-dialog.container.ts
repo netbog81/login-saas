@@ -18,7 +18,6 @@ import {
   OnDestroy,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  NgZone,
   ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -38,7 +37,8 @@ import { CashCollectionConfirmDialogComponent } from '../components/cash-collect
 import {
   StartTreatmentDialogData,
   StartTreatmentFormResult,
-  CashCollectionData
+  CashCollectionData,
+  AppointmentServiceData
 } from '../models/start-treatment-dialog.model';
 
 export interface StartTreatmentResult {
@@ -359,11 +359,12 @@ export class StartTreatmentDialogContainer implements OnDestroy {
   @Input() patientId: number = 0;
   @Input() patientName: string = '';
   @Input() operatorId: string = '';
-  @Input() serviceId?: string;       // ID servizio dell'appuntamento
+  @Input() serviceId?: string;       // @deprecated - usa appointmentServices
   @Input() serviceName?: string;
   @Input() servicePrice?: number;
   @Input() appointmentStatus?: string;  // Stato dell'appuntamento per verificare se è ATTENDED
   @Input() defaultPathId?: string;      // Percorso terapeutico da pre-selezionare (dalla scheda paziente)
+  @Input() appointmentServices?: AppointmentServiceData[];  // Servizi dell'appuntamento (nuovo sistema)
 
   // Output events
   @Output() treatmentStarted = new EventEmitter<StartTreatmentResult>();
@@ -388,7 +389,6 @@ export class StartTreatmentDialogContainer implements OnDestroy {
     private treatmentService: TreatmentService,
     private pathService: TherapeuticPathService,
     private serviceService: ServiceService,
-    private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -467,6 +467,8 @@ export class StartTreatmentDialogContainer implements OnDestroy {
     console.log('[StartTreatmentDialogContainer] Loading paths and services for patientId:', numericPatientId);
 
     // Carica percorsi e servizi in parallelo
+    // NOTA: Apollo/ApolloZoneService già eseguono dentro NgZone,
+    // non serve wrapping aggiuntivo con ngZone.run()
     forkJoin({
       paths: this.pathService.getPathsByPatient(numericPatientId),
       services: this.serviceService.getServicesOnce()
@@ -474,32 +476,29 @@ export class StartTreatmentDialogContainer implements OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: ({ paths, services }) => {
-          this.ngZone.run(() => {
-            // Filtra solo percorsi ATTIVI (case-insensitive)
-            this.activePaths = paths.filter(p => p.status?.toLowerCase() === 'active');
-            // Filtra solo servizi attivi
-            this.availableServices = services.filter(s => s.isActive);
+          // Filtra solo percorsi ATTIVI (case-insensitive)
+          this.activePaths = paths.filter(p => p.status?.toLowerCase() === 'active');
+          // Filtra solo servizi attivi
+          this.availableServices = services.filter(s => s.isActive);
 
-            console.log('[StartTreatmentDialogContainer] Active paths:', this.activePaths.length);
-            console.log('[StartTreatmentDialogContainer] Available services:', this.availableServices.length);
+          console.log('[StartTreatmentDialogContainer] Active paths:', this.activePaths.length);
+          console.log('[StartTreatmentDialogContainer] Available services:', this.availableServices.length);
 
-            if (this.activePaths.length === 0) {
-              // Nessun percorso attivo: mostra warning
-              this.showNoPathsWarning = true;
-            } else {
-              // Percorsi attivi presenti: apri dialog
-              this.openDialogWithPaths();
-            }
-            this.cdr.markForCheck();
-          });
-        },
-        error: (error) => {
-          this.ngZone.run(() => {
-            console.error('[StartTreatmentDialogContainer] Error loading paths/services:', error);
-            // In caso di errore, mostra comunque il warning
+          if (this.activePaths.length === 0) {
+            // Nessun percorso attivo: mostra warning
             this.showNoPathsWarning = true;
             this.cdr.markForCheck();
-          });
+          } else {
+            // Percorsi attivi presenti: apri dialog
+            this.openDialogWithPaths();
+            // openDialogWithPaths() già chiama markForCheck()
+          }
+        },
+        error: (error) => {
+          console.error('[StartTreatmentDialogContainer] Error loading paths/services:', error);
+          // In caso di errore, mostra comunque il warning
+          this.showNoPathsWarning = true;
+          this.cdr.markForCheck();
         }
       });
   }
@@ -515,7 +514,8 @@ export class StartTreatmentDialogContainer implements OnDestroy {
       servicePrice: this.servicePrice,
       availableServices: this.availableServices,
       defaultServiceId: this.serviceId,
-      defaultPathId: this.defaultPathId
+      defaultPathId: this.defaultPathId,
+      appointmentServices: this.appointmentServices  // Passa i servizi dell'appuntamento
     };
     this.showDialog = true;
     this.cdr.markForCheck();
@@ -641,6 +641,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
             formResult.patientNotes ||
             formResult.price != null ||
             formResult.serviceId ||
+            (formResult.treatmentServices && formResult.treatmentServices.length > 0) ||
             formResult.painAssessment?.painBefore != null ||
             formResult.painAssessment?.painAfter != null ||
             formResult.rescheduling?.type !== 'none';
@@ -653,7 +654,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
           // Chiama updateTreatment per salvare tutti i campi del form
           return this.treatmentService.updateTreatment({
             id: treatment.id,
-            serviceId: formResult.serviceId,
+            serviceId: formResult.serviceId,  // @deprecated - manteniamo per retrocompatibilità
             clinicalNotes: formResult.clinicalNotes,
             secretaryNotes: formResult.secretaryNotes,
             patientNotes: formResult.patientNotes,
@@ -667,6 +668,8 @@ export class StartTreatmentDialogContainer implements OnDestroy {
             suggestDateRangeStart: formResult.rescheduling?.suggestDateRangeStart,
             suggestDateRangeEnd: formResult.rescheduling?.suggestDateRangeEnd,
             reschedulingNotes: formResult.rescheduling?.secretaryNotes,
+            // Nuovo: servizi multipli del trattamento
+            treatmentServices: formResult.treatmentServices,
           }).pipe(
             catchError((updateError) => {
               console.error('[StartTreatmentDialogContainer] Error updating treatment, but treatment was created:', updateError);
@@ -696,29 +699,27 @@ export class StartTreatmentDialogContainer implements OnDestroy {
       )
       .subscribe({
         next: (treatment) => {
-          this.ngZone.run(() => {
-            console.log('[StartTreatmentDialogContainer] Treatment process completed:', treatment.id);
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          console.log('[StartTreatmentDialogContainer] Treatment process completed:', treatment.id);
 
-            // Emetti il risultato completo
-            const result: StartTreatmentResult = {
-              treatment,
-              formData: formResult,
-              cashCollectionData: this.cashCollectionData || undefined
-            };
+          // Emetti il risultato completo
+          const result: StartTreatmentResult = {
+            treatment,
+            formData: formResult,
+            cashCollectionData: this.cashCollectionData || undefined
+          };
 
-            this.saving = false;
-            this.treatmentStarted.emit(result);
-            this.close();
-            this.cdr.markForCheck();
-          });
+          this.saving = false;
+          this.treatmentStarted.emit(result);
+          this.close();
+          this.cdr.markForCheck();
         },
         error: (error) => {
-          this.ngZone.run(() => {
-            console.error('[StartTreatmentDialogContainer] Error creating treatment:', error);
-            this.saving = false;
-            alert('Errore nella creazione del trattamento: ' + (error.message || 'Errore sconosciuto'));
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          console.error('[StartTreatmentDialogContainer] Error creating treatment:', error);
+          this.saving = false;
+          alert('Errore nella creazione del trattamento: ' + (error.message || 'Errore sconosciuto'));
+          this.cdr.markForCheck();
         }
       });
   }

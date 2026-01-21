@@ -1,6 +1,8 @@
 import { InputType, Field, ID, Int } from '@nestjs/graphql';
-import { IsUUID, IsString, IsOptional, IsInt, Min, IsDateString, Matches, IsBoolean } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsInt, Min, IsDateString, Matches, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import GraphQLJSON from 'graphql-type-json';
+import { ServiceInputItem } from './create-availability-appointment.input';
 
 @InputType()
 export class CreateGymAppointmentInput {
@@ -46,10 +48,24 @@ export class CreateGymAppointmentInput {
   @Min(1)
   patientId?: number;
 
-  @Field(() => ID, { nullable: true })
+  /**
+   * @deprecated Usa services invece. Mantenuto per retrocompatibilità.
+   */
+  @Field(() => ID, { nullable: true, deprecationReason: 'Usa services invece' })
   @IsOptional()
   @IsUUID('4', { message: 'serviceId deve essere un UUID valido' })
   serviceId?: string;
+
+  /**
+   * Lista dei servizi da associare all'appuntamento.
+   * Se fornito, sostituisce serviceId.
+   */
+  @Field(() => [ServiceInputItem], { nullable: true, description: 'Servizi da associare all\'appuntamento' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ServiceInputItem)
+  services?: ServiceInputItem[];
 
   @Field({ nullable: true })
   @IsOptional()

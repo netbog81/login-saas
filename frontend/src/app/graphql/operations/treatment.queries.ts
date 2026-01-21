@@ -75,6 +75,21 @@ export const TREATMENT_WITH_RELATIONS_FRAGMENT = gql`
       defaultDuration
       defaultPrice
     }
+    treatmentServices {
+      id
+      serviceId
+      price
+      duration
+      orderPosition
+      isCustomPrice
+      service {
+        id
+        name
+        defaultPrice
+        discountFE
+        defaultDuration
+      }
+    }
     instruments {
       id
       instrumentId

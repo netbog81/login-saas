@@ -22,6 +22,17 @@ input AppointmentInstrumentInput {
   startOffsetMinutes: Int!
 }
 
+type AppointmentService {
+  appointmentId: ID!
+  createdAt: DateTime!
+  customDuration: Int
+  customPrice: Float
+  id: ID!
+  orderPosition: Int!
+  service: Service!
+  serviceId: ID!
+}
+
 """Status of the appointment (deprecated)"""
 enum AppointmentStatus {
   CANCELLED
@@ -49,6 +60,7 @@ input AssignTemplateToOperatorInput {
 type AvailabilityAppointment {
   """Data appuntamento in formato YYYY-MM-DD"""
   appointmentDate: String!
+  appointmentServices: [AppointmentService!]
   appointmentType: AppointmentType!
   autoStatusChanged: Boolean!
   bookingStatus: BookingStatus!
@@ -86,7 +98,7 @@ type AvailabilityAppointment {
   recurringGroupId: ID
   repeatConfig: JSON
   service: Service
-  serviceId: ID
+  serviceId: ID @deprecated(reason: "Usa appointmentServices invece")
   startTime: String!
   status: AppointmentStatus @deprecated(reason: "Use bookingStatus instead")
   substitutionReason: String
@@ -223,6 +235,9 @@ input CreateAvailabilityAppointmentInput {
   """Configurazione per appuntamenti ricorrenti"""
   repeatConfig: RepeatConfigInput
   serviceId: ID
+
+  """Servizi da associare all'appuntamento"""
+  services: [ServiceInputItem!]
   startTime: String!
 }
 
@@ -282,6 +297,9 @@ input CreateGymAppointmentInput {
   patientId: Int
   repeatConfig: JSON
   serviceId: ID
+
+  """Servizi da associare all'appuntamento"""
+  services: [ServiceInputItem!]
   startTime: String!
 }
 
@@ -1448,6 +1466,15 @@ type Service {
   updatedAt: DateTime!
 }
 
+input ServiceInputItem {
+  """Durata personalizzata in minuti (override del default)"""
+  customDuration: Int
+
+  """Prezzo personalizzato (override del default)"""
+  customPrice: Float
+  serviceId: ID!
+}
+
 type ServiceInstrument {
   createdAt: DateTime!
   id: ID!
@@ -1631,7 +1658,7 @@ type Treatment {
   scontoFE: Boolean!
   secretaryNotes: String
   service: Service
-  serviceId: ID
+  serviceId: ID @deprecated(reason: "Usa treatmentServices invece")
   startedAt: DateTime!
   status: TreatmentStatus!
 
@@ -1643,6 +1670,7 @@ type Treatment {
   suggestInDays: Int
   therapeuticPath: TherapeuticPath!
   therapeuticPathId: ID!
+  treatmentServices: [TreatmentService!]
   updatedAt: DateTime!
 }
 
@@ -1671,6 +1699,33 @@ input TreatmentInstrumentInput {
   wasUsed: Boolean!
 }
 
+type TreatmentService {
+  createdAt: DateTime!
+  duration: Int
+  id: ID!
+  isCustomPrice: Boolean!
+  orderPosition: Int!
+  price: Float
+  service: Service!
+  serviceId: ID!
+  treatmentId: ID!
+}
+
+input TreatmentServiceInputItem {
+  """Durata personalizzata in minuti"""
+  duration: Int
+
+  """True se il prezzo è stato personalizzato manualmente"""
+  isCustomPrice: Boolean
+
+  """Posizione ordinamento"""
+  orderPosition: Int
+
+  """Prezzo personalizzato per questo servizio"""
+  price: Float
+  serviceId: ID!
+}
+
 """Treatment workflow status"""
 enum TreatmentStatus {
   CLOSED
@@ -1696,6 +1751,9 @@ input UpdateAvailabilityAppointmentInput {
   operatorNotes: String
   patientId: Int
   serviceId: ID
+
+  """Servizi da associare all'appuntamento"""
+  services: [ServiceInputItem!]
   startTime: String
 }
 
@@ -1909,6 +1967,9 @@ input UpdateTreatmentInput {
   suggestDateRangeStart: String
   suggestInDays: Int
   therapeuticPathId: ID
+
+  """Servizi eseguiti nel trattamento"""
+  treatmentServices: [TreatmentServiceInputItem!]
 }
 
 input UpdateTreatmentInstrumentInput {

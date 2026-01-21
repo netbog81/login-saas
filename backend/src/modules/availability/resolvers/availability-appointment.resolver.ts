@@ -1,5 +1,8 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
 import { CreateAvailabilityAppointmentInput } from '../dto/create-availability-appointment.input';
 import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-appointment.input';
@@ -12,7 +15,24 @@ export class AvailabilityAppointmentResolver {
   constructor(
     private readonly appointmentService: AvailabilityAppointmentService,
     private readonly gymAvailabilityService: GymAvailabilityService,
+    @InjectRepository(AppointmentServiceEntity)
+    private readonly appointmentServiceRepo: Repository<AppointmentServiceEntity>,
   ) {}
+
+  /**
+   * ResolveField: Risolve appointmentServices per un appuntamento
+   * Caricamento separato per evitare dipendenze circolari TypeORM
+   */
+  @ResolveField(() => [AppointmentServiceEntity], { nullable: true })
+  async appointmentServices(
+    @Parent() appointment: AvailabilityAppointment,
+  ): Promise<AppointmentServiceEntity[]> {
+    return this.appointmentServiceRepo.find({
+      where: { appointmentId: appointment.id },
+      relations: ['service'],
+      order: { orderPosition: 'ASC' },
+    });
+  }
 
   /**
    * Query: Ottiene un singolo appuntamento per ID

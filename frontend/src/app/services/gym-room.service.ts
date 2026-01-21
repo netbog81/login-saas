@@ -120,6 +120,16 @@ export interface GymAppointment {
 }
 
 /**
+ * Input per un singolo servizio nell'appuntamento
+ */
+export interface ServiceInputItem {
+  serviceId: string;
+  customDuration?: number;
+  customPrice?: number;
+  orderPosition?: number;
+}
+
+/**
  * Input per creare un appuntamento palestra
  */
 export interface CreateGymAppointmentInput {
@@ -131,7 +141,10 @@ export interface CreateGymAppointmentInput {
   clientEmail?: string;
   clientPhone?: string;
   patientId?: number;
+  /** @deprecated Usa services invece */
   serviceId?: string;
+  /** Lista dei servizi associati all'appuntamento */
+  services?: ServiceInputItem[];
   notes?: string;
   isRecurring?: boolean;
   repeatConfig?: {
@@ -155,7 +168,10 @@ export interface UpdateGymAppointmentInput {
   clientEmail?: string;
   clientPhone?: string;
   patientId?: number;
+  /** @deprecated Usa services invece */
   serviceId?: string;
+  /** Lista dei servizi associati all'appuntamento */
+  services?: ServiceInputItem[];
   notes?: string;
   gymRoomId?: string;
 }

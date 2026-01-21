@@ -1,7 +1,7 @@
 import { Injectable, NgZone } from '@angular/core';
 import { Apollo } from 'apollo-angular';
 import { Observable } from 'rxjs';
-import { filter, map } from 'rxjs/operators';
+import { filter, map, tap } from 'rxjs/operators';
 import type { OperationVariables } from '@apollo/client/core';
 
 /**
@@ -57,12 +57,23 @@ export class ApolloZoneService {
   query<TData, TVariables extends OperationVariables = OperationVariables>(
     options: Apollo.QueryOptions<TData, TVariables>
   ): Observable<TData> {
+    console.log('[ApolloZoneService] query called');
     return this.wrapInZone(
       this.apollo.query<TData, TVariables>(options)
     ).pipe(
-      // Filtra emissioni con data undefined/null per evitare errori nei consumatori
-      filter(result => result.data !== undefined && result.data !== null),
-      map(result => result.data as TData)
+      tap({
+        next: (result) => console.log('[ApolloZoneService] query result:', { data: result?.data, error: result?.error }),
+        error: (err) => console.error('[ApolloZoneService] query error:', err),
+        complete: () => console.log('[ApolloZoneService] query completed')
+      }),
+      // Non filtrare - lascia passare tutto e gestisci nel map
+      map(result => {
+        if (result.error) {
+          console.error('[ApolloZoneService] GraphQL error:', result.error);
+        }
+        // Ritorna data anche se undefined/null - il consumatore gestirà
+        return result.data as TData;
+      })
     );
   }
 
@@ -130,21 +141,16 @@ export class ApolloZoneService {
   /**
    * Wrappa un Observable per eseguire le callback dentro NgZone.
    * Metodo privato usato internamente.
+   *
+   * NOTA: Il wrapping NgZone è già fatto a livello di Apollo Link
+   * in graphql.module.ts (createZoneAwareLink). Quindi qui passiamo
+   * l'observable direttamente senza wrapping aggiuntivo per evitare
+   * doppio wrapping che causa cicli infiniti di change detection.
    */
   private wrapInZone<T>(observable: Observable<T>): Observable<T> {
-    return new Observable<T>(observer => {
-      const subscription = observable.subscribe({
-        next: (value) => {
-          this.ngZone.run(() => observer.next(value));
-        },
-        error: (err) => {
-          this.ngZone.run(() => observer.error(err));
-        },
-        complete: () => {
-          this.ngZone.run(() => observer.complete());
-        }
-      });
-      return () => subscription.unsubscribe();
-    });
+    // L'Apollo Link in graphql.module.ts già wrappa in NgZone,
+    // quindi non serve wrapping aggiuntivo qui.
+    // Doppio wrapping causa NG0103: Infinite change detection
+    return observable;
   }
 }

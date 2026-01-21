@@ -55,6 +55,20 @@ export const AVAILABILITY_APPOINTMENT_FIELDS = gql`
         }
       }
     }
+    appointmentServices {
+      id
+      serviceId
+      customDuration
+      customPrice
+      orderPosition
+      service {
+        id
+        name
+        defaultPrice
+        discountFE
+        defaultDuration
+      }
+    }
   }
 `;
 

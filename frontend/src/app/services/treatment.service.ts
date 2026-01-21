@@ -1,5 +1,6 @@
 import { Injectable, Injector } from '@angular/core';
-import { Observable, map } from 'rxjs';
+import { Observable } from 'rxjs';
+import { map, tap } from 'rxjs/operators';
 import {
   Treatment,
   CompleteTreatmentInput,
@@ -100,10 +101,14 @@ export class TreatmentService extends BaseGraphQLService {
     limit?: number,
     offset?: number
   ): Observable<Treatment[]> {
+    console.log('[TreatmentService] getTreatmentsByPatient called for patientId:', patientId);
     return this.query<{ treatmentsByPatient: Treatment[] }>(
       GET_TREATMENTS_BY_PATIENT,
       { patientId, limit, offset }
-    ).pipe(map((result) => result.treatmentsByPatient));
+    ).pipe(
+      tap(result => console.log('[TreatmentService] raw result:', result)),
+      map((result) => result?.treatmentsByPatient || [])
+    );
   }
 
   /**
@@ -218,7 +223,7 @@ export class TreatmentService extends BaseGraphQLService {
   updateTreatment(input: {
     id: string;
     therapeuticPathId?: string;
-    serviceId?: string;
+    serviceId?: string;  // @deprecated - usa treatmentServices
     clinicalNotes?: string;
     secretaryNotes?: string;
     patientNotes?: string;
@@ -234,6 +239,13 @@ export class TreatmentService extends BaseGraphQLService {
     suggestDateRangeEnd?: string;
     reschedulingNotes?: string;
     isPaid?: boolean; // Se false, resetta lo stato di pagamento
+    // Nuovo: servizi multipli del trattamento
+    treatmentServices?: {
+      serviceId: string;
+      price?: number;
+      duration?: number;
+      orderPosition?: number;
+    }[];
     instruments?: {
       instrumentId: string;
       instrumentCategoryId?: string;

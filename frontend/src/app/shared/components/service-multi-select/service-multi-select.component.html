@@ -1,0 +1,135 @@
+<div class="service-multi-select" [class.disabled]="disabled">
+  <!-- Dropdown Angular Material per aggiungere servizi -->
+  @if (availableToAdd.length > 0) {
+    <mat-form-field appearance="outline" class="add-service-field">
+      <mat-label>{{ placeholder }}</mat-label>
+      <mat-select
+        [(ngModel)]="serviceToAdd"
+        (selectionChange)="addService()"
+        [disabled]="disabled">
+        @for (service of availableToAdd; track service.id) {
+          <mat-option [value]="service.id">
+            {{ service.name }}
+            @if (showPrices) {
+              <span class="option-price">
+                - {{ getDisplayPrice(service) | currency:'EUR':'symbol':'1.2-2' }}
+              </span>
+            }
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
+
+  <!-- Lista servizi selezionati con drag-drop -->
+  <div
+    class="selected-services"
+    cdkDropList
+    (cdkDropListDropped)="onDrop($event)"
+    [cdkDropListDisabled]="disabled">
+
+    @if (selectedServices.length === 0) {
+      <div class="no-services">
+        Nessun servizio selezionato
+      </div>
+    }
+
+    @for (item of selectedServices; track item.serviceId; let i = $index) {
+      <div class="service-item" cdkDrag [cdkDragDisabled]="disabled">
+        <!-- Handle per drag -->
+        @if (!disabled && selectedServices.length > 1) {
+          <mat-icon class="drag-handle" cdkDragHandle>drag_indicator</mat-icon>
+        }
+
+        <!-- Numero ordinale -->
+        <span class="order-number">{{ i + 1 }}.</span>
+
+        <!-- Nome servizio -->
+        <span class="service-name">{{ getServiceName(item) }}</span>
+
+        <!-- Prezzo -->
+        @if (showPrices) {
+          <div class="service-price">
+            <!-- Visualizzazione prezzo (non in modifica) -->
+            @if (editingPriceIndex !== i) {
+              <span class="price-value" [class.custom]="hasCustomPrice(item)">
+                {{ getServicePrice(item) | currency:'EUR':'symbol':'1.2-2' }}
+              </span>
+              @if (editablePrices && !disabled) {
+                <button
+                  mat-icon-button
+                  class="btn-action"
+                  (click)="startEditPrice(i)"
+                  matTooltip="Modifica prezzo">
+                  <mat-icon>edit</mat-icon>
+                </button>
+              }
+              @if (editablePrices && !disabled && hasCustomPrice(item)) {
+                <button
+                  mat-icon-button
+                  class="btn-action btn-reset"
+                  (click)="resetPrice(i)"
+                  matTooltip="Ripristina prezzo default">
+                  <mat-icon>refresh</mat-icon>
+                </button>
+              }
+            }
+
+            <!-- Form modifica prezzo -->
+            @if (editingPriceIndex === i) {
+              <div class="price-edit">
+                <mat-form-field appearance="outline" class="price-input-field">
+                  <input
+                    matInput
+                    type="number"
+                    [(ngModel)]="editingPriceValue"
+                    (keydown)="onPriceKeydown($event)"
+                    min="0"
+                    step="0.01">
+                  <span matTextSuffix>€</span>
+                </mat-form-field>
+                <button
+                  mat-icon-button
+                  color="primary"
+                  class="btn-confirm"
+                  (click)="confirmEditPrice()"
+                  matTooltip="Conferma">
+                  <mat-icon>check</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  color="warn"
+                  class="btn-cancel"
+                  (click)="cancelEditPrice()"
+                  matTooltip="Annulla">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Bottone rimuovi -->
+        <button
+          mat-icon-button
+          class="btn-remove"
+          (click)="removeService(i)"
+          [disabled]="disabled"
+          matTooltip="Rimuovi servizio">
+          <mat-icon>close</mat-icon>
+        </button>
+
+        <!-- Placeholder per drag -->
+        <div class="drag-placeholder" *cdkDragPlaceholder></div>
+      </div>
+    }
+  </div>
+
+  <!-- Totale -->
+  @if (showPrices && selectedServices.length > 0) {
+    <div class="total-row">
+      <span class="total-label">Totale:</span>
+      <span class="total-value">{{ totalPrice | currency:'EUR':'symbol':'1.2-2' }}</span>
+    </div>
+  }
+</div>

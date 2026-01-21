@@ -19,6 +19,9 @@ import {
   ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -46,6 +49,9 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
   standalone: true,
   imports: [
     CommonModule,
+    MatIconModule,
+    MatButtonModule,
+    MatTooltipModule,
     WorkspaceHeaderComponent,
     AppointmentsSidebarComponent,
     TreatmentCardComponent,
@@ -90,32 +96,60 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
 
         <!-- Main area -->
         <main class="main-area">
-          <!-- Treatment card -->
-          <section class="treatment-section">
-            <app-treatment-card
-              [appointment]="selectedAppointment"
-              [patient]="selectedPatient"
-              [currentTreatment]="currentTreatment"
-              [loading]="uiState.loadingPatient"
-              (startTreatment)="onStartTreatment()"
-              (completeTreatment)="onCompleteTreatment($event)"
-              (editTreatment)="onEditTreatment($event)"
-              (finishTreatment)="onFinishTreatment($event)"
-              (cancelTreatment)="onCancelTreatment($event)"
-              (viewPatientFolder)="onViewPatientFolder()"
-              (cancelAppointment)="onCancelAppointment()"
-              (deleteNonRetribuito)="onDeleteNonRetribuito($event)">
-            </app-treatment-card>
+          <!-- PARTE SUPERIORE: Dettagli appuntamento (collapsible) -->
+          <section class="treatment-section" [class.collapsed]="treatmentSectionCollapsed">
+            <!-- Header sezione con titolo e toggle -->
+            <div class="section-header">
+              <div class="section-title">
+                <mat-icon>event_note</mat-icon>
+                <h3>Dettagli Appuntamento</h3>
+              </div>
+              <button mat-icon-button
+                      (click)="toggleTreatmentSection()"
+                      [matTooltip]="treatmentSectionCollapsed ? 'Espandi sezione' : 'Comprimi sezione'">
+                <mat-icon>{{ treatmentSectionCollapsed ? 'expand_more' : 'expand_less' }}</mat-icon>
+              </button>
+            </div>
+
+            <!-- Contenuto (nascosto se collapsed) -->
+            @if (!treatmentSectionCollapsed) {
+              <div class="section-content">
+                <app-treatment-card
+                  [appointment]="selectedAppointment"
+                  [patient]="selectedPatient"
+                  [currentTreatment]="currentTreatment"
+                  [loading]="uiState.loadingPatient"
+                  (startTreatment)="onStartTreatment()"
+                  (completeTreatment)="onCompleteTreatment($event)"
+                  (editTreatment)="onEditTreatment($event)"
+                  (finishTreatment)="onFinishTreatment($event)"
+                  (cancelTreatment)="onCancelTreatment($event)"
+                  (viewPatientFolder)="onViewPatientFolder()"
+                  (cancelAppointment)="onCancelAppointment()"
+                  (deleteNonRetribuito)="onDeleteNonRetribuito($event)">
+                </app-treatment-card>
+              </div>
+            }
           </section>
 
-          <!-- Patient folder -->
+          <!-- PARTE INFERIORE: Scheda paziente -->
           <section class="patient-folder-section">
-            <app-patient-folder-container
-              [patient]="selectedPatient"
-              [currentOperatorId]="selectedOperator?.id"
-              (viewPatientDetails)="onViewPatientDetails($event)"
-              (editTreatment)="onEditTreatmentFromFolder($event)">
-            </app-patient-folder-container>
+            <!-- Header sezione con titolo -->
+            <div class="section-header patient-folder-header">
+              <div class="section-title">
+                <mat-icon>folder_shared</mat-icon>
+                <h3>Cartella Paziente</h3>
+              </div>
+            </div>
+
+            <div class="section-content">
+              <app-patient-folder-container
+                [patient]="selectedPatient"
+                [currentOperatorId]="selectedOperator?.id"
+                (viewPatientDetails)="onViewPatientDetails($event)"
+                (editTreatment)="onEditTreatmentFromFolder($event)">
+              </app-patient-folder-container>
+            </div>
           </section>
         </main>
       </div>
@@ -189,15 +223,85 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       min-width: 0;
     }
 
-    .treatment-section {
-      flex-shrink: 0;
+    /* Section headers */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 12px 12px 0 0;
+      min-height: 48px;
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: white;
+
+        mat-icon {
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+        }
+
+        h3 {
+          margin: 0;
+          font-size: 0.9375rem;
+          font-weight: 600;
+        }
+      }
+
+      button {
+        color: white;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+      }
     }
 
+    .section-content {
+      padding: 0;
+    }
+
+    /* Treatment section */
+    .treatment-section {
+      flex-shrink: 0;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+
+      &.collapsed {
+        .section-header {
+          border-radius: 12px;
+        }
+      }
+    }
+
+    /* Patient folder section */
     .patient-folder-section {
       flex: 1;
-      min-height: 400px;
+      min-height: 300px;
       display: flex;
       flex-direction: column;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+
+      .section-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .patient-folder-header {
+        flex-shrink: 0;
+      }
     }
 
     /* Responsive */
@@ -205,6 +309,15 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       .workspace-content {
         flex-direction: column;
         padding: 0.5rem;
+      }
+
+      .section-header {
+        padding: 10px 12px;
+        min-height: 44px;
+
+        .section-title h3 {
+          font-size: 0.875rem;
+        }
       }
     }
   `],
@@ -219,6 +332,7 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
 
   // Stato UI
   uiState: WorkspaceUIState = createInitialWorkspaceUIState();
+  treatmentSectionCollapsed = false;
 
   // Dati
   operators: Operator[] = [];
@@ -362,6 +476,11 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
       selectedAppointmentId: String(appointment.id)
     };
 
+    // Auto-expand della sezione dettagli appuntamento quando si seleziona un nuovo appuntamento
+    if (this.treatmentSectionCollapsed) {
+      this.treatmentSectionCollapsed = false;
+    }
+
     // Reset trattamento corrente quando cambia appuntamento
     this.currentTreatment = null;
 
@@ -384,6 +503,11 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
       ...this.uiState,
       sidebarCollapsed: !this.uiState.sidebarCollapsed
     };
+    this.cdr.markForCheck();
+  }
+
+  toggleTreatmentSection(): void {
+    this.treatmentSectionCollapsed = !this.treatmentSectionCollapsed;
     this.cdr.markForCheck();
   }
 

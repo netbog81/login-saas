@@ -40,6 +40,11 @@ import {
   StartTreatmentFormResult,
   ReschedulingType
 } from '../../models/start-treatment-dialog.model';
+import {
+  ServiceMultiSelectComponent,
+  SelectableService,
+  SelectedServiceItem
+} from '../../../../shared/components/service-multi-select';
 
 @Component({
   selector: 'app-start-treatment-dialog',
@@ -59,7 +64,8 @@ import {
     MatRadioModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
-    MatDatepickerModule
+    MatDatepickerModule,
+    ServiceMultiSelectComponent
   ],
   template: `
     <div class="dialog-overlay"
@@ -104,22 +110,22 @@ import {
               }
             </mat-form-field>
 
-            <!-- Selezione Servizio -->
-            @if (data.availableServices?.length) {
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Servizio</mat-label>
-                <mat-select formControlName="serviceId">
-                  @for (service of data.availableServices; track service.id) {
-                    <mat-option [value]="service.id">
-                      {{ service.name }}
-                      @if (service.defaultPrice) {
-                        <span class="service-price"> - {{ service.defaultPrice | currency:'EUR' }}</span>
-                      }
-                    </mat-option>
-                  }
-                </mat-select>
-                <mat-hint>Il servizio dell'appuntamento è preselezionato</mat-hint>
-              </mat-form-field>
+            <!-- Selezione Servizi (Multi-select) -->
+            @if (selectableServices.length) {
+              <div class="services-section">
+                <label class="section-label">Servizi</label>
+                <app-service-multi-select
+                  [availableServices]="selectableServices"
+                  [selectedServices]="selectedServices"
+                  [useScontoFE]="form.get('isScontoFE')?.value"
+                  [showPrices]="true"
+                  [editablePrices]="true"
+                  [disabled]="false"
+                  (selectedServicesChange)="onServicesChange($event)"
+                  (totalPriceChange)="onTotalPriceChange($event)">
+                </app-service-multi-select>
+                <p class="hint-text">I servizi dell'appuntamento sono preselezionati</p>
+              </div>
             }
 
             <!-- Note Cliniche -->
@@ -471,6 +477,25 @@ import {
       font-size: 12px;
     }
 
+    .services-section {
+      margin-bottom: 16px;
+    }
+
+    .section-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .hint-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+      margin-bottom: 0;
+    }
+
     /* Fix per notched outline Angular Material */
     ::ng-deep {
       .mdc-notched-outline__notch {
@@ -493,6 +518,14 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
   cashCollected = false;
   collectedPaymentMethod?: string;
 
+  // Servizi selezionati per multi-select
+  selectedServices: SelectedServiceItem[] = [];
+
+  // Servizi disponibili convertiti per il componente multi-select
+  // IMPORTANTE: Non usare getter che crea nuovi oggetti ad ogni change detection!
+  // Questo causava NG0103: Infinite change detection
+  selectableServices: SelectableService[] = [];
+
   // Date minime per i datepicker riprogrammazione
   minDateStart: Date = new Date();  // Oggi
   minDateEnd: Date = new Date();    // Inizialmente oggi, poi aggiornata quando cambia data inizio
@@ -508,18 +541,74 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['data'] && this.data && this.form) {
+      // Converte availableServices in SelectableService UNA SOLA VOLTA
+      // quando cambia data (non ad ogni change detection!)
+      this.selectableServices = (this.data.availableServices || []).map(s => ({
+        id: s.id,
+        name: s.name,
+        defaultPrice: s.defaultPrice ?? undefined,
+        discountFE: s.discountFE ?? undefined,
+        defaultDuration: s.defaultDuration ?? undefined
+      }));
+
       // Pre-seleziona il percorso: prima defaultPathId, poi il primo se uno solo
       if (this.data.defaultPathId) {
         this.form.patchValue({ pathId: this.data.defaultPathId });
       } else if (this.data.activePaths?.length === 1) {
         this.form.patchValue({ pathId: this.data.activePaths[0].id });
       }
-      // Imposta il servizio di default se presente
-      if (this.data.defaultServiceId) {
-        this.form.patchValue({ serviceId: this.data.defaultServiceId });
+
+      // Inizializza selectedServices dai servizi dell'appuntamento
+      this.initializeSelectedServices();
+
+      // Aggiorna il prezzo in base ai servizi selezionati e sconto FE
+      this.updatePriceFromServices();
+    }
+  }
+
+  /**
+   * Inizializza selectedServices dai servizi dell'appuntamento (appointmentServices)
+   * oppure dal singolo serviceId legacy
+   */
+  private initializeSelectedServices(): void {
+    if (!this.data) return;
+
+    // Se ci sono appointmentServices (nuovo sistema), usali
+    if (this.data.appointmentServices && this.data.appointmentServices.length > 0) {
+      this.selectedServices = this.data.appointmentServices.map((apptService, idx) => {
+        const fullService = this.data.availableServices?.find(s => s.id === apptService.serviceId);
+        return {
+          serviceId: apptService.serviceId,
+          service: fullService ? {
+            id: fullService.id,
+            name: fullService.name,
+            defaultPrice: fullService.defaultPrice ?? undefined,
+            discountFE: fullService.discountFE ?? undefined,
+            defaultDuration: fullService.defaultDuration ?? undefined
+          } : undefined,
+          customPrice: apptService.customPrice,
+          orderPosition: apptService.orderPosition ?? idx
+        };
+      });
+    }
+    // Fallback: usa defaultServiceId (sistema legacy)
+    else if (this.data.defaultServiceId) {
+      const service = this.data.availableServices?.find(s => s.id === this.data.defaultServiceId);
+      if (service) {
+        this.selectedServices = [{
+          serviceId: service.id,
+          service: {
+            id: service.id,
+            name: service.name,
+            defaultPrice: service.defaultPrice ?? undefined,
+            discountFE: service.discountFE ?? undefined,
+            defaultDuration: service.defaultDuration ?? undefined
+          },
+          orderPosition: 0
+        }];
       }
-      // Aggiorna il prezzo in base al servizio selezionato e sconto FE
-      this.updatePrice();
+    } else {
+      this.selectedServices = [];
     }
   }
 
@@ -548,37 +637,50 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       this.form.patchValue({ pathId: this.data.activePaths[0].id });
     }
 
-    // Aggiorna prezzo quando cambia servizio o sconto FE
-    this.form.get('serviceId')?.valueChanges.subscribe(() => this.updatePrice());
+    // Aggiorna prezzo quando cambia sconto FE
     this.form.get('isScontoFE')?.valueChanges.subscribe(() => {
-      this.updatePrice();
+      this.updatePriceFromServices();
       // Reset cash collection quando si disattiva sconto FE
       if (!this.form.get('isScontoFE')?.value) {
         this.resetCashCollection();
       }
     });
-
-    // Aggiorna il prezzo iniziale basato sul servizio default
-    this.updatePrice();
   }
 
   /**
-   * Aggiorna il prezzo in base al servizio selezionato e allo sconto FE
+   * Aggiorna il prezzo in base ai servizi selezionati e allo sconto FE
    */
-  private updatePrice(): void {
-    const serviceId = this.form.get('serviceId')?.value;
+  private updatePriceFromServices(): void {
     const isScontoFE = this.form.get('isScontoFE')?.value;
-    const service = this.data?.availableServices?.find(s => s.id === serviceId);
+    let total = 0;
 
-    if (service) {
-      // Usa discountFE se sconto FE attivo, altrimenti defaultPrice
-      const price = isScontoFE && service.discountFE != null
-        ? service.discountFE
-        : service.defaultPrice;
-      if (price != null) {
-        this.form.patchValue({ price });
+    for (const item of this.selectedServices) {
+      if (item.customPrice !== undefined && item.customPrice !== null) {
+        total += item.customPrice;
+      } else if (item.service) {
+        const price = isScontoFE && item.service.discountFE !== undefined && item.service.discountFE !== null
+          ? item.service.discountFE
+          : (item.service.defaultPrice || 0);
+        total += price;
       }
     }
+
+    this.form.patchValue({ price: total });
+  }
+
+  /**
+   * Handler per il cambio dei servizi selezionati
+   */
+  onServicesChange(services: SelectedServiceItem[]): void {
+    this.selectedServices = services;
+    this.updatePriceFromServices();
+  }
+
+  /**
+   * Handler per il cambio del prezzo totale calcolato dal componente multi-select
+   */
+  onTotalPriceChange(totalPrice: number): void {
+    this.form.patchValue({ price: totalPrice });
   }
 
   /**
@@ -628,9 +730,17 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       return date.toISOString().split('T')[0];
     };
 
+    // Costruisci array di treatmentServices dai servizi selezionati
+    const treatmentServices = this.selectedServices.map((item, idx) => ({
+      serviceId: item.serviceId,
+      price: item.customPrice,
+      orderPosition: item.orderPosition ?? idx
+    }));
+
     const result: StartTreatmentFormResult = {
       pathId: formValue.pathId,
-      serviceId: formValue.serviceId || undefined,
+      // Manteniamo serviceId per retrocompatibilità (primo servizio selezionato)
+      serviceId: this.selectedServices.length > 0 ? this.selectedServices[0].serviceId : undefined,
       clinicalNotes: formValue.clinicalNotes || undefined,
       secretaryNotes: formValue.secretaryNotes || undefined,
       price: formValue.price || undefined,
@@ -648,7 +758,9 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
         suggestDateRangeEnd: formatDate(formValue.suggestDateRangeEnd),
         secretaryNotes: formValue.reschedulingNotes
       },
-      patientNotes: formValue.patientNotes || undefined
+      patientNotes: formValue.patientNotes || undefined,
+      // Nuovo campo per servizi multipli
+      treatmentServices: treatmentServices.length > 0 ? treatmentServices : undefined
     };
 
     this.save.emit(result);

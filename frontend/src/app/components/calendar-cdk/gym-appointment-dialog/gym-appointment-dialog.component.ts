@@ -4,11 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { GymRoom, GymSlotInfo, GymAppointment, CreateGymAppointmentInput, UpdateGymAppointmentInput } from '../../../services/gym-room.service';
 import { Patient } from '../../../models/patient.model';
-import { RepeatConfig } from '../../../models/appointment.model';
+import { RepeatConfig, ServiceInputItem } from '../../../models/appointment.model';
 import { PatientService } from '../../../services/patient.service';
 import { ServiceService } from '../../../services/service.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { Service } from '../../../graphql/generated/types';
+import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../../../shared/components/service-multi-select';
+import { BaseComponent } from '../../../core/components/base.component';
 
 export interface GymAppointmentDialogData {
   gymRoom: GymRoom;
@@ -30,19 +32,22 @@ export interface GymAppointmentDialogResult {
 @Component({
   selector: 'app-gym-appointment-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ServiceMultiSelectComponent],
   templateUrl: './gym-appointment-dialog.component.html',
   styleUrls: ['./gym-appointment-dialog.component.scss']
 })
-export class GymAppointmentDialogComponent implements OnInit, OnChanges {
+export class GymAppointmentDialogComponent extends BaseComponent implements OnInit, OnChanges {
   @Input() data!: GymAppointmentDialogData;
   @Output() result = new EventEmitter<GymAppointmentDialogResult>();
+
 
   constructor(
     private patientService: PatientService,
     private serviceService: ServiceService,
     private appointmentService: AvailabilityAppointmentService
-  ) {}
+  ) {
+    super();
+  }
 
   // Form fields
   clientName: string = '';
@@ -51,8 +56,10 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
   notes: string = '';
   selectedPatientId: number | null = null;
 
-  // Service selection
+  // Service selection (legacy singolo)
   serviceId: string | null = null;
+  // Multi-service selection (nuovo)
+  selectedServices: SelectedServiceItem[] = [];
   operatorServices: Service[] = [];
   loadingServices: boolean = false;
 
@@ -117,6 +124,7 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     this.clientEmail = '';
     this.notes = '';
     this.serviceId = null;
+    this.selectedServices = [];
     this.bookingStatus = 'scheduled';
     this.selectedPatientId = null;
     this.patientSearch = '';
@@ -146,6 +154,25 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
       // Forza conversione a number (GraphQL ID può essere stringa)
       this.selectedPatientId = apt.patientId ? Number(apt.patientId) : null;
 
+      // Carica i servizi multipli (se presenti)
+      if ((apt as any).appointmentServices?.length > 0) {
+        this.selectedServices = (apt as any).appointmentServices.map((as: any, idx: number) => ({
+          serviceId: as.serviceId,
+          service: as.service,
+          customPrice: as.customPrice,
+          customDuration: as.customDuration,
+          orderPosition: as.orderPosition ?? idx
+        }));
+      }
+      // Fallback: se c'è solo serviceId legacy, crea un singolo servizio selezionato
+      else if (apt.serviceId) {
+        // Troveremo il servizio nella lista quando sarà caricata
+        this.selectedServices = [{
+          serviceId: apt.serviceId,
+          orderPosition: 0
+        }];
+      }
+
       // Se c'è un paziente associato, cerca i suoi dati nella lista
       if (this.selectedPatientId) {
         const patient = this.data.patients?.find(p => p.id == this.selectedPatientId);
@@ -171,22 +198,50 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     this.loadingServices = true;
     this.serviceService.getOperatorServices(operatorId).subscribe({
       next: (operatorServiceList) => {
-        const services = operatorServiceList
-          .map(os => os.service)
-          .filter((s): s is Service => !!s && s.isActive !== false);
-        this.operatorServices = services;
-        this.loadingServices = false;
+        this.runInZone(() => {
+          const services = operatorServiceList
+            .map(os => os.service)
+            .filter((s): s is Service => !!s && s.isActive !== false);
+          this.operatorServices = services;
+          this.loadingServices = false;
+          this.detectChanges();
+        });
       },
       error: (error) => {
-        console.error('Error loading operator services:', error);
-        this.operatorServices = [];
-        this.loadingServices = false;
+        this.runInZone(() => {
+          console.error('Error loading operator services:', error);
+          this.operatorServices = [];
+          this.loadingServices = false;
+          this.detectChanges();
+        });
       }
     });
   }
 
   get remainingCapacity(): number {
     return this.data.slotInfo.maxCapacity - this.data.slotInfo.currentCount;
+  }
+
+  /**
+   * Converte i servizi dell'operatore nel formato atteso dal componente multi-select
+   */
+  get selectableServices(): SelectableService[] {
+    return this.operatorServices.map(s => ({
+      id: s.id,
+      name: s.name,
+      defaultPrice: s.defaultPrice ?? undefined,
+      discountFE: s.discountFE ?? undefined,
+      defaultDuration: s.defaultDuration ?? undefined
+    }));
+  }
+
+  /**
+   * Gestisce il cambio dei servizi selezionati
+   */
+  onServicesChange(services: SelectedServiceItem[]): void {
+    this.selectedServices = services;
+    // Aggiorna anche il serviceId legacy con il primo servizio (per retrocompatibilità)
+    this.serviceId = services.length > 0 ? services[0].serviceId : null;
   }
 
   get operatorName(): string {
@@ -206,39 +261,49 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
   }
 
   onPatientSearchChange(): void {
-    if (!this.patientSearch || this.patientSearch.length < 2) {
-      this.filteredPatients = this.data.patients?.slice(0, 10) || [];
+    this.runInZone(() => {
+      if (!this.patientSearch || this.patientSearch.length < 2) {
+        this.filteredPatients = this.data.patients?.slice(0, 10) || [];
+        this.showPatientDropdown = this.filteredPatients.length > 0;
+        this.detectChanges();
+        return;
+      }
+
+      const search = this.patientSearch.toLowerCase();
+      this.filteredPatients = (this.data.patients || [])
+        .filter(p => {
+          const fullName = `${p.nome} ${p.cognome}`.toLowerCase();
+          const phone = (p.telefono || p.cellulare || '').toLowerCase();
+          return fullName.includes(search) || phone.includes(search);
+        })
+        .slice(0, 10);
+
       this.showPatientDropdown = this.filteredPatients.length > 0;
-      return;
-    }
-
-    const search = this.patientSearch.toLowerCase();
-    this.filteredPatients = (this.data.patients || [])
-      .filter(p => {
-        const fullName = `${p.nome} ${p.cognome}`.toLowerCase();
-        const phone = (p.telefono || p.cellulare || '').toLowerCase();
-        return fullName.includes(search) || phone.includes(search);
-      })
-      .slice(0, 10);
-
-    this.showPatientDropdown = this.filteredPatients.length > 0;
+      this.detectChanges();
+    });
   }
 
   selectPatient(patient: Patient): void {
-    // Forza conversione a number (GraphQL ID può essere stringa)
-    this.selectedPatientId = Number(patient.id);
-    this.clientName = `${patient.nome} ${patient.cognome}`;
-    this.clientPhone = patient.cellulare || patient.telefono || '';
-    this.clientEmail = patient.email || '';
-    this.patientSearch = '';
-    this.showPatientDropdown = false;
+    this.runInZone(() => {
+      // Forza conversione a number (GraphQL ID può essere stringa)
+      this.selectedPatientId = Number(patient.id);
+      this.clientName = `${patient.nome} ${patient.cognome}`;
+      this.clientPhone = patient.cellulare || patient.telefono || '';
+      this.clientEmail = patient.email || '';
+      this.patientSearch = '';
+      this.showPatientDropdown = false;
+      this.detectChanges();
+    });
   }
 
   clearPatient(): void {
-    this.selectedPatientId = null;
-    this.clientName = '';
-    this.clientPhone = '';
-    this.clientEmail = '';
+    this.runInZone(() => {
+      this.selectedPatientId = null;
+      this.clientName = '';
+      this.clientPhone = '';
+      this.clientEmail = '';
+      this.detectChanges();
+    });
   }
 
   // ==================== RECURRING APPOINTMENT METHODS ====================
@@ -247,22 +312,25 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
    * Gestisce il toggle della ricorrenza
    */
   onRepeatToggle(): void {
-    if (!this.repeatEnabled) {
-      // Reset config when disabled
-      this.repeatConfig = {
-        type: 'weekly',
-        interval: 1,
-        selectedDays: [],
-        endType: 'after',
-        occurrences: 4,
-        untilDate: ''
-      };
-    } else {
-      // Pre-select current day of week
-      const selectedDate = this.data.date ? new Date(this.data.date) : new Date();
-      const dayOfWeek = selectedDate.getDay();
-      this.repeatConfig.selectedDays = [dayOfWeek];
-    }
+    this.runInZone(() => {
+      if (!this.repeatEnabled) {
+        // Reset config when disabled
+        this.repeatConfig = {
+          type: 'weekly',
+          interval: 1,
+          selectedDays: [],
+          endType: 'after',
+          occurrences: 4,
+          untilDate: ''
+        };
+      } else {
+        // Pre-select current day of week
+        const selectedDate = this.data.date ? new Date(this.data.date) : new Date();
+        const dayOfWeek = selectedDate.getDay();
+        this.repeatConfig.selectedDays = [dayOfWeek];
+      }
+      this.detectChanges();
+    });
   }
 
   /**
@@ -276,17 +344,20 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
    * Toggle di un giorno della settimana
    */
   toggleDay(dayIndex: number): void {
-    if (!this.repeatConfig.selectedDays) {
-      this.repeatConfig.selectedDays = [];
-    }
+    this.runInZone(() => {
+      if (!this.repeatConfig.selectedDays) {
+        this.repeatConfig.selectedDays = [];
+      }
 
-    const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
-    if (index === -1) {
-      this.repeatConfig.selectedDays.push(dayIndex);
-      this.repeatConfig.selectedDays.sort();
-    } else {
-      this.repeatConfig.selectedDays.splice(index, 1);
-    }
+      const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
+      if (index === -1) {
+        this.repeatConfig.selectedDays.push(dayIndex);
+        this.repeatConfig.selectedDays.sort();
+      } else {
+        this.repeatConfig.selectedDays.splice(index, 1);
+      }
+      this.detectChanges();
+    });
   }
 
   /**
@@ -343,34 +414,56 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
   // ==================== NEW PATIENT METHODS ====================
 
   onShowNewPatientForm(): void {
-    this.showNewPatientForm = true;
-    this.showPatientDropdown = false;
-    this.newPatient = {
-      nome: '',
-      cognome: '',
-      telefono: '',
-      cellulare: '',
-      email: '',
-      notes: '',
-      genere: 'NON_SPECIFICATO',
-      tipoPaziente: 'ADULTO_AUTONOMO'
-    };
+    this.runInZone(() => {
+      this.showNewPatientForm = true;
+      this.showPatientDropdown = false;
+      this.newPatient = {
+        nome: '',
+        cognome: '',
+        telefono: '',
+        cellulare: '',
+        email: '',
+        notes: '',
+        genere: 'NON_SPECIFICATO',
+        tipoPaziente: 'ADULTO_AUTONOMO'
+      };
+      this.detectChanges();
+    });
   }
 
   onCancelNewPatient(): void {
-    this.showNewPatientForm = false;
-    this.newPatient = {};
-    this.newPatientError = '';
+    this.runInZone(() => {
+      this.showNewPatientForm = false;
+      this.newPatient = {};
+      this.newPatientError = '';
+      this.detectChanges();
+    });
   }
 
-  async onSaveNewPatient(): Promise<void> {
-    if (this.savingNewPatient) return;
+  /**
+   * Salva un nuovo paziente.
+   * IMPORTANTE: Questo metodo usa console.log per debug perché l'errore di validazione
+   * non appariva immediatamente. Il problema era dovuto al contesto Angular zone.
+   */
+  onSaveNewPatient(): void {
+    console.log('[GymAppointmentDialog] onSaveNewPatient called');
+
+    if (this.savingNewPatient) {
+      console.log('[GymAppointmentDialog] Already saving, returning');
+      return;
+    }
 
     const nome = this.newPatient.nome?.trim();
     const cognome = this.newPatient.cognome?.trim();
 
+    // Validazione: nome e cognome obbligatori
     if (!nome || !cognome) {
+      console.log('[GymAppointmentDialog] Validation failed: nome/cognome missing');
       this.newPatientError = 'Nome e cognome sono obbligatori';
+      // Forza aggiornamento UI usando cdr dal BaseComponent
+      this.cdr.markForCheck();
+      this.cdr.detectChanges();
+      console.log('[GymAppointmentDialog] Error set to:', this.newPatientError);
       return;
     }
 
@@ -378,25 +471,54 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     const cellulare = this.newPatient.cellulare?.trim();
     const email = this.newPatient.email?.trim();
 
+    // Validazione: almeno un contatto obbligatorio
     if (!telefono && !cellulare && !email) {
+      console.log('[GymAppointmentDialog] Validation failed: no contact info');
       this.newPatientError = 'Almeno un contatto (telefono, cellulare o email) è obbligatorio';
+      // Forza aggiornamento UI usando cdr dal BaseComponent
+      this.cdr.markForCheck();
+      this.cdr.detectChanges();
+      console.log('[GymAppointmentDialog] Error set to:', this.newPatientError);
       return;
     }
 
+    // Validazione passata, procedi con il salvataggio
+    console.log('[GymAppointmentDialog] Validation passed, saving patient');
     this.savingNewPatient = true;
     this.newPatientError = '';
+    this.detectChanges();
 
+    // Esegue il salvataggio asincrono
+    this.savePatientAsync(nome, cognome, telefono, cellulare, email);
+  }
+
+  /**
+   * Metodo privato per il salvataggio asincrono del paziente
+   */
+  private async savePatientAsync(
+    nome: string,
+    cognome: string,
+    telefono?: string,
+    cellulare?: string,
+    email?: string
+  ): Promise<void> {
     try {
       const created = await firstValueFrom(this.patientService.createPatient(this.newPatient));
-      this.data.patients = [...this.data.patients, created];
-      this.selectPatient(created);
-      this.showNewPatientForm = false;
-      this.newPatient = {};
+      this.runInZone(() => {
+        this.data.patients = [...this.data.patients, created];
+        this.selectPatient(created);
+        this.showNewPatientForm = false;
+        this.newPatient = {};
+        this.savingNewPatient = false;
+        this.detectChanges();
+      });
     } catch (error) {
-      console.error('Error creating patient:', error);
-      this.newPatientError = 'Errore nella creazione del paziente';
-    } finally {
-      this.savingNewPatient = false;
+      this.runInZone(() => {
+        console.error('Error creating patient:', error);
+        this.newPatientError = 'Errore nella creazione del paziente';
+        this.savingNewPatient = false;
+        this.detectChanges();
+      });
     }
   }
 
@@ -413,6 +535,16 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
   onSave(): void {
     if (!this.validate()) return;
 
+    // Prepara l'array di servizi per l'input GraphQL
+    const servicesInput: ServiceInputItem[] | undefined = this.selectedServices.length > 0
+      ? this.selectedServices.map(s => ({
+          serviceId: s.serviceId,
+          customPrice: s.customPrice,
+          customDuration: s.customDuration,
+          orderPosition: s.orderPosition
+        }))
+      : undefined;
+
     if (this.isEditMode) {
       // Modalità edit - aggiorna appuntamento esistente
       const updateInput: UpdateGymAppointmentInput = {
@@ -421,11 +553,13 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
         clientEmail: this.clientEmail.trim() || undefined,
         // Forza conversione a Int per GraphQL
         patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
-        serviceId: this.serviceId || undefined,
+        // Usa servizi multipli se presenti, altrimenti fallback a serviceId singolo
+        serviceId: !servicesInput && this.serviceId ? this.serviceId : undefined,
+        services: servicesInput,
         notes: this.notes.trim() || undefined
       };
 
-      this.result.emit({
+      this.emit(this.result, {
         action: 'update',
         updateInput,
         appointmentId: this.data.appointment!.id
@@ -453,18 +587,20 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
         clientEmail: this.clientEmail.trim() || undefined,
         // Forza conversione a Int per GraphQL
         patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
-        serviceId: this.serviceId || undefined,
+        // Usa servizi multipli se presenti, altrimenti fallback a serviceId singolo
+        serviceId: !servicesInput && this.serviceId ? this.serviceId : undefined,
+        services: servicesInput,
         notes: this.notes.trim() || undefined,
         isRecurring: this.repeatEnabled || undefined,
         repeatConfig: repeatConfigData
       };
 
-      this.result.emit({ action: 'save', input });
+      this.emit(this.result, { action: 'save', input });
     }
   }
 
   onCancel(): void {
-    this.result.emit({ action: 'cancel' });
+    this.emit(this.result, { action: 'cancel' });
   }
 
   // ==================== STATUS MANAGEMENT METHODS ====================
@@ -566,15 +702,21 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     if (!this.data.appointment?.id || this.processingStatus) return;
 
     this.processingStatus = true;
+    this.detectChanges();
     try {
       await firstValueFrom(this.appointmentService.markAsAttended(this.data.appointment.id));
-      this.bookingStatus = 'attended';
-      this.result.emit({ action: 'status-changed' }); // Chiudi modal e forza refresh della griglia
+      this.runInZone(() => {
+        this.bookingStatus = 'attended';
+        this.processingStatus = false;
+        this.emit(this.result, { action: 'status-changed' }); // Chiudi modal e forza refresh della griglia
+      });
     } catch (error) {
-      console.error('Error marking as attended:', error);
-      alert('Errore nel segnare il paziente come arrivato');
-    } finally {
-      this.processingStatus = false;
+      this.runInZone(() => {
+        console.error('Error marking as attended:', error);
+        alert('Errore nel segnare il paziente come arrivato');
+        this.processingStatus = false;
+        this.detectChanges();
+      });
     }
   }
 
@@ -585,15 +727,21 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     if (!confirm('Confermi che il paziente non si è presentato?')) return;
 
     this.processingStatus = true;
+    this.detectChanges();
     try {
       await firstValueFrom(this.appointmentService.markAsNoShow(this.data.appointment.id));
-      this.bookingStatus = 'no_show';
-      this.result.emit({ action: 'status-changed' });
+      this.runInZone(() => {
+        this.bookingStatus = 'no_show';
+        this.processingStatus = false;
+        this.emit(this.result, { action: 'status-changed' });
+      });
     } catch (error) {
-      console.error('Error marking as no-show:', error);
-      alert('Errore nel segnare come non presentato');
-    } finally {
-      this.processingStatus = false;
+      this.runInZone(() => {
+        console.error('Error marking as no-show:', error);
+        alert('Errore nel segnare come non presentato');
+        this.processingStatus = false;
+        this.detectChanges();
+      });
     }
   }
 
@@ -605,6 +753,7 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     if (!reason) return;
 
     this.processingStatus = true;
+    this.detectChanges();
     try {
       await firstValueFrom(
         this.appointmentService.cancelWithNotice(
@@ -613,13 +762,18 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
           'system' // TODO: sostituire con ID utente corrente
         )
       );
-      // Lo stato verrà aggiornato in base alla logica del backend (early/late)
-      this.result.emit({ action: 'status-changed' });
+      this.runInZone(() => {
+        // Lo stato verrà aggiornato in base alla logica del backend (early/late)
+        this.processingStatus = false;
+        this.emit(this.result, { action: 'status-changed' });
+      });
     } catch (error) {
-      console.error('Error cancelling appointment:', error);
-      alert('Errore nella cancellazione dell\'appuntamento');
-    } finally {
-      this.processingStatus = false;
+      this.runInZone(() => {
+        console.error('Error cancelling appointment:', error);
+        alert('Errore nella cancellazione dell\'appuntamento');
+        this.processingStatus = false;
+        this.detectChanges();
+      });
     }
   }
 
@@ -630,15 +784,21 @@ export class GymAppointmentDialogComponent implements OnInit, OnChanges {
     if (!confirm('Vuoi annullare lo stato "Presentato" e riportare l\'appuntamento a "Confermato"?')) return;
 
     this.processingStatus = true;
+    this.detectChanges();
     try {
       await firstValueFrom(this.appointmentService.revertAttended(this.data.appointment.id));
-      this.bookingStatus = 'confirmed';
-      this.result.emit({ action: 'status-changed' });
+      this.runInZone(() => {
+        this.bookingStatus = 'confirmed';
+        this.processingStatus = false;
+        this.emit(this.result, { action: 'status-changed' });
+      });
     } catch (error) {
-      console.error('Error reverting attended status:', error);
-      alert('Errore nell\'annullare lo stato presentato');
-    } finally {
-      this.processingStatus = false;
+      this.runInZone(() => {
+        console.error('Error reverting attended status:', error);
+        alert('Errore nell\'annullare lo stato presentato');
+        this.processingStatus = false;
+        this.detectChanges();
+      });
     }
   }
 }

@@ -70,6 +70,29 @@ export class RepeatConfigInput {
   untilDate?: string;
 }
 
+/**
+ * Input per un singolo servizio nell'appuntamento
+ */
+@InputType()
+export class ServiceInputItem {
+  @Field(() => ID)
+  @IsNotEmpty({ message: 'Il servizio è obbligatorio' })
+  @IsUUID('4', { message: 'ID servizio non valido' })
+  serviceId: string;
+
+  @Field(() => Int, { nullable: true, description: 'Durata personalizzata in minuti (override del default)' })
+  @IsOptional()
+  @IsInt()
+  @Min(5, { message: 'La durata minima è 5 minuti' })
+  @Max(480, { message: 'La durata massima è 480 minuti (8 ore)' })
+  customDuration?: number;
+
+  @Field({ nullable: true, description: 'Prezzo personalizzato (override del default)' })
+  @IsOptional()
+  @Min(0, { message: 'Il prezzo non può essere negativo' })
+  customPrice?: number;
+}
+
 @InputType()
 export class AppointmentInstrumentInput {
   @Field()
@@ -104,10 +127,24 @@ export class CreateAvailabilityAppointmentInput {
   @IsUUID('4', { message: 'ID operatore non valido' })
   operatorId: string;
 
-  @Field(() => ID, { nullable: true })
+  /**
+   * @deprecated Usa services invece. Mantenuto per retrocompatibilità.
+   */
+  @Field(() => ID, { nullable: true, deprecationReason: 'Usa services invece' })
   @IsOptional()
   @IsUUID('4', { message: 'ID servizio non valido' })
   serviceId?: string;
+
+  /**
+   * Lista dei servizi da associare all'appuntamento.
+   * Se fornito, sostituisce serviceId.
+   */
+  @Field(() => [ServiceInputItem], { nullable: true, description: 'Servizi da associare all\'appuntamento' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ServiceInputItem)
+  services?: ServiceInputItem[];
 
   @Field()
   @IsNotEmpty({ message: 'Il nome cliente è obbligatorio' })

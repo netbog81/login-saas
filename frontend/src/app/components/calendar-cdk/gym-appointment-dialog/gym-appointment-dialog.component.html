@@ -28,16 +28,19 @@
         <span class="label">Istruttore:</span>
         <span class="value">{{ operatorName }}</span>
       </div>
-      <div class="slot-info-row" *ngIf="data.slotInfo.operator">
-        <span class="label">Servizio:</span>
+      <div class="slot-info-row services-row" *ngIf="data.slotInfo.operator">
+        <span class="label">Servizi:</span>
         <div class="service-select-container">
-          <select [(ngModel)]="serviceId" class="form-control service-select" [disabled]="loadingServices">
-            <option [ngValue]="null">-- Nessun servizio --</option>
-            <option *ngFor="let service of operatorServices" [ngValue]="service.id">
-              {{ service.name }} ({{ service.defaultDuration }} min - €{{ service.defaultPrice }})
-            </option>
-          </select>
-          <span class="loading-hint" *ngIf="loadingServices">Caricamento...</span>
+          <app-service-multi-select
+            *ngIf="!loadingServices"
+            [availableServices]="selectableServices"
+            [selectedServices]="selectedServices"
+            [showPrices]="true"
+            [editablePrices]="false"
+            [placeholder]="'-- Aggiungi servizio --'"
+            (selectedServicesChange)="onServicesChange($event)">
+          </app-service-multi-select>
+          <span class="loading-hint" *ngIf="loadingServices">Caricamento servizi...</span>
         </div>
       </div>
       <div class="slot-info-row">
@@ -112,8 +115,8 @@
         <p class="form-hint">* Almeno un contatto (telefono, cellulare o email) è obbligatorio</p>
 
         <div class="form-actions-inline">
-          <button class="btn btn-secondary" (click)="onCancelNewPatient()" [disabled]="savingNewPatient">Annulla</button>
-          <button class="btn btn-primary" (click)="onSaveNewPatient()" [disabled]="savingNewPatient">
+          <button type="button" class="btn btn-secondary" (click)="onCancelNewPatient()" [disabled]="savingNewPatient">Annulla</button>
+          <button type="button" class="btn btn-primary" (click)="onSaveNewPatient()" [disabled]="savingNewPatient">
             {{ savingNewPatient ? 'Salvataggio...' : 'Aggiungi Paziente' }}
           </button>
         </div>

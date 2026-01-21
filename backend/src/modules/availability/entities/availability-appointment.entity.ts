@@ -5,6 +5,7 @@ import { Service } from './service.entity';
 import { GymRoom } from './gym-room.entity';
 import { AppointmentType } from './appointment-type.enum';
 import { AppointmentInstrument } from './appointment-instrument.entity';
+import { AppointmentService } from './appointment-service.entity';
 import { Patient } from '../../../entities/patient.entity';
 import GraphQLJSON from 'graphql-type-json';
 import { TreatmentStatus } from './treatment-enums';
@@ -81,7 +82,10 @@ export class AvailabilityAppointment {
   @Column('uuid', { nullable: true })
   operatorId?: string;
 
-  @Field(() => ID, { nullable: true })
+  /**
+   * @deprecated Usa appointmentServices invece. Mantenuto per retrocompatibilità.
+   */
+  @Field(() => ID, { nullable: true, deprecationReason: 'Usa appointmentServices invece' })
   @Column('uuid', { nullable: true })
   serviceId?: string;
 
@@ -395,4 +399,17 @@ export class AvailabilityAppointment {
   @ManyToOne(() => Operator, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'originalOperatorId' })
   originalOperator?: Operator;
+
+  // ==================== MULTIPLE SERVICES ====================
+
+  /**
+   * Servizi programmati per l'appuntamento (prenotazione).
+   * Questi servizi servono a pre-popolare il dialog "Inizia Trattamento".
+   * L'operatore può modificarli in base alle condizioni del paziente.
+   *
+   * NOTA: Separati da treatmentServices che sono i servizi effettivamente erogati.
+   */
+  @Field(() => [AppointmentService], { nullable: true })
+  @OneToMany(() => AppointmentService, appointmentService => appointmentService.appointment)
+  appointmentServices?: AppointmentService[];
 }

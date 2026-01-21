@@ -17,7 +17,6 @@ import {
   OnDestroy,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  NgZone,
   ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -102,7 +101,6 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
     private pathService: TherapeuticPathService,
     private serviceService: ServiceService,
     private instrumentService: InstrumentService,
-    private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -137,10 +135,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
    * Chiude il dialog
    */
   close(): void {
-    this.ngZone.run(() => {
-      this.isVisible = false;
-      this.cdr.markForCheck();
-    });
+    this.isVisible = false;
+    this.cdr.markForCheck();
   }
 
   /**
@@ -157,39 +153,38 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: ({ paths, services, instruments }) => {
-          this.ngZone.run(() => {
-            console.log('[EditTreatmentDialogContainer] Data loaded:', {
-              paths: paths.length,
-              services: services.length,
-              instruments: instruments.length
-            });
-
-            // Convert appointment instruments to BaseInstrumentData format
-            // AppointmentInstrument has instrumentName directly, not nested instrument object
-            const appointmentInstruments: BaseInstrumentData[] = (
-              this.currentTreatment.appointment?.instruments || []
-            ).map((inst: any) => ({
-              instrumentId: inst.instrumentId,
-              instrument: inst.instrument
-                ? { id: inst.instrument.id, name: inst.instrument.name }
-                : inst.instrumentName
-                  ? { id: inst.instrumentId, name: inst.instrumentName }
-                  : undefined,
-              startOffsetMinutes: inst.startOffsetMinutes || 0,
-              endOffsetMinutes: inst.endOffsetMinutes || 0,
-              instrumentCategoryId: inst.instrumentCategoryId,
-            }));
-
-            this.dialogData = {
-              treatment: this.currentTreatment,
-              availablePaths: paths.filter(p => p.status?.toLowerCase() === 'active'),
-              availableServices: services.filter(s => s.isActive),
-              availableInstruments: instruments.filter(i => i.isActive),
-              appointmentInstruments,
-            };
-            this.isVisible = true;
-            this.cdr.markForCheck();
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          console.log('[EditTreatmentDialogContainer] Data loaded:', {
+            paths: paths.length,
+            services: services.length,
+            instruments: instruments.length
           });
+
+          // Convert appointment instruments to BaseInstrumentData format
+          // AppointmentInstrument has instrumentName directly, not nested instrument object
+          const appointmentInstruments: BaseInstrumentData[] = (
+            this.currentTreatment.appointment?.instruments || []
+          ).map((inst: any) => ({
+            instrumentId: inst.instrumentId,
+            instrument: inst.instrument
+              ? { id: inst.instrument.id, name: inst.instrument.name }
+              : inst.instrumentName
+                ? { id: inst.instrumentId, name: inst.instrumentName }
+                : undefined,
+            startOffsetMinutes: inst.startOffsetMinutes || 0,
+            endOffsetMinutes: inst.endOffsetMinutes || 0,
+            instrumentCategoryId: inst.instrumentCategoryId,
+          }));
+
+          this.dialogData = {
+            treatment: this.currentTreatment,
+            availablePaths: paths.filter(p => p.status?.toLowerCase() === 'active'),
+            availableServices: services.filter(s => s.isActive),
+            availableInstruments: instruments.filter(i => i.isActive),
+            appointmentInstruments,
+          };
+          this.isVisible = true;
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[EditTreatmentDialogContainer] Error loading data:', err);
@@ -203,10 +198,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
   onSave(result: EditTreatmentFormResult): void {
     console.log('[EditTreatmentDialogContainer] Saving treatment:', result);
 
-    this.ngZone.run(() => {
-      this.isSaving = true;
-      this.cdr.markForCheck();
-    });
+    this.isSaving = true;
+    this.cdr.markForCheck();
 
     // Determina se annullare il pagamento esistente:
     // - Se il trattamento era pagato E ora collectedByOperator è false → isPaid: false
@@ -216,7 +209,7 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
       .updateTreatment({
         id: this.currentTreatment.id,
         therapeuticPathId: result.therapeuticPathId,
-        serviceId: result.serviceId,
+        serviceId: result.serviceId,  // @deprecated - manteniamo per retrocompatibilità
         clinicalNotes: result.clinicalNotes,
         secretaryNotes: result.secretaryNotes,
         patientNotes: result.patientNotes,
@@ -233,6 +226,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
         suggestDateRangeEnd: result.suggestDateRangeEnd,
         reschedulingNotes: result.reschedulingNotes,
         isPaid: shouldResetPayment ? false : undefined, // Resetta pagamento se necessario
+        // Nuovo: servizi multipli del trattamento
+        treatmentServices: result.treatmentServices,
         instruments: result.instruments?.map(inst => ({
           instrumentId: inst.instrumentId,
           instrumentCategoryId: inst.instrumentCategoryId,
@@ -251,31 +246,29 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
           if (result.collectedByOperator && result.paymentMethod && !this.currentTreatment.isPaid) {
             this.recordPayment(updatedTreatment, result);
           } else {
-            this.ngZone.run(() => {
-              this.isSaving = false;
-              this.isVisible = false;
-              this.treatmentUpdated.emit(updatedTreatment);
-              this.cdr.markForCheck();
-            });
+            // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+            this.isSaving = false;
+            this.isVisible = false;
+            this.treatmentUpdated.emit(updatedTreatment);
+            this.cdr.markForCheck();
           }
         },
         error: (err) => {
           console.error('[EditTreatmentDialogContainer] Error updating treatment:', err);
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            // Estrai messaggio di errore dal backend
-            const errorMessage = err?.graphQLErrors?.[0]?.message
-              || err?.message
-              || 'Errore durante il salvataggio del trattamento';
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          // Estrai messaggio di errore dal backend
+          const errorMessage = err?.graphQLErrors?.[0]?.message
+            || err?.message
+            || 'Errore durante il salvataggio del trattamento';
 
-            // Se il trattamento non è modificabile, suggerisci di riaprirlo
-            if (errorMessage.includes('Solo i trattamenti in corso')) {
-              alert(errorMessage + '\n\nPer modificare il trattamento, usa prima il pulsante "Riapri Trattamento".');
-            } else {
-              alert(errorMessage);
-            }
-            this.cdr.markForCheck();
-          });
+          // Se il trattamento non è modificabile, suggerisci di riaprirlo
+          if (errorMessage.includes('Solo i trattamenti in corso')) {
+            alert(errorMessage + '\n\nPer modificare il trattamento, usa prima il pulsante "Riapri Trattamento".');
+          } else {
+            alert(errorMessage);
+          }
+          this.cdr.markForCheck();
         },
       });
   }
@@ -296,22 +289,20 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
       .subscribe({
         next: (paidTreatment) => {
           console.log('[EditTreatmentDialogContainer] Payment recorded:', paidTreatment.id);
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            this.isVisible = false;
-            this.treatmentUpdated.emit(paidTreatment);
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          this.isVisible = false;
+          this.treatmentUpdated.emit(paidTreatment);
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[EditTreatmentDialogContainer] Error recording payment:', err);
           // Emetti comunque il trattamento aggiornato anche se il pagamento fallisce
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            this.isVisible = false;
-            this.treatmentUpdated.emit(treatment);
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          this.isVisible = false;
+          this.treatmentUpdated.emit(treatment);
+          this.cdr.markForCheck();
         },
       });
   }
@@ -325,10 +316,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
       this.currentFormPrice = this.dialogComponent.form.get('price')?.value || 0;
     }
     console.log('[EditTreatmentDialogContainer] Opening cash collection dialog with price:', this.currentFormPrice);
-    this.ngZone.run(() => {
-      this.showCashCollectionDialog = true;
-      this.cdr.markForCheck();
-    });
+    this.showCashCollectionDialog = true;
+    this.cdr.markForCheck();
   }
 
   /**
@@ -337,16 +326,14 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
   onCashCollectionConfirm(data: CashCollectionData): void {
     console.log('[EditTreatmentDialogContainer] Cash collection confirmed:', data);
     this.cashCollectionData = data;
-    this.ngZone.run(() => {
-      this.showCashCollectionDialog = false;
+    this.showCashCollectionDialog = false;
 
-      // Notifica il component dialog che l'incasso è stato confermato (dentro ngZone)
-      if (this.dialogComponent) {
-        this.dialogComponent.setCashCollected(data.paymentMethod);
-      }
+    // Notifica il component dialog che l'incasso è stato confermato
+    if (this.dialogComponent) {
+      this.dialogComponent.setCashCollected(data.paymentMethod);
+    }
 
-      this.cdr.markForCheck();
-    });
+    this.cdr.markForCheck();
   }
 
   /**
@@ -354,10 +341,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
    */
   onCashCollectionCancel(): void {
     console.log('[EditTreatmentDialogContainer] Cash collection cancelled');
-    this.ngZone.run(() => {
-      this.showCashCollectionDialog = false;
-      this.cdr.markForCheck();
-    });
+    this.showCashCollectionDialog = false;
+    this.cdr.markForCheck();
   }
 
   /**
@@ -372,10 +357,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
 
     console.log('[EditTreatmentDialogContainer] Completing treatment:', this.currentTreatment.id);
 
-    this.ngZone.run(() => {
-      this.isSaving = true;
-      this.cdr.markForCheck();
-    });
+    this.isSaving = true;
+    this.cdr.markForCheck();
 
     const input: CompleteTreatmentInput = {
       price: this.currentTreatment.price || 0,
@@ -389,20 +372,18 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
       .subscribe({
         next: (updatedTreatment) => {
           console.log('[EditTreatmentDialogContainer] Treatment completed:', updatedTreatment.id);
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            this.isVisible = false;
-            this.treatmentUpdated.emit(updatedTreatment);
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          this.isVisible = false;
+          this.treatmentUpdated.emit(updatedTreatment);
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[EditTreatmentDialogContainer] Error completing treatment:', err);
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            alert('Errore durante il completamento del trattamento');
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          alert('Errore durante il completamento del trattamento');
+          this.cdr.markForCheck();
         }
       });
   }
@@ -419,30 +400,26 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
 
     console.log('[EditTreatmentDialogContainer] Reopening treatment:', this.currentTreatment.id);
 
-    this.ngZone.run(() => {
-      this.isSaving = true;
-      this.cdr.markForCheck();
-    });
+    this.isSaving = true;
+    this.cdr.markForCheck();
 
     this.treatmentService.reopenTreatment(this.currentTreatment.id)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (updatedTreatment) => {
           console.log('[EditTreatmentDialogContainer] Treatment reopened:', updatedTreatment.id);
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            this.isVisible = false;
-            this.treatmentUpdated.emit(updatedTreatment);
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          this.isVisible = false;
+          this.treatmentUpdated.emit(updatedTreatment);
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[EditTreatmentDialogContainer] Error reopening treatment:', err);
-          this.ngZone.run(() => {
-            this.isSaving = false;
-            alert('Errore durante la riapertura del trattamento');
-            this.cdr.markForCheck();
-          });
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.isSaving = false;
+          alert('Errore durante la riapertura del trattamento');
+          this.cdr.markForCheck();
         }
       });
   }

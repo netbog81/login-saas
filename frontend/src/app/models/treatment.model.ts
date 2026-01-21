@@ -31,11 +31,51 @@ export interface TreatmentInstrument {
   };
 }
 
+/**
+ * Servizio associato a un trattamento (tabella di collegamento)
+ * Permette prezzi e durate personalizzati per ogni servizio
+ */
+export interface TreatmentServiceItem {
+  id?: string;
+  treatmentId?: string;
+  serviceId: string;
+  service?: {
+    id: string;
+    name: string;
+    defaultPrice?: number;
+    discountFE?: number;
+    duration?: number;
+  };
+  price?: number;         // Prezzo applicato per questo servizio
+  duration?: number;      // Durata effettiva
+  orderPosition?: number;
+  /**
+   * True se il prezzo è stato personalizzato manualmente dall'operatore.
+   * Se false, il prezzo segue la logica scontoFE/defaultPrice.
+   */
+  isCustomPrice?: boolean;
+}
+
+/**
+ * Input per creare/aggiornare un servizio nel trattamento
+ */
+export interface TreatmentServiceInputItem {
+  serviceId: string;
+  price?: number;
+  duration?: number;
+  orderPosition?: number;
+  /**
+   * True se il prezzo è stato personalizzato manualmente dall'operatore.
+   */
+  isCustomPrice?: boolean;
+}
+
 export interface Treatment {
   id: string;
   appointmentId: string;
   operatorId: string;
   patientId?: number;
+  /** @deprecated Usa treatmentServices invece */
   serviceId?: string;
   therapeuticPathId: string;
 
@@ -91,9 +131,12 @@ export interface Treatment {
   appointment?: Appointment;
   operator?: Operator;
   patient?: Patient;
+  /** @deprecated Usa treatmentServices invece */
   service?: Service;
   instruments?: TreatmentInstrument[];
   therapeuticPath?: TherapeuticPath;
+  /** Servizi eseguiti nel trattamento (nuovo sistema ManyToMany) */
+  treatmentServices?: TreatmentServiceItem[];
 }
 
 // ==================== INPUT TYPES ====================

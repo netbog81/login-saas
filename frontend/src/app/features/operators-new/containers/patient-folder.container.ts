@@ -18,12 +18,11 @@ import {
   SimpleChanges,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  NgZone,
   ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, tap } from 'rxjs/operators';
 
 import { Patient } from '../../../models/patient.model';
 import { TherapeuticPath, Anamnesis, PathDocument } from '../../../models/therapeutic-path.model';
@@ -385,12 +384,20 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   constructor(
     private pathService: TherapeuticPathService,
     private treatmentService: TreatmentService,
-    private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['patient'] && this.patient) {
+      // Reset immediato dello stato quando cambia il paziente
+      // per evitare di mostrare dati del paziente precedente
+      this.selectedPath = null;
+      this.paths = [];
+      this.treatments = [];
+      this.uiState = { ...this.uiState, selectedPathId: null, selectedTreatmentId: null };
+      this.cdr.markForCheck();
+
+      // Poi carica i nuovi dati
       this.loadPaths();
       this.loadTreatments();
     } else if (changes['patient'] && !this.patient) {
@@ -398,6 +405,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       this.selectedPath = null;
       this.treatments = [];
       this.uiState = createInitialPatientFolderUIState();
+      this.cdr.markForCheck();
     }
   }
 
@@ -417,31 +425,28 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (paths) => {
-          this.ngZone.run(() => {
-            this.paths = paths || [];
-            this.uiState = { ...this.uiState, loadingPaths: false };
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.paths = paths || [];
+          this.uiState = { ...this.uiState, loadingPaths: false };
 
-            // Auto-select first active path
-            const activePath = this.paths.find(p => p.status?.toLowerCase() === 'active');
-            if (activePath) {
-              this.selectPath(activePath);
-            } else if (this.paths.length > 0) {
-              this.selectPath(this.paths[0]);
-            }
+          // Auto-select first active path
+          const activePath = this.paths.find(p => p.status?.toLowerCase() === 'active');
+          if (activePath) {
+            this.selectPath(activePath);
+          } else if (this.paths.length > 0) {
+            this.selectPath(this.paths[0]);
+          }
 
-            this.cdr.markForCheck();
-          });
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[PatientFolderContainer] Error loading paths:', err);
-          this.ngZone.run(() => {
-            this.uiState = {
-              ...this.uiState,
-              loadingPaths: false,
-              error: 'Errore nel caricamento dei percorsi'
-            };
-            this.cdr.markForCheck();
-          });
+          this.uiState = {
+            ...this.uiState,
+            loadingPaths: false,
+            error: 'Errore nel caricamento dei percorsi'
+          };
+          this.cdr.markForCheck();
         }
       });
   }
@@ -452,23 +457,30 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     this.uiState = { ...this.uiState, loadingTreatments: true };
     this.cdr.markForCheck();
 
+    console.log('[PatientFolderContainer] loadTreatments called for patient:', this.patient.id);
+
     this.treatmentService.getTreatmentsByPatient(Number(this.patient.id))
-      .pipe(takeUntil(this.destroy$))
+      .pipe(
+        tap({
+          next: (data) => console.log('[PatientFolderContainer] treatments received:', data),
+          error: (err) => console.log('[PatientFolderContainer] treatments error in tap:', err),
+          complete: () => console.log('[PatientFolderContainer] treatments observable completed')
+        }),
+        takeUntil(this.destroy$)
+      )
       .subscribe({
         next: (treatments) => {
-          this.ngZone.run(() => {
-            this.treatments = treatments || [];
-            this.uiState = { ...this.uiState, loadingTreatments: false };
-            this.cdr.markForCheck();
-          });
+          console.log('[PatientFolderContainer] treatments in subscribe next:', treatments);
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          this.treatments = treatments || [];
+          this.uiState = { ...this.uiState, loadingTreatments: false };
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[PatientFolderContainer] Error loading treatments:', err);
-          this.ngZone.run(() => {
-            this.treatments = [];
-            this.uiState = { ...this.uiState, loadingTreatments: false };
-            this.cdr.markForCheck();
-          });
+          this.treatments = [];
+          this.uiState = { ...this.uiState, loadingTreatments: false };
+          this.cdr.markForCheck();
         }
       });
   }
@@ -564,32 +576,29 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.ngZone.run(() => {
-            // Rimuovi il percorso dalla lista
-            this.paths = this.paths.filter(p => p.id !== pathIdToDelete);
+          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          // Rimuovi il percorso dalla lista
+          this.paths = this.paths.filter(p => p.id !== pathIdToDelete);
 
-            // Seleziona un altro percorso (il primo attivo o il primo disponibile)
-            const activePath = this.paths.find(p => p.status?.toLowerCase() === 'active');
-            if (activePath) {
-              this.selectPath(activePath);
-            } else if (this.paths.length > 0) {
-              this.selectPath(this.paths[0]);
-            } else {
-              this.selectedPath = null;
-              this.uiState = { ...this.uiState, selectedPathId: null };
-            }
+          // Seleziona un altro percorso (il primo attivo o il primo disponibile)
+          const activePath = this.paths.find(p => p.status?.toLowerCase() === 'active');
+          if (activePath) {
+            this.selectPath(activePath);
+          } else if (this.paths.length > 0) {
+            this.selectPath(this.paths[0]);
+          } else {
+            this.selectedPath = null;
+            this.uiState = { ...this.uiState, selectedPathId: null };
+          }
 
-            // Emetti evento al parent
-            this.pathDeleted.emit(pathIdToDelete);
-            this.cdr.markForCheck();
-          });
+          // Emetti evento al parent
+          this.pathDeleted.emit(pathIdToDelete);
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.ngZone.run(() => {
-            console.error('[PatientFolderContainer] Error deleting path:', err);
-            alert('Errore durante l\'eliminazione del percorso. Riprova.');
-            this.cdr.markForCheck();
-          });
+          console.error('[PatientFolderContainer] Error deleting path:', err);
+          alert('Errore durante l\'eliminazione del percorso. Riprova.');
+          this.cdr.markForCheck();
         }
       });
   }

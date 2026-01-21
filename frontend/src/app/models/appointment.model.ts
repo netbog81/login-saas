@@ -55,6 +55,34 @@ export interface AppointmentInstrumentInput {
 }
 
 /**
+ * Servizio associato a un appuntamento (tabella di collegamento)
+ */
+export interface AppointmentServiceItem {
+  id?: string;
+  serviceId: string;
+  service?: {
+    id: string;
+    name: string;
+    defaultPrice?: number;
+    discountFE?: number;
+    duration?: number;
+  };
+  customDuration?: number;
+  customPrice?: number;
+  orderPosition?: number;
+}
+
+/**
+ * Input per creare/aggiornare un servizio nell'appuntamento
+ */
+export interface ServiceInputItem {
+  serviceId: string;
+  customDuration?: number;
+  customPrice?: number;
+  orderPosition?: number;
+}
+
+/**
  * Appuntamento unificato - usato in tutto il frontend
  * Compatibile sia con il sistema legacy che con AvailabilityAppointment
  */
@@ -66,8 +94,12 @@ export interface Appointment {
   endTime: string;
   operatorId: string;
   operator?: Operator;
-  serviceId?: string;   // ID del servizio associato
-  service?: { id: string; name: string };  // Oggetto servizio per visualizzazione
+  /** @deprecated Usa appointmentServices invece */
+  serviceId?: string;   // ID del servizio associato (legacy)
+  /** @deprecated Usa appointmentServices invece */
+  service?: { id: string; name: string };  // Oggetto servizio per visualizzazione (legacy)
+  /** Servizi associati all'appuntamento (nuovo sistema ManyToMany) */
+  appointmentServices?: AppointmentServiceItem[];
   patientId?: number;
   patient?: Patient;
   notes?: string;

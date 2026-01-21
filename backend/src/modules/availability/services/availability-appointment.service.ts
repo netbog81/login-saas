@@ -4,10 +4,11 @@ import { Repository, In, Not, Between, LessThanOrEqual, MoreThanOrEqual, DataSou
 import { v4 as uuidv4 } from 'uuid';
 import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
 import { AppointmentInstrument } from '../entities/appointment-instrument.entity';
+import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { Instrument } from '../entities/instrument.entity';
 import { InstrumentCategory } from '../entities/instrument-category.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
-import { RecurringType, RecurringEndType } from '../dto/create-availability-appointment.input';
+import { RecurringType, RecurringEndType, ServiceInputItem } from '../dto/create-availability-appointment.input';
 import { GymRoom } from '../entities/gym-room.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymPatternGroupService } from './gym-pattern-group.service';
@@ -31,7 +32,10 @@ export interface CreateAppointmentInstrumentInput {
 
 export interface CreateAvailabilityAppointmentInput {
   operatorId: string;
+  /** @deprecated Usa services invece */
   serviceId?: string;
+  /** Lista dei servizi da associare all'appuntamento */
+  services?: ServiceInputItem[];
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -47,7 +51,10 @@ export interface CreateAvailabilityAppointmentInput {
 }
 
 export interface UpdateAvailabilityAppointmentInput {
+  /** @deprecated Usa services invece */
   serviceId?: string;
+  /** Lista dei servizi da associare all'appuntamento */
+  services?: ServiceInputItem[];
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -71,6 +78,8 @@ export class AvailabilityAppointmentService {
     private appointmentRepo: Repository<AvailabilityAppointment>,
     @InjectRepository(AppointmentInstrument)
     private appointmentInstrumentRepo: Repository<AppointmentInstrument>,
+    @InjectRepository(AppointmentServiceEntity)
+    private appointmentServiceRepo: Repository<AppointmentServiceEntity>,
     @InjectRepository(Instrument)
     private instrumentRepo: Repository<Instrument>,
     @InjectRepository(InstrumentCategory)
@@ -145,9 +154,52 @@ export class AvailabilityAppointmentService {
         );
       }
 
+      // Gestisci servizi multipli
+      await this.saveAppointmentServicesWithManager(
+        manager,
+        savedAppointment.id,
+        appointmentData.services,
+        appointmentData.serviceId,
+      );
+
       // Ricarica l'appuntamento con le relazioni
       return this.findByIdWithManager(manager, savedAppointment.id);
     });
+  }
+
+  /**
+   * Salva i servizi associati all'appuntamento
+   * Supporta sia il nuovo formato (services array) che il legacy (serviceId singolo)
+   */
+  private async saveAppointmentServicesWithManager(
+    manager: EntityManager,
+    appointmentId: string,
+    services?: ServiceInputItem[],
+    legacyServiceId?: string,
+  ): Promise<void> {
+    const appointmentServiceRepo = manager.getRepository(AppointmentServiceEntity);
+
+    // Priorità: se c'è services array, usa quello; altrimenti usa serviceId legacy
+    if (services && services.length > 0) {
+      const servicesToSave = services.map((s, idx) => appointmentServiceRepo.create({
+        appointmentId,
+        serviceId: s.serviceId,
+        customDuration: s.customDuration,
+        customPrice: s.customPrice,
+        orderPosition: idx,
+      }));
+
+      await appointmentServiceRepo.save(servicesToSave);
+    } else if (legacyServiceId) {
+      // Retrocompatibilità: se solo serviceId legacy, crea un record singolo
+      const serviceRecord = appointmentServiceRepo.create({
+        appointmentId,
+        serviceId: legacyServiceId,
+        orderPosition: 0,
+      });
+
+      await appointmentServiceRepo.save(serviceRecord);
+    }
   }
 
   /**
@@ -469,7 +521,15 @@ export class AvailabilityAppointmentService {
 
     const appointment = await appointmentRepo.findOne({
       where: { id },
-      relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
+      relations: [
+        'operator',
+        'service',
+        'instruments',
+        'instruments.instrument',
+        'instruments.instrument.category',
+        'appointmentServices',
+        'appointmentServices.service',
+      ],
     });
 
     if (!appointment) {
@@ -586,7 +646,15 @@ export class AvailabilityAppointmentService {
   async findById(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.appointmentRepo.findOne({
       where: { id },
-      relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
+      relations: [
+        'operator',
+        'service',
+        'instruments',
+        'instruments.instrument',
+        'instruments.instrument.category',
+        'appointmentServices',
+        'appointmentServices.service',
+      ],
     });
 
     if (!appointment) {
@@ -650,7 +718,7 @@ export class AvailabilityAppointmentService {
       throw new Error(`Appuntamento con ID ${id} non trovato`);
     }
 
-    const { instruments, ...updateData } = input;
+    const { instruments, services, ...updateData } = input;
 
     // Aggiorna i campi dell'appuntamento
     Object.assign(appointment, updateData);
@@ -672,6 +740,25 @@ export class AvailabilityAppointmentService {
       }
     }
 
+    // Se vengono passati servizi, aggiorna le associazioni
+    if (services !== undefined) {
+      // Rimuovi le vecchie associazioni
+      await this.appointmentServiceRepo.delete({ appointmentId: id });
+
+      // Aggiungi le nuove
+      if (services.length > 0) {
+        const servicesToSave = services.map((s, idx) => this.appointmentServiceRepo.create({
+          appointmentId: id,
+          serviceId: s.serviceId,
+          customDuration: s.customDuration,
+          customPrice: s.customPrice,
+          orderPosition: idx,
+        }));
+
+        await this.appointmentServiceRepo.save(servicesToSave);
+      }
+    }
+
     // IMPORTANTE: Usa QueryBuilder per bypassare l'Identity Map di TypeORM
     // L'Identity Map mantiene cached le entity già caricate nella stessa "sessione"
     // findOne() ritornerebbe l'entity cached con le vecchie relazioni
@@ -682,6 +769,8 @@ export class AvailabilityAppointmentService {
       .leftJoinAndSelect('appointment.instruments', 'instruments')
       .leftJoinAndSelect('instruments.instrument', 'instrument')
       .leftJoinAndSelect('instrument.category', 'category')
+      .leftJoinAndSelect('appointment.appointmentServices', 'appointmentServices')
+      .leftJoinAndSelect('appointmentServices.service', 'appointmentService')
       .where('appointment.id = :id', { id })
       .getOne();
 
@@ -1142,9 +1231,31 @@ export class AvailabilityAppointmentService {
 
     const savedAppointment = await this.appointmentRepo.save(appointment);
 
+    // Gestisci servizi multipli per appuntamenti palestra
+    if (data.services && data.services.length > 0) {
+      const servicesToSave = data.services.map((s, idx) => this.appointmentServiceRepo.create({
+        appointmentId: savedAppointment.id,
+        serviceId: s.serviceId,
+        customDuration: s.customDuration,
+        customPrice: s.customPrice,
+        orderPosition: idx,
+      }));
+
+      await this.appointmentServiceRepo.save(servicesToSave);
+    } else if (data.serviceId) {
+      // Retrocompatibilità: serviceId singolo
+      const serviceRecord = this.appointmentServiceRepo.create({
+        appointmentId: savedAppointment.id,
+        serviceId: data.serviceId,
+        orderPosition: 0,
+      });
+
+      await this.appointmentServiceRepo.save(serviceRecord);
+    }
+
     return this.appointmentRepo.findOne({
       where: { id: savedAppointment.id },
-      relations: ['operator', 'gymRoom', 'service'],
+      relations: ['operator', 'gymRoom', 'service', 'appointmentServices', 'appointmentServices.service'],
     });
   }
 
