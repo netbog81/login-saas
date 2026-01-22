@@ -1,6 +1,6 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ChangeDetectionStrategy, inject, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { GymRoom, GymSlotInfo, GymAppointment, CreateGymAppointmentInput, UpdateGymAppointmentInput } from '../../../services/gym-room.service';
 import { Patient } from '../../../models/patient.model';
@@ -11,6 +11,12 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
 import { Service } from '../../../graphql/generated/types';
 import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../../../shared/components/service-multi-select';
 import { BaseComponent } from '../../../core/components/base.component';
+
+// Angular Material imports
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 
 export interface GymAppointmentDialogData {
   gymRoom: GymRoom;
@@ -32,7 +38,17 @@ export interface GymAppointmentDialogResult {
 @Component({
   selector: 'app-gym-appointment-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, ServiceMultiSelectComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CommonModule,
+    FormsModule,
+    ReactiveFormsModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatButtonModule,
+    MatIconModule,
+    ServiceMultiSelectComponent
+  ],
   templateUrl: './gym-appointment-dialog.component.html',
   styleUrls: ['./gym-appointment-dialog.component.scss']
 })
@@ -40,6 +56,14 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
   @Input() data!: GymAppointmentDialogData;
   @Output() result = new EventEmitter<GymAppointmentDialogResult>();
 
+  // FormBuilder per form reattivo nuovo paziente
+  private fb = inject(FormBuilder);
+
+  // ApplicationRef per forzare tick globale quando detectChanges() locale non basta
+  private appRef = inject(ApplicationRef);
+
+  // Form reattivo per nuovo paziente (Angular Material)
+  newPatientForm!: FormGroup;
 
   constructor(
     private patientService: PatientService,
@@ -77,6 +101,8 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
   newPatient: Partial<Patient> = {};
   newPatientError: string = '';
   savingNewPatient: boolean = false;
+  // Errori di validazione manuale (pattern EventDialogComponent)
+  newPatientErrors: { [key: string]: string } = {};
 
   // Recurring appointment config
   repeatEnabled: boolean = false;
@@ -107,10 +133,43 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
   }
 
   ngOnInit(): void {
+    // Inizializza il form reattivo per nuovo paziente
+    this.initNewPatientForm();
+
     // Chiamata iniziale quando il componente viene creato
     if (this.data) {
       this.initializeForm();
     }
+  }
+
+  /**
+   * Inizializza il form reattivo per la creazione di un nuovo paziente.
+   * Usa Angular Material + ReactiveFormsModule per garantire change detection corretta.
+   */
+  private initNewPatientForm(): void {
+    this.newPatientForm = this.fb.group({
+      nome: ['', Validators.required],
+      cognome: ['', Validators.required],
+      telefono: [''],
+      cellulare: [''],
+      email: ['', Validators.email]
+    }, {
+      validators: [this.atLeastOneContactValidator]
+    });
+  }
+
+  /**
+   * Custom validator: richiede almeno un contatto (telefono, cellulare o email)
+   */
+  private atLeastOneContactValidator(control: AbstractControl): ValidationErrors | null {
+    const telefono = control.get('telefono')?.value?.trim();
+    const cellulare = control.get('cellulare')?.value?.trim();
+    const email = control.get('email')?.value?.trim();
+
+    if (!telefono && !cellulare && !email) {
+      return { noContact: true };
+    }
+    return null;
   }
 
   /**
@@ -413,112 +472,178 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
 
   // ==================== NEW PATIENT METHODS ====================
 
-  onShowNewPatientForm(): void {
-    this.runInZone(() => {
-      this.showNewPatientForm = true;
-      this.showPatientDropdown = false;
-      this.newPatient = {
-        nome: '',
-        cognome: '',
-        telefono: '',
-        cellulare: '',
-        email: '',
-        notes: '',
-        genere: 'NON_SPECIFICATO',
-        tipoPaziente: 'ADULTO_AUTONOMO'
-      };
-      this.detectChanges();
-    });
-  }
-
-  onCancelNewPatient(): void {
-    this.runInZone(() => {
-      this.showNewPatientForm = false;
-      this.newPatient = {};
-      this.newPatientError = '';
-      this.detectChanges();
-    });
+  /**
+   * Forza un ciclo di change detection globale.
+   * Necessario quando detectChanges() locale non basta a causa dell'overlay custom
+   * con OnPush che non propaga correttamente i cambiamenti.
+   *
+   * NOTA: ApplicationRef.tick() è più pesante di detectChanges() ma è necessario
+   * per garantire che l'UI si aggiorni immediatamente in questo contesto.
+   */
+  private forceGlobalTick(): void {
+    // Prima aggiorna questo componente
+    this.cdr.detectChanges();
+    // Poi forza un tick globale per propagare i cambiamenti all'intera applicazione
+    this.appRef.tick();
   }
 
   /**
-   * Salva un nuovo paziente.
-   * IMPORTANTE: Questo metodo usa console.log per debug perché l'errore di validazione
-   * non appariva immediatamente. Il problema era dovuto al contesto Angular zone.
+   * Mostra il form per creare un nuovo paziente.
+   * Resetta il form reattivo e lo mostra.
    */
-  onSaveNewPatient(): void {
-    console.log('[GymAppointmentDialog] onSaveNewPatient called');
+  onShowNewPatientForm(): void {
+    this.showNewPatientForm = true;
+    this.showPatientDropdown = false;
+    // Reset del form reattivo
+    this.newPatientForm.reset();
+    // Reset errori validazione manuale
+    this.newPatientErrors = {};
+    this.newPatientError = '';
+    // Imposta valori default per l'oggetto newPatient (usato nel salvataggio)
+    this.newPatient = {
+      nome: '',
+      cognome: '',
+      telefono: '',
+      cellulare: '',
+      email: '',
+      notes: '',
+      genere: 'NON_SPECIFICATO',
+      tipoPaziente: 'ADULTO_AUTONOMO'
+    };
+    // Forza tick globale per garantire update UI immediato
+    this.forceGlobalTick();
+  }
 
-    if (this.savingNewPatient) {
-      console.log('[GymAppointmentDialog] Already saving, returning');
-      return;
+  /**
+   * Annulla la creazione del nuovo paziente.
+   * Resetta il form e nasconde la sezione.
+   */
+  onCancelNewPatient(): void {
+    this.showNewPatientForm = false;
+    this.newPatientForm.reset();
+    this.newPatient = {};
+    this.savingNewPatient = false;
+    // Reset errori validazione manuale
+    this.newPatientErrors = {};
+    this.newPatientError = '';
+    // Forza tick globale per garantire update UI immediato
+    this.forceGlobalTick();
+  }
+
+  /**
+   * Valida manualmente i dati del nuovo paziente.
+   * Usa un oggetto errors invece di mat-error perché i componenti mat-error
+   * non funzionano correttamente in overlay custom con OnPush.
+   * Pattern copiato da EventDialogComponent che funziona correttamente.
+   */
+  private validateNewPatient(): boolean {
+    this.newPatientErrors = {};
+
+    const formValue = this.newPatientForm.value;
+
+    // Validazione nome (obbligatorio)
+    if (!formValue.nome?.trim()) {
+      this.newPatientErrors['nome'] = 'Il nome è obbligatorio';
     }
 
-    const nome = this.newPatient.nome?.trim();
-    const cognome = this.newPatient.cognome?.trim();
-
-    // Validazione: nome e cognome obbligatori
-    if (!nome || !cognome) {
-      console.log('[GymAppointmentDialog] Validation failed: nome/cognome missing');
-      this.newPatientError = 'Nome e cognome sono obbligatori';
-      // Forza aggiornamento UI usando cdr dal BaseComponent
-      this.cdr.markForCheck();
-      this.cdr.detectChanges();
-      console.log('[GymAppointmentDialog] Error set to:', this.newPatientError);
-      return;
+    // Validazione cognome (obbligatorio)
+    if (!formValue.cognome?.trim()) {
+      this.newPatientErrors['cognome'] = 'Il cognome è obbligatorio';
     }
 
-    const telefono = this.newPatient.telefono?.trim();
-    const cellulare = this.newPatient.cellulare?.trim();
-    const email = this.newPatient.email?.trim();
+    // Validazione email (formato valido se presente)
+    if (formValue.email?.trim() && !this.isValidEmail(formValue.email)) {
+      this.newPatientErrors['email'] = 'Email non valida';
+    }
 
     // Validazione: almeno un contatto obbligatorio
+    const telefono = formValue.telefono?.trim();
+    const cellulare = formValue.cellulare?.trim();
+    const email = formValue.email?.trim();
     if (!telefono && !cellulare && !email) {
-      console.log('[GymAppointmentDialog] Validation failed: no contact info');
-      this.newPatientError = 'Almeno un contatto (telefono, cellulare o email) è obbligatorio';
-      // Forza aggiornamento UI usando cdr dal BaseComponent
-      this.cdr.markForCheck();
-      this.cdr.detectChanges();
-      console.log('[GymAppointmentDialog] Error set to:', this.newPatientError);
+      this.newPatientErrors['noContact'] = 'Almeno un contatto (telefono, cellulare o email) è obbligatorio';
+    }
+
+    return Object.keys(this.newPatientErrors).length === 0;
+  }
+
+  /**
+   * Verifica se una stringa è un indirizzo email valido.
+   */
+  private isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  /**
+   * Salva un nuovo paziente usando validazione manuale.
+   * Non usa mat-error perché non funziona in overlay custom con OnPush.
+   * Usa invece l'oggetto newPatientErrors per mostrare gli errori.
+   */
+  onSaveNewPatient(): void {
+    // Validazione manuale (pattern EventDialogComponent)
+    if (!this.validateNewPatient()) {
+      // Forza tick globale per mostrare gli errori IMMEDIATAMENTE
+      this.forceGlobalTick();
+      return;
+    }
+
+    // Se siamo già in salvataggio, evita doppi click
+    if (this.savingNewPatient) {
       return;
     }
 
     // Validazione passata, procedi con il salvataggio
-    console.log('[GymAppointmentDialog] Validation passed, saving patient');
     this.savingNewPatient = true;
-    this.newPatientError = '';
-    this.detectChanges();
+    // Forza tick globale per mostrare "Salvataggio..." immediatamente
+    this.forceGlobalTick();
+
+    // Prepara i dati dal form reattivo
+    const formValue = this.newPatientForm.value;
+    this.newPatient = {
+      ...this.newPatient,
+      nome: formValue.nome?.trim(),
+      cognome: formValue.cognome?.trim(),
+      telefono: formValue.telefono?.trim() || '',
+      cellulare: formValue.cellulare?.trim() || '',
+      email: formValue.email?.trim() || ''
+    };
 
     // Esegue il salvataggio asincrono
-    this.savePatientAsync(nome, cognome, telefono, cellulare, email);
+    this.savePatientAsync();
+  }
+
+  /**
+   * Wrapper per onSaveNewPatient() che garantisce l'esecuzione dentro NgZone.
+   * Necessario perché il dialog custom (non MatDialog) può avere problemi
+   * con la change detection OnPush al primo evento submit.
+   */
+  onSaveNewPatientInZone(): void {
+    this.runInZone(() => {
+      this.onSaveNewPatient();
+    });
   }
 
   /**
    * Metodo privato per il salvataggio asincrono del paziente
    */
-  private async savePatientAsync(
-    nome: string,
-    cognome: string,
-    telefono?: string,
-    cellulare?: string,
-    email?: string
-  ): Promise<void> {
+  private async savePatientAsync(): Promise<void> {
     try {
       const created = await firstValueFrom(this.patientService.createPatient(this.newPatient));
-      this.runInZone(() => {
-        this.data.patients = [...this.data.patients, created];
-        this.selectPatient(created);
-        this.showNewPatientForm = false;
-        this.newPatient = {};
-        this.savingNewPatient = false;
-        this.detectChanges();
-      });
+      // Aggiorna la lista pazienti e seleziona il nuovo paziente
+      this.data.patients = [...this.data.patients, created];
+      this.selectPatient(created);
+      this.showNewPatientForm = false;
+      this.newPatientForm.reset();
+      this.newPatient = {};
+      this.savingNewPatient = false;
+      // Forza tick globale per aggiornare UI dopo successo
+      this.forceGlobalTick();
     } catch (error) {
-      this.runInZone(() => {
-        console.error('Error creating patient:', error);
-        this.newPatientError = 'Errore nella creazione del paziente';
-        this.savingNewPatient = false;
-        this.detectChanges();
-      });
+      console.error('Error creating patient:', error);
+      this.newPatientError = 'Errore nella creazione del paziente';
+      this.savingNewPatient = false;
+      // Forza tick globale per mostrare l'errore immediatamente
+      this.forceGlobalTick();
     }
   }
 

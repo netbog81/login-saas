@@ -1,9 +1,11 @@
-import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewContainerRef, Injector, ChangeDetectorRef, NgZone, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil, combineLatest, debounceTime, firstValueFrom, forkJoin } from 'rxjs';
 import { Overlay, OverlayRef, OverlayConfig, ConnectedPosition } from '@angular/cdk/overlay';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { MatDialog } from '@angular/material/dialog';
+import { MatButtonModule } from '@angular/material/button';
 
 // Services
 import { CalendarStateService, CalendarConfig, AppointmentSearchFilters, AvailableSlot } from '../services/calendar-state.service';
@@ -49,12 +51,18 @@ import { Treatment } from '../../../models/treatment.model';
 // Utils
 import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
 
+// Shared Components
+import { NewPatientDialogComponent, NewPatientDialogResult } from '../../../shared/components/new-patient-dialog';
+import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogResult } from '../../../shared/components/gym-appointment-mat-dialog';
+import { EventMatDialogComponent, EventMatDialogResult } from '../../../shared/components/event-mat-dialog';
+
 @Component({
   selector: 'app-calendar-container',
   standalone: true,
   imports: [
     CommonModule,
     OverlayModule,
+    MatButtonModule,
     CalendarHeaderComponent,
     CalendarSidebarComponent,
     CalendarToolbarComponent,
@@ -155,6 +163,25 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     appointments: Appointment[];
     timestamp: number;
   }> = new Map();
+
+  // MatDialog per i dialog Angular Material (es. NewPatientDialog, GymAppointmentMatDialog)
+  private dialog = inject(MatDialog);
+
+  /**
+   * Flag per switch tra vecchio e nuovo dialog creazione appuntamento palestra.
+   * - true: usa il nuovo GymAppointmentMatDialogComponent (MatDialog)
+   * - false: usa il vecchio GymAppointmentDialogComponent (overlay custom)
+   * Mantenere false per rollback se necessario.
+   */
+  private useNewGymAppointmentDialog = true;
+
+  /**
+   * Flag per switch tra vecchio e nuovo dialog creazione appuntamento operatori.
+   * - true: usa il nuovo EventMatDialogComponent (MatDialog)
+   * - false: usa il vecchio EventDialogComponent (overlay custom)
+   * Mantenere false per rollback se necessario.
+   */
+  private useNewEventDialog = true;
 
   constructor(
     public stateService: CalendarStateService,
@@ -1060,15 +1087,21 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       case 'add':
         if (action.gymRoom && action.slotInfo && action.date) {
           this.closeGymSlotSummary();
-          this.gymAppointmentDialogData = {
-            gymRoom: action.gymRoom,
-            date: action.date,
-            startTime: action.slotInfo.startTime,
-            endTime: action.slotInfo.endTime,
-            slotInfo: action.slotInfo,
-            patients: this.patients
-          };
-          this.showGymAppointmentDialog = true;
+          if (this.useNewGymAppointmentDialog) {
+            // NUOVO: Apre MatDialog con Angular Material
+            this.openGymAppointmentMatDialogFromSummary(action);
+          } else {
+            // VECCHIO: Overlay custom (mantenuto per rollback)
+            this.gymAppointmentDialogData = {
+              gymRoom: action.gymRoom,
+              date: action.date,
+              startTime: action.slotInfo.startTime,
+              endTime: action.slotInfo.endTime,
+              slotInfo: action.slotInfo,
+              patients: this.patients
+            };
+            this.showGymAppointmentDialog = true;
+          }
         }
         break;
       case 'close':
@@ -1147,17 +1180,76 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Apri dialog per creare appuntamento palestra
-    this.gymAppointmentDialogData = {
-      gymRoom: event.gymRoom,
-      date: event.date,
-      startTime: event.startTime,
-      endTime: event.endTime,
-      slotInfo: event.slotInfo,
-      patients: this.patients
-    };
-    this.showGymAppointmentDialog = true;
-    this.cdr.markForCheck();
+    // Switch tra nuovo e vecchio dialog
+    if (this.useNewGymAppointmentDialog) {
+      // NUOVO: Apre MatDialog con Angular Material
+      this.openGymAppointmentMatDialog(event);
+    } else {
+      // VECCHIO: Overlay custom (mantenuto per rollback)
+      this.gymAppointmentDialogData = {
+        gymRoom: event.gymRoom,
+        date: event.date,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        slotInfo: event.slotInfo,
+        patients: this.patients
+      };
+      this.showGymAppointmentDialog = true;
+      this.cdr.markForCheck();
+    }
+  }
+
+  /**
+   * Apre il nuovo dialog per creare un appuntamento palestra usando MatDialog.
+   * Questo risolve i problemi di change detection dell'overlay custom.
+   */
+  private openGymAppointmentMatDialog(event: GymSlotClickEvent): void {
+    const dialogRef = this.dialog.open(GymAppointmentMatDialogComponent, {
+      width: '600px',
+      disableClose: false,
+      data: {
+        gymRoom: event.gymRoom,
+        date: event.date,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        slotInfo: event.slotInfo,
+        patients: this.patients
+      }
+    });
+
+    dialogRef.afterClosed().subscribe((result: GymAppointmentMatDialogResult | undefined) => {
+      if (result?.created) {
+        console.log('[Calendar] Appuntamento palestra creato con ID:', result.appointmentId);
+        // Ricarica gli appuntamenti per aggiornare il calendario
+        this.loadGymDataForCurrentView();
+      }
+    });
+  }
+
+  /**
+   * Apre il nuovo dialog MatDialog per creare un appuntamento palestra dal summary.
+   * Usato quando l'utente clicca su "Crea appuntamento" nel summary dello slot.
+   */
+  private openGymAppointmentMatDialogFromSummary(action: GymSlotSummaryAction): void {
+    const dialogRef = this.dialog.open(GymAppointmentMatDialogComponent, {
+      width: '600px',
+      disableClose: false,
+      data: {
+        gymRoom: action.gymRoom,
+        date: action.date,
+        startTime: action.slotInfo!.startTime,
+        endTime: action.slotInfo!.endTime,
+        slotInfo: action.slotInfo,
+        patients: this.patients
+      }
+    });
+
+    dialogRef.afterClosed().subscribe((result: GymAppointmentMatDialogResult | undefined) => {
+      if (result?.created) {
+        console.log('[Calendar] Appuntamento palestra creato da summary con ID:', result.appointmentId);
+        this.loadGymDataForCurrentView();
+      }
+    });
   }
 
   /**
@@ -1385,20 +1477,66 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   async onEventDelete(action: EventAction): Promise<void> {
-    this.appointmentToDelete = action.appointment;
-    this.showDeleteConfirmDialog = true;
+    // Usa NgZone.run per garantire che Angular rilevi il cambio di stato immediatamente
+    this.ngZone.run(() => {
+      this.appointmentToDelete = action.appointment;
+      this.showDeleteConfirmDialog = true;
+      this.cdr.markForCheck();
+    });
   }
 
   // Dialog events
   openEventDialog(data: EventDialogData): void {
-    // Forza esecuzione dentro NgZone per garantire change detection
-    // Il doppio click sullo slot può arrivare da contesto fuori zona
-    this.ngZone.run(() => {
-      this.eventDialogData = {
+    if (this.useNewEventDialog) {
+      // NUOVO: Apre MatDialog con Angular Material
+      this.openEventMatDialog(data);
+    } else {
+      // VECCHIO: Overlay custom (mantenuto per rollback)
+      // Forza esecuzione dentro NgZone per garantire change detection
+      // Il doppio click sullo slot può arrivare da contesto fuori zona
+      this.ngZone.run(() => {
+        this.eventDialogData = {
+          ...data,
+          instrumentCategories: this.instrumentCategories
+        };
+        this.showEventDialog = true;
+      });
+    }
+  }
+
+  /**
+   * Apre il nuovo dialog per creare/modificare un appuntamento usando MatDialog.
+   * Questo risolve i problemi di change detection dell'overlay custom.
+   */
+  private openEventMatDialog(data: EventDialogData): void {
+    const dialogRef = this.dialog.open(EventMatDialogComponent, {
+      width: '700px',
+      maxHeight: '90vh',
+      disableClose: false,
+      data: {
         ...data,
         instrumentCategories: this.instrumentCategories
-      };
-      this.showEventDialog = true;
+      }
+    });
+
+    dialogRef.afterClosed().subscribe((result: EventMatDialogResult | undefined) => {
+      if (!result || result.action === 'cancel') {
+        return;
+      }
+
+      if (result.action === 'delete' && result.appointment) {
+        this.deleteAppointment(result.appointment);
+      }
+
+      if (result.action === 'save' && result.appointment) {
+        this.saveAppointment(
+          result.appointment,
+          result.instruments,
+          result.instrumentOrderMatters,
+          result.repeatConfig,
+          result.nonRetribuito
+        );
+      }
     });
   }
 
@@ -1798,8 +1936,12 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         break;
       case 'delete':
         this.closeSummary();
-        this.appointmentToDelete = action.appointment;
-        this.showDeleteConfirmDialog = true;
+        // Usa NgZone.run per garantire che Angular rilevi il cambio di stato immediatamente
+        this.ngZone.run(() => {
+          this.appointmentToDelete = action.appointment;
+          this.showDeleteConfirmDialog = true;
+          this.cdr.markForCheck();
+        });
         break;
       case 'share':
         this.shareAppointment(action.appointment, action.shareMethod);
@@ -2192,4 +2334,6 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
     return null;
   }
+
+  // ============================================
 }

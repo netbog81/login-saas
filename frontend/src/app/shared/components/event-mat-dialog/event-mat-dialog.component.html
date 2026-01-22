@@ -1,0 +1,311 @@
+<h2 mat-dialog-title>
+  {{ isEditMode ? 'Modifica Appuntamento' : 'Nuovo Appuntamento' }}
+</h2>
+
+<mat-dialog-content>
+  <form [formGroup]="form">
+    <!-- Row 1: Data e Operatore -->
+    <div class="form-row">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Data *</mat-label>
+        <input matInput type="date" formControlName="date">
+        <mat-error *ngIf="form.get('date')?.hasError('required')">
+          La data è obbligatoria
+        </mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Operatore *</mat-label>
+        <mat-select formControlName="operatorId" (selectionChange)="onOperatorChange()">
+          <mat-option value="">Seleziona operatore</mat-option>
+          <mat-option *ngFor="let user of data.users" [value]="user.operatorId">
+            {{ user.name }}
+          </mat-option>
+        </mat-select>
+        <mat-error *ngIf="form.get('operatorId')?.hasError('required')">
+          Seleziona un operatore
+        </mat-error>
+      </mat-form-field>
+    </div>
+
+    <!-- Non Retribuito -->
+    <div class="toggle-row">
+      <mat-slide-toggle formControlName="nonRetribuito" (change)="onNonRetribuitoChange()">
+        Non retribuito
+      </mat-slide-toggle>
+      <span class="toggle-hint" *ngIf="form.get('nonRetribuito')?.value">
+        (pausa pranzo, rappresentante, ecc.)
+      </span>
+    </div>
+
+    <!-- Row 2: Orario -->
+    <div class="form-row">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Inizio *</mat-label>
+        <input matInput type="time" formControlName="startTime">
+        <mat-error *ngIf="form.get('startTime')?.hasError('required')">
+          Orario di inizio obbligatorio
+        </mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Fine *</mat-label>
+        <input matInput type="time" formControlName="endTime">
+        <mat-error *ngIf="form.get('endTime')?.hasError('required')">
+          Orario di fine obbligatorio
+        </mat-error>
+      </mat-form-field>
+    </div>
+
+    <!-- Paziente (nascosto se nonRetribuito) -->
+    <div class="patient-section" *ngIf="!form.get('nonRetribuito')?.value">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+        <mat-label>Paziente</mat-label>
+        <input matInput
+               [formControl]="patientSearchControl"
+               [matAutocomplete]="patientAuto"
+               #patientAutoTrigger="matAutocompleteTrigger"
+               placeholder="Cerca paziente...">
+        <mat-autocomplete #patientAuto="matAutocomplete"
+                          [displayWith]="displayPatient.bind(this)"
+                          (optionSelected)="onPatientSelected($event)">
+          <mat-option *ngFor="let patient of filteredPatients$ | async" [value]="patient">
+            <span class="patient-option">
+              <span class="patient-name">{{ patient.cognome }} {{ patient.nome }}</span>
+              <span class="patient-phone" *ngIf="patient.cellulare || patient.telefono">
+                - {{ patient.cellulare || patient.telefono }}
+              </span>
+            </span>
+          </mat-option>
+        </mat-autocomplete>
+        <button mat-icon-button matSuffix type="button" *ngIf="selectedPatient" (click)="clearPatient()" matTooltip="Rimuovi paziente">
+          <mat-icon>close</mat-icon>
+        </button>
+        <button mat-icon-button matSuffix type="button" (click)="openNewPatientDialog($event)" matTooltip="Aggiungi nuovo paziente">
+          <mat-icon>person_add</mat-icon>
+        </button>
+      </mat-form-field>
+
+      <div class="selected-patient-badge" *ngIf="selectedPatient">
+        <mat-icon>person</mat-icon>
+        <span>{{ selectedPatient.cognome }} {{ selectedPatient.nome }}</span>
+      </div>
+    </div>
+
+    <!-- Titolo (sempre visibile se nonRetribuito, altrimenti se no paziente) -->
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width"
+                    *ngIf="form.get('nonRetribuito')?.value || !form.get('patientId')?.value">
+      <mat-label>Titolo *</mat-label>
+      <input matInput formControlName="title"
+             [placeholder]="form.get('nonRetribuito')?.value ? 'Es: Pausa pranzo, Rappresentante...' : 'Es: Controllo, Consulenza...'">
+    </mat-form-field>
+
+    <!-- Servizi (multiselect) - nascosto se nonRetribuito -->
+    <div class="services-section" *ngIf="form.get('operatorId')?.value && !form.get('nonRetribuito')?.value">
+      <label class="section-label">Servizi ({{ operatorServices.length }} disponibili)</label>
+      <app-service-multi-select
+        *ngIf="!loadingServices"
+        [availableServices]="selectableServices"
+        [selectedServices]="selectedServices"
+        [showPrices]="true"
+        [editablePrices]="false"
+        [placeholder]="'Aggiungi servizio'"
+        (selectedServicesChange)="onServicesChange($event)">
+      </app-service-multi-select>
+      <mat-spinner *ngIf="loadingServices" diameter="24"></mat-spinner>
+    </div>
+
+    <!-- Strumenti (nascosto se nonRetribuito) -->
+    <div class="instruments-section" *ngIf="canConfigureInstruments && !form.get('nonRetribuito')?.value">
+      <mat-slide-toggle [(ngModel)]="instrumentsEnabled" [ngModelOptions]="{standalone: true}" (change)="onInstrumentsToggle()">
+        <mat-icon>build</mat-icon>
+        Usa strumenti
+      </mat-slide-toggle>
+
+      <div class="instruments-config" *ngIf="instrumentsEnabled">
+        <!-- Strumento 1 -->
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Strumento 1</mat-label>
+          <mat-select [(ngModel)]="selectedInstrumentCategoryId" [ngModelOptions]="{standalone: true}">
+            <mat-option value="">Seleziona strumento</mat-option>
+            <mat-option *ngFor="let cat of instrumentCategories" [value]="cat.id">
+              {{ cat.name }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Posizione (solo per singolo strumento con durata > 30) -->
+        <div class="position-selector" *ngIf="showPositionSelector">
+          <mat-button-toggle-group [(ngModel)]="instrumentPosition" [ngModelOptions]="{standalone: true}">
+            <mat-button-toggle value="first">Primi 30 min</mat-button-toggle>
+            <mat-button-toggle value="second">Ultimi 30 min</mat-button-toggle>
+          </mat-button-toggle-group>
+        </div>
+
+        <!-- Strumento 2 (solo se durata >= 60 e primo selezionato) -->
+        <div class="instrument-2-row" *ngIf="canAddSecondInstrument">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Strumento 2 (opzionale)</mat-label>
+            <mat-select [(ngModel)]="selectedInstrument2CategoryId" [ngModelOptions]="{standalone: true}">
+              <mat-option value="">Nessuno</mat-option>
+              <mat-option *ngFor="let cat of instrumentCategories" [value]="cat.id">
+                {{ cat.name }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <div class="order-controls" *ngIf="selectedInstrument2CategoryId">
+            <mat-checkbox [(ngModel)]="instrumentOrderMatters" [ngModelOptions]="{standalone: true}">
+              L'ordine è importante
+            </mat-checkbox>
+            <button mat-icon-button (click)="removeSecondInstrument()" matTooltip="Rimuovi">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="instruments-summary" *ngIf="selectedInstrumentCategoryId">
+          <mat-icon color="primary">check_circle</mat-icon>
+          <span>{{ getInstrumentDescription() }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ricorrenza (solo in create mode) -->
+    <div class="recurring-section" *ngIf="!isEditMode">
+      <mat-slide-toggle [(ngModel)]="repeatEnabled" [ngModelOptions]="{standalone: true}" (change)="onRepeatToggle()">
+        <mat-icon>repeat</mat-icon>
+        Appuntamento ricorrente
+      </mat-slide-toggle>
+
+      <div class="recurring-config" *ngIf="repeatEnabled">
+        <div class="form-row">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Ripeti</mat-label>
+            <mat-select [(ngModel)]="repeatConfig.type" [ngModelOptions]="{standalone: true}">
+              <mat-option value="daily">Ogni giorno</mat-option>
+              <mat-option value="weekly">Ogni settimana</mat-option>
+              <mat-option value="monthly">Ogni mese</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="interval-field">
+            <mat-label>Intervallo</mat-label>
+            <input matInput type="number" [(ngModel)]="repeatConfig.interval" [ngModelOptions]="{standalone: true}" min="1" max="12">
+            <span matTextSuffix>{{ getIntervalLabel() }}</span>
+          </mat-form-field>
+        </div>
+
+        <!-- Giorni della settimana (solo per weekly) -->
+        <div class="weekday-selector" *ngIf="repeatConfig.type === 'weekly'">
+          <label>Giorni della settimana</label>
+          <div class="weekday-buttons">
+            <button mat-mini-fab
+                    *ngFor="let day of weekdays; let i = index"
+                    [color]="isDaySelected(i) ? 'primary' : ''"
+                    (click)="toggleDay(i)"
+                    type="button">
+              {{ day }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Fine ricorrenza -->
+        <div class="end-config">
+          <label>Termina</label>
+          <div class="end-options">
+            <mat-radio-group [(ngModel)]="repeatConfig.endType" [ngModelOptions]="{standalone: true}">
+              <div class="end-option">
+                <mat-radio-button value="after">Dopo</mat-radio-button>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="occurrences-field">
+                  <input matInput type="number" [(ngModel)]="repeatConfig.occurrences" [ngModelOptions]="{standalone: true}"
+                         [disabled]="repeatConfig.endType !== 'after'" min="1" max="52">
+                </mat-form-field>
+                <span>volte</span>
+              </div>
+              <div class="end-option">
+                <mat-radio-button value="until">Fino al</mat-radio-button>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="until-field">
+                  <input matInput type="date" [(ngModel)]="repeatConfig.untilDate" [ngModelOptions]="{standalone: true}"
+                         [disabled]="repeatConfig.endType !== 'until'">
+                </mat-form-field>
+              </div>
+            </mat-radio-group>
+          </div>
+        </div>
+
+        <div class="recurring-preview" *ngIf="getOccurrencesPreview()">
+          <mat-icon>info</mat-icon>
+          <span>{{ getOccurrencesPreview() }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Note -->
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+      <mat-label>Note</mat-label>
+      <textarea matInput formControlName="notes" rows="3" placeholder="Note aggiuntive..."></textarea>
+    </mat-form-field>
+
+    <!-- Stato Appuntamento (solo in edit mode e se NON è non retribuito) -->
+    <div class="status-section" *ngIf="isEditMode && !form.get('nonRetribuito')?.value">
+      <label class="section-label">Stato Appuntamento</label>
+
+      <div class="status-badge" [ngClass]="getStatusClass()">
+        {{ getStatusLabel() }}
+      </div>
+
+      <p class="status-description" *ngIf="bookingStatus === 'attended'">
+        Il paziente è arrivato e può iniziare il trattamento.
+      </p>
+      <p class="status-description" *ngIf="bookingStatus === 'no_show'">
+        Il paziente non si è presentato. Evento tracciato.
+      </p>
+      <p class="status-description" *ngIf="bookingStatus === 'cancelled_early' || bookingStatus === 'cancelled_late'">
+        L'appuntamento è stato disdetto.
+      </p>
+
+      <div class="status-buttons" *ngIf="canRevertAttended">
+        <button mat-stroked-button color="warn" (click)="onRevertAttended()" type="button">
+          <mat-icon>undo</mat-icon>
+          Annulla Presentato
+        </button>
+      </div>
+
+      <div class="status-buttons" *ngIf="canShowStatusActions">
+        <button mat-flat-button color="primary" *ngIf="canMarkAttended" type="button">
+          <mat-icon>check</mat-icon>
+          Paziente Arrivato
+        </button>
+        <button mat-stroked-button color="warn" *ngIf="canMarkNoShow" type="button">
+          <mat-icon>person_off</mat-icon>
+          Non Presentato
+        </button>
+        <button mat-stroked-button *ngIf="canCancel" type="button">
+          <mat-icon>event_busy</mat-icon>
+          Disdici
+        </button>
+      </div>
+
+      <div class="late-warning" *ngIf="isLateCancellation && canCancel">
+        <mat-icon color="warn">warning</mat-icon>
+        <span>Cancellazione con meno di 24h - verrà tracciata</span>
+      </div>
+    </div>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button color="warn" *ngIf="isEditMode" (click)="onDelete()" type="button">
+    <mat-icon>delete</mat-icon>
+    Elimina
+  </button>
+  <span class="spacer"></span>
+  <button mat-stroked-button (click)="onCancel()" type="button">
+    Annulla
+  </button>
+  <button mat-flat-button color="primary" (click)="onSave()" [disabled]="!canSave" type="button">
+    {{ isEditMode ? 'Salva' : 'Crea' }}
+  </button>
+</mat-dialog-actions>

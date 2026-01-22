@@ -272,6 +272,59 @@ textarea.form-control {
   .form-group {
     margin-bottom: 12px;
   }
+
+  // Angular Material form fields
+  .form-field-half {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .form-field-full {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+  }
+
+  .full-width {
+    width: 100%;
+  }
+
+  // Messaggi di errore per validazione manuale (pattern EventDialogComponent)
+  .error-message {
+    display: block;
+    font-size: 12px;
+    color: #ef4444;
+    margin-top: -12px;
+    margin-bottom: 8px;
+    padding-left: 14px;
+  }
+
+  // Errore custom per almeno un contatto
+  .contact-error-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    margin-bottom: 12px;
+
+    mat-icon {
+      color: #856404;
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+
+    .contact-error-text {
+      color: #856404;
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
 }
 
 .form-row-inline {
@@ -282,6 +335,11 @@ textarea.form-control {
 
   .form-group {
     margin-bottom: 0;
+  }
+
+  // Per Angular Material form fields
+  mat-form-field {
+    width: 100%;
   }
 }
 
@@ -295,6 +353,20 @@ textarea.form-control {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+
+  // Stile per pulsanti Angular Material
+  button {
+    min-width: 120px;
+
+    mat-icon {
+      animation: spin 1s linear infinite;
+    }
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .input-with-clear {

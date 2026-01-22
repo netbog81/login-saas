@@ -1,0 +1,373 @@
+// Event Mat Dialog Styles
+
+// Fix linea verticale nel notched outline Angular Material MDC
+::ng-deep {
+  .mdc-notched-outline__notch {
+    border-left: none !important;
+    border-right: none !important;
+  }
+}
+
+mat-dialog-content {
+  min-width: 500px;
+  max-width: 700px;
+  // NOTA: padding-top su mat-dialog-content NON funziona con Angular Material MDC
+  // perché Material usa margini negativi internamente. Usare margin-top su .form-row:first-child
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 8px;
+
+  &:first-child {
+    margin-top: 8px; // Spazio per floating label del primo campo (Data/Operatore)
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+// Toggle row
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+
+  .toggle-hint {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+  }
+}
+
+// Patient section
+.patient-section {
+  margin-bottom: 16px;
+
+  .patient-option {
+    display: flex;
+    flex-direction: column;
+
+    .patient-name {
+      font-weight: 500;
+    }
+
+    .patient-phone {
+      font-size: 12px;
+      color: #666;
+    }
+  }
+
+  .selected-patient-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: #e3f2fd;
+    border-radius: 20px;
+    margin-top: 8px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: #1976d2;
+    }
+
+    span {
+      font-weight: 500;
+      color: #1565c0;
+    }
+  }
+}
+
+// Services section
+.services-section {
+  margin-bottom: 16px;
+
+  .section-label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  mat-spinner {
+    margin: 8px auto;
+  }
+}
+
+// Instruments section
+.instruments-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+
+  mat-slide-toggle {
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+
+  .instruments-config {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+
+    mat-form-field {
+      margin-bottom: 8px;
+    }
+
+    .position-selector {
+      margin-bottom: 12px;
+    }
+
+    .instrument-2-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+
+      mat-form-field {
+        flex: 1;
+      }
+
+      .order-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 8px;
+      }
+    }
+
+    .instruments-summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background-color: #e8f5e9;
+      border-radius: 4px;
+      margin-top: 12px;
+
+      mat-icon {
+        color: #4caf50;
+      }
+
+      span {
+        font-size: 13px;
+        color: #2e7d32;
+      }
+    }
+  }
+}
+
+// Recurring section
+.recurring-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #fff8e1;
+  border-radius: 8px;
+  border: 1px solid #ffecb3;
+
+  mat-slide-toggle {
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+
+  .recurring-config {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #ffecb3;
+
+    .interval-field {
+      max-width: 150px;
+    }
+
+    .weekday-selector {
+      margin-bottom: 16px;
+
+      label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+
+      .weekday-buttons {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+
+        button {
+          min-width: 48px;
+          height: 48px;
+        }
+      }
+    }
+
+    .end-config {
+      margin-bottom: 16px;
+
+      > label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 12px;
+      }
+
+      .end-options {
+        .end-option {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 8px;
+
+          .occurrences-field {
+            width: 80px;
+          }
+
+          .until-field {
+            width: 160px;
+          }
+        }
+      }
+    }
+
+    .recurring-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background-color: #fff3e0;
+      border-radius: 4px;
+
+      mat-icon {
+        color: #f57c00;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      span {
+        font-size: 13px;
+        color: #e65100;
+      }
+    }
+  }
+}
+
+// Status section
+.status-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #fafafa;
+  border-radius: 8px;
+
+  .section-label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 16px;
+    font-weight: 500;
+    font-size: 13px;
+    margin-bottom: 12px;
+
+    &.status-scheduled {
+      background-color: #e3f2fd;
+      color: #1565c0;
+    }
+
+    &.status-confirmed {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    &.status-attended {
+      background-color: #c8e6c9;
+      color: #1b5e20;
+    }
+
+    &.status-no-show {
+      background-color: #ffcdd2;
+      color: #c62828;
+    }
+
+    &.status-cancelled,
+    &.status-cancelled-late {
+      background-color: #ffecb3;
+      color: #f57f17;
+    }
+  }
+
+  .status-description {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 12px;
+  }
+
+  .status-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+
+    button {
+      mat-icon {
+        margin-right: 4px;
+      }
+    }
+  }
+
+  .late-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: #fff3e0;
+    border-radius: 4px;
+
+    span {
+      font-size: 13px;
+      color: #e65100;
+    }
+  }
+}
+
+// Dialog actions
+mat-dialog-actions {
+  padding: 16px 24px;
+  gap: 8px;
+
+  .spacer {
+    flex: 1;
+  }
+
+  button {
+    mat-icon {
+      margin-right: 4px;
+    }
+  }
+}
+
+// Radio group styling
+mat-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
