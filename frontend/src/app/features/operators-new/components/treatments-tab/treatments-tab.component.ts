@@ -117,10 +117,18 @@ import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../
     </div>
   `,
   styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
     .treatments-tab {
       display: flex;
       flex-direction: column;
       height: 100%;
+      min-height: 0;  // Critico per scroll
     }
 
     .loading-state, .empty-state {
@@ -153,10 +161,31 @@ import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../
 
     .treatments-list {
       flex: 1;
+      min-height: 0;  // Critico per scroll
       overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 8px;
+      padding-right: 4px;  // Spazio per scrollbar
+
+      // Scrollbar styling
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      &::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 3px;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+
+        &:hover {
+          background: #94a3b8;
+        }
+      }
     }
 
     .treatment-item {
@@ -332,20 +361,75 @@ import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../
     @media (max-width: 599px) {
       .treatment-item {
         flex-wrap: wrap;
+        padding: 10px 12px;
+        gap: 10px;
+        position: relative;
       }
 
       .treatment-date {
         flex-direction: row;
-        gap: 4px;
+        gap: 6px;
         min-width: auto;
-        width: 100%;
-        justify-content: flex-start;
+        width: auto;
+        padding: 6px 10px;
+
+        .day {
+          font-size: 1rem;
+        }
+
+        .month {
+          font-size: 0.625rem;
+        }
+      }
+
+      .treatment-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .treatment-header {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .treatment-info {
+        h4 {
+          font-size: 0.875rem;
+        }
+
+        .description {
+          font-size: 0.75rem;
+        }
       }
 
       .treatment-actions {
         opacity: 1;
-        width: 100%;
-        justify-content: flex-end;
+        position: absolute;
+        right: 8px;
+        top: 8px;
+      }
+
+      .list-footer {
+        flex-direction: column;
+        gap: 4px;
+        align-items: center;
+        text-align: center;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .treatment-item {
+        padding: 8px 10px;
+      }
+
+      .treatment-badges {
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .badge {
+        font-size: 0.625rem;
+        padding: 2px 6px;
       }
     }
   `],

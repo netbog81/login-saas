@@ -221,6 +221,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       flex-direction: column;
       gap: 1rem;
       min-width: 0;
+      min-height: 0;  // Critico per propagare il constraint di scroll ai figli
     }
 
     /* Section headers */
@@ -284,7 +285,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
     /* Patient folder section */
     .patient-folder-section {
       flex: 1;
-      min-height: 300px;
+      min-height: 0;  // Permette contrazione, scrollbar interna sui trattamenti
       display: flex;
       flex-direction: column;
       background: white;
@@ -318,6 +319,10 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
         .section-title h3 {
           font-size: 0.875rem;
         }
+      }
+
+      .patient-folder-section {
+        overflow: visible;  // Permette al contenuto di crescere in mobile
       }
     }
   `],

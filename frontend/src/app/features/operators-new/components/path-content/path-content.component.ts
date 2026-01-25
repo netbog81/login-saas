@@ -168,10 +168,18 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
     </div>
   `,
   styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
     .path-content {
       display: flex;
       flex-direction: column;
       height: 100%;
+      min-height: 0;  // Critico per propagare il constraint di scroll ai figli
 
       &.no-path {
         justify-content: center;
@@ -211,6 +219,7 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
       justify-content: space-between;
       padding: 20px;
       background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+      flex-shrink: 0;  // Impedisce che l'header si restringa
       border-radius: 12px;
       margin-bottom: 16px;
     }
@@ -269,10 +278,12 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
       flex: 1;
       display: flex;
       flex-direction: column;
+      min-height: 0;  // Critico per scroll
 
       ::ng-deep {
         .mat-mdc-tab-header {
           border-bottom: 1px solid #e2e8f0;
+          flex-shrink: 0;
         }
 
         .mat-mdc-tab-labels {
@@ -286,6 +297,18 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
 
         .mat-mdc-tab-body-wrapper {
           flex: 1;
+          min-height: 0;  // Critico per scroll
+        }
+
+        .mat-mdc-tab-body {
+          height: 100%;
+        }
+
+        .mat-mdc-tab-body-content {
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;  // Critico per propagare il constraint al figlio
         }
       }
     }
@@ -320,9 +343,12 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
     }
 
     .tab-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;  // Critico per scroll
       padding: 16px 0;
-      height: 100%;
-      overflow-y: auto;
+      overflow: hidden;  // Lo scroll deve essere sul figlio (.treatments-list), non qui
     }
 
     /* Responsive */
@@ -330,6 +356,7 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
       .path-header {
         flex-direction: column;
         gap: 12px;
+        padding: 16px;
       }
 
       .path-title-row {
@@ -352,6 +379,25 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
 
         .tab-badge, .tab-indicator {
           display: none;
+        }
+      }
+
+      .tab-content {
+        padding: 12px 0;
+      }
+    }
+
+    @media (max-width: 599px) {
+      .path-header {
+        padding: 12px;
+
+        .path-title-row h2 {
+          font-size: 1rem;
+        }
+
+        .status-badge {
+          font-size: 0.625rem;
+          padding: 3px 8px;
         }
       }
     }

@@ -159,6 +159,14 @@ import {
     </app-treatment-detail-dialog-container>
   `,
   styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+    }
+
     .patient-folder {
       display: flex;
       flex-direction: column;
@@ -167,7 +175,7 @@ import {
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
       overflow: hidden;
       height: 100%;
-      min-height: 400px;
+      min-height: 0;  // Permette contrazione, scrollbar interna sui trattamenti
 
       &.no-patient {
         min-height: 150px;
@@ -320,6 +328,8 @@ import {
       display: flex;
       flex-direction: column;
       min-width: 0;
+      min-height: 0;     // Critico per scroll
+      overflow: hidden;   // Critico per scroll
       padding: 16px 20px;
     }
 
@@ -331,7 +341,8 @@ import {
 
       .paths-sidebar {
         width: 100%;
-        max-height: 200px;
+        flex-shrink: 0;
+        max-height: 160px;
         border-right: none;
         border-bottom: 1px solid #e2e8f0;
 
@@ -348,10 +359,35 @@ import {
           padding-bottom: 8px;
 
           .path-item {
-            min-width: 180px;
+            min-width: 160px;
             flex-shrink: 0;
           }
         }
+      }
+
+      .main-content {
+        flex: 1;
+        min-height: 250px;
+        padding: 12px 16px;
+      }
+    }
+
+    @media (max-width: 599px) {
+      .main-content {
+        padding: 10px 12px;
+      }
+
+      .paths-sidebar {
+        max-height: 140px;
+      }
+
+      :host {
+        height: auto;  // Permette al componente di fluire naturalmente in mobile
+        overflow: visible;
+      }
+
+      .patient-folder {
+        overflow: visible;  // Permette al contenuto di crescere in mobile
       }
     }
   `],
