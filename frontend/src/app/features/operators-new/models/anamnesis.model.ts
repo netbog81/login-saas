@@ -161,12 +161,25 @@ export interface Monitoring {
  * Test specifico usato in Esame Obiettivo e Monitoraggio
  * Il campo 'superato' è usato per tracking nella valutazione trattamento
  */
+/**
+ * Entry storico valutazione test (inline per evitare circular deps)
+ */
+export interface TestEvaluationHistoryEntry {
+  id: string;
+  evaluationLevel: number;
+  note?: string;
+  treatmentsSinceLast: number;
+  operatorName: string;
+  createdAt: Date | string;
+}
+
 export interface TestSpecifico {
   id: string;
   nome: string;
   risultato: string | null;
   data: Date | string | null;
   superato?: boolean | null;
+  evaluationHistory?: TestEvaluationHistoryEntry[];
 }
 
 /**

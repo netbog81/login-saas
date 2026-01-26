@@ -34,9 +34,19 @@ import { AnamnesisComplete } from '../../models/anamnesis.model';
 
 import { TreatmentsTabComponent } from '../treatments-tab/treatments-tab.component';
 import { AnamnesisTabComponent } from '../anamnesis-tab/anamnesis-tab.component';
+import { ObjectivesTabComponent } from '../objectives-tab/objectives-tab.component';
 import { DocumentsTabComponent } from '../documents-tab/documents-tab.component';
+import {
+  ObjectiveWithProgress,
+  TestWithEvaluations,
+  ObjectiveProgressChangeEvent,
+  TestEvaluationAddedEvent,
+  TestEvaluationEditedEvent,
+  TestResetEvent,
+  TestDeleteEvent
+} from '../../models/objectives-tracking.model';
 
-export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
+export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documents';
 
 @Component({
   selector: 'app-path-content',
@@ -50,6 +60,7 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
     MatBadgeModule,
     TreatmentsTabComponent,
     AnamnesisTabComponent,
+    ObjectivesTabComponent,
     DocumentsTabComponent
   ],
   template: `
@@ -145,6 +156,30 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
                 (delete)="onDeleteAnamnesis()"
                 (expand)="onExpandAnamnesis()">
               </app-anamnesis-tab>
+            </div>
+          </mat-tab>
+
+          <mat-tab>
+            <ng-template mat-tab-label>
+              <mat-icon>track_changes</mat-icon>
+              <span>Obiettivi</span>
+              @if (hasObjectivesOrTests()) {
+                <mat-icon class="tab-indicator">check_circle</mat-icon>
+              }
+            </ng-template>
+            <div class="tab-content">
+              <app-objectives-tab
+                [anamnesisComplete]="anamnesisComplete"
+                [objectivesWithProgress]="objectivesWithProgress"
+                [testsWithEvaluations]="testsWithEvaluations"
+                [readonly]="false"
+                (objectiveProgressChanged)="onObjectiveProgressChanged($event)"
+                (testEvaluationAdded)="onTestEvaluationAdded($event)"
+                (testEvaluationEdited)="onTestEvaluationEdited($event)"
+                (testReset)="onTestReset($event)"
+                (testDeleted)="onTestDeleted($event)"
+                (openTestHistory)="onOpenTestHistory($event)">
+              </app-objectives-tab>
             </div>
           </mat-tab>
 
@@ -419,6 +454,9 @@ export class PathContentComponent {
   @Input() loadingTreatments = false;
   @Input() loadingAnamnesis = false;
   @Input() loadingDocuments = false;
+  // Obiettivi tab inputs
+  @Input() objectivesWithProgress: ObjectiveWithProgress[] = [];
+  @Input() testsWithEvaluations: TestWithEvaluations[] = [];
 
   @Output() tabChange = new EventEmitter<PathContentTab>();
   @Output() editPath = new EventEmitter<void>();
@@ -433,8 +471,15 @@ export class PathContentComponent {
   @Output() documentDownload = new EventEmitter<PathDocument>();
   @Output() documentDelete = new EventEmitter<PathDocument>();
   @Output() deletePath = new EventEmitter<void>();
+  // Obiettivi tab outputs
+  @Output() objectiveProgressChanged = new EventEmitter<ObjectiveProgressChangeEvent>();
+  @Output() testEvaluationAdded = new EventEmitter<TestEvaluationAddedEvent>();
+  @Output() testEvaluationEdited = new EventEmitter<TestEvaluationEditedEvent>();
+  @Output() testReset = new EventEmitter<TestResetEvent>();
+  @Output() testDeleted = new EventEmitter<TestDeleteEvent>();
+  @Output() openTestHistory = new EventEmitter<TestWithEvaluations>();
 
-  private readonly tabIndexMap: PathContentTab[] = ['treatments', 'anamnesis', 'documents'];
+  private readonly tabIndexMap: PathContentTab[] = ['treatments', 'anamnesis', 'obiettivi', 'documents'];
 
   getTabIndex(): number {
     return this.tabIndexMap.indexOf(this.activeTab);
@@ -503,5 +548,35 @@ export class PathContentComponent {
   getProgress(): string {
     if (!this.path) return '';
     return formatPathProgress(this.path);
+  }
+
+  // === Obiettivi tab methods ===
+
+  hasObjectivesOrTests(): boolean {
+    return this.objectivesWithProgress.length > 0 || this.testsWithEvaluations.length > 0;
+  }
+
+  onObjectiveProgressChanged(event: ObjectiveProgressChangeEvent): void {
+    this.objectiveProgressChanged.emit(event);
+  }
+
+  onTestEvaluationAdded(event: TestEvaluationAddedEvent): void {
+    this.testEvaluationAdded.emit(event);
+  }
+
+  onTestEvaluationEdited(event: TestEvaluationEditedEvent): void {
+    this.testEvaluationEdited.emit(event);
+  }
+
+  onTestReset(event: TestResetEvent): void {
+    this.testReset.emit(event);
+  }
+
+  onTestDeleted(event: TestDeleteEvent): void {
+    this.testDeleted.emit(event);
+  }
+
+  onOpenTestHistory(test: TestWithEvaluations): void {
+    this.openTestHistory.emit(test);
   }
 }

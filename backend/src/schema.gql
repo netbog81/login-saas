@@ -2,6 +2,14 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input AddTestEvaluationInput {
+  """Livello valutazione (0-5)"""
+  evaluationLevel: Int!
+
+  """Note sulla valutazione"""
+  note: String
+}
+
 type AnamnesisExam {
   anamnesisId: ID!
   createdAt: DateTime!
@@ -45,6 +53,12 @@ type AnamnesisObjective {
   """Ordine di visualizzazione"""
   orderIndex: Int!
 
+  """Storico avanzamenti"""
+  progressHistory: [ObjectiveProgressHistory!]
+
+  """Livello progresso 0-5 (0=non iniziato, 5=completato)"""
+  progressLevel: Int!
+
   """Obiettivo raggiunto"""
   raggiunto: Boolean!
 
@@ -70,6 +84,9 @@ type AnamnesisTest {
 
   """Data di esecuzione del test"""
   dataEsecuzione: DateTime
+
+  """Storico valutazioni"""
+  evaluationHistory: [TestEvaluationHistory!]
   id: ID!
 
   """Nome del test"""
@@ -909,6 +926,7 @@ input MarkObjectiveAchievedInput {
 
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
+  addTestEvaluation(input: AddTestEvaluationInput!, operatorId: ID!, pathId: ID!, testId: ID!): AnamnesisTest!
 
   """Anonymize patient data (irreversible GDPR compliance action)"""
   anonymizePatient(id: ID!): PatientModel!
@@ -953,6 +971,7 @@ type Mutation {
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
   deleteAllTreatments: Int!
   deleteAnamnesis(id: ID!): Boolean!
+  deleteAnamnesisTest(anamnesisId: ID!, testId: ID!): Boolean!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
   deleteException(id: ID!): Boolean!
@@ -979,9 +998,12 @@ type Mutation {
   deleteServiceSubcategory(id: ID!): Boolean!
   deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
+  deleteTestEvaluationEntry(evaluationHistoryId: ID!): Boolean!
   deleteTherapeuticPath(id: ID!): Boolean!
   deleteTreatment(id: ID!): Boolean!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
+  editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): AnamnesisTest!
+  editTestEvaluationEntry(evaluationHistoryId: ID!, evaluationLevel: Int!, note: String): TestEvaluationHistory!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
 
@@ -1009,6 +1031,7 @@ type Mutation {
   Request patient data deletion (GDPR Article 17 - Right to be Forgotten)
   """
   requestPatientDeletion(id: ID!): PatientModel!
+  resetTestEvaluation(testId: ID!): AnamnesisTest!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
@@ -1025,6 +1048,7 @@ type Mutation {
   updateGymSchedule(dayOfWeek: Int, endTime: String, id: ID!, isCurrent: Boolean, operatorId: ID, startTime: String, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   updateInstrumentCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): InstrumentCategory!
+  updateObjectiveProgress(input: UpdateObjectiveProgressInput!, objectiveId: ID!, operatorId: ID!, pathId: ID!): AnamnesisObjective!
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
@@ -1050,6 +1074,26 @@ type Mutation {
   updateTreatment(input: UpdateTreatmentInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
+}
+
+type ObjectiveProgressHistory {
+  createdAt: DateTime!
+  id: ID!
+
+  """Nuovo livello (0-5)"""
+  newLevel: Int!
+
+  """Note sull'aggiornamento"""
+  note: String
+  objectiveId: ID!
+  operator: Operator
+  operatorId: ID!
+
+  """Livello precedente (0-5)"""
+  previousLevel: Int!
+
+  """Numero trattamenti dall'ultimo aggiornamento"""
+  treatmentsSinceLast: Int!
 }
 
 """Tipo di obiettivo terapeutico (breve, medio, lungo termine)"""
@@ -1550,8 +1594,10 @@ type Query {
   instruments(categoryId: ID, status: InstrumentStatus): [Instrument!]!
   isHoliday(date: String!): Boolean!
   isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
+  objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
   objectivesByAnamnesis(anamnesisId: ID!): [AnamnesisObjective!]!
   objectivesProgress(anamnesisId: ID!): ObjectivesProgress!
+  objectivesWithHistory(anamnesisId: ID!): [AnamnesisObjective!]!
   operator(id: ID!): Operator
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
   operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
@@ -1602,8 +1648,10 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+  testEvaluationHistory(testId: ID!): [TestEvaluationHistory!]!
   testsByAnamnesis(anamnesisId: ID!): [AnamnesisTest!]!
   testsProgress(anamnesisId: ID!): TestsProgress!
+  testsWithHistory(anamnesisId: ID!): [AnamnesisTest!]!
   therapeuticPath(id: ID!): TherapeuticPath
   therapeuticPathsByOperator(operatorId: ID!): [TherapeuticPath!]!
   therapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
@@ -1867,6 +1915,23 @@ type TemplatePattern {
   updatedAt: DateTime!
 }
 
+type TestEvaluationHistory {
+  createdAt: DateTime!
+
+  """Livello valutazione (0-5)"""
+  evaluationLevel: Int!
+  id: ID!
+
+  """Note sulla valutazione"""
+  note: String
+  operator: Operator
+  operatorId: ID!
+  testId: ID!
+
+  """Numero trattamenti dall'ultima valutazione"""
+  treatmentsSinceLast: Int!
+}
+
 """Sezione dell'anamnesi in cui si trova il test"""
 enum TestSection {
   ESAME_OBIETTIVO
@@ -2127,6 +2192,14 @@ input UpdateGymPatternGroupInput {
   patterns: [CreateGymTemplatePatternInput!]
   validFrom: String
   validUntil: String
+}
+
+input UpdateObjectiveProgressInput {
+  """Nuovo livello di progresso (0-5)"""
+  newLevel: Int!
+
+  """Note sull'aggiornamento"""
+  note: String
 }
 
 input UpdateOperatorInput {

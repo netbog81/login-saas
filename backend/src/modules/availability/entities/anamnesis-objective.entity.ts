@@ -3,6 +3,7 @@ import {
   Column,
   PrimaryGeneratedColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
@@ -10,6 +11,7 @@ import {
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
 import { PatientAnamnesis } from './patient-anamnesis.entity';
+import { ObjectiveProgressHistory } from './objective-progress-history.entity';
 import { ObjectiveType } from './anamnesis-enums';
 
 /**
@@ -47,6 +49,10 @@ export class AnamnesisObjective {
   @Column('boolean', { default: false })
   raggiunto: boolean;
 
+  @Field(() => Int, { description: 'Livello progresso 0-5 (0=non iniziato, 5=completato)', defaultValue: 0 })
+  @Column('int', { name: 'progress_level', default: 0 })
+  progressLevel: number;
+
   @Field(() => GraphQLISODateTime, { nullable: true, description: 'Data in cui l\'obiettivo è stato raggiunto' })
   @Column('timestamp', { nullable: true })
   dataRaggiungimento?: Date;
@@ -70,4 +76,8 @@ export class AnamnesisObjective {
   @ManyToOne(() => PatientAnamnesis, anamnesis => anamnesis.objectives, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'anamnesisId' })
   anamnesis: PatientAnamnesis;
+
+  @Field(() => [ObjectiveProgressHistory], { nullable: true, description: 'Storico avanzamenti' })
+  @OneToMany(() => ObjectiveProgressHistory, history => history.objective)
+  progressHistory: ObjectiveProgressHistory[];
 }

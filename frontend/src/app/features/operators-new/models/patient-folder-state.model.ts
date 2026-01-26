@@ -9,7 +9,7 @@ import { TherapeuticPath, PathTreatment, Anamnesis, PathDocument } from '../../.
 /**
  * Tab disponibili nella scheda paziente
  */
-export type PatientFolderTab = 'treatments' | 'anamnesis' | 'documents';
+export type PatientFolderTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documents';
 
 /**
  * Stato UI della Scheda Paziente

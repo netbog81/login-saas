@@ -61,6 +61,9 @@ import { PatientAnamnesis } from './modules/availability/entities/patient-anamne
 import { AnamnesisObjective } from './modules/availability/entities/anamnesis-objective.entity';
 import { AnamnesisTest } from './modules/availability/entities/anamnesis-test.entity';
 import { AnamnesisExam } from './modules/availability/entities/anamnesis-exam.entity';
+// Progress tracking entities
+import { ObjectiveProgressHistory } from './modules/availability/entities/objective-progress-history.entity';
+import { TestEvaluationHistory } from './modules/availability/entities/test-evaluation-history.entity';
 // Pazienti module entities
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
@@ -123,6 +126,9 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
         AnamnesisObjective,
         AnamnesisTest,
         AnamnesisExam,
+        // Progress tracking entities
+        ObjectiveProgressHistory,
+        TestEvaluationHistory,
         // Pazienti module entities
         PersonaRiferimento,
         PazientePersonaRelazione,

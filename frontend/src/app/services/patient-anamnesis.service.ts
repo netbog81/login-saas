@@ -54,6 +54,19 @@ interface BackendAnamnesisObjective {
   updatedAt: string;
 }
 
+interface BackendTestEvaluationHistory {
+  id: string;
+  evaluationLevel: number;
+  note?: string;
+  treatmentsSinceLast: number;
+  createdAt: string;
+  operator?: {
+    id: string;
+    name: string;
+    surname: string;
+  };
+}
+
 interface BackendAnamnesisTest {
   id: string;
   anamnesisId: string;
@@ -65,6 +78,7 @@ interface BackendAnamnesisTest {
   orderIndex: number;
   createdAt: string;
   updatedAt: string;
+  evaluationHistory?: BackendTestEvaluationHistory[];
 }
 
 interface BackendAnamnesisExam {
@@ -388,6 +402,16 @@ export class PatientAnamnesisService extends BaseGraphQLService {
       risultato: test.risultato ?? null,
       data: test.dataEsecuzione ?? null,
       superato: test.superato ?? null,
+      evaluationHistory: (test.evaluationHistory ?? []).map(entry => ({
+        id: entry.id,
+        evaluationLevel: entry.evaluationLevel,
+        note: entry.note,
+        treatmentsSinceLast: entry.treatmentsSinceLast,
+        operatorName: entry.operator
+          ? `${entry.operator.name} ${entry.operator.surname}`.trim()
+          : 'Operatore',
+        createdAt: new Date(entry.createdAt),
+      })),
     };
   }
 

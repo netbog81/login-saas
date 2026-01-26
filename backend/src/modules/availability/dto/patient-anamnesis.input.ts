@@ -604,3 +604,33 @@ export class UpdateTestResultInput {
   @IsDateString()
   dataEsecuzione?: string;
 }
+
+// ============================================================
+// INPUT PER PROGRESS TRACKING (Tab Obiettivi)
+// ============================================================
+
+@InputType()
+export class UpdateObjectiveProgressInput {
+  @Field(() => Int, { description: 'Nuovo livello di progresso (0-5)' })
+  @IsInt()
+  newLevel: number;
+
+  @Field({ nullable: true, description: 'Note sull\'aggiornamento' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+@InputType()
+export class AddTestEvaluationInput {
+  @Field(() => Int, { description: 'Livello valutazione (0-5)' })
+  @IsInt()
+  evaluationLevel: number;
+
+  @Field({ nullable: true, description: 'Note sulla valutazione' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}

@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, MoreThan } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { PatientAnamnesis } from '../entities/patient-anamnesis.entity';
 import { AnamnesisObjective } from '../entities/anamnesis-objective.entity';
 import { AnamnesisTest } from '../entities/anamnesis-test.entity';
 import { AnamnesisExam } from '../entities/anamnesis-exam.entity';
+import { ObjectiveProgressHistory } from '../entities/objective-progress-history.entity';
+import { TestEvaluationHistory } from '../entities/test-evaluation-history.entity';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
+import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import {
   CreateAnamnesisInput,
   UpdateAnamnesisInput,
@@ -14,7 +17,9 @@ import {
   AnamnesisTestInput,
   AnamnesisExamInput,
   MarkObjectiveAchievedInput,
-  UpdateTestResultInput
+  UpdateTestResultInput,
+  UpdateObjectiveProgressInput,
+  AddTestEvaluationInput
 } from '../dto/patient-anamnesis.input';
 
 @Injectable()
@@ -30,6 +35,12 @@ export class PatientAnamnesisService {
     private examRepo: Repository<AnamnesisExam>,
     @InjectRepository(TherapeuticPath)
     private pathRepo: Repository<TherapeuticPath>,
+    @InjectRepository(ObjectiveProgressHistory)
+    private objectiveProgressHistoryRepo: Repository<ObjectiveProgressHistory>,
+    @InjectRepository(TestEvaluationHistory)
+    private testEvaluationHistoryRepo: Repository<TestEvaluationHistory>,
+    @InjectRepository(Treatment)
+    private treatmentRepo: Repository<Treatment>,
     private dataSource: DataSource,
   ) {}
 
@@ -145,7 +156,15 @@ export class PatientAnamnesisService {
   async findById(id: string): Promise<PatientAnamnesis | null> {
     return this.anamnesisRepo.findOne({
       where: { id },
-      relations: ['therapeuticPath', 'operator', 'objectives', 'tests', 'exams']
+      relations: [
+        'therapeuticPath',
+        'operator',
+        'objectives',
+        'tests',
+        'tests.evaluationHistory',
+        'tests.evaluationHistory.operator',
+        'exams'
+      ]
     });
   }
 
@@ -155,7 +174,15 @@ export class PatientAnamnesisService {
   async findByTherapeuticPath(pathId: string): Promise<PatientAnamnesis | null> {
     return this.anamnesisRepo.findOne({
       where: { therapeuticPathId: pathId },
-      relations: ['therapeuticPath', 'operator', 'objectives', 'tests', 'exams']
+      relations: [
+        'therapeuticPath',
+        'operator',
+        'objectives',
+        'tests',
+        'tests.evaluationHistory',
+        'tests.evaluationHistory.operator',
+        'exams'
+      ]
     });
   }
 
@@ -479,5 +506,305 @@ export class PatientAnamnesisService {
     const percentage = total > 0 ? Math.round((passed / total) * 100) : 0;
 
     return { total, passed, failed, pending, percentage };
+  }
+
+  // ==================== PROGRESS TRACKING (Tab Obiettivi) ====================
+
+  /**
+   * Conta i trattamenti completati per un percorso dopo una certa data
+   * Considera sia OPERATOR_COMPLETED che CLOSED come trattamenti completati
+   */
+  private async countTreatmentsSinceLastUpdate(pathId: string, sinceDate: Date): Promise<number> {
+    return this.treatmentRepo.count({
+      where: [
+        {
+          therapeuticPathId: pathId,
+          status: TreatmentStatus.OPERATOR_COMPLETED,
+          startedAt: MoreThan(sinceDate)
+        },
+        {
+          therapeuticPathId: pathId,
+          status: TreatmentStatus.CLOSED,
+          startedAt: MoreThan(sinceDate)
+        }
+      ]
+    });
+  }
+
+  /**
+   * Aggiorna il progresso di un obiettivo (scala 0-5) con storico
+   */
+  async updateObjectiveProgress(
+    objectiveId: string,
+    input: UpdateObjectiveProgressInput,
+    operatorId: string,
+    pathId: string
+  ): Promise<AnamnesisObjective> {
+    const objective = await this.objectiveRepo.findOne({
+      where: { id: objectiveId }
+    });
+
+    if (!objective) {
+      throw new NotFoundException(`Obiettivo ${objectiveId} non trovato`);
+    }
+
+    // Conta trattamenti dall'ultimo aggiornamento
+    const treatmentCount = await this.countTreatmentsSinceLastUpdate(
+      pathId,
+      objective.updatedAt
+    );
+
+    // Crea record storico
+    const historyEntry = this.objectiveProgressHistoryRepo.create({
+      objectiveId,
+      previousLevel: objective.progressLevel,
+      newLevel: input.newLevel,
+      treatmentsSinceLast: treatmentCount,
+      note: input.note,
+      operatorId
+    });
+    await this.objectiveProgressHistoryRepo.save(historyEntry);
+
+    // Aggiorna obiettivo
+    objective.progressLevel = input.newLevel;
+    objective.raggiunto = input.newLevel === 5;
+    if (objective.raggiunto && !objective.dataRaggiungimento) {
+      objective.dataRaggiungimento = new Date();
+    } else if (!objective.raggiunto) {
+      objective.dataRaggiungimento = undefined;
+    }
+
+    return this.objectiveRepo.save(objective);
+  }
+
+  /**
+   * Aggiunge una nuova valutazione a un test (ripetizione) con storico
+   */
+  async addTestEvaluation(
+    testId: string,
+    input: AddTestEvaluationInput,
+    operatorId: string,
+    pathId: string
+  ): Promise<AnamnesisTest> {
+    const test = await this.testRepo.findOne({
+      where: { id: testId }
+    });
+
+    if (!test) {
+      throw new NotFoundException(`Test ${testId} non trovato`);
+    }
+
+    // Conta trattamenti dall'ultimo aggiornamento
+    const treatmentCount = await this.countTreatmentsSinceLastUpdate(
+      pathId,
+      test.updatedAt
+    );
+
+    // Crea record storico
+    const historyEntry = this.testEvaluationHistoryRepo.create({
+      testId,
+      evaluationLevel: input.evaluationLevel,
+      note: input.note,
+      treatmentsSinceLast: treatmentCount,
+      operatorId
+    });
+    await this.testEvaluationHistoryRepo.save(historyEntry);
+
+    // Aggiorna test con ultima valutazione
+    test.risultato = `${input.evaluationLevel}/5`;
+    test.superato = input.evaluationLevel >= 4; // 4-5 = superato
+    test.dataEsecuzione = new Date();
+
+    return this.testRepo.save(test);
+  }
+
+  /**
+   * Ottiene lo storico progressi di un obiettivo
+   */
+  async getObjectiveProgressHistory(objectiveId: string): Promise<ObjectiveProgressHistory[]> {
+    return this.objectiveProgressHistoryRepo.find({
+      where: { objectiveId },
+      relations: ['operator'],
+      order: { createdAt: 'DESC' }
+    });
+  }
+
+  /**
+   * Ottiene lo storico valutazioni di un test
+   */
+  async getTestEvaluationHistory(testId: string): Promise<TestEvaluationHistory[]> {
+    return this.testEvaluationHistoryRepo.find({
+      where: { testId },
+      relations: ['operator'],
+      order: { createdAt: 'DESC' }
+    });
+  }
+
+  /**
+   * Modifica l'ultima valutazione di un test (senza creare storico)
+   */
+  async editTestEvaluation(
+    testId: string,
+    newLevel: number,
+    operatorId: string
+  ): Promise<AnamnesisTest> {
+    const test = await this.testRepo.findOne({
+      where: { id: testId }
+    });
+
+    if (!test) {
+      throw new NotFoundException(`Test ${testId} non trovato`);
+    }
+
+    // Aggiorna solo il valore corrente
+    test.risultato = `${newLevel}/5`;
+    test.superato = newLevel >= 4;
+
+    return this.testRepo.save(test);
+  }
+
+  /**
+   * Reset valutazione test (cancella storico e resetta a non valutato)
+   */
+  async resetTestEvaluation(testId: string): Promise<AnamnesisTest> {
+    const test = await this.testRepo.findOne({
+      where: { id: testId }
+    });
+
+    if (!test) {
+      throw new NotFoundException(`Test ${testId} non trovato`);
+    }
+
+    // Cancella storico valutazioni
+    await this.testEvaluationHistoryRepo.delete({ testId });
+
+    // Reset campi test
+    test.risultato = undefined;
+    test.superato = undefined;
+    test.dataEsecuzione = undefined;
+
+    return this.testRepo.save(test);
+  }
+
+  /**
+   * Elimina un test dall'anamnesi
+   * Controllo: deve restare almeno 1 test se presenti nella scheda anamnesi
+   */
+  async deleteTest(testId: string, anamnesisId: string): Promise<boolean> {
+    // Conta test rimanenti
+    const testsCount = await this.testRepo.count({ where: { anamnesisId } });
+
+    if (testsCount <= 1) {
+      throw new BadRequestException('Deve restare almeno un test nella scheda anamnesi');
+    }
+
+    // Cascade delete elimina anche lo storico valutazioni
+    const result = await this.testRepo.delete(testId);
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Ottiene gli obiettivi con il loro storico progressi
+   */
+  async getObjectivesWithHistory(anamnesisId: string): Promise<AnamnesisObjective[]> {
+    return this.objectiveRepo.find({
+      where: { anamnesisId },
+      relations: ['progressHistory', 'progressHistory.operator'],
+      order: { tipo: 'ASC', orderIndex: 'ASC' }
+    });
+  }
+
+  /**
+   * Ottiene i test con il loro storico valutazioni
+   */
+  async getTestsWithHistory(anamnesisId: string): Promise<AnamnesisTest[]> {
+    return this.testRepo.find({
+      where: { anamnesisId },
+      relations: ['evaluationHistory', 'evaluationHistory.operator'],
+      order: { sezione: 'ASC', orderIndex: 'ASC' }
+    });
+  }
+
+  /**
+   * Modifica una singola entry dello storico valutazioni test
+   */
+  async editTestEvaluationEntry(
+    evaluationHistoryId: string,
+    input: { evaluationLevel: number; note?: string }
+  ): Promise<TestEvaluationHistory> {
+    const entry = await this.testEvaluationHistoryRepo.findOne({
+      where: { id: evaluationHistoryId },
+      relations: ['operator']
+    });
+
+    if (!entry) {
+      throw new NotFoundException(`Valutazione ${evaluationHistoryId} non trovata`);
+    }
+
+    // Aggiorna i campi
+    entry.evaluationLevel = input.evaluationLevel;
+    entry.note = input.note;
+
+    const savedEntry = await this.testEvaluationHistoryRepo.save(entry);
+
+    // Aggiorna anche il valore corrente del test se è l'ultima valutazione
+    const latestEntry = await this.testEvaluationHistoryRepo.findOne({
+      where: { testId: entry.testId },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (latestEntry && latestEntry.id === evaluationHistoryId) {
+      // Questa è l'ultima valutazione, aggiorna il test
+      await this.testRepo.update(entry.testId, {
+        risultato: `${input.evaluationLevel}/5`,
+        superato: input.evaluationLevel >= 4
+      });
+    }
+
+    return savedEntry;
+  }
+
+  /**
+   * Elimina una singola entry dello storico valutazioni test
+   * Non permette di eliminare se è l'unica valutazione (usare reset)
+   */
+  async deleteTestEvaluationEntry(evaluationHistoryId: string): Promise<boolean> {
+    const entry = await this.testEvaluationHistoryRepo.findOne({
+      where: { id: evaluationHistoryId }
+    });
+
+    if (!entry) {
+      throw new NotFoundException(`Valutazione ${evaluationHistoryId} non trovata`);
+    }
+
+    // Conta le valutazioni totali per questo test
+    const count = await this.testEvaluationHistoryRepo.count({
+      where: { testId: entry.testId }
+    });
+
+    if (count <= 1) {
+      throw new BadRequestException(
+        'Deve restare almeno una valutazione. Usa Reset per eliminare tutto lo storico.'
+      );
+    }
+
+    // Elimina l'entry
+    const result = await this.testEvaluationHistoryRepo.delete(evaluationHistoryId);
+
+    // Se era l'ultima valutazione (più recente), aggiorna il test con la precedente
+    const latestEntry = await this.testEvaluationHistoryRepo.findOne({
+      where: { testId: entry.testId },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (latestEntry) {
+      await this.testRepo.update(entry.testId, {
+        risultato: `${latestEntry.evaluationLevel}/5`,
+        superato: latestEntry.evaluationLevel >= 4,
+        dataEsecuzione: latestEntry.createdAt
+      });
+    }
+
+    return (result.affected ?? 0) > 0;
   }
 }

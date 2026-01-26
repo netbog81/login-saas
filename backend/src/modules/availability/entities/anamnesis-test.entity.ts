@@ -3,6 +3,7 @@ import {
   Column,
   PrimaryGeneratedColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
@@ -10,6 +11,7 @@ import {
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
 import { PatientAnamnesis } from './patient-anamnesis.entity';
+import { TestEvaluationHistory } from './test-evaluation-history.entity';
 import { TestSection } from './anamnesis-enums';
 
 /**
@@ -77,4 +79,8 @@ export class AnamnesisTest {
   @ManyToOne(() => PatientAnamnesis, anamnesis => anamnesis.tests, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'anamnesisId' })
   anamnesis: PatientAnamnesis;
+
+  @Field(() => [TestEvaluationHistory], { nullable: true, description: 'Storico valutazioni' })
+  @OneToMany(() => TestEvaluationHistory, history => history.test)
+  evaluationHistory: TestEvaluationHistory[];
 }

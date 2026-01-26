@@ -30,6 +30,7 @@ import { Treatment } from '../../../models/treatment.model';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { TreatmentService } from '../../../services/treatment.service';
 import { PatientAnamnesisService, CreateAnamnesisInput } from '../../../services/patient-anamnesis.service';
+import { ObjectivesTrackingService } from '../../../services/objectives-tracking.service';
 
 import { PatientHeaderComponent } from '../components/patient-header/patient-header.component';
 import { PathContentComponent, PathContentTab } from '../components/path-content/path-content.component';
@@ -37,6 +38,8 @@ import { PathDialogContainer } from './path-dialog.container';
 import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dialog.container';
 import { AnamnesisFormContainer } from './anamnesis-form.container';
 import { AnamnesisDialogContainer } from './anamnesis-dialog.container';
+import { TestHistoryDialogContainer } from './test-history-dialog.container';
+import { ConfirmResetDialogComponent } from '../components/confirm-reset-dialog/confirm-reset-dialog.component';
 import { AnamnesisComplete } from '../models/anamnesis.model';
 import {
   PatientFolderUIState,
@@ -48,6 +51,16 @@ import {
   createNewPathDialogData,
   createEditPathDialogData
 } from '../models/path-dialog.model';
+import {
+  ObjectiveType,
+  ObjectiveWithProgress,
+  TestWithEvaluations,
+  ObjectiveProgressChangeEvent,
+  TestEvaluationAddedEvent,
+  TestEvaluationEditedEvent,
+  TestResetEvent,
+  TestDeleteEvent
+} from '../models/objectives-tracking.model';
 
 @Component({
   selector: 'app-patient-folder-container',
@@ -59,7 +72,9 @@ import {
     PathDialogContainer,
     TreatmentDetailDialogContainerComponent,
     AnamnesisFormContainer,
-    AnamnesisDialogContainer
+    AnamnesisDialogContainer,
+    TestHistoryDialogContainer,
+    ConfirmResetDialogComponent
   ],
   template: `
     <div class="patient-folder" [class.no-patient]="!patient">
@@ -131,6 +146,8 @@ import {
               [loadingTreatments]="uiState.loadingTreatments"
               [loadingAnamnesis]="uiState.loadingAnamnesis"
               [loadingDocuments]="uiState.loadingDocuments"
+              [objectivesWithProgress]="objectivesWithProgress"
+              [testsWithEvaluations]="testsWithEvaluations"
               (tabChange)="onTabChange($event)"
               (editPath)="onEditPath()"
               (deletePath)="onDeletePath()"
@@ -143,7 +160,13 @@ import {
               (documentOpen)="onDocumentOpen($event)"
               (documentUpload)="onDocumentUpload()"
               (documentDownload)="onDocumentDownload($event)"
-              (documentDelete)="onDocumentDelete($event)">
+              (documentDelete)="onDocumentDelete($event)"
+              (objectiveProgressChanged)="onObjectiveProgressChanged($event)"
+              (testEvaluationAdded)="onTestEvaluationAdded($event)"
+              (testEvaluationEdited)="onTestEvaluationEdited($event)"
+              (testReset)="onTestResetRequested($event)"
+              (testDeleted)="onTestDeleted($event)"
+              (openTestHistory)="onOpenTestHistory($event)">
             </app-path-content>
           </main>
         </div>
@@ -192,6 +215,24 @@ import {
       (delete)="onDeleteAnamnesis()"
       (close)="onAnamnesisDialogClose()">
     </app-anamnesis-dialog-container>
+
+    <!-- Test History Dialog -->
+    <app-test-history-dialog-container
+      [test]="selectedTestForHistory"
+      [isVisible]="showTestHistoryDialog"
+      (closed)="onTestHistoryClosed()"
+      (entryUpdated)="onTestEntryUpdated()">
+    </app-test-history-dialog-container>
+
+    <!-- Confirm Reset Dialog -->
+    @if (showConfirmResetDialog && selectedTestForReset) {
+      <app-confirm-reset-dialog
+        [testName]="selectedTestForReset.nome"
+        [evaluationsCount]="selectedTestForReset.evaluationHistory?.length || 0"
+        (confirm)="onConfirmReset()"
+        (cancel)="onCancelReset()">
+      </app-confirm-reset-dialog>
+    }
   `,
   styles: [`
     :host {
@@ -473,10 +514,23 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   anamnesisFormMode: 'create' | 'edit' = 'create';
   currentAnamnesis: AnamnesisComplete | null = null;
 
+  // Objectives tracking state
+  objectivesWithProgress: ObjectiveWithProgress[] = [];
+  testsWithEvaluations: TestWithEvaluations[] = [];
+
+  // Test History Dialog state
+  showTestHistoryDialog = false;
+  selectedTestForHistory: TestWithEvaluations | null = null;
+
+  // Confirm Reset Dialog state
+  showConfirmResetDialog = false;
+  selectedTestForReset: TestWithEvaluations | null = null;
+
   constructor(
     private pathService: TherapeuticPathService,
     private treatmentService: TreatmentService,
     private anamnesisService: PatientAnamnesisService,
+    private objectivesTrackingService: ObjectivesTrackingService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -776,6 +830,289 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     console.log('[PatientFolderContainer] Anamnesis dialog closed');
   }
 
+  // === Objectives Tracking Handlers ===
+
+  onObjectiveProgressChanged(event: ObjectiveProgressChangeEvent): void {
+    console.log('[PatientFolderContainer] Objective progress changed:', event);
+
+    if (!this.selectedPath || !this.currentOperatorId) {
+      console.error('[PatientFolderContainer] Missing path or operator for progress update');
+      return;
+    }
+
+    // Aggiornamento ottimistico locale
+    this.objectivesWithProgress = this.objectivesWithProgress.map(obj => {
+      if (obj.id === event.objectiveId) {
+        return {
+          ...obj,
+          progressLevel: event.newLevel,
+          raggiunto: event.newLevel === 5,
+          dataRaggiungimento: event.newLevel === 5 ? new Date() : obj.dataRaggiungimento
+        };
+      }
+      return obj;
+    });
+    this.cdr.markForCheck();
+
+    // Chiamata al backend
+    this.objectivesTrackingService.updateObjectiveProgress(
+      event.objectiveId,
+      this.selectedPath.id,
+      this.currentOperatorId,
+      event.newLevel,
+      event.note
+    ).pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          console.log('[PatientFolderContainer] Objective progress updated:', result);
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error updating objective progress:', err);
+          // Rollback: ricarica i dati
+          if (this.currentAnamnesis) {
+            this.populateObjectivesAndTests(this.currentAnamnesis);
+            this.cdr.markForCheck();
+          }
+        }
+      });
+  }
+
+  onTestEvaluationAdded(event: TestEvaluationAddedEvent): void {
+    console.log('[PatientFolderContainer] Test evaluation added:', event);
+
+    if (!this.selectedPath || !this.currentOperatorId) {
+      console.error('[PatientFolderContainer] Missing path or operator for test evaluation');
+      return;
+    }
+
+    // Aggiornamento ottimistico locale
+    this.testsWithEvaluations = this.testsWithEvaluations.map(test => {
+      if (test.id === event.testId) {
+        const newEntry = {
+          id: `temp-${Date.now()}`,
+          evaluationLevel: event.level,
+          note: event.note,
+          treatmentsSinceLast: 0,
+          operatorName: 'Operatore',
+          createdAt: new Date()
+        };
+        return {
+          ...test,
+          currentLevel: event.level,
+          evaluationHistory: [newEntry, ...(test.evaluationHistory || [])]
+        };
+      }
+      return test;
+    });
+    this.cdr.markForCheck();
+
+    // Chiamata al backend
+    this.objectivesTrackingService.addTestEvaluation(
+      event.testId,
+      this.selectedPath.id,
+      this.currentOperatorId,
+      event.level,
+      event.note
+    ).pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          console.log('[PatientFolderContainer] Test evaluation added:', result);
+          // Ricarica i dati per ottenere gli ID reali dal backend
+          if (this.selectedPath) {
+            this.loadAnamnesis(this.selectedPath.id);
+          }
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error adding test evaluation:', err);
+          // Rollback: ricarica i dati
+          if (this.currentAnamnesis) {
+            this.populateObjectivesAndTests(this.currentAnamnesis);
+            this.cdr.markForCheck();
+          }
+        }
+      });
+  }
+
+  onTestEvaluationEdited(event: TestEvaluationEditedEvent): void {
+    console.log('[PatientFolderContainer] Test evaluation edited:', event);
+
+    if (!this.currentOperatorId) {
+      console.error('[PatientFolderContainer] Missing operator for test edit');
+      return;
+    }
+
+    // Aggiornamento ottimistico locale
+    this.testsWithEvaluations = this.testsWithEvaluations.map(test => {
+      if (test.id === event.testId) {
+        return {
+          ...test,
+          currentLevel: event.level
+        };
+      }
+      return test;
+    });
+    this.cdr.markForCheck();
+
+    // Chiamata al backend
+    this.objectivesTrackingService.editTestEvaluation(
+      event.testId,
+      event.level,
+      this.currentOperatorId
+    ).pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          console.log('[PatientFolderContainer] Test evaluation edited:', result);
+          // Ricarica i dati per sincronizzare con il backend
+          if (this.selectedPath) {
+            this.loadAnamnesis(this.selectedPath.id);
+          }
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error editing test evaluation:', err);
+          // Rollback: ricarica i dati
+          if (this.currentAnamnesis) {
+            this.populateObjectivesAndTests(this.currentAnamnesis);
+            this.cdr.markForCheck();
+          }
+        }
+      });
+  }
+
+  /**
+   * Handler per richiesta reset test - apre dialog conferma
+   */
+  onTestResetRequested(event: TestResetEvent): void {
+    console.log('[PatientFolderContainer] Test reset requested:', event);
+    const test = this.testsWithEvaluations.find(t => t.id === event.testId);
+    if (test) {
+      this.selectedTestForReset = test;
+      this.showConfirmResetDialog = true;
+      this.cdr.markForCheck();
+    }
+  }
+
+  /**
+   * Conferma reset test - esegue l'operazione
+   */
+  onConfirmReset(): void {
+    if (!this.selectedTestForReset) return;
+
+    const testId = this.selectedTestForReset.id;
+    console.log('[PatientFolderContainer] Confirm reset for test:', testId);
+
+    // Chiudi dialog
+    this.showConfirmResetDialog = false;
+    this.selectedTestForReset = null;
+
+    // Aggiornamento ottimistico locale
+    this.testsWithEvaluations = this.testsWithEvaluations.map(test => {
+      if (test.id === testId) {
+        return {
+          ...test,
+          currentLevel: 0,
+          evaluationHistory: []
+        };
+      }
+      return test;
+    });
+    this.cdr.markForCheck();
+
+    // Chiamata al backend
+    this.objectivesTrackingService.resetTestEvaluation(testId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          console.log('[PatientFolderContainer] Test reset:', result);
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error resetting test:', err);
+          // Rollback: ricarica i dati
+          if (this.currentAnamnesis) {
+            this.populateObjectivesAndTests(this.currentAnamnesis);
+            this.cdr.markForCheck();
+          }
+        }
+      });
+  }
+
+  /**
+   * Annulla reset test
+   */
+  onCancelReset(): void {
+    this.showConfirmResetDialog = false;
+    this.selectedTestForReset = null;
+    this.cdr.markForCheck();
+  }
+
+  // === Test History Dialog Handlers ===
+
+  /**
+   * Apre il dialog storico test
+   */
+  onOpenTestHistory(test: TestWithEvaluations): void {
+    console.log('[PatientFolderContainer] Open test history:', test.id);
+    this.selectedTestForHistory = test;
+    this.showTestHistoryDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Chiude il dialog storico test
+   */
+  onTestHistoryClosed(): void {
+    this.showTestHistoryDialog = false;
+    this.selectedTestForHistory = null;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Handler per aggiornamento singola entry test - ricarica i dati ma NON chiude il dialog
+   */
+  onTestEntryUpdated(): void {
+    console.log('[PatientFolderContainer] Test entry updated, reloading anamnesis');
+    // Ricarica l'anamnesi per aggiornare i dati
+    if (this.selectedPath) {
+      this.loadAnamnesis(this.selectedPath.id);
+    }
+    // NON chiudere il dialog - l'operatore potrebbe voler continuare a modificare
+  }
+
+  onTestDeleted(event: TestDeleteEvent): void {
+    console.log('[PatientFolderContainer] Test deleted:', event);
+
+    // Verifica che ci sia almeno un altro test
+    if (this.testsWithEvaluations.length <= 1) {
+      alert('Deve restare almeno un test nella scheda anamnesi');
+      return;
+    }
+
+    const confirmed = confirm('Eliminare questo test?\n\nQuesta azione non può essere annullata.');
+    if (!confirmed) return;
+
+    // Aggiornamento ottimistico locale
+    this.testsWithEvaluations = this.testsWithEvaluations.filter(
+      test => test.id !== event.testId
+    );
+    this.cdr.markForCheck();
+
+    // Chiamata al backend
+    this.objectivesTrackingService.deleteTest(event.testId, event.anamnesisId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (success) => {
+          console.log('[PatientFolderContainer] Test deleted:', success);
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error deleting test:', err);
+          // Rollback: ricarica i dati
+          if (this.currentAnamnesis) {
+            this.populateObjectivesAndTests(this.currentAnamnesis);
+            this.cdr.markForCheck();
+          }
+        }
+      });
+  }
+
   onDocumentOpen(doc: PathDocument): void {
     // Apri documento in nuova tab
     if (doc.url) {
@@ -823,6 +1160,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   private loadAnamnesis(pathId: string): void {
     this.uiState = { ...this.uiState, loadingAnamnesis: true };
     this.currentAnamnesis = null;
+    this.objectivesWithProgress = [];
+    this.testsWithEvaluations = [];
     this.cdr.markForCheck();
 
     // Prepara info paziente per il mapping
@@ -838,16 +1177,100 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       .subscribe({
         next: (anamnesis) => {
           this.currentAnamnesis = anamnesis;
+          // Popola gli obiettivi e i test dall'anamnesi per la tab Obiettivi
+          this.populateObjectivesAndTests(anamnesis);
           this.uiState = { ...this.uiState, loadingAnamnesis: false };
           this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('[PatientFolderContainer] Error loading anamnesis:', err);
           this.currentAnamnesis = null;
+          this.objectivesWithProgress = [];
+          this.testsWithEvaluations = [];
           this.uiState = { ...this.uiState, loadingAnamnesis: false };
           this.cdr.markForCheck();
         }
       });
+  }
+
+  /**
+   * Popola gli array objectivesWithProgress e testsWithEvaluations dall'anamnesi
+   */
+  private populateObjectivesAndTests(anamnesis: AnamnesisComplete | null): void {
+    if (!anamnesis) {
+      this.objectivesWithProgress = [];
+      this.testsWithEvaluations = [];
+      return;
+    }
+
+    // Converti gli obiettivi dell'anamnesi in ObjectiveWithProgress
+    const allObjectives: ObjectiveWithProgress[] = [
+      ...(anamnesis.treatmentPlan.obiettiviBreveTermine || []).map(obj => ({
+        ...obj,
+        tipo: ObjectiveType.BREVE_TERMINE,
+        progressLevel: obj.raggiunto ? 5 : 0,
+        progressHistory: []
+      })),
+      ...(anamnesis.treatmentPlan.obiettiviMedioTermine || []).map(obj => ({
+        ...obj,
+        tipo: ObjectiveType.MEDIO_TERMINE,
+        progressLevel: obj.raggiunto ? 5 : 0,
+        progressHistory: []
+      })),
+      ...(anamnesis.treatmentPlan.obiettiviLungoTermine || []).map(obj => ({
+        ...obj,
+        tipo: ObjectiveType.LUNGO_TERMINE,
+        progressLevel: obj.raggiunto ? 5 : 0,
+        progressHistory: []
+      }))
+    ];
+    this.objectivesWithProgress = allObjectives;
+
+    // Converti i test dell'anamnesi in TestWithEvaluations
+    // I test possono venire sia dalla sezione objectiveExam che da monitoring
+    const allTests = [
+      ...(anamnesis.objectiveExam.testSpecifici || []).map(test => {
+        const history = (test.evaluationHistory || []).map(entry => ({
+          id: entry.id,
+          evaluationLevel: entry.evaluationLevel,
+          note: entry.note,
+          treatmentsSinceLast: entry.treatmentsSinceLast,
+          operatorName: entry.operatorName,
+          createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
+        }));
+        // currentLevel è l'ultima valutazione o 0
+        const currentLevel = history.length > 0 ? history[0].evaluationLevel : 0;
+        return {
+          ...test,
+          currentLevel,
+          evaluationHistory: history,
+          canRepeat: history.length > 0
+        };
+      }),
+      ...(anamnesis.monitoring.testSpecifici || []).map(test => {
+        const history = (test.evaluationHistory || []).map(entry => ({
+          id: entry.id,
+          evaluationLevel: entry.evaluationLevel,
+          note: entry.note,
+          treatmentsSinceLast: entry.treatmentsSinceLast,
+          operatorName: entry.operatorName,
+          createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
+        }));
+        // currentLevel è l'ultima valutazione o 0
+        const currentLevel = history.length > 0 ? history[0].evaluationLevel : 0;
+        return {
+          ...test,
+          currentLevel,
+          evaluationHistory: history,
+          canRepeat: history.length > 0
+        };
+      })
+    ];
+    // Rimuovi duplicati basati sull'id
+    const uniqueTests = allTests.filter((test, index, self) =>
+      index === self.findIndex(t => t.id === test.id)
+    );
+    this.testsWithEvaluations = uniqueTests;
   }
 
   /**

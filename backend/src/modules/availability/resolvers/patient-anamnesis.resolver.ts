@@ -3,12 +3,16 @@ import { PatientAnamnesis } from '../entities/patient-anamnesis.entity';
 import { AnamnesisObjective } from '../entities/anamnesis-objective.entity';
 import { AnamnesisTest } from '../entities/anamnesis-test.entity';
 import { AnamnesisExam } from '../entities/anamnesis-exam.entity';
+import { ObjectiveProgressHistory } from '../entities/objective-progress-history.entity';
+import { TestEvaluationHistory } from '../entities/test-evaluation-history.entity';
 import { PatientAnamnesisService } from '../services/patient-anamnesis.service';
 import {
   CreateAnamnesisInput,
   UpdateAnamnesisInput,
   MarkObjectiveAchievedInput,
   UpdateTestResultInput,
+  UpdateObjectiveProgressInput,
+  AddTestEvaluationInput,
 } from '../dto/patient-anamnesis.input';
 
 // ==================== RESPONSE TYPES ====================
@@ -186,5 +190,133 @@ export class PatientAnamnesisResolver {
     @Args('anamnesisId', { type: () => ID }) anamnesisId: string,
   ): Promise<AnamnesisExam[]> {
     return this.anamnesisService.findExamsByAnamnesis(anamnesisId);
+  }
+
+  // ==================== PROGRESS TRACKING (Tab Obiettivi) ====================
+
+  /**
+   * Query: Ottiene gli obiettivi con lo storico progressi
+   */
+  @Query(() => [AnamnesisObjective], { name: 'objectivesWithHistory' })
+  async getObjectivesWithHistory(
+    @Args('anamnesisId', { type: () => ID }) anamnesisId: string,
+  ): Promise<AnamnesisObjective[]> {
+    return this.anamnesisService.getObjectivesWithHistory(anamnesisId);
+  }
+
+  /**
+   * Query: Ottiene i test con lo storico valutazioni
+   */
+  @Query(() => [AnamnesisTest], { name: 'testsWithHistory' })
+  async getTestsWithHistory(
+    @Args('anamnesisId', { type: () => ID }) anamnesisId: string,
+  ): Promise<AnamnesisTest[]> {
+    return this.anamnesisService.getTestsWithHistory(anamnesisId);
+  }
+
+  /**
+   * Query: Ottiene lo storico progressi di un obiettivo
+   */
+  @Query(() => [ObjectiveProgressHistory], { name: 'objectiveProgressHistory' })
+  async getObjectiveProgressHistory(
+    @Args('objectiveId', { type: () => ID }) objectiveId: string,
+  ): Promise<ObjectiveProgressHistory[]> {
+    return this.anamnesisService.getObjectiveProgressHistory(objectiveId);
+  }
+
+  /**
+   * Query: Ottiene lo storico valutazioni di un test
+   */
+  @Query(() => [TestEvaluationHistory], { name: 'testEvaluationHistory' })
+  async getTestEvaluationHistory(
+    @Args('testId', { type: () => ID }) testId: string,
+  ): Promise<TestEvaluationHistory[]> {
+    return this.anamnesisService.getTestEvaluationHistory(testId);
+  }
+
+  /**
+   * Mutation: Aggiorna il progresso di un obiettivo (scala 0-5) con storico
+   */
+  @Mutation(() => AnamnesisObjective, { name: 'updateObjectiveProgress' })
+  async updateObjectiveProgress(
+    @Args('objectiveId', { type: () => ID }) objectiveId: string,
+    @Args('pathId', { type: () => ID }) pathId: string,
+    @Args('operatorId', { type: () => ID }) operatorId: string,
+    @Args('input') input: UpdateObjectiveProgressInput,
+  ): Promise<AnamnesisObjective> {
+    return this.anamnesisService.updateObjectiveProgress(objectiveId, input, operatorId, pathId);
+  }
+
+  /**
+   * Mutation: Aggiunge una nuova valutazione a un test (ripetizione) con storico
+   */
+  @Mutation(() => AnamnesisTest, { name: 'addTestEvaluation' })
+  async addTestEvaluation(
+    @Args('testId', { type: () => ID }) testId: string,
+    @Args('pathId', { type: () => ID }) pathId: string,
+    @Args('operatorId', { type: () => ID }) operatorId: string,
+    @Args('input') input: AddTestEvaluationInput,
+  ): Promise<AnamnesisTest> {
+    return this.anamnesisService.addTestEvaluation(testId, input, operatorId, pathId);
+  }
+
+  /**
+   * Mutation: Modifica l'ultima valutazione di un test (senza creare storico)
+   */
+  @Mutation(() => AnamnesisTest, { name: 'editTestEvaluation' })
+  async editTestEvaluation(
+    @Args('testId', { type: () => ID }) testId: string,
+    @Args('newLevel', { type: () => Int }) newLevel: number,
+    @Args('operatorId', { type: () => ID }) operatorId: string,
+  ): Promise<AnamnesisTest> {
+    return this.anamnesisService.editTestEvaluation(testId, newLevel, operatorId);
+  }
+
+  /**
+   * Mutation: Reset valutazione test (cancella storico e resetta a non valutato)
+   */
+  @Mutation(() => AnamnesisTest, { name: 'resetTestEvaluation' })
+  async resetTestEvaluation(
+    @Args('testId', { type: () => ID }) testId: string,
+  ): Promise<AnamnesisTest> {
+    return this.anamnesisService.resetTestEvaluation(testId);
+  }
+
+  /**
+   * Mutation: Elimina un test dall'anamnesi
+   * Controllo: deve restare almeno 1 test
+   */
+  @Mutation(() => Boolean, { name: 'deleteAnamnesisTest' })
+  async deleteAnamnesisTest(
+    @Args('testId', { type: () => ID }) testId: string,
+    @Args('anamnesisId', { type: () => ID }) anamnesisId: string,
+  ): Promise<boolean> {
+    return this.anamnesisService.deleteTest(testId, anamnesisId);
+  }
+
+  /**
+   * Mutation: Modifica una singola entry dello storico valutazioni test
+   */
+  @Mutation(() => TestEvaluationHistory, { name: 'editTestEvaluationEntry' })
+  async editTestEvaluationEntry(
+    @Args('evaluationHistoryId', { type: () => ID }) evaluationHistoryId: string,
+    @Args('evaluationLevel', { type: () => Int }) evaluationLevel: number,
+    @Args('note', { nullable: true }) note?: string,
+  ): Promise<TestEvaluationHistory> {
+    return this.anamnesisService.editTestEvaluationEntry(evaluationHistoryId, {
+      evaluationLevel,
+      note
+    });
+  }
+
+  /**
+   * Mutation: Elimina una singola entry dello storico valutazioni test
+   * Non permette di eliminare se è l'unica valutazione
+   */
+  @Mutation(() => Boolean, { name: 'deleteTestEvaluationEntry' })
+  async deleteTestEvaluationEntry(
+    @Args('evaluationHistoryId', { type: () => ID }) evaluationHistoryId: string,
+  ): Promise<boolean> {
+    return this.anamnesisService.deleteTestEvaluationEntry(evaluationHistoryId);
   }
 }

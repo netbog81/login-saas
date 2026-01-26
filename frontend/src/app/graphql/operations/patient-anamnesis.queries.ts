@@ -28,6 +28,18 @@ export const ANAMNESIS_TEST_FRAGMENT = gql`
     orderIndex
     createdAt
     updatedAt
+    evaluationHistory {
+      id
+      evaluationLevel
+      note
+      treatmentsSinceLast
+      createdAt
+      operator {
+        id
+        name
+        surname
+      }
+    }
   }
 `;
 

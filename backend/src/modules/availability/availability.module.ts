@@ -39,6 +39,8 @@ import { PatientAnamnesis } from './entities/patient-anamnesis.entity';
 import { AnamnesisObjective } from './entities/anamnesis-objective.entity';
 import { AnamnesisTest } from './entities/anamnesis-test.entity';
 import { AnamnesisExam } from './entities/anamnesis-exam.entity';
+import { ObjectiveProgressHistory } from './entities/objective-progress-history.entity';
+import { TestEvaluationHistory } from './entities/test-evaluation-history.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -128,6 +130,8 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
       AnamnesisObjective,
       AnamnesisTest,
       AnamnesisExam,
+      ObjectiveProgressHistory,
+      TestEvaluationHistory,
     ]),
   ],
   providers: [
