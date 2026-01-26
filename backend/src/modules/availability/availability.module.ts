@@ -35,6 +35,10 @@ import { ServiceSubcategory } from './entities/service-subcategory.entity';
 import { TherapeuticPath } from './entities/therapeutic-path.entity';
 import { PatientEvaluation } from './entities/patient-evaluation.entity';
 import { PathDocument } from './entities/path-document.entity';
+import { PatientAnamnesis } from './entities/patient-anamnesis.entity';
+import { AnamnesisObjective } from './entities/anamnesis-objective.entity';
+import { AnamnesisTest } from './entities/anamnesis-test.entity';
+import { AnamnesisExam } from './entities/anamnesis-exam.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -58,6 +62,7 @@ import { AppointmentConflictService } from './services/appointment-conflict.serv
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 import { TreatmentService } from './services/treatment.service';
 import { TherapeuticPathService } from './services/therapeutic-path.service';
+import { PatientAnamnesisService } from './services/patient-anamnesis.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
@@ -80,6 +85,7 @@ import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
 import { TreatmentResolver } from './resolvers/treatment.resolver';
 import { TherapeuticPathResolver } from './resolvers/therapeutic-path.resolver';
 import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.resolver';
+import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver';
 
 @Module({
   imports: [
@@ -118,6 +124,10 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
       TherapeuticPath,
       PatientEvaluation,
       PathDocument,
+      PatientAnamnesis,
+      AnamnesisObjective,
+      AnamnesisTest,
+      AnamnesisExam,
     ]),
   ],
   providers: [
@@ -143,6 +153,7 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
     AvailabilityAppointmentService,
     TreatmentService,
     TherapeuticPathService,
+    PatientAnamnesisService,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -164,6 +175,7 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
     TreatmentResolver,
     TherapeuticPathResolver,
     ServiceSubcategoryResolver,
+    PatientAnamnesisResolver,
   ],
   exports: [
     AvailabilityService,
@@ -187,6 +199,7 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
     AvailabilityAppointmentService,
     TreatmentService,
     TherapeuticPathService,
+    PatientAnamnesisService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })

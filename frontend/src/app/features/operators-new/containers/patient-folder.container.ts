@@ -29,6 +29,7 @@ import { TherapeuticPath, Anamnesis, PathDocument } from '../../../models/therap
 import { Treatment } from '../../../models/treatment.model';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { TreatmentService } from '../../../services/treatment.service';
+import { PatientAnamnesisService, CreateAnamnesisInput } from '../../../services/patient-anamnesis.service';
 
 import { PatientHeaderComponent } from '../components/patient-header/patient-header.component';
 import { PathContentComponent, PathContentTab } from '../components/path-content/path-content.component';
@@ -37,7 +38,6 @@ import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dial
 import { AnamnesisFormContainer } from './anamnesis-form.container';
 import { AnamnesisDialogContainer } from './anamnesis-dialog.container';
 import { AnamnesisComplete } from '../models/anamnesis.model';
-import { MOCK_ANAMNESIS_COMPLETE } from '../mocks/anamnesis.mock';
 import {
   PatientFolderUIState,
   PatientFolderTab,
@@ -125,7 +125,7 @@ import {
               [activeTab]="uiState.activeTab"
               [treatments]="filteredTreatments"
               [anamnesis]="selectedPath?.anamnesis || null"
-              [anamnesisComplete]="mockAnamnesisComplete"
+              [anamnesisComplete]="currentAnamnesis"
               [documents]="selectedPath?.documents || []"
               [selectedTreatmentId]="uiState.selectedTreatmentId"
               [loadingTreatments]="uiState.loadingTreatments"
@@ -174,7 +174,8 @@ import {
           [mode]="anamnesisFormMode"
           [patient]="patient"
           [path]="selectedPath"
-          [anamnesis]="mockAnamnesisComplete"
+          [anamnesis]="currentAnamnesis"
+          [operatorId]="currentOperatorId || ''"
           (saved)="onAnamnesisSaved($event)"
           (close)="closeAnamnesisForm()">
         </app-anamnesis-form-container>
@@ -186,7 +187,7 @@ import {
       #anamnesisDialog
       [patient]="patient"
       [path]="selectedPath"
-      [anamnesisComplete]="mockAnamnesisComplete"
+      [anamnesisComplete]="currentAnamnesis"
       (edit)="onEditAnamnesis()"
       (delete)="onDeleteAnamnesis()"
       (close)="onAnamnesisDialogClose()">
@@ -470,11 +471,12 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   // Anamnesis state
   showAnamnesisForm = false;
   anamnesisFormMode: 'create' | 'edit' = 'create';
-  mockAnamnesisComplete: AnamnesisComplete | null = MOCK_ANAMNESIS_COMPLETE; // MOCK per testing
+  currentAnamnesis: AnamnesisComplete | null = null;
 
   constructor(
     private pathService: TherapeuticPathService,
     private treatmentService: TreatmentService,
+    private anamnesisService: PatientAnamnesisService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -720,19 +722,34 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   onEditAnamnesis(): void {
     console.log('[PatientFolderContainer] Edit anamnesis');
-    this.anamnesisFormMode = this.mockAnamnesisComplete ? 'edit' : 'create';
+    this.anamnesisFormMode = this.currentAnamnesis ? 'edit' : 'create';
     this.showAnamnesisForm = true;
     this.cdr.markForCheck();
   }
 
   onDeleteAnamnesis(): void {
+    if (!this.currentAnamnesis) return;
+
     const confirmed = confirm('Eliminare l\'anamnesi?\n\nQuesta azione non può essere annullata.');
     if (!confirmed) return;
 
-    console.log('[PatientFolderContainer] Delete anamnesis');
-    // MOCK: Reset anamnesi
-    this.mockAnamnesisComplete = null;
-    this.cdr.markForCheck();
+    const anamnesisId = this.currentAnamnesis.id;
+
+    this.anamnesisService.deleteAnamnesis(anamnesisId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (success) => {
+          if (success) {
+            this.currentAnamnesis = null;
+            this.cdr.markForCheck();
+          }
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error deleting anamnesis:', err);
+          alert('Errore durante l\'eliminazione dell\'anamnesi. Riprova.');
+          this.cdr.markForCheck();
+        }
+      });
   }
 
   onExpandAnamnesis(): void {
@@ -744,8 +761,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   onAnamnesisSaved(anamnesis: AnamnesisComplete): void {
     console.log('[PatientFolderContainer] Anamnesis saved:', anamnesis);
-    // MOCK: Aggiorna anamnesi locale
-    this.mockAnamnesisComplete = anamnesis;
+    // Aggiorna anamnesi locale (già salvata dal form container)
+    this.currentAnamnesis = anamnesis;
     this.showAnamnesisForm = false;
     this.cdr.markForCheck();
   }
@@ -795,7 +812,56 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       ...this.uiState,
       selectedPathId: path.id
     };
+    // Carica l'anamnesi per questo percorso
+    this.loadAnamnesis(path.id);
     this.cdr.markForCheck();
+  }
+
+  /**
+   * Carica l'anamnesi per un percorso terapeutico
+   */
+  private loadAnamnesis(pathId: string): void {
+    this.uiState = { ...this.uiState, loadingAnamnesis: true };
+    this.currentAnamnesis = null;
+    this.cdr.markForCheck();
+
+    // Prepara info paziente per il mapping
+    const patientInfo = this.patient ? {
+      nome: this.patient.nome || '',
+      cognome: this.patient.cognome || '',
+      eta: this.patient.dataNascita ? this.calculateAge(this.patient.dataNascita) : null,
+      sesso: this.patient.genere || null
+    } : undefined;
+
+    this.anamnesisService.getAnamnesisByPath(pathId, patientInfo)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (anamnesis) => {
+          this.currentAnamnesis = anamnesis;
+          this.uiState = { ...this.uiState, loadingAnamnesis: false };
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error loading anamnesis:', err);
+          this.currentAnamnesis = null;
+          this.uiState = { ...this.uiState, loadingAnamnesis: false };
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  /**
+   * Calcola l'età dalla data di nascita
+   */
+  private calculateAge(birthDate: string | Date): number {
+    const birth = typeof birthDate === 'string' ? new Date(birthDate) : birthDate;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
   }
 
   getActivePathsCount(): number {

@@ -35,6 +35,9 @@ import { AnamnesisComplete } from '../models/anamnesis.model';
 import { Patient } from '../../../models/patient.model';
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
 
+// Services
+import { PatientAnamnesisService } from '../../../services/patient-anamnesis.service';
+
 export interface AnamnesisFormDialogData {
   mode: 'create' | 'edit';
   patient: Patient;
@@ -236,6 +239,7 @@ export class AnamnesisFormContainer {
   @Input() patient: Patient | null = null;
   @Input() path: TherapeuticPath | null = null;
   @Input() anamnesis: AnamnesisComplete | null = null;
+  @Input() operatorId: string = '';
 
   @Output() saved = new EventEmitter<AnamnesisComplete>();
   @Output() close = new EventEmitter<void>();
@@ -244,6 +248,7 @@ export class AnamnesisFormContainer {
 
   constructor(
     private snackBar: MatSnackBar,
+    private anamnesisService: PatientAnamnesisService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -255,29 +260,90 @@ export class AnamnesisFormContainer {
   }
 
   onSave(anamnesis: AnamnesisComplete): void {
+    if (!this.path?.id) {
+      this.snackBar.open('Errore: Percorso terapeutico non selezionato', 'OK', { duration: 3000 });
+      return;
+    }
+
     this.saving = true;
     this.cdr.markForCheck();
 
-    // MOCK: Simula salvataggio
-    // In futuro qui ci sarà la chiamata al service GraphQL
-    setTimeout(() => {
-      console.log('[AnamnesisFormContainer] Saving anamnesis:', anamnesis);
+    // Prepara info paziente per il mapping response
+    const patientInfo = this.patient ? {
+      nome: this.patient.nome || '',
+      cognome: this.patient.cognome || '',
+      eta: this.patient.dataNascita ? this.calculateAge(this.patient.dataNascita) : null,
+      sesso: this.patient.genere || null
+    } : undefined;
 
-      // Simula risposta positiva
-      this.saving = false;
-      this.saved.emit(anamnesis);
+    // Converti anamnesi frontend in input backend
+    const input = this.anamnesisService.mapFrontendToInput(anamnesis);
 
-      this.snackBar.open(
-        this.mode === 'create'
-          ? 'Anamnesi salvata con successo'
-          : 'Anamnesi aggiornata con successo',
-        'OK',
-        { duration: 3000 }
-      );
+    // Sovrascrivi operatorId e pathId per la creazione
+    input.operatorId = this.operatorId;
+    input.therapeuticPathId = this.path.id;
 
-      this.close.emit();
-      this.cdr.markForCheck();
-    }, 500);
+    if (this.mode === 'create') {
+      // Crea nuova anamnesi
+      this.anamnesisService.createAnamnesis(input, patientInfo)
+        .subscribe({
+          next: (savedAnamnesis) => {
+            this.saving = false;
+            this.saved.emit(savedAnamnesis);
+            this.snackBar.open('Anamnesi salvata con successo', 'OK', { duration: 3000 });
+            this.close.emit();
+            this.cdr.markForCheck();
+          },
+          error: (err) => {
+            console.error('[AnamnesisFormContainer] Error creating anamnesis:', err);
+            this.saving = false;
+            this.snackBar.open('Errore durante il salvataggio dell\'anamnesi', 'OK', { duration: 3000 });
+            this.cdr.markForCheck();
+          }
+        });
+    } else {
+      // Aggiorna anamnesi esistente
+      if (!this.anamnesis?.id) {
+        this.snackBar.open('Errore: Anamnesi non trovata', 'OK', { duration: 3000 });
+        this.saving = false;
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Rimuovi campi non aggiornabili dall'input
+      const { therapeuticPathId, operatorId, ...updateInput } = input;
+
+      this.anamnesisService.updateAnamnesis(this.anamnesis.id, updateInput, patientInfo)
+        .subscribe({
+          next: (updatedAnamnesis) => {
+            this.saving = false;
+            this.saved.emit(updatedAnamnesis);
+            this.snackBar.open('Anamnesi aggiornata con successo', 'OK', { duration: 3000 });
+            this.close.emit();
+            this.cdr.markForCheck();
+          },
+          error: (err) => {
+            console.error('[AnamnesisFormContainer] Error updating anamnesis:', err);
+            this.saving = false;
+            this.snackBar.open('Errore durante l\'aggiornamento dell\'anamnesi', 'OK', { duration: 3000 });
+            this.cdr.markForCheck();
+          }
+        });
+    }
+  }
+
+  /**
+   * Calcola l'età dalla data di nascita
+   */
+  private calculateAge(birthDate: string | Date): number {
+    const birth = typeof birthDate === 'string' ? new Date(birthDate) : birthDate;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
   }
 
   onClose(): void {

@@ -44,6 +44,7 @@ export interface AnamnesisComplete {
   createdAt: Date | string;
   updatedAt: Date | string;
   createdBy: string;
+  operatorName?: string;  // "Nome Cognome" dell'operatore che ha compilato
 }
 
 // ============================================================

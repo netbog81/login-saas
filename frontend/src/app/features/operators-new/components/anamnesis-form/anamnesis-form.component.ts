@@ -820,6 +820,12 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
   ngOnInit(): void {
     this.initForm();
     this.patchPatientData();
+    // Patch anamnesis data if already available (edit mode)
+    // This is necessary because ngOnChanges is called BEFORE ngOnInit
+    // and the form is not yet initialized when ngOnChanges runs the first time
+    if (this.anamnesis) {
+      this.patchFormData();
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {

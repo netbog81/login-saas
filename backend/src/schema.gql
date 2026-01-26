@@ -2,6 +2,105 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AnamnesisExam {
+  anamnesisId: ID!
+  createdAt: DateTime!
+
+  """Data dell'esame"""
+  data: DateTime
+  id: ID!
+
+  """Nome dell'esame diagnostico"""
+  nomeEsame: String!
+
+  """Note/risultati dell'esame"""
+  note: String
+
+  """Ordine di visualizzazione"""
+  orderIndex: Int!
+  updatedAt: DateTime!
+}
+
+input AnamnesisExamInput {
+  data: String
+
+  """ID per update, null per create"""
+  id: String
+  nomeEsame: String!
+  note: String
+  orderIndex: Int = 0
+}
+
+type AnamnesisObjective {
+  anamnesisId: ID!
+  createdAt: DateTime!
+
+  """Data in cui l'obiettivo è stato raggiunto"""
+  dataRaggiungimento: DateTime
+
+  """Descrizione dell'obiettivo"""
+  descrizione: String!
+  id: ID!
+
+  """Ordine di visualizzazione"""
+  orderIndex: Int!
+
+  """Obiettivo raggiunto"""
+  raggiunto: Boolean!
+
+  """Tipo di obiettivo (breve, medio, lungo termine)"""
+  tipo: ObjectiveType!
+  updatedAt: DateTime!
+}
+
+input AnamnesisObjectiveInput {
+  dataRaggiungimento: String
+  descrizione: String!
+
+  """ID per update, null per create"""
+  id: String
+  orderIndex: Int = 0
+  raggiunto: Boolean = false
+  tipo: ObjectiveType!
+}
+
+type AnamnesisTest {
+  anamnesisId: ID!
+  createdAt: DateTime!
+
+  """Data di esecuzione del test"""
+  dataEsecuzione: DateTime
+  id: ID!
+
+  """Nome del test"""
+  nome: String!
+
+  """Ordine di visualizzazione"""
+  orderIndex: Int!
+
+  """Risultato del test"""
+  risultato: String
+
+  """Sezione dell'anamnesi (esame obiettivo o monitoraggio)"""
+  sezione: TestSection!
+
+  """Test superato (null = non ancora valutato)"""
+  superato: Boolean
+  updatedAt: DateTime!
+}
+
+input AnamnesisTestInput {
+  dataEsecuzione: String
+
+  """ID per update, null per create"""
+  id: String
+  nome: String!
+  orderIndex: Int = 0
+  risultato: String
+  sezione: TestSection!
+  superato: Boolean
+}
+
 type AppointmentInstrument {
   appointment: AvailabilityAppointment!
   appointmentId: String!
@@ -154,6 +253,27 @@ type AvailabilityTemplate {
   version: Int!
 }
 
+type BodyMapMarker {
+  id: String!
+
+  """Nota associata al punto"""
+  note: String
+
+  """Coordinata X normalizzata (0-1)"""
+  x: Float!
+
+  """Coordinata Y normalizzata (0-1)"""
+  y: Float!
+}
+
+input BodyMapMarkerInput {
+  """ID per update, null per create"""
+  id: String
+  note: String
+  x: Float!
+  y: Float!
+}
+
 """Booking status of the appointment"""
 enum BookingStatus {
   ATTENDED
@@ -215,6 +335,44 @@ type ConflictStatsOutput {
   byOperator: [OperatorConflictCount!]!
   byReason: JSONObject!
   totalConflicts: Int!
+}
+
+input CreateAnamnesisInput {
+  andamentoDolore: String
+  bmi: Float
+  bodyMapMarkers: [BodyMapMarkerInput!]
+  criticita: [String!]
+  diagnosiFisioterapica: String
+  equilibrio: String
+  esameNeurologico: String
+  esordioSintomi: String
+  exams: [AnamnesisExamInput!]
+  fattoriAggravanti: [String!]
+  fattoriAllevianti: [String!]
+  fattoriPrognosticiNegativi: String
+  fattoriPrognosticiPositivi: String
+  forzaMuscolare: String
+  frequenzaSedute: String
+  interventiChirurgici: String
+  interventiProposti: [String!]
+  limitazioniAttivita: String
+  motivoConsulto: String
+  movimentoAttivo: String
+  movimentoPassivo: String
+  objectives: [AnamnesisObjectiveInput!]
+  operatorId: ID!
+  osservazione: String
+  outcome: String
+  palpazione: String
+  patologiePregresse: String
+  professione: String
+  sportPraticati: [String!]
+  statoAttualeSintomi: String
+  strategieCoping: String
+  terapiaFarmacologica: [String!]
+  tests: [AnamnesisTestInput!]
+  therapeuticPathId: ID!
+  traumi: String
 }
 
 input CreateAvailabilityAppointmentInput {
@@ -745,6 +903,10 @@ The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](
 """
 scalar JSONObject
 
+input MarkObjectiveAchievedInput {
+  raggiunto: Boolean!
+}
+
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
 
@@ -757,6 +919,7 @@ type Mutation {
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
   confirmAvailabilityAppointment(id: ID!): AvailabilityAppointment!
+  createAnamnesis(input: CreateAnamnesisInput!): PatientAnamnesis!
   createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
@@ -789,6 +952,7 @@ type Mutation {
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
   deleteAllTreatments: Int!
+  deleteAnamnesis(id: ID!): Boolean!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
   deleteException(id: ID!): Boolean!
@@ -833,6 +997,7 @@ type Mutation {
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   markAppointmentAttended(id: ID!): AvailabilityAppointment!
   markAppointmentNoShow(id: ID!): AvailabilityAppointment!
+  markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): AnamnesisObjective!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
@@ -849,6 +1014,7 @@ type Mutation {
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
+  updateAnamnesis(id: ID!, input: UpdateAnamnesisInput!): PatientAnamnesis!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
@@ -879,10 +1045,24 @@ type Mutation {
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
+  updateTestResult(input: UpdateTestResultInput!, testId: ID!): AnamnesisTest!
   updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
   updateTreatment(input: UpdateTreatmentInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
+}
+
+"""Tipo di obiettivo terapeutico (breve, medio, lungo termine)"""
+enum ObjectiveType {
+  BREVE_TERMINE
+  LUNGO_TERMINE
+  MEDIO_TERMINE
+}
+
+type ObjectivesProgress {
+  achieved: Int!
+  percentage: Int!
+  total: Int!
 }
 
 type Operator {
@@ -967,6 +1147,108 @@ type PathDocument {
   type: DocumentType!
   uploadedAt: DateTime!
   uploadedBy: ID
+}
+
+type PatientAnamnesis {
+  """Andamento del dolore nel tempo"""
+  andamentoDolore: String
+
+  """Body Mass Index"""
+  bmi: Float
+
+  """Marker sulla mappa corporea"""
+  bodyMapMarkers: [BodyMapMarker!]
+  createdAt: DateTime!
+
+  """Criticità identificate"""
+  criticita: [String!]
+
+  """Diagnosi fisioterapica"""
+  diagnosiFisioterapica: String
+
+  """Valutazione equilibrio"""
+  equilibrio: String
+
+  """Esame neurologico"""
+  esameNeurologico: String
+
+  """Data/periodo esordio sintomi"""
+  esordioSintomi: String
+  exams: [AnamnesisExam!]
+
+  """Fattori che aggravano i sintomi"""
+  fattoriAggravanti: [String!]
+
+  """Fattori che alleviano i sintomi"""
+  fattoriAllevianti: [String!]
+
+  """Fattori prognostici negativi"""
+  fattoriPrognosticiNegativi: String
+
+  """Fattori prognostici positivi"""
+  fattoriPrognosticiPositivi: String
+
+  """Valutazione forza muscolare"""
+  forzaMuscolare: String
+
+  """Frequenza delle sedute proposta"""
+  frequenzaSedute: String
+  id: ID!
+
+  """Interventi chirurgici precedenti"""
+  interventiChirurgici: String
+
+  """Interventi terapeutici proposti"""
+  interventiProposti: [String!]
+
+  """Limitazioni nelle attività quotidiane"""
+  limitazioniAttivita: String
+
+  """Motivo del consulto"""
+  motivoConsulto: String
+
+  """Valutazione movimento attivo"""
+  movimentoAttivo: String
+
+  """Valutazione movimento passivo"""
+  movimentoPassivo: String
+  objectives: [AnamnesisObjective!]
+  operator: Operator!
+  operatorId: ID!
+
+  """Osservazione clinica"""
+  osservazione: String
+
+  """Outcome atteso/pianificato"""
+  outcome: String
+
+  """Palpazione"""
+  palpazione: String
+
+  """Patologie pregresse"""
+  patologiePregresse: String
+
+  """Professione del paziente"""
+  professione: String
+
+  """Sport praticati dal paziente"""
+  sportPraticati: [String!]
+
+  """Stato attuale dei sintomi"""
+  statoAttualeSintomi: String
+
+  """Strategie di coping del paziente"""
+  strategieCoping: String
+
+  """Farmaci in uso"""
+  terapiaFarmacologica: [String!]
+  tests: [AnamnesisTest!]
+  therapeuticPath: TherapeuticPath!
+  therapeuticPathId: ID!
+
+  """Traumi precedenti"""
+  traumi: String
+  updatedAt: DateTime!
 }
 
 type PatientEvaluation {
@@ -1220,6 +1502,7 @@ type Query {
   activeTherapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
+  anamnesisByPath(pathId: ID!): PatientAnamnesis
   availabilityAppointment(id: ID!): AvailabilityAppointment
   availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
   availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
@@ -1239,6 +1522,7 @@ type Query {
   documentsByPath(pathId: ID!): [PathDocument!]!
   documentsByPathAndCategory(category: DocumentCategory!, pathId: ID!): [PathDocument!]!
   evaluationsByPath(pathId: ID!): [PatientEvaluation!]!
+  examsByAnamnesis(anamnesisId: ID!): [AnamnesisExam!]!
   generalSetting(key: String!): GeneralSettings
   generalSettings: [GeneralSettings!]!
   generalSettingsByCategory(category: String!): [GeneralSettings!]!
@@ -1266,6 +1550,8 @@ type Query {
   instruments(categoryId: ID, status: InstrumentStatus): [Instrument!]!
   isHoliday(date: String!): Boolean!
   isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
+  objectivesByAnamnesis(anamnesisId: ID!): [AnamnesisObjective!]!
+  objectivesProgress(anamnesisId: ID!): ObjectivesProgress!
   operator(id: ID!): Operator
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
   operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
@@ -1277,6 +1563,7 @@ type Query {
 
   """Get a single patient by ID"""
   patient(id: ID!): PatientModel
+  patientAnamnesis(id: ID!): PatientAnamnesis
 
   """Find patient by Italian tax code (Codice Fiscale)"""
   patientByCodiceFiscale(codiceFiscale: String!): PatientModel
@@ -1315,6 +1602,8 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+  testsByAnamnesis(anamnesisId: ID!): [AnamnesisTest!]!
+  testsProgress(anamnesisId: ID!): TestsProgress!
   therapeuticPath(id: ID!): TherapeuticPath
   therapeuticPathsByOperator(operatorId: ID!): [TherapeuticPath!]!
   therapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
@@ -1578,6 +1867,20 @@ type TemplatePattern {
   updatedAt: DateTime!
 }
 
+"""Sezione dell'anamnesi in cui si trova il test"""
+enum TestSection {
+  ESAME_OBIETTIVO
+  MONITORAGGIO
+}
+
+type TestsProgress {
+  failed: Int!
+  passed: Int!
+  pending: Int!
+  percentage: Int!
+  total: Int!
+}
+
 type TherapeuticPath {
   closedAt: DateTime
   createdAt: DateTime!
@@ -1732,6 +2035,42 @@ enum TreatmentStatus {
   IN_PROGRESS
   OPERATOR_COMPLETED
   WAITING
+}
+
+input UpdateAnamnesisInput {
+  andamentoDolore: String
+  bmi: Float
+  bodyMapMarkers: [BodyMapMarkerInput!]
+  criticita: [String!]
+  diagnosiFisioterapica: String
+  equilibrio: String
+  esameNeurologico: String
+  esordioSintomi: String
+  exams: [AnamnesisExamInput!]
+  fattoriAggravanti: [String!]
+  fattoriAllevianti: [String!]
+  fattoriPrognosticiNegativi: String
+  fattoriPrognosticiPositivi: String
+  forzaMuscolare: String
+  frequenzaSedute: String
+  interventiChirurgici: String
+  interventiProposti: [String!]
+  limitazioniAttivita: String
+  motivoConsulto: String
+  movimentoAttivo: String
+  movimentoPassivo: String
+  objectives: [AnamnesisObjectiveInput!]
+  osservazione: String
+  outcome: String
+  palpazione: String
+  patologiePregresse: String
+  professione: String
+  sportPraticati: [String!]
+  statoAttualeSintomi: String
+  strategieCoping: String
+  terapiaFarmacologica: [String!]
+  tests: [AnamnesisTestInput!]
+  traumi: String
 }
 
 input UpdateAvailabilityAppointmentInput {
@@ -1931,6 +2270,12 @@ input UpdatePatternGroupInput {
   name: String
   patternDuration: Float
   patterns: [PatternInput!]
+}
+
+input UpdateTestResultInput {
+  dataEsecuzione: String
+  risultato: String
+  superato: Boolean
 }
 
 input UpdateTherapeuticPathInput {

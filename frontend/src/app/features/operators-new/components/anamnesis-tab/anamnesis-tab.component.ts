@@ -65,9 +65,17 @@ import { BodyMapComponent } from '../body-map/body-map.component';
         <div class="anamnesis-content">
           <!-- Toolbar con azioni -->
           <div class="anamnesis-toolbar">
-            <div class="last-update">
-              <mat-icon>update</mat-icon>
-              <span>Ultimo aggiornamento: {{ formatDate(getUpdatedAt()) }}</span>
+            <div class="anamnesis-info">
+              <div class="last-update">
+                <mat-icon>update</mat-icon>
+                <span>Ultimo aggiornamento: {{ formatDate(getUpdatedAt()) }}</span>
+              </div>
+              @if (getOperatorName()) {
+                <div class="compiled-by">
+                  <mat-icon>person</mat-icon>
+                  <span>Compilata da: {{ getOperatorName() }}</span>
+                </div>
+              }
             </div>
             <div class="toolbar-actions">
               <button mat-icon-button (click)="onEdit()" matTooltip="Modifica anamnesi">
@@ -689,6 +697,13 @@ import { BodyMapComponent } from '../body-map/body-map.component';
       border-radius: 8px;
     }
 
+    .anamnesis-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+
     .last-update {
       display: flex;
       align-items: center;
@@ -700,6 +715,21 @@ import { BodyMapComponent } from '../body-map/body-map.component';
         font-size: 18px;
         width: 18px;
         height: 18px;
+      }
+    }
+
+    .compiled-by {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8125rem;
+      color: #64748b;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: #667eea;
       }
     }
 
@@ -1053,6 +1083,10 @@ export class AnamnesisTabComponent {
 
   getUpdatedAt(): Date | string {
     return this.anamnesisComplete?.updatedAt || this.anamnesis?.updatedAt || new Date();
+  }
+
+  getOperatorName(): string | null {
+    return this.anamnesisComplete?.operatorName || null;
   }
 
   // ============================================================

@@ -56,6 +56,11 @@ import { TreatmentService } from './modules/availability/entities/treatment-serv
 import { TherapeuticPath } from './modules/availability/entities/therapeutic-path.entity';
 import { PatientEvaluation } from './modules/availability/entities/patient-evaluation.entity';
 import { PathDocument } from './modules/availability/entities/path-document.entity';
+// Patient anamnesis entities
+import { PatientAnamnesis } from './modules/availability/entities/patient-anamnesis.entity';
+import { AnamnesisObjective } from './modules/availability/entities/anamnesis-objective.entity';
+import { AnamnesisTest } from './modules/availability/entities/anamnesis-test.entity';
+import { AnamnesisExam } from './modules/availability/entities/anamnesis-exam.entity';
 // Pazienti module entities
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
@@ -113,6 +118,11 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
         TherapeuticPath,
         PatientEvaluation,
         PathDocument,
+        // Patient anamnesis entities
+        PatientAnamnesis,
+        AnamnesisObjective,
+        AnamnesisTest,
+        AnamnesisExam,
         // Pazienti module entities
         PersonaRiferimento,
         PazientePersonaRelazione,
