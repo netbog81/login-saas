@@ -30,6 +30,7 @@ import {
   formatPathProgress
 } from '../../../../models/therapeutic-path.model';
 import { Treatment } from '../../../../models/treatment.model';
+import { AnamnesisComplete } from '../../models/anamnesis.model';
 
 import { TreatmentsTabComponent } from '../treatments-tab/treatments-tab.component';
 import { AnamnesisTabComponent } from '../anamnesis-tab/anamnesis-tab.component';
@@ -138,8 +139,11 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'documents';
             <div class="tab-content">
               <app-anamnesis-tab
                 [anamnesis]="anamnesis"
+                [anamnesisComplete]="anamnesisComplete"
                 [loading]="loadingAnamnesis"
-                (edit)="onEditAnamnesis()">
+                (edit)="onEditAnamnesis()"
+                (delete)="onDeleteAnamnesis()"
+                (expand)="onExpandAnamnesis()">
               </app-anamnesis-tab>
             </div>
           </mat-tab>
@@ -409,6 +413,7 @@ export class PathContentComponent {
   @Input() activeTab: PathContentTab = 'treatments';
   @Input() treatments: Treatment[] = [];
   @Input() anamnesis: Anamnesis | null = null;
+  @Input() anamnesisComplete: AnamnesisComplete | null = null;
   @Input() documents: PathDocument[] = [];
   @Input() selectedTreatmentId: string | null = null;
   @Input() loadingTreatments = false;
@@ -421,6 +426,8 @@ export class PathContentComponent {
   @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
   @Output() treatmentEdit = new EventEmitter<Treatment>();
   @Output() editAnamnesis = new EventEmitter<void>();
+  @Output() deleteAnamnesis = new EventEmitter<void>();
+  @Output() expandAnamnesis = new EventEmitter<void>();
   @Output() documentOpen = new EventEmitter<PathDocument>();
   @Output() documentUpload = new EventEmitter<void>();
   @Output() documentDownload = new EventEmitter<PathDocument>();
@@ -459,6 +466,14 @@ export class PathContentComponent {
 
   onEditAnamnesis(): void {
     this.editAnamnesis.emit();
+  }
+
+  onDeleteAnamnesis(): void {
+    this.deleteAnamnesis.emit();
+  }
+
+  onExpandAnamnesis(): void {
+    this.expandAnamnesis.emit();
   }
 
   onDocumentOpen(doc: PathDocument): void {

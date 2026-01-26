@@ -34,6 +34,10 @@ import { PatientHeaderComponent } from '../components/patient-header/patient-hea
 import { PathContentComponent, PathContentTab } from '../components/path-content/path-content.component';
 import { PathDialogContainer } from './path-dialog.container';
 import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dialog.container';
+import { AnamnesisFormContainer } from './anamnesis-form.container';
+import { AnamnesisDialogContainer } from './anamnesis-dialog.container';
+import { AnamnesisComplete } from '../models/anamnesis.model';
+import { MOCK_ANAMNESIS_COMPLETE } from '../mocks/anamnesis.mock';
 import {
   PatientFolderUIState,
   PatientFolderTab,
@@ -53,7 +57,9 @@ import {
     PatientHeaderComponent,
     PathContentComponent,
     PathDialogContainer,
-    TreatmentDetailDialogContainerComponent
+    TreatmentDetailDialogContainerComponent,
+    AnamnesisFormContainer,
+    AnamnesisDialogContainer
   ],
   template: `
     <div class="patient-folder" [class.no-patient]="!patient">
@@ -119,6 +125,7 @@ import {
               [activeTab]="uiState.activeTab"
               [treatments]="filteredTreatments"
               [anamnesis]="selectedPath?.anamnesis || null"
+              [anamnesisComplete]="mockAnamnesisComplete"
               [documents]="selectedPath?.documents || []"
               [selectedTreatmentId]="uiState.selectedTreatmentId"
               [loadingTreatments]="uiState.loadingTreatments"
@@ -131,6 +138,8 @@ import {
               (treatmentDoubleClick)="onTreatmentDoubleClick($event)"
               (treatmentEdit)="onTreatmentEdit($event)"
               (editAnamnesis)="onEditAnamnesis()"
+              (deleteAnamnesis)="onDeleteAnamnesis()"
+              (expandAnamnesis)="onExpandAnamnesis()"
               (documentOpen)="onDocumentOpen($event)"
               (documentUpload)="onDocumentUpload()"
               (documentDownload)="onDocumentDownload($event)"
@@ -157,6 +166,31 @@ import {
       (close)="onTreatmentDetailClose()"
       (editTreatment)="onTreatmentEdit($event)">
     </app-treatment-detail-dialog-container>
+
+    <!-- Anamnesis Form Dialog -->
+    @if (showAnamnesisForm) {
+      <div class="dialog-overlay">
+        <app-anamnesis-form-container
+          [mode]="anamnesisFormMode"
+          [patient]="patient"
+          [path]="selectedPath"
+          [anamnesis]="mockAnamnesisComplete"
+          (saved)="onAnamnesisSaved($event)"
+          (close)="closeAnamnesisForm()">
+        </app-anamnesis-form-container>
+      </div>
+    }
+
+    <!-- Anamnesis Expand Dialog -->
+    <app-anamnesis-dialog-container
+      #anamnesisDialog
+      [patient]="patient"
+      [path]="selectedPath"
+      [anamnesisComplete]="mockAnamnesisComplete"
+      (edit)="onEditAnamnesis()"
+      (delete)="onDeleteAnamnesis()"
+      (close)="onAnamnesisDialogClose()">
+    </app-anamnesis-dialog-container>
   `,
   styles: [`
     :host {
@@ -390,6 +424,21 @@ import {
         overflow: visible;  // Permette al contenuto di crescere in mobile
       }
     }
+
+    /* Dialog overlay */
+    .dialog-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 24px;
+    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -406,6 +455,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   @Output() editTreatment = new EventEmitter<Treatment>();
 
   @ViewChild('treatmentDetailDialog') treatmentDetailDialog!: TreatmentDetailDialogContainerComponent;
+  @ViewChild('anamnesisDialog') anamnesisDialog!: AnamnesisDialogContainer;
 
   // State
   uiState: PatientFolderUIState = createInitialPatientFolderUIState();
@@ -416,6 +466,11 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   // Dialog state
   showPathDialog = false;
   pathDialogData: PathDialogData | null = null;
+
+  // Anamnesis state
+  showAnamnesisForm = false;
+  anamnesisFormMode: 'create' | 'edit' = 'create';
+  mockAnamnesisComplete: AnamnesisComplete | null = MOCK_ANAMNESIS_COMPLETE; // MOCK per testing
 
   constructor(
     private pathService: TherapeuticPathService,
@@ -664,8 +719,44 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   onEditAnamnesis(): void {
-    // TODO: Aprire dialog per modifica anamnesi
     console.log('[PatientFolderContainer] Edit anamnesis');
+    this.anamnesisFormMode = this.mockAnamnesisComplete ? 'edit' : 'create';
+    this.showAnamnesisForm = true;
+    this.cdr.markForCheck();
+  }
+
+  onDeleteAnamnesis(): void {
+    const confirmed = confirm('Eliminare l\'anamnesi?\n\nQuesta azione non può essere annullata.');
+    if (!confirmed) return;
+
+    console.log('[PatientFolderContainer] Delete anamnesis');
+    // MOCK: Reset anamnesi
+    this.mockAnamnesisComplete = null;
+    this.cdr.markForCheck();
+  }
+
+  onExpandAnamnesis(): void {
+    console.log('[PatientFolderContainer] Expand anamnesis');
+    if (this.anamnesisDialog) {
+      this.anamnesisDialog.open();
+    }
+  }
+
+  onAnamnesisSaved(anamnesis: AnamnesisComplete): void {
+    console.log('[PatientFolderContainer] Anamnesis saved:', anamnesis);
+    // MOCK: Aggiorna anamnesi locale
+    this.mockAnamnesisComplete = anamnesis;
+    this.showAnamnesisForm = false;
+    this.cdr.markForCheck();
+  }
+
+  closeAnamnesisForm(): void {
+    this.showAnamnesisForm = false;
+    this.cdr.markForCheck();
+  }
+
+  onAnamnesisDialogClose(): void {
+    console.log('[PatientFolderContainer] Anamnesis dialog closed');
   }
 
   onDocumentOpen(doc: PathDocument): void {
