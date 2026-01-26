@@ -86,6 +86,7 @@ export interface GymAppointment {
   id: string;
   operatorId: string;
   gymRoomId: string;
+  /** @deprecated Usa appointmentServices invece */
   serviceId?: string;
   clientName: string;
   clientEmail?: string;
@@ -113,10 +114,26 @@ export interface GymAppointment {
     color?: string;
     maxCapacity: number;
   };
+  /** @deprecated Usa appointmentServices invece */
   service?: {
     id: string;
     name: string;
   };
+  /** Servizi multipli associati all'appuntamento */
+  appointmentServices?: {
+    id: string;
+    serviceId: string;
+    customDuration?: number;
+    customPrice?: number;
+    orderPosition: number;
+    service?: {
+      id: string;
+      name: string;
+      defaultPrice?: number;
+      discountFE?: number;
+      defaultDuration?: number;
+    };
+  }[];
 }
 
 /**

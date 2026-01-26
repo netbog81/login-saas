@@ -1,5 +1,5 @@
 import { AvailabilityAppointment, AppointmentInstrument as GqlAppointmentInstrument } from '../graphql/generated/types';
-import { Appointment, AppointmentInstrument, BookingStatus, TreatmentStatus, ConflictReason } from '../models/appointment.model';
+import { Appointment, AppointmentInstrument, AppointmentServiceItem, BookingStatus, TreatmentStatus, ConflictReason } from '../models/appointment.model';
 
 /**
  * Converte un AvailabilityAppointment (GraphQL) in Appointment (frontend model)
@@ -15,6 +15,8 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     operator: aa.operator || undefined,
     serviceId: aa.serviceId || undefined,
     service: aa.service ? { id: aa.service.id, name: aa.service.name } : undefined,
+    // Servizi multipli (nuovo sistema ManyToMany)
+    appointmentServices: mapAppointmentServices(aa.appointmentServices),
     patientId: aa.patientId || undefined,
     notes: aa.notes || undefined,
 
@@ -65,6 +67,45 @@ function mapInstruments(
     startOffsetMinutes: inst.startOffsetMinutes,
     endOffsetMinutes: inst.endOffsetMinutes,
     orderPosition: inst.orderPosition || undefined,
+  }));
+}
+
+/**
+ * Mappa i servizi multipli da GraphQL al formato frontend
+ */
+function mapAppointmentServices(
+  appointmentServices?: {
+    id: string;
+    serviceId: string;
+    customDuration?: number | null;
+    customPrice?: number | null;
+    orderPosition: number;
+    service?: {
+      id: string;
+      name: string;
+      defaultPrice?: number | null;
+      discountFE?: number | null;
+      defaultDuration?: number | null;
+    } | null;
+  }[] | null
+): AppointmentServiceItem[] | undefined {
+  if (!appointmentServices || appointmentServices.length === 0) {
+    return undefined;
+  }
+
+  return appointmentServices.map(as => ({
+    id: as.id,
+    serviceId: as.serviceId,
+    customDuration: as.customDuration ?? undefined,
+    customPrice: as.customPrice ?? undefined,
+    orderPosition: as.orderPosition,
+    service: as.service ? {
+      id: as.service.id,
+      name: as.service.name,
+      defaultPrice: as.service.defaultPrice ?? undefined,
+      discountFE: as.service.discountFE ?? undefined,
+      duration: as.service.defaultDuration ?? undefined,
+    } : undefined,
   }));
 }
 

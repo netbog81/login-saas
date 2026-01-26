@@ -125,7 +125,6 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
                   (finishTreatment)="onFinishTreatment($event)"
                   (cancelTreatment)="onCancelTreatment($event)"
                   (viewPatientFolder)="onViewPatientFolder()"
-                  (cancelAppointment)="onCancelAppointment()"
                   (deleteNonRetribuito)="onDeleteNonRetribuito($event)">
                 </app-treatment-card>
               </div>
@@ -716,13 +715,8 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     alert(`Dettagli paziente: ${patient.nome} ${patient.cognome}\nQuesta funzionalità aprirà la scheda completa del paziente`);
   }
 
-  onCancelAppointment(): void {
-    if (!this.selectedAppointment) return;
-    const reason = prompt('Motivo della cancellazione:');
-    if (reason === null) return;
-    // TODO: Implementare chiamata al service per cancellare appuntamento
-    console.log('[OperatorWorkspaceContainer] Cancel appointment:', this.selectedAppointment.id, reason);
-  }
+  // NOTA: onCancelAppointment() rimosso - richiede sistema notifiche per segreteria
+  // Vedere Section 11 del piano: /home/marco/.claude/plans/cosmic-wishing-fairy.md
 
   /**
    * Gestisce l'eliminazione di un appuntamento non retribuito

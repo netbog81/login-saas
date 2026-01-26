@@ -231,9 +231,23 @@ export class AppointmentCardComponent {
     return this.appointment.nonRetribuito === true;
   }
 
+  /**
+   * Restituisce i nomi dei servizi associati all'appuntamento.
+   * Supporta sia multi-servizio (appointmentServices[]) che legacy (service singolo).
+   */
   getServiceName(): string | null {
-    // serviceName potrebbe essere in un campo diverso o non presente
-    return (this.appointment as any).serviceName || null;
+    const apt = this.appointment as any;
+    // Multi-servizio: usa appointmentServices array
+    if (apt.appointmentServices?.length > 0) {
+      return apt.appointmentServices
+        .map((as: any) => as.service?.name || 'Servizio')
+        .join(', ');
+    }
+    // Fallback legacy: servizio singolo
+    if (apt.service?.name) {
+      return apt.service.name;
+    }
+    return null;
   }
 
   getStatusIcon(): string {

@@ -99,8 +99,14 @@
       </div>
     </div>
 
-    <!-- Service -->
-    <div class="info-section" *ngIf="appointment.service">
+    <!-- Services (multi-servizio) -->
+    <div class="info-section" *ngIf="hasServices">
+      <div class="info-label">Servizi</div>
+      <div class="info-value">{{ servicesNames }}</div>
+    </div>
+
+    <!-- Fallback: Service (legacy singolo) -->
+    <div class="info-section" *ngIf="!hasServices && appointment.service">
       <div class="info-label">Servizio</div>
       <div class="info-value">{{ appointment.service.name }}</div>
     </div>

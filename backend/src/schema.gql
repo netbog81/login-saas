@@ -1809,6 +1809,9 @@ input ServiceInputItem {
 
   """Prezzo personalizzato (override del default)"""
   customPrice: Float
+
+  """Posizione ordine del servizio nell'appuntamento"""
+  orderPosition: Int
   serviceId: ID!
 }
 

@@ -27,6 +27,16 @@ export interface AppointmentInstrumentInput {
   orderPosition?: number;
 }
 
+/**
+ * Input per un singolo servizio nell'appuntamento (multi-servizio)
+ */
+export interface ServiceInputItem {
+  serviceId: string;
+  customDuration?: number;
+  customPrice?: number;
+  orderPosition?: number;
+}
+
 export interface RepeatConfigInput {
   type: 'daily' | 'weekly' | 'monthly';
   interval: number;
@@ -38,7 +48,10 @@ export interface RepeatConfigInput {
 
 export interface CreateAvailabilityAppointmentInput {
   operatorId: string;
+  /** @deprecated Usa services invece */
   serviceId?: string;
+  /** Lista dei servizi da associare all'appuntamento (nuovo sistema multi-servizio) */
+  services?: ServiceInputItem[];
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -54,7 +67,10 @@ export interface CreateAvailabilityAppointmentInput {
 }
 
 export interface UpdateAvailabilityAppointmentInput {
+  /** @deprecated Usa services invece */
   serviceId?: string;
+  /** Lista dei servizi da associare all'appuntamento (nuovo sistema multi-servizio) */
+  services?: ServiceInputItem[];
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;

@@ -214,8 +214,8 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
       this.selectedPatientId = apt.patientId ? Number(apt.patientId) : null;
 
       // Carica i servizi multipli (se presenti)
-      if ((apt as any).appointmentServices?.length > 0) {
-        this.selectedServices = (apt as any).appointmentServices.map((as: any, idx: number) => ({
+      if (apt.appointmentServices?.length) {
+        this.selectedServices = apt.appointmentServices.map((as, idx) => ({
           serviceId: as.serviceId,
           service: as.service,
           customPrice: as.customPrice,

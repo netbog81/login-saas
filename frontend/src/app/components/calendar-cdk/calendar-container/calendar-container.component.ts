@@ -1531,6 +1531,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       if (result.action === 'save' && result.appointment) {
         this.saveAppointment(
           result.appointment,
+          result.services,
           result.instruments,
           result.instrumentOrderMatters,
           result.repeatConfig,
@@ -1552,7 +1553,14 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
 
     if (result.action === 'save' && result.appointment) {
-      await this.saveAppointment(result.appointment, result.instruments, result.instrumentOrderMatters, result.repeatConfig, result.nonRetribuito);
+      await this.saveAppointment(
+        result.appointment,
+        result.services,
+        result.instruments,
+        result.instrumentOrderMatters,
+        result.repeatConfig,
+        result.nonRetribuito
+      );
     }
   }
 
@@ -1562,6 +1570,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
    */
   private async saveAppointment(
     appointment: Appointment,
+    services?: { serviceId: string; customPrice?: number; customDuration?: number; orderPosition?: number }[],
     instruments?: AppointmentInstrumentInput[],
     instrumentOrderMatters?: boolean,
     repeatConfig?: any,
@@ -1570,10 +1579,16 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     try {
       const isUpdate = appointment.id && typeof appointment.id === 'string' && appointment.id.length > 10;
 
+      // Prepara services con orderPosition se mancante
+      const servicesWithOrder = services?.map((s, idx) => ({
+        ...s,
+        orderPosition: s.orderPosition ?? idx
+      }));
+
       if (isUpdate) {
         // Update appuntamento esistente (non supporta ricorrenza)
         const updateInput = {
-          serviceId: appointment.serviceId,
+          services: servicesWithOrder,  // Multi-servizio
           clientName: appointment.title,
           patientId: appointment.patientId,
           appointmentDate: appointment.date,
@@ -1597,7 +1612,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         const created = await firstValueFrom(
           this.availabilityAppointmentService.createAppointment({
             operatorId: appointment.operatorId,
-            serviceId: appointment.serviceId,
+            services: servicesWithOrder,  // Multi-servizio
             clientName: appointment.title,
             patientId: appointment.patientId,
             appointmentDate: appointment.date,

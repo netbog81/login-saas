@@ -10,6 +10,7 @@ import { PatientService } from '../../../services/patient.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { ServiceService } from '../../../services/service.service';
 import { BaseComponent } from '../../../core/components/base.component';
+import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../../../shared/components/service-multi-select';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -41,9 +42,17 @@ export interface AppointmentInstrumentData {
   orderPosition?: number;
 }
 
+export interface ServiceInputForResult {
+  serviceId: string;
+  customPrice?: number;
+  customDuration?: number;
+  orderPosition: number;
+}
+
 export interface EventDialogResult {
   action: 'save' | 'delete' | 'cancel';
   appointment?: Appointment;
+  services?: ServiceInputForResult[];
   instruments?: AppointmentInstrumentData[];
   instrumentOrderMatters?: boolean;
   repeatConfig?: RepeatConfig;
@@ -53,7 +62,7 @@ export interface EventDialogResult {
 @Component({
   selector: 'app-event-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ServiceMultiSelectComponent],
   templateUrl: './event-dialog.component.html',
   styleUrls: ['./event-dialog.component.scss']
 })
@@ -67,13 +76,13 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   startTime: string = '';
   endTime: string = '';
   operatorId: string = '';
-  serviceId: string | null = null;
   patientId: number | null = null;
   notes: string = '';
   nonRetribuito: boolean = false;
 
-  // Service selection
+  // Service selection - multi-servizio
   operatorServices: Service[] = [];
+  selectedServices: SelectedServiceItem[] = [];
   loadingServices: boolean = false;
 
   // Patient search
@@ -124,9 +133,9 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['data'] && changes['data'].currentValue?.appointment) {
       const apt = changes['data'].currentValue.appointment;
-      // Se serviceId è presente nel nuovo dato e non è ancora stato assegnato, assegnalo
-      if (apt.serviceId && !this.serviceId) {
-        this.serviceId = apt.serviceId;
+      // Carica servizi multipli se presenti e non ancora caricati
+      if (apt.appointmentServices?.length > 0 && this.selectedServices.length === 0) {
+        this.loadSelectedServicesFromAppointment(apt);
       }
     }
   }
@@ -141,11 +150,13 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       this.startTime = apt.startTime;
       this.endTime = apt.endTime;
       this.operatorId = apt.operatorId;
-      this.serviceId = apt.serviceId || null;
       this.patientId = apt.patientId ? Number(apt.patientId) : null;
       this.notes = apt.notes || '';
       this.bookingStatus = (apt.bookingStatus as BookingStatus) || 'scheduled';
       this.nonRetribuito = apt.nonRetribuito || false;
+
+      // Load multi-services from appointment
+      this.loadSelectedServicesFromAppointment(apt);
 
       // Load existing instruments
       if (apt.instruments && apt.instruments.length > 0) {
@@ -211,6 +222,34 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   }
 
   /**
+   * Carica i servizi selezionati dall'appuntamento (multi-servizio)
+   */
+  private loadSelectedServicesFromAppointment(apt: Appointment): void {
+    if (apt.appointmentServices && apt.appointmentServices.length > 0) {
+      this.selectedServices = apt.appointmentServices.map((as, idx) => ({
+        serviceId: as.serviceId,
+        service: as.service ? {
+          id: as.service.id,
+          name: as.service.name,
+          defaultPrice: as.service.defaultPrice,
+          discountFE: as.service.discountFE,
+          defaultDuration: as.service.duration  // 'duration' nel modello AppointmentServiceItem
+        } : undefined,
+        customPrice: as.customPrice ?? undefined,
+        customDuration: as.customDuration ?? undefined,
+        orderPosition: as.orderPosition ?? idx
+      }));
+    } else if (apt.serviceId) {
+      // Fallback per vecchi appuntamenti con solo serviceId
+      // Il servizio verrà popolato dopo il caricamento di operatorServices
+      this.selectedServices = [{
+        serviceId: apt.serviceId,
+        orderPosition: 0
+      }];
+    }
+  }
+
+  /**
    * Carica i servizi assegnati all'operatore selezionato
    */
   loadOperatorServices(operatorId: string): void {
@@ -229,13 +268,26 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
         this.operatorServices = services;
         this.loadingServices = false;
 
-        // NON resettare serviceId se la lista è vuota (potrebbe essere una risposta intermedia di Apollo)
-        // Solo resettare se abbiamo effettivamente dei servizi e il nostro non è tra questi
-        if (services.length > 0 && this.serviceId) {
-          const foundService = this.operatorServices.find(s => s.id === this.serviceId);
-          if (!foundService) {
-            this.serviceId = null;
-          }
+        // Popola i dati service nei selectedServices se mancanti (fallback da serviceId)
+        if (services.length > 0 && this.selectedServices.length > 0) {
+          this.selectedServices = this.selectedServices.map(ss => {
+            if (!ss.service) {
+              const service = services.find(s => s.id === ss.serviceId);
+              if (service) {
+                return {
+                  ...ss,
+                  service: {
+                    id: service.id,
+                    name: service.name,
+                    defaultPrice: service.defaultPrice,
+                    discountFE: service.discountFE ?? undefined,
+                    defaultDuration: service.defaultDuration
+                  }
+                };
+              }
+            }
+            return ss;
+          }).filter(ss => ss.service || services.some(s => s.id === ss.serviceId));
         }
         // Force change detection (Apollo watchQuery() callback may run outside NgZone)
         this.detectChanges();
@@ -250,11 +302,31 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   }
 
   /**
-   * Gestisce il cambio di operatore - resetta il servizio e carica i nuovi servizi
+   * Gestisce il cambio di operatore - resetta i servizi e carica i nuovi
    */
   onOperatorChange(): void {
-    this.serviceId = null;
+    this.selectedServices = [];
     this.loadOperatorServices(this.operatorId);
+  }
+
+  /**
+   * Handler per cambio servizi selezionati
+   */
+  onServicesChange(services: SelectedServiceItem[]): void {
+    this.selectedServices = services;
+  }
+
+  /**
+   * Mappa operatorServices al tipo SelectableService per compatibilità con ServiceMultiSelectComponent
+   */
+  get availableServicesForSelect(): SelectableService[] {
+    return this.operatorServices.map(s => ({
+      id: s.id,
+      name: s.name,
+      defaultPrice: s.defaultPrice,
+      discountFE: s.discountFE ?? undefined,
+      defaultDuration: s.defaultDuration
+    }));
   }
 
   get filteredPatients(): Patient[] {
@@ -409,7 +481,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
     this.runInZone(() => {
       if (this.nonRetribuito) {
         // Reset campi non necessari per appuntamento non retribuito
-        this.serviceId = null;
+        this.selectedServices = [];
         this.patientId = null;
         this.instrumentsEnabled = false;
         this.selectedInstrumentCategoryId = '';
@@ -664,9 +736,17 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       startTime: this.startTime,
       endTime: this.endTime,
       operatorId: this.operatorId,
-      serviceId: this.serviceId || undefined,
       patientId: this.patientId ? Number(this.patientId) : undefined,  // Forza conversione a Int per GraphQL
-      notes: this.notes || undefined
+      notes: this.notes || undefined,
+      // Multi-servizio
+      appointmentServices: this.selectedServices.length > 0
+        ? this.selectedServices.map((s, idx) => ({
+            serviceId: s.serviceId,
+            customPrice: s.customPrice,
+            customDuration: s.customDuration,
+            orderPosition: s.orderPosition ?? idx
+          }))
+        : undefined
     };
 
     // Costruisci i dati degli strumenti dalla configurazione corrente
@@ -683,9 +763,20 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
     } : undefined;
 
+    // Prepara servizi per l'output
+    const servicesForResult = this.selectedServices.length > 0
+      ? this.selectedServices.map((s, idx) => ({
+          serviceId: s.serviceId,
+          customPrice: s.customPrice,
+          customDuration: s.customDuration,
+          orderPosition: s.orderPosition ?? idx
+        }))
+      : undefined;
+
     this.emit(this.result, {
       action: 'save',
       appointment,
+      services: servicesForResult,
       instruments: instruments.length > 0 ? instruments : undefined,
       instrumentOrderMatters: this.instrumentOrderMatters,
       repeatConfig,

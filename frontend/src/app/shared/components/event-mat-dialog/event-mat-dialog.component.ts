@@ -322,20 +322,56 @@ export class EventMatDialogComponent implements OnInit {
         this.operatorServices = services;
         this.loadingServices = false;
 
-        // In edit mode, restore selected service
-        if (this.isEditMode && this.data.appointment?.serviceId) {
-          const existingService = services.find(s => s.id === this.data.appointment!.serviceId);
-          if (existingService) {
-            this.selectedServices = [{
-              serviceId: existingService.id,
-              service: {
-                id: existingService.id,
-                name: existingService.name,
-                defaultPrice: existingService.defaultPrice,
-                defaultDuration: existingService.defaultDuration
-              },
-              orderPosition: 1
-            }];
+        // In edit mode, restore selected services
+        if (this.isEditMode && this.data.appointment) {
+          const apt = this.data.appointment;
+
+          // Priorità: appointmentServices (nuovo) > serviceId (vecchio)
+          if (apt.appointmentServices && apt.appointmentServices.length > 0) {
+            this.selectedServices = apt.appointmentServices.map((as, idx) => {
+              const foundService = services.find(s => s.id === as.serviceId);
+
+              // Costruisce SelectableService con tipo corretto
+              const selectableService: SelectableService | undefined = as.service
+                ? {
+                    id: as.service.id,
+                    name: as.service.name,
+                    defaultPrice: as.service.defaultPrice,
+                    discountFE: as.service.discountFE,
+                    defaultDuration: as.service.duration
+                  }
+                : foundService
+                  ? {
+                      id: foundService.id,
+                      name: foundService.name,
+                      defaultPrice: foundService.defaultPrice,
+                      defaultDuration: foundService.defaultDuration
+                    }
+                  : undefined;
+
+              return {
+                serviceId: as.serviceId,
+                service: selectableService,
+                customPrice: as.customPrice ?? undefined,
+                customDuration: as.customDuration ?? undefined,
+                orderPosition: as.orderPosition ?? idx
+              };
+            });
+          } else if (apt.serviceId) {
+            // Fallback per vecchi appuntamenti con solo serviceId
+            const existingService = services.find(s => s.id === apt.serviceId);
+            if (existingService) {
+              this.selectedServices = [{
+                serviceId: existingService.id,
+                service: {
+                  id: existingService.id,
+                  name: existingService.name,
+                  defaultPrice: existingService.defaultPrice,
+                  defaultDuration: existingService.defaultDuration
+                },
+                orderPosition: 0
+              }];
+            }
           }
         }
 

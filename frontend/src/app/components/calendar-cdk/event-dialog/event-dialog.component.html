@@ -61,22 +61,19 @@
       <span class="toggle-hint" *ngIf="nonRetribuito">(pausa pranzo, rappresentante, ecc.)</span>
     </div>
 
-    <!-- Service selection - nascondere se nonRetribuito -->
-    <div class="form-row" *ngIf="operatorId && !nonRetribuito">
-      <div class="form-group" style="flex: 1;">
-        <label for="serviceId">Servizio ({{ operatorServices.length }} disponibili)</label>
-        <select
-          id="serviceId"
-          [(ngModel)]="serviceId"
-          class="form-input"
-          [disabled]="loadingServices">
-          <option [ngValue]="null">-- Nessun servizio --</option>
-          <option *ngFor="let service of operatorServices" [ngValue]="service.id">
-            {{ service.name }} ({{ service.defaultDuration }} min - €{{ service.defaultPrice }})
-          </option>
-        </select>
-        <span class="loading-hint" *ngIf="loadingServices">Caricamento servizi...</span>
-      </div>
+    <!-- Service selection - Multi-servizio -->
+    <div class="form-group services-section" *ngIf="operatorId && !nonRetribuito">
+      <label>Servizi ({{ operatorServices.length }} disponibili)</label>
+      <app-service-multi-select
+        [availableServices]="availableServicesForSelect"
+        [selectedServices]="selectedServices"
+        [showPrices]="true"
+        [editablePrices]="false"
+        [disabled]="loadingServices"
+        placeholder="Aggiungi servizio"
+        (selectedServicesChange)="onServicesChange($event)">
+      </app-service-multi-select>
+      <span class="loading-hint" *ngIf="loadingServices">Caricamento servizi...</span>
     </div>
 
     <div class="form-row">

@@ -186,7 +186,7 @@ export class AvailabilityAppointmentService {
         serviceId: s.serviceId,
         customDuration: s.customDuration,
         customPrice: s.customPrice,
-        orderPosition: idx,
+        orderPosition: s.orderPosition ?? idx,
       }));
 
       await appointmentServiceRepo.save(servicesToSave);
@@ -752,7 +752,7 @@ export class AvailabilityAppointmentService {
           serviceId: s.serviceId,
           customDuration: s.customDuration,
           customPrice: s.customPrice,
-          orderPosition: idx,
+          orderPosition: s.orderPosition ?? idx,
         }));
 
         await this.appointmentServiceRepo.save(servicesToSave);
@@ -1238,7 +1238,7 @@ export class AvailabilityAppointmentService {
         serviceId: s.serviceId,
         customDuration: s.customDuration,
         customPrice: s.customPrice,
-        orderPosition: idx,
+        orderPosition: s.orderPosition ?? idx,
       }));
 
       await this.appointmentServiceRepo.save(servicesToSave);

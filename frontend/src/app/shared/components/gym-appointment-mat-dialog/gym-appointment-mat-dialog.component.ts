@@ -503,14 +503,16 @@ export class GymAppointmentMatDialogComponent implements OnInit {
       }));
 
       // Recupera i dati del paziente selezionato per clientName
-      const selectedPatient = this.patients.find(p => p.id === this.form.value.patientId);
+      // Usa == perché patient.id (da GraphQL) potrebbe essere string o number
+      const selectedPatient = this.patients.find(p => p.id == this.form.value.patientId);
       const clientName = selectedPatient
         ? `${selectedPatient.cognome} ${selectedPatient.nome}`
         : '';
 
       const input: CreateGymAppointmentInput = {
         gymRoomId: this.data.gymRoom.id,
-        patientId: this.form.value.patientId,
+        // Forza conversione a number (GraphQL ID viene serializzato come stringa)
+        patientId: this.form.value.patientId ? Number(this.form.value.patientId) : undefined,
         clientName: clientName,
         clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || '',
         clientEmail: selectedPatient?.email || '',

@@ -103,6 +103,17 @@ export class AppointmentSummaryComponent {
     return date.toLocaleDateString('it-IT', options);
   }
 
+  get hasServices(): boolean {
+    return !!(this.appointment.appointmentServices && this.appointment.appointmentServices.length > 0);
+  }
+
+  get servicesNames(): string {
+    if (!this.appointment.appointmentServices) return '';
+    return this.appointment.appointmentServices
+      .map(as => as.service?.name || 'Servizio')
+      .join(', ');
+  }
+
   get hasInstruments(): boolean {
     return !!(this.appointment.instruments && this.appointment.instruments.length > 0);
   }

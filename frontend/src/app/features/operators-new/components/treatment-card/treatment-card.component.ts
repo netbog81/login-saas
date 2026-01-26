@@ -128,6 +128,39 @@ export type ReschedulingType = 'days' | 'range' | 'none';
                   </div>
                 }
               </div>
+
+              <!-- Dettagli appuntamento -->
+              @if (hasServices() || hasInstruments() || hasNotes()) {
+                <div class="appointment-details">
+                  @if (hasServices()) {
+                    <div class="detail-row services">
+                      <mat-icon class="detail-icon">medical_services</mat-icon>
+                      <div class="detail-content">
+                        <span class="detail-label">Servizi</span>
+                        <span class="detail-value">{{ getServicesNames() }}</span>
+                      </div>
+                    </div>
+                  }
+                  @if (hasInstruments()) {
+                    <div class="detail-row instruments">
+                      <mat-icon class="detail-icon">fitness_center</mat-icon>
+                      <div class="detail-content">
+                        <span class="detail-label">Strumenti</span>
+                        <span class="detail-value">{{ getInstrumentsNames() }}</span>
+                      </div>
+                    </div>
+                  }
+                  @if (hasNotes()) {
+                    <div class="detail-row notes">
+                      <mat-icon class="detail-icon">notes</mat-icon>
+                      <div class="detail-content">
+                        <span class="detail-label">Note</span>
+                        <span class="detail-value">{{ getAppointmentNotes() }}</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
             </div>
           }
 
@@ -295,19 +328,12 @@ export type ReschedulingType = 'days' | 'range' | 'none';
               </div>
             }
 
-            <!-- Nessun trattamento in corso: mostra pulsanti standard -->
+            <!-- Nessun trattamento in corso: mostra solo pulsante Inizia -->
             @if (!hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
               @if (canStartTreatment()) {
                 <button mat-raised-button color="primary" (click)="onStartTreatment()">
                   <mat-icon>play_arrow</mat-icon>
                   Inizia Trattamento
-                </button>
-              }
-
-              @if (canCompleteTreatment()) {
-                <button mat-raised-button color="accent" (click)="onCompleteTreatment()">
-                  <mat-icon>check</mat-icon>
-                  Completa
                 </button>
               }
             }
@@ -317,12 +343,9 @@ export type ReschedulingType = 'days' | 'range' | 'none';
               Cartella
             </button>
 
-            @if (!isCancelled() && !hasTreatmentInProgress() && !isTreatmentOperatorCompleted() && !isTreatmentClosed()) {
-              <button mat-button color="warn" (click)="onCancelAppointment()" matTooltip="Annulla appuntamento">
-                <mat-icon>cancel</mat-icon>
-                Annulla
-              </button>
-            }
+            <!-- NOTA: Pulsante "Annulla appuntamento" rimosso temporaneamente.
+                 Richiede implementazione sistema notifiche per segreteria.
+                 Vedere piano: Section 11 in cosmic-wishing-fairy.md -->
           }
         </mat-card-actions>
       }
@@ -490,6 +513,7 @@ export type ReschedulingType = 'days' | 'range' | 'none';
 
     .patient-details {
       flex: 1;
+      min-width: 0;
 
       .patient-name {
         margin: 0 0 8px;
@@ -520,6 +544,54 @@ export type ReschedulingType = 'days' | 'range' | 'none';
             text-decoration: underline;
           }
         }
+      }
+    }
+
+    .appointment-details {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-left: 16px;
+      border-left: 2px solid #e2e8f0;
+
+      .detail-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+
+        .detail-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          color: #64748b;
+          margin-top: 2px;
+          flex-shrink: 0;
+        }
+
+        .detail-content {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+
+          .detail-label {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          .detail-value {
+            font-size: 13px;
+            color: #334155;
+            word-break: break-word;
+          }
+        }
+
+        &.services .detail-icon { color: #667eea; }
+        &.instruments .detail-icon { color: #10b981; }
+        &.notes .detail-icon { color: #f59e0b; }
       }
     }
 
@@ -737,6 +809,21 @@ export type ReschedulingType = 'days' | 'range' | 'none';
     }
 
     /* Responsive */
+    @media (max-width: 767px) {
+      .patient-info {
+        flex-wrap: wrap;
+      }
+
+      .appointment-details {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid #e2e8f0;
+        padding-left: 0;
+        padding-top: 12px;
+        margin-top: 8px;
+      }
+    }
+
     @media (max-width: 599px) {
       .header-content {
         flex-direction: column;
@@ -751,6 +838,16 @@ export type ReschedulingType = 'days' | 'range' | 'none';
 
       .patient-details .contact-row {
         justify-content: center;
+      }
+
+      .appointment-details {
+        align-items: center;
+        text-align: center;
+
+        .detail-row {
+          flex-direction: column;
+          align-items: center;
+        }
       }
 
       .pain-sliders {
@@ -781,7 +878,7 @@ export class TreatmentCardComponent {
   @Output() finishTreatment = new EventEmitter<Treatment>(); // Completa trattamento (chiude)
   @Output() cancelTreatment = new EventEmitter<Treatment>(); // Annulla trattamento in corso
   @Output() viewPatientFolder = new EventEmitter<void>();
-  @Output() cancelAppointment = new EventEmitter<void>();
+  // NOTA: cancelAppointment rimosso - richiede sistema notifiche (vedere Section 11 piano)
   @Output() deleteNonRetribuito = new EventEmitter<AvailabilityAppointment>(); // Elimina appuntamento non retribuito
 
   // Stato form completamento
@@ -819,9 +916,7 @@ export class TreatmentCardComponent {
     this.viewPatientFolder.emit();
   }
 
-  onCancelAppointment(): void {
-    this.cancelAppointment.emit();
-  }
+  // NOTA: onCancelAppointment() rimosso - richiede sistema notifiche (vedere Section 11 piano)
 
   onEditTreatment(): void {
     if (this.currentTreatment) {
@@ -910,6 +1005,48 @@ export class TreatmentCardComponent {
     return '';
   }
 
+  // === Appointment Details Helpers ===
+
+  hasServices(): boolean {
+    // DEBUG: Verificare se appointmentServices arriva dal backend
+    console.log('[TreatmentCard] appointment:', this.appointment);
+    console.log('[TreatmentCard] appointmentServices:', this.appointment?.appointmentServices);
+    return !!(this.appointment?.appointmentServices?.length);
+  }
+
+  getServicesNames(): string {
+    if (!this.appointment?.appointmentServices?.length) return '';
+    return this.appointment.appointmentServices
+      .map(as => as.service?.name || 'Servizio')
+      .join(', ');
+  }
+
+  hasInstruments(): boolean {
+    return !!(this.appointment?.instruments?.length);
+  }
+
+  getInstrumentsNames(): string {
+    if (!this.appointment?.instruments?.length) return '';
+    return this.appointment.instruments
+      .map(i => i.instrument?.name || 'Strumento')
+      .join(', ');
+  }
+
+  hasNotes(): boolean {
+    return !!(this.appointment?.notes || this.appointment?.operatorNotes);
+  }
+
+  getAppointmentNotes(): string {
+    const parts: string[] = [];
+    if (this.appointment?.notes) {
+      parts.push(this.appointment.notes);
+    }
+    if (this.appointment?.operatorNotes) {
+      parts.push(`[Op: ${this.appointment.operatorNotes}]`);
+    }
+    return parts.join(' | ');
+  }
+
   formatTime(time: string | undefined | null): string {
     return time?.substring(0, 5) || '';
   }
@@ -977,13 +1114,6 @@ export class TreatmentCardComponent {
     return status === BookingStatus.Scheduled ||
            status === BookingStatus.Confirmed ||
            status === BookingStatus.Attended;
-  }
-
-  canCompleteTreatment(): boolean {
-    // L'appuntamento può essere completato solo se è in stato SCHEDULED o CONFIRMED
-    // (cioè non è già ATTENDED, NO_SHOW o CANCELLED)
-    const status = this.appointment?.bookingStatus?.toUpperCase();
-    return status === BookingStatus.Scheduled || status === BookingStatus.Confirmed;
   }
 
   isInProgress(): boolean {

@@ -91,6 +91,12 @@ export class ServiceInputItem {
   @IsOptional()
   @Min(0, { message: 'Il prezzo non può essere negativo' })
   customPrice?: number;
+
+  @Field(() => Int, { nullable: true, description: 'Posizione ordine del servizio nell\'appuntamento' })
+  @IsOptional()
+  @IsInt()
+  @Min(0, { message: 'La posizione ordine deve essere >= 0' })
+  orderPosition?: number;
 }
 
 @InputType()
