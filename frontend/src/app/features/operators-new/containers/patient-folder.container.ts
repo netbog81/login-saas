@@ -38,6 +38,7 @@ import { PathDialogContainer } from './path-dialog.container';
 import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dialog.container';
 import { AnamnesisFormContainer } from './anamnesis-form.container';
 import { AnamnesisDialogContainer } from './anamnesis-dialog.container';
+import { ObjectivesDialogContainer } from './objectives-dialog.container';
 import { TestHistoryDialogContainer } from './test-history-dialog.container';
 import { ConfirmResetDialogComponent } from '../components/confirm-reset-dialog/confirm-reset-dialog.component';
 import { AnamnesisComplete } from '../models/anamnesis.model';
@@ -73,6 +74,7 @@ import {
     TreatmentDetailDialogContainerComponent,
     AnamnesisFormContainer,
     AnamnesisDialogContainer,
+    ObjectivesDialogContainer,
     TestHistoryDialogContainer,
     ConfirmResetDialogComponent
   ],
@@ -166,7 +168,8 @@ import {
               (testEvaluationEdited)="onTestEvaluationEdited($event)"
               (testReset)="onTestResetRequested($event)"
               (testDeleted)="onTestDeleted($event)"
-              (openTestHistory)="onOpenTestHistory($event)">
+              (openTestHistory)="onOpenTestHistory($event)"
+              (expandObjectives)="onExpandObjectives()">
             </app-path-content>
           </main>
         </div>
@@ -215,6 +218,23 @@ import {
       (delete)="onDeleteAnamnesis()"
       (close)="onAnamnesisDialogClose()">
     </app-anamnesis-dialog-container>
+
+    <!-- Objectives Expand Dialog -->
+    <app-objectives-dialog-container
+      #objectivesDialog
+      [patient]="patient"
+      [path]="selectedPath"
+      [anamnesisComplete]="currentAnamnesis"
+      [objectivesWithProgress]="objectivesWithProgress"
+      [testsWithEvaluations]="testsWithEvaluations"
+      (objectiveProgressChanged)="onObjectiveProgressChanged($event)"
+      (testEvaluationAdded)="onTestEvaluationAdded($event)"
+      (testEvaluationEdited)="onTestEvaluationEdited($event)"
+      (testReset)="onTestResetRequested($event)"
+      (testDeleted)="onTestDeleted($event)"
+      (openTestHistory)="onOpenTestHistory($event)"
+      (close)="onObjectivesDialogClose()">
+    </app-objectives-dialog-container>
 
     <!-- Test History Dialog -->
     <app-test-history-dialog-container
@@ -498,6 +518,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   @ViewChild('treatmentDetailDialog') treatmentDetailDialog!: TreatmentDetailDialogContainerComponent;
   @ViewChild('anamnesisDialog') anamnesisDialog!: AnamnesisDialogContainer;
+  @ViewChild('objectivesDialog') objectivesDialog!: ObjectivesDialogContainer;
 
   // State
   uiState: PatientFolderUIState = createInitialPatientFolderUIState();
@@ -828,6 +849,17 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   onAnamnesisDialogClose(): void {
     console.log('[PatientFolderContainer] Anamnesis dialog closed');
+  }
+
+  onExpandObjectives(): void {
+    console.log('[PatientFolderContainer] Expand objectives');
+    if (this.objectivesDialog) {
+      this.objectivesDialog.open();
+    }
+  }
+
+  onObjectivesDialogClose(): void {
+    console.log('[PatientFolderContainer] Objectives dialog closed');
   }
 
   // === Objectives Tracking Handlers ===

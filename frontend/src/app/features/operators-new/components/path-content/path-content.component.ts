@@ -178,7 +178,8 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documen
                 (testEvaluationEdited)="onTestEvaluationEdited($event)"
                 (testReset)="onTestReset($event)"
                 (testDeleted)="onTestDeleted($event)"
-                (openTestHistory)="onOpenTestHistory($event)">
+                (openTestHistory)="onOpenTestHistory($event)"
+                (expand)="onExpandObjectives()">
               </app-objectives-tab>
             </div>
           </mat-tab>
@@ -478,6 +479,7 @@ export class PathContentComponent {
   @Output() testReset = new EventEmitter<TestResetEvent>();
   @Output() testDeleted = new EventEmitter<TestDeleteEvent>();
   @Output() openTestHistory = new EventEmitter<TestWithEvaluations>();
+  @Output() expandObjectives = new EventEmitter<void>();
 
   private readonly tabIndexMap: PathContentTab[] = ['treatments', 'anamnesis', 'obiettivi', 'documents'];
 
@@ -578,5 +580,9 @@ export class PathContentComponent {
 
   onOpenTestHistory(test: TestWithEvaluations): void {
     this.openTestHistory.emit(test);
+  }
+
+  onExpandObjectives(): void {
+    this.expandObjectives.emit();
   }
 }

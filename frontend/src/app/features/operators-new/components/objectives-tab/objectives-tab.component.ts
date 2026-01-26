@@ -45,7 +45,16 @@ import { TestEvaluationItemComponent } from '../test-evaluation-item/test-evalua
     <div class="objectives-tab">
       <!-- Header -->
       <div class="objectives-header">
-        <h3>Valutazione Trattamento</h3>
+        <div class="header-row">
+          <h3>Valutazione Trattamento</h3>
+          @if (showExpandButton) {
+            <button mat-icon-button
+                    matTooltip="Espandi vista"
+                    (click)="onExpand()">
+              <mat-icon>open_in_full</mat-icon>
+            </button>
+          }
+        </div>
         <div class="progress-summary">
           <span class="objectives-count">
             <mat-icon>flag</mat-icon>
@@ -209,11 +218,26 @@ import { TestEvaluationItemComponent } from '../test-evaluation-item/test-evalua
       border-bottom: 1px solid #e2e8f0;
       background: #f8fafc;
 
-      h3 {
-        margin: 0 0 8px 0;
-        font-size: 1rem;
-        font-weight: 600;
-        color: #1e293b;
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+
+        h3 {
+          margin: 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        button {
+          color: #64748b;
+
+          &:hover {
+            color: #667eea;
+          }
+        }
       }
 
       .progress-summary {
@@ -334,6 +358,7 @@ export class ObjectivesTabComponent {
   @Input() objectivesWithProgress: ObjectiveWithProgress[] = [];
   @Input() testsWithEvaluations: TestWithEvaluations[] = [];
   @Input() readonly = false;
+  @Input() showExpandButton = true;
 
   @Output() objectiveProgressChanged = new EventEmitter<ObjectiveProgressChangeEvent>();
   @Output() testEvaluationAdded = new EventEmitter<TestEvaluationAddedEvent>();
@@ -341,6 +366,7 @@ export class ObjectivesTabComponent {
   @Output() testReset = new EventEmitter<TestResetEvent>();
   @Output() testDeleted = new EventEmitter<TestDeleteEvent>();
   @Output() openTestHistory = new EventEmitter<TestWithEvaluations>();
+  @Output() expand = new EventEmitter<void>();
 
   // Stato pannello test (null = usa default, true/false = stato utente)
   private testPanelExpandedState: boolean | null = null;
@@ -464,5 +490,9 @@ export class ObjectivesTabComponent {
 
   onViewTestHistory(test: TestWithEvaluations): void {
     this.openTestHistory.emit(test);
+  }
+
+  onExpand(): void {
+    this.expand.emit();
   }
 }
