@@ -4,9 +4,10 @@
  *
  * Responsabilità:
  * - Gestione stato globale del workspace
- * - Orchestrazione caricamento dati (operatori, appuntamenti, paziente)
+ * - Orchestrazione caricamento dati (appuntamenti, paziente)
  * - Coordinamento tra componenti figli
  * - Gestione eventi UI
+ * - Usa OperatorWorkspaceStateService per operatore/data condivisi
  */
 
 import {
@@ -22,8 +23,8 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { Subject, combineLatest } from 'rxjs';
+import { takeUntil, filter, distinctUntilChanged } from 'rxjs/operators';
 
 import { Operator, AvailabilityAppointment } from '../../../graphql/generated/types';
 import { Patient } from '../../../models/patient.model';
@@ -34,7 +35,7 @@ import {
 } from '../models';
 
 import { OperatorWorkspaceService } from '../services/operator-workspace.service';
-import { WorkspaceHeaderComponent } from '../components/workspace-header/workspace-header.component';
+import { OperatorWorkspaceStateService } from '../services/operator-workspace-state.service';
 import { AppointmentsSidebarComponent } from '../components/appointments-sidebar/appointments-sidebar.component';
 import { TreatmentCardComponent, TreatmentCompletionData } from '../components/treatment-card/treatment-card.component';
 import { PatientFolderContainer } from './patient-folder.container';
@@ -52,7 +53,6 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
-    WorkspaceHeaderComponent,
     AppointmentsSidebarComponent,
     TreatmentCardComponent,
     PatientFolderContainer,
@@ -61,19 +61,6 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
   ],
   template: `
     <div class="operator-workspace-new">
-      <!-- Header con selezione operatore e data -->
-      <app-workspace-header
-        [operators]="operators"
-        [selectedOperator]="selectedOperator"
-        [selectedDate]="uiState.selectedDate"
-        [loadingOperators]="uiState.loadingOperators"
-        [title]="'Workspace Operatore'"
-        [subtitle]="'Architettura a 5 strati'"
-        (operatorChange)="onOperatorChange($event)"
-        (dateChange)="onDateChange($event)"
-        (todayClick)="onTodayClick()">
-      </app-workspace-header>
-
       <!-- Error banner -->
       @if (uiState.error) {
         <div class="error-banner">
@@ -338,15 +325,16 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   uiState: WorkspaceUIState = createInitialWorkspaceUIState();
   treatmentSectionCollapsed = false;
 
-  // Dati
-  operators: Operator[] = [];
+  // Dati - operatore e data vengono dal servizio condiviso
   selectedOperator: Operator | null = null;
+  selectedDate: Date = new Date();
   appointments: AvailabilityAppointment[] = [];
   selectedAppointment: AvailabilityAppointment | null = null;
   selectedPatient: Patient | null = null;
   currentTreatment: Treatment | null = null;  // Trattamento in corso
 
   constructor(
+    private stateService: OperatorWorkspaceStateService,
     private workspaceService: OperatorWorkspaceService,
     private treatmentService: TreatmentService,
     private appointmentService: AvailabilityAppointmentService,
@@ -356,7 +344,31 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     console.log('[OperatorWorkspaceContainer] Inizializzato');
-    this.loadOperators();
+
+    // Sottoscrivi ai cambiamenti di operatore e data dal servizio condiviso
+    combineLatest([
+      this.stateService.selectedOperator$.pipe(
+        filter((op): op is Operator => op !== null),
+        distinctUntilChanged((a, b) => a.id === b.id)
+      ),
+      this.stateService.selectedDate$.pipe(
+        distinctUntilChanged((a, b) => a.getTime() === b.getTime())
+      )
+    ])
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(([operator, date]) => {
+        this.ngZone.run(() => {
+          this.selectedOperator = operator;
+          this.selectedDate = date;
+          this.uiState = {
+            ...this.uiState,
+            selectedDate: date,
+            selectedOperatorId: operator.id
+          };
+          this.loadAppointments();
+          this.cdr.markForCheck();
+        });
+      });
   }
 
   ngOnDestroy(): void {
@@ -366,38 +378,13 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
 
   // ============ DATA LOADING ============
 
-  private loadOperators(): void {
-    this.uiState = { ...this.uiState, loadingOperators: true, error: null };
-    this.cdr.markForCheck();
-
-    this.workspaceService.loadOperators()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(result => {
-        this.ngZone.run(() => {
-          this.operators = result.operators;
-          this.uiState = {
-            ...this.uiState,
-            loadingOperators: false,
-            error: result.error || null
-          };
-
-          // Auto-select primo operatore
-          if (this.operators.length > 0 && !this.selectedOperator) {
-            this.selectOperator(this.operators[0]);
-          }
-
-          this.cdr.markForCheck();
-        });
-      });
-  }
-
   private loadAppointments(): void {
     if (!this.selectedOperator) return;
 
     this.uiState = { ...this.uiState, loadingAppointments: true };
     this.cdr.markForCheck();
 
-    this.workspaceService.loadAppointments(this.selectedOperator.id, this.uiState.selectedDate)
+    this.workspaceService.loadAppointments(this.selectedOperator.id, this.selectedDate)
       .pipe(takeUntil(this.destroy$))
       .subscribe(result => {
         this.ngZone.run(() => {
@@ -458,20 +445,6 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   }
 
   // ============ EVENT HANDLERS ============
-
-  onOperatorChange(operator: Operator): void {
-    this.selectOperator(operator);
-  }
-
-  onDateChange(date: Date): void {
-    this.uiState = { ...this.uiState, selectedDate: date };
-    this.loadAppointments();
-  }
-
-  onTodayClick(): void {
-    this.uiState = { ...this.uiState, selectedDate: new Date() };
-    this.loadAppointments();
-  }
 
   onAppointmentSelect(appointment: AvailabilityAppointment): void {
     this.selectedAppointment = appointment;
@@ -788,14 +761,4 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
     return parts.length > 0 ? parts.join('\n') : 'Nessuna nota aggiuntiva';
   }
 
-  // ============ PRIVATE HELPERS ============
-
-  private selectOperator(operator: Operator): void {
-    this.selectedOperator = operator;
-    this.uiState = {
-      ...this.uiState,
-      selectedOperatorId: operator.id
-    };
-    this.loadAppointments();
-  }
 }

@@ -38,7 +38,18 @@ import { TestWithEvaluations } from '../models/objectives-tracking.model';
   `
 })
 export class TestHistoryDialogContainer implements OnChanges, OnDestroy {
-  @Input() test: TestWithEvaluations | null = null;
+  @Input() set test(value: TestWithEvaluations | null) {
+    this._test = value;
+    // Aggiorna dialogData quando test cambia (anche se solo il contenuto interno)
+    if (this.isVisible && value) {
+      this.refreshDialogData();
+    }
+  }
+  get test(): TestWithEvaluations | null {
+    return this._test;
+  }
+  private _test: TestWithEvaluations | null = null;
+
   @Input() isVisible = false;
 
   @Output() closed = new EventEmitter<void>();
@@ -54,11 +65,22 @@ export class TestHistoryDialogContainer implements OnChanges, OnDestroy {
   ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
-    if ((changes['isVisible'] || changes['test']) && this.isVisible && this.test) {
+    // Gestisce cambiamenti a isVisible
+    if (changes['isVisible'] && this.isVisible && this._test) {
+      this.refreshDialogData();
+    }
+  }
+
+  /**
+   * Aggiorna dialogData con un nuovo riferimento per forzare il re-render
+   */
+  private refreshDialogData(): void {
+    if (this._test) {
       this.dialogData = {
-        testId: this.test.id,
-        testName: this.test.nome,
-        history: this.test.evaluationHistory || []
+        testId: this._test.id,
+        testName: this._test.nome,
+        // Spread per creare nuovo riferimento array e forzare change detection
+        history: [...(this._test.evaluationHistory || [])]
       };
       this.cdr.markForCheck();
     }
@@ -81,7 +103,19 @@ export class TestHistoryDialogContainer implements OnChanges, OnDestroy {
     ).pipe(takeUntil(this.destroy$))
      .subscribe({
        next: () => {
-         // Emette entryUpdated per ricaricare i dati senza chiudere il dialog
+         // Aggiornamento ottimistico locale del dialog
+         if (this.dialogData) {
+           this.dialogData = {
+             ...this.dialogData,
+             history: this.dialogData.history.map(entry =>
+               entry.id === event.entryId
+                 ? { ...entry, evaluationLevel: event.level, note: event.note }
+                 : entry
+             )
+           };
+           this.cdr.markForCheck();
+         }
+         // Emette entryUpdated per aggiornare anche il parent
          this.entryUpdated.emit();
        },
        error: (err) => console.error('Errore modifica valutazione:', err)

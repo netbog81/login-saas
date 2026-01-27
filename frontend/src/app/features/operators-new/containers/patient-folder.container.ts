@@ -973,12 +973,20 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       return;
     }
 
-    // Aggiornamento ottimistico locale
+    // Aggiornamento ottimistico locale - aggiorna sia currentLevel che evaluationHistory[0]
     this.testsWithEvaluations = this.testsWithEvaluations.map(test => {
       if (test.id === event.testId) {
+        // Aggiorna anche la prima entry dello storico (la più recente)
+        const updatedHistory = test.evaluationHistory && test.evaluationHistory.length > 0
+          ? [
+              { ...test.evaluationHistory[0], evaluationLevel: event.level },
+              ...test.evaluationHistory.slice(1)
+            ]
+          : test.evaluationHistory;
         return {
           ...test,
-          currentLevel: event.level
+          currentLevel: event.level,
+          evaluationHistory: updatedHistory
         };
       }
       return test;
@@ -994,10 +1002,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       .subscribe({
         next: (result) => {
           console.log('[PatientFolderContainer] Test evaluation edited:', result);
-          // Ricarica i dati per sincronizzare con il backend
-          if (this.selectedPath) {
-            this.loadAnamnesis(this.selectedPath.id);
-          }
+          // L'aggiornamento ottimistico è già applicato, non serve ricaricare tutto
+          // Questo evita il destroy/recreate dei componenti e il delay su "Annulla"
         },
         error: (err) => {
           console.error('[PatientFolderContainer] Error editing test evaluation:', err);
@@ -1192,8 +1198,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   private loadAnamnesis(pathId: string): void {
     this.uiState = { ...this.uiState, loadingAnamnesis: true };
     this.currentAnamnesis = null;
-    this.objectivesWithProgress = [];
-    this.testsWithEvaluations = [];
+    // NON resettare gli array per evitare destroy/recreate dei componenti UI
+    // durante l'aggiornamento. Gli array vengono aggiornati da populateObjectivesAndTests()
     this.cdr.markForCheck();
 
     // Prepara info paziente per il mapping
@@ -1262,15 +1268,18 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     // I test possono venire sia dalla sezione objectiveExam che da monitoring
     const allTests = [
       ...(anamnesis.objectiveExam.testSpecifici || []).map(test => {
-        const history = (test.evaluationHistory || []).map(entry => ({
-          id: entry.id,
-          evaluationLevel: entry.evaluationLevel,
-          note: entry.note,
-          treatmentsSinceLast: entry.treatmentsSinceLast,
-          operatorName: entry.operatorName,
-          createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
-        }));
-        // currentLevel è l'ultima valutazione o 0
+        const history = (test.evaluationHistory || [])
+          .map(entry => ({
+            id: entry.id,
+            evaluationLevel: entry.evaluationLevel,
+            note: entry.note,
+            treatmentsSinceLast: entry.treatmentsSinceLast,
+            operatorName: entry.operatorName,
+            createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
+          }))
+          // Ordina per data decrescente: la più recente in posizione 0
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        // currentLevel è l'ultima valutazione (la più recente) o 0
         const currentLevel = history.length > 0 ? history[0].evaluationLevel : 0;
         return {
           ...test,
@@ -1280,15 +1289,18 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         };
       }),
       ...(anamnesis.monitoring.testSpecifici || []).map(test => {
-        const history = (test.evaluationHistory || []).map(entry => ({
-          id: entry.id,
-          evaluationLevel: entry.evaluationLevel,
-          note: entry.note,
-          treatmentsSinceLast: entry.treatmentsSinceLast,
-          operatorName: entry.operatorName,
-          createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
-        }));
-        // currentLevel è l'ultima valutazione o 0
+        const history = (test.evaluationHistory || [])
+          .map(entry => ({
+            id: entry.id,
+            evaluationLevel: entry.evaluationLevel,
+            note: entry.note,
+            treatmentsSinceLast: entry.treatmentsSinceLast,
+            operatorName: entry.operatorName,
+            createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
+          }))
+          // Ordina per data decrescente: la più recente in posizione 0
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        // currentLevel è l'ultima valutazione (la più recente) o 0
         const currentLevel = history.length > 0 ? history[0].evaluationLevel : 0;
         return {
           ...test,

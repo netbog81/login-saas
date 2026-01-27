@@ -248,6 +248,11 @@ import {
 
       .note-field {
         width: 100%;
+
+        ::ng-deep .mdc-notched-outline__notch {
+          border-left: none !important;
+          border-right: none !important;
+        }
       }
     }
 

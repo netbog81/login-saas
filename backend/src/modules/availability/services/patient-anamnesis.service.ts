@@ -641,7 +641,8 @@ export class PatientAnamnesisService {
   }
 
   /**
-   * Modifica l'ultima valutazione di un test (senza creare storico)
+   * Modifica l'ultima valutazione di un test
+   * Aggiorna sia il test che l'ultima entry nello storico per mantenere consistenza
    */
   async editTestEvaluation(
     testId: string,
@@ -656,7 +657,20 @@ export class PatientAnamnesisService {
       throw new NotFoundException(`Test ${testId} non trovato`);
     }
 
-    // Aggiorna solo il valore corrente
+    // Trova l'ultima entry dello storico e aggiornala
+    const latestEntry = await this.testEvaluationHistoryRepo.findOne({
+      where: { testId },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (latestEntry) {
+      // Aggiorna l'ultima entry esistente per mantenere consistenza
+      latestEntry.evaluationLevel = newLevel;
+      await this.testEvaluationHistoryRepo.save(latestEntry);
+    }
+    // Se non esiste storico, l'utente deve usare "Ripeti test" per creare la prima entry
+
+    // Aggiorna il valore corrente del test
     test.risultato = `${newLevel}/5`;
     test.superato = newLevel >= 4;
 

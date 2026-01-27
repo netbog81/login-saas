@@ -6,6 +6,7 @@ import {
   ViewChild,
   ElementRef,
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   OnChanges,
   SimpleChanges,
   AfterViewInit
@@ -421,6 +422,11 @@ export interface TestHistoryDeleteEvent {
     .edit-note-field {
       width: 100%;
       margin-top: 8px;
+
+      ::ng-deep .mdc-notched-outline__notch {
+        border-left: none !important;
+        border-right: none !important;
+      }
     }
 
     .edit-actions {
@@ -507,6 +513,8 @@ export class TestHistoryDialogComponent implements OnChanges, AfterViewInit {
   private overlayMouseDownTarget: EventTarget | null = null;
   private chartRendered = false;
 
+  constructor(private cdr: ChangeDetectorRef) {}
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['isVisible'] && this.isVisible && this.data?.history?.length >= 2) {
       // Reset chart state when dialog opens
@@ -544,6 +552,7 @@ export class TestHistoryDialogComponent implements OnChanges, AfterViewInit {
   // Toggle ordinamento lista
   toggleSortOrder(): void {
     this.sortNewestFirst = !this.sortNewestFirst;
+    this.cdr.markForCheck();
   }
 
   // Lista ordinata per la visualizzazione
@@ -570,12 +579,14 @@ export class TestHistoryDialogComponent implements OnChanges, AfterViewInit {
     this.editingId = entry.id;
     this.editingLevel = entry.evaluationLevel;
     this.editingNote = entry.note || '';
+    this.cdr.markForCheck();
   }
 
   cancelEditEntry(): void {
     this.editingId = null;
     this.editingLevel = 0;
     this.editingNote = '';
+    this.cdr.markForCheck();
   }
 
   saveEditEntry(): void {

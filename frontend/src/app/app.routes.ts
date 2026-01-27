@@ -6,6 +6,9 @@ import { SettingsComponent } from './components/settings/settings.component';
 import { PatientManagementComponent } from './components/patients/patient-management/patient-management.component';
 import { OperatorWorkspaceComponent } from './components/operators/operator-workspace/operator-workspace.component';
 import { OperatorWorkspaceContainer } from './features/operators-new/containers/operator-workspace.container';
+import { OperatorsNewLayoutComponent } from './features/operators-new/layout/operators-new-layout.component';
+import { OperatorsDashboardContainer } from './features/operators-new/containers/operators-dashboard.container';
+import { OperatorsPatientsContainer } from './features/operators-new/containers/operators-patients.container';
 
 export const routes: Routes = [
   {
@@ -25,8 +28,30 @@ export const routes: Routes = [
   },
   {
     path: 'operatori-new',
-    component: OperatorWorkspaceContainer,
-    title: 'Workspace Operatore (New)'
+    component: OperatorsNewLayoutComponent,
+    title: 'Workspace Operatore (New)',
+    children: [
+      {
+        path: '',
+        redirectTo: 'appuntamenti',
+        pathMatch: 'full'
+      },
+      {
+        path: 'dashboard',
+        component: OperatorsDashboardContainer,
+        title: 'Dashboard Operatori'
+      },
+      {
+        path: 'pazienti',
+        component: OperatorsPatientsContainer,
+        title: 'Pazienti'
+      },
+      {
+        path: 'appuntamenti',
+        component: OperatorWorkspaceContainer,
+        title: 'Appuntamenti'
+      }
+    ]
   },
   {
     path: 'availability',
