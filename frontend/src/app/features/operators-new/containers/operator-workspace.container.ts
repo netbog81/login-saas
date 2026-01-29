@@ -199,6 +199,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       min-height: 0;
       gap: 1rem;
       padding: 1rem;
+      align-items: flex-start;  /* Ogni sezione ha altezza naturale, scroll basato sulla più alta */
     }
 
     .main-area {
@@ -291,7 +292,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       }
     }
 
-    /* Responsive */
+    /* Responsive - Mobile */
     @media (max-width: 599px) {
       .workspace-content {
         flex-direction: column;

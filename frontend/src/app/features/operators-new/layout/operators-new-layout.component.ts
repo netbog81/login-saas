@@ -175,7 +175,7 @@ interface NavLink {
     .content-panel {
       flex: 1;
       min-height: 0;
-      overflow: hidden;
+      overflow: auto;  /* Permette scroll quando contenuto non ci sta */
     }
 
     /* Tablet */

@@ -75,7 +75,7 @@ import { ContextPreservationService } from './core/services/context-preservation
       height: 100vh;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: auto;  /* Permette scroll quando contenuto non ci sta (zoom, bassa risoluzione) */
     }
 
     .app-nav {

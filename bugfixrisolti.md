@@ -166,3 +166,23 @@
   - `test-history-dialog.component.ts` - aggiunto fix CSS a `.edit-note-field`
   - `test-evaluation-item.component.ts` - aggiunto fix CSS a `.note-field`
   - Fix: `::ng-deep .mdc-notched-outline__notch { border-left: none !important; border-right: none !important; }`
+
+## Fix Scroll Pagina Operatori-New su Schermi Piccoli (COMPLETATO)
+- **Problema**: Su portatile 15" o con zoom, nella pagina `/operatori-new/appuntamenti` la cartella paziente non era visibile perché il contenuto andava in basso senza possibilità di scroll
+- **Causa Root**:
+  - `overflow: hidden` in `app.component.ts` (`.app-container`) bloccava lo scroll globale
+  - `overflow: hidden` in `operators-new-layout.component.ts` (`.content-panel`) bloccava lo scroll del contenuto
+- **Soluzione implementata**:
+  - `app.component.ts`: cambiato `.app-container` da `overflow: hidden` → `overflow: auto`
+  - `operators-new-layout.component.ts`: cambiato `.content-panel` da `overflow: hidden` → `overflow: auto`
+  - Ora lo scroll appare automaticamente quando il contenuto non ci sta (zoom, bassa risoluzione) senza cambiare il layout
+
+## Fix Scroll Basato su Sezione Destra (COMPLETATO)
+- **Problema**: Lo scroll della pagina era determinato dalla sidebar sinistra (lista appuntamenti) invece che dalla sezione destra (riepilogo + cartella paziente) che è più alta
+- **Causa Root**:
+  - La sidebar aveva `height: 100%` che forzava un vincolo rigido
+  - Flexbox default `align-items: stretch` allungava entrambi i figli alla stessa altezza
+  - La sezione destra (main-area) non poteva espandersi oltre l'altezza della sidebar
+- **Soluzione implementata**:
+  - `operator-workspace.container.ts`: aggiunto `align-items: flex-start` a `.workspace-content`
+  - Ora ogni sezione ha la propria altezza naturale e lo scroll dipende dalla sezione più alta
