@@ -10,12 +10,13 @@ import {
   Index
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
-import { PatientAnamnesis } from './patient-anamnesis.entity';
+import { PatientEvaluation } from './patient-evaluation.entity';
 import { TestEvaluationHistory } from './test-evaluation-history.entity';
-import { TestSection } from './anamnesis-enums';
+import { TestSection } from './evaluation-enums';
 
 /**
- * AnamnesisTest - Test specifici dell'anamnesi
+ * EvaluationTest - Test specifici della valutazione
+ * (ex AnamnesisTest - rinominato per chiarezza)
  *
  * Usato in due sezioni:
  * - Sezione 5: Esame Obiettivo (test diagnostici)
@@ -23,11 +24,11 @@ import { TestSection } from './anamnesis-enums';
  *
  * Permette tracking del risultato e superamento nel tempo (Valutazione Trattamento)
  */
-@ObjectType('AnamnesisTest')
-@Entity('anamnesis_tests')
-@Index('IDX_anamnesis_tests_anamnesis', ['anamnesisId'])
-@Index('IDX_anamnesis_tests_sezione', ['sezione'])
-export class AnamnesisTest {
+@ObjectType('EvaluationTest')
+@Entity('evaluation_tests')
+@Index('IDX_evaluation_tests_evaluation', ['evaluationId'])
+@Index('IDX_evaluation_tests_sezione', ['sezione'])
+export class EvaluationTest {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -36,12 +37,12 @@ export class AnamnesisTest {
 
   @Field(() => ID)
   @Column('uuid')
-  anamnesisId: string;
+  evaluationId: string;
 
   // ==================== FIELDS ====================
 
-  @Field(() => TestSection, { description: 'Sezione dell\'anamnesi (esame obiettivo o monitoraggio)' })
-  @Column({ type: 'enum', enum: TestSection })
+  @Field(() => TestSection, { description: 'Sezione della valutazione (esame obiettivo o monitoraggio)' })
+  @Column({ type: 'enum', enum: TestSection, enumName: 'evaluation_tests_sezione_enum' })
   sezione: TestSection;
 
   @Field({ description: 'Nome del test' })
@@ -76,9 +77,9 @@ export class AnamnesisTest {
 
   // ==================== RELATIONS ====================
 
-  @ManyToOne(() => PatientAnamnesis, anamnesis => anamnesis.tests, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'anamnesisId' })
-  anamnesis: PatientAnamnesis;
+  @ManyToOne(() => PatientEvaluation, evaluation => evaluation.tests, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'evaluationId' })
+  evaluation: PatientEvaluation;
 
   @Field(() => [TestEvaluationHistory], { nullable: true, description: 'Storico valutazioni' })
   @OneToMany(() => TestEvaluationHistory, history => history.test)

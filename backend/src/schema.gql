@@ -10,114 +10,6 @@ input AddTestEvaluationInput {
   note: String
 }
 
-type AnamnesisExam {
-  anamnesisId: ID!
-  createdAt: DateTime!
-
-  """Data dell'esame"""
-  data: DateTime
-  id: ID!
-
-  """Nome dell'esame diagnostico"""
-  nomeEsame: String!
-
-  """Note/risultati dell'esame"""
-  note: String
-
-  """Ordine di visualizzazione"""
-  orderIndex: Int!
-  updatedAt: DateTime!
-}
-
-input AnamnesisExamInput {
-  data: String
-
-  """ID per update, null per create"""
-  id: String
-  nomeEsame: String!
-  note: String
-  orderIndex: Int = 0
-}
-
-type AnamnesisObjective {
-  anamnesisId: ID!
-  createdAt: DateTime!
-
-  """Data in cui l'obiettivo è stato raggiunto"""
-  dataRaggiungimento: DateTime
-
-  """Descrizione dell'obiettivo"""
-  descrizione: String!
-  id: ID!
-
-  """Ordine di visualizzazione"""
-  orderIndex: Int!
-
-  """Storico avanzamenti"""
-  progressHistory: [ObjectiveProgressHistory!]
-
-  """Livello progresso 0-5 (0=non iniziato, 5=completato)"""
-  progressLevel: Int!
-
-  """Obiettivo raggiunto"""
-  raggiunto: Boolean!
-
-  """Tipo di obiettivo (breve, medio, lungo termine)"""
-  tipo: ObjectiveType!
-  updatedAt: DateTime!
-}
-
-input AnamnesisObjectiveInput {
-  dataRaggiungimento: String
-  descrizione: String!
-
-  """ID per update, null per create"""
-  id: String
-  orderIndex: Int = 0
-  raggiunto: Boolean = false
-  tipo: ObjectiveType!
-}
-
-type AnamnesisTest {
-  anamnesisId: ID!
-  createdAt: DateTime!
-
-  """Data di esecuzione del test"""
-  dataEsecuzione: DateTime
-
-  """Storico valutazioni"""
-  evaluationHistory: [TestEvaluationHistory!]
-  id: ID!
-
-  """Nome del test"""
-  nome: String!
-
-  """Ordine di visualizzazione"""
-  orderIndex: Int!
-
-  """Risultato del test"""
-  risultato: String
-
-  """Sezione dell'anamnesi (esame obiettivo o monitoraggio)"""
-  sezione: TestSection!
-
-  """Test superato (null = non ancora valutato)"""
-  superato: Boolean
-  updatedAt: DateTime!
-}
-
-input AnamnesisTestInput {
-  dataEsecuzione: String
-
-  """ID per update, null per create"""
-  id: String
-  nome: String!
-  orderIndex: Int = 0
-  risultato: String
-  sezione: TestSection!
-  superato: Boolean
-}
-
 type AppointmentInstrument {
   appointment: AvailabilityAppointment!
   appointmentId: String!
@@ -354,44 +246,6 @@ type ConflictStatsOutput {
   totalConflicts: Int!
 }
 
-input CreateAnamnesisInput {
-  andamentoDolore: String
-  bmi: Float
-  bodyMapMarkers: [BodyMapMarkerInput!]
-  criticita: [String!]
-  diagnosiFisioterapica: String
-  equilibrio: String
-  esameNeurologico: String
-  esordioSintomi: String
-  exams: [AnamnesisExamInput!]
-  fattoriAggravanti: [String!]
-  fattoriAllevianti: [String!]
-  fattoriPrognosticiNegativi: String
-  fattoriPrognosticiPositivi: String
-  forzaMuscolare: String
-  frequenzaSedute: String
-  interventiChirurgici: String
-  interventiProposti: [String!]
-  limitazioniAttivita: String
-  motivoConsulto: String
-  movimentoAttivo: String
-  movimentoPassivo: String
-  objectives: [AnamnesisObjectiveInput!]
-  operatorId: ID!
-  osservazione: String
-  outcome: String
-  palpazione: String
-  patologiePregresse: String
-  professione: String
-  sportPraticati: [String!]
-  statoAttualeSintomi: String
-  strategieCoping: String
-  terapiaFarmacologica: [String!]
-  tests: [AnamnesisTestInput!]
-  therapeuticPathId: ID!
-  traumi: String
-}
-
 input CreateAvailabilityAppointmentInput {
   appointmentDate: String!
   clientEmail: String
@@ -446,18 +300,41 @@ input CreateDocumentInput {
 }
 
 input CreateEvaluationInput {
-  aggravatingFactors: String
-  chiefComplaint: String
-  conclusions: String
-  fieldValues: JSON
-  functionalAssessment: String
-  historyOfPresentIllness: String
+  andamentoDolore: String
+  bmi: Float
+  bodyMapMarkers: [BodyMapMarkerInput!]
+  criticita: [String!]
+  diagnosiFisioterapica: String
+  equilibrio: String
+  esameNeurologico: String
+  esordioSintomi: String
+  exams: [EvaluationExamInput!]
+  fattoriAggravanti: [String!]
+  fattoriAllevianti: [String!]
+  fattoriPrognosticiNegativi: String
+  fattoriPrognosticiPositivi: String
+  forzaMuscolare: String
+  frequenzaSedute: String
+  interventiChirurgici: String
+  interventiProposti: [String!]
+  limitazioniAttivita: String
+  motivoConsulto: String
+  movimentoAttivo: String
+  movimentoPassivo: String
+  objectives: [EvaluationObjectiveInput!]
   operatorId: ID!
-  patientGoals: String
-  relievingFactors: String
-  templateId: ID
+  osservazione: String
+  outcome: String
+  palpazione: String
+  patologiePregresse: String
+  professione: String
+  sportPraticati: [String!]
+  statoAttualeSintomi: String
+  strategieCoping: String
+  terapiaFarmacologica: [String!]
+  tests: [EvaluationTestInput!]
   therapeuticPathId: ID!
-  therapistGoals: String
+  traumi: String
 }
 
 input CreateGymAppointmentInput {
@@ -522,6 +399,35 @@ input CreateOperatorInput {
   royaltyPercentage: Float
   surname: String
   userId: Int
+}
+
+input CreatePatientAnamnesisInput {
+  """Allergie note"""
+  allergie: String
+
+  """Interventi chirurgici subiti"""
+  interventiChirurgici: String
+
+  """Note generali"""
+  note: String
+
+  """ID operatore che compila"""
+  operatorId: ID
+
+  """ID del paziente"""
+  patientId: Int!
+
+  """Patologie pregresse"""
+  patologiePregresse: String
+
+  """Storia familiare / Anamnesi familiare"""
+  storiaFamiliare: String
+
+  """Terapia farmacologica in corso"""
+  terapiaFarmacologica: [String!]
+
+  """Traumi significativi"""
+  traumi: String
 }
 
 """Input per creare un nuovo paziente"""
@@ -697,6 +603,114 @@ enum DocumentType {
   OTHER
   PDF
   VIDEO
+}
+
+type EvaluationExam {
+  createdAt: DateTime!
+
+  """Data dell'esame"""
+  data: DateTime
+  evaluationId: ID!
+  id: ID!
+
+  """Nome dell'esame diagnostico"""
+  nomeEsame: String!
+
+  """Note/risultati dell'esame"""
+  note: String
+
+  """Ordine di visualizzazione"""
+  orderIndex: Int!
+  updatedAt: DateTime!
+}
+
+input EvaluationExamInput {
+  data: String
+
+  """ID per update, null per create"""
+  id: String
+  nomeEsame: String!
+  note: String
+  orderIndex: Int = 0
+}
+
+type EvaluationObjective {
+  createdAt: DateTime!
+
+  """Data in cui l'obiettivo è stato raggiunto"""
+  dataRaggiungimento: DateTime
+
+  """Descrizione dell'obiettivo"""
+  descrizione: String!
+  evaluationId: ID!
+  id: ID!
+
+  """Ordine di visualizzazione"""
+  orderIndex: Int!
+
+  """Storico avanzamenti"""
+  progressHistory: [ObjectiveProgressHistory!]
+
+  """Livello progresso 0-5 (0=non iniziato, 5=completato)"""
+  progressLevel: Int!
+
+  """Obiettivo raggiunto"""
+  raggiunto: Boolean!
+
+  """Tipo di obiettivo (breve, medio, lungo termine)"""
+  tipo: ObjectiveType!
+  updatedAt: DateTime!
+}
+
+input EvaluationObjectiveInput {
+  dataRaggiungimento: String
+  descrizione: String!
+
+  """ID per update, null per create"""
+  id: String
+  orderIndex: Int = 0
+  raggiunto: Boolean = false
+  tipo: ObjectiveType!
+}
+
+type EvaluationTest {
+  createdAt: DateTime!
+
+  """Data di esecuzione del test"""
+  dataEsecuzione: DateTime
+
+  """Storico valutazioni"""
+  evaluationHistory: [TestEvaluationHistory!]
+  evaluationId: ID!
+  id: ID!
+
+  """Nome del test"""
+  nome: String!
+
+  """Ordine di visualizzazione"""
+  orderIndex: Int!
+
+  """Risultato del test"""
+  risultato: String
+
+  """Sezione della valutazione (esame obiettivo o monitoraggio)"""
+  sezione: TestSection!
+
+  """Test superato (null = non ancora valutato)"""
+  superato: Boolean
+  updatedAt: DateTime!
+}
+
+input EvaluationTestInput {
+  dataEsecuzione: String
+
+  """ID per update, null per create"""
+  id: String
+  nome: String!
+  orderIndex: Int = 0
+  risultato: String
+  sezione: TestSection!
+  superato: Boolean
 }
 
 """Type of availability exception"""
@@ -926,7 +940,7 @@ input MarkObjectiveAchievedInput {
 
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
-  addTestEvaluation(input: AddTestEvaluationInput!, operatorId: ID!, pathId: ID!, testId: ID!): AnamnesisTest!
+  addTestEvaluation(input: AddTestEvaluationInput!, operatorId: ID!, pathId: ID!, testId: ID!): EvaluationTest!
 
   """Anonymize patient data (irreversible GDPR compliance action)"""
   anonymizePatient(id: ID!): PatientModel!
@@ -937,10 +951,10 @@ type Mutation {
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
   confirmAvailabilityAppointment(id: ID!): AvailabilityAppointment!
-  createAnamnesis(input: CreateAnamnesisInput!): PatientAnamnesis!
   createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  createEvaluation(input: CreateEvaluationInput!): PatientEvaluation!
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
   createGymAppointment(input: CreateGymAppointmentInput!): AvailabilityAppointment!
@@ -956,7 +970,9 @@ type Mutation {
 
   """Create a new patient record"""
   createPatient(createPatientInput: CreatePatientInput!): PatientModel!
-  createPatientEvaluation(input: CreateEvaluationInput!): PatientEvaluation!
+
+  """Crea nuova anamnesi paziente"""
+  createPatientAnamnesis(input: CreatePatientAnamnesisInput!): PatientAnamnesis!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
   createRoom(capacity: Int, color: String, name: String!): Room!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, subcategoryId: ID): Service!
@@ -970,10 +986,10 @@ type Mutation {
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
   deleteAllTreatments: Int!
-  deleteAnamnesis(id: ID!): Boolean!
-  deleteAnamnesisTest(anamnesisId: ID!, testId: ID!): Boolean!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
+  deleteEvaluation(id: ID!): Boolean!
+  deleteEvaluationTest(evaluationId: ID!, testId: ID!): Boolean!
   deleteException(id: ID!): Boolean!
   deleteExceptionsByDateRange(endDate: String!, exceptionType: ExceptionType, operatorId: ID!, startDate: String!): Int!
   deleteGeneralSetting(key: String!): Boolean!
@@ -991,7 +1007,9 @@ type Mutation {
 
   """Delete patient (performs GDPR-compliant anonymization)"""
   deletePatient(id: ID!): Boolean!
-  deletePatientEvaluation(id: ID!): Boolean!
+
+  """Elimina anamnesi paziente"""
+  deletePatientAnamnesis(id: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
@@ -1002,7 +1020,7 @@ type Mutation {
   deleteTherapeuticPath(id: ID!): Boolean!
   deleteTreatment(id: ID!): Boolean!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
-  editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): AnamnesisTest!
+  editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): EvaluationTest!
   editTestEvaluationEntry(evaluationHistoryId: ID!, evaluationLevel: Int!, note: String): TestEvaluationHistory!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
@@ -1019,7 +1037,7 @@ type Mutation {
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   markAppointmentAttended(id: ID!): AvailabilityAppointment!
   markAppointmentNoShow(id: ID!): AvailabilityAppointment!
-  markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): AnamnesisObjective!
+  markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): EvaluationObjective!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
@@ -1031,15 +1049,15 @@ type Mutation {
   Request patient data deletion (GDPR Article 17 - Right to be Forgotten)
   """
   requestPatientDeletion(id: ID!): PatientModel!
-  resetTestEvaluation(testId: ID!): AnamnesisTest!
+  resetTestEvaluation(testId: ID!): EvaluationTest!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
-  updateAnamnesis(id: ID!, input: UpdateAnamnesisInput!): PatientAnamnesis!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  updateEvaluation(id: ID!, input: UpdateEvaluationInput!): PatientEvaluation!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
   updateGeneralSetting(key: String!, value: JSON!): GeneralSettings!
   updateGymException(id: ID!, input: UpdateGymExceptionInput!): GymException!
@@ -1048,14 +1066,16 @@ type Mutation {
   updateGymSchedule(dayOfWeek: Int, endTime: String, id: ID!, isCurrent: Boolean, operatorId: ID, startTime: String, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   updateInstrumentCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): InstrumentCategory!
-  updateObjectiveProgress(input: UpdateObjectiveProgressInput!, objectiveId: ID!, operatorId: ID!, pathId: ID!): AnamnesisObjective!
+  updateObjectiveProgress(input: UpdateObjectiveProgressInput!, objectiveId: ID!, operatorId: ID!, pathId: ID!): EvaluationObjective!
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
 
   """Update an existing patient record"""
   updatePatient(id: ID!, updatePatientInput: UpdatePatientInput!): PatientModel!
-  updatePatientEvaluation(id: ID!, input: UpdateEvaluationInput!): PatientEvaluation!
+
+  """Aggiorna anamnesi paziente"""
+  updatePatientAnamnesis(id: ID!, input: UpdatePatientAnamnesisInput!): PatientAnamnesis!
 
   """Update patient privacy documentation status"""
   updatePatientPrivacyStatus(id: ID!, status: String!): PatientModel!
@@ -1069,11 +1089,14 @@ type Mutation {
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
-  updateTestResult(input: UpdateTestResultInput!, testId: ID!): AnamnesisTest!
+  updateTestResult(input: UpdateTestResultInput!, testId: ID!): EvaluationTest!
   updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
   updateTreatment(input: UpdateTreatmentInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
+
+  """Crea o aggiorna anamnesi paziente"""
+  upsertPatientAnamnesis(input: UpdatePatientAnamnesisInput!, patientId: Int!): PatientAnamnesis!
 }
 
 type ObjectiveProgressHistory {
@@ -1194,6 +1217,36 @@ type PathDocument {
 }
 
 type PatientAnamnesis {
+  """Allergie note"""
+  allergie: String
+  createdAt: DateTime!
+  id: ID!
+
+  """Interventi chirurgici subiti"""
+  interventiChirurgici: String
+
+  """Note generali"""
+  note: String
+  operator: Operator
+  operatorId: ID
+  patient: PatientModel!
+  patientId: Int!
+
+  """Patologie pregresse"""
+  patologiePregresse: String
+
+  """Storia familiare / Anamnesi familiare"""
+  storiaFamiliare: String
+
+  """Terapia farmacologica in corso"""
+  terapiaFarmacologica: [String!]
+
+  """Traumi significativi"""
+  traumi: String
+  updatedAt: DateTime!
+}
+
+type PatientEvaluation {
   """Andamento del dolore nel tempo"""
   andamentoDolore: String
 
@@ -1218,7 +1271,7 @@ type PatientAnamnesis {
 
   """Data/periodo esordio sintomi"""
   esordioSintomi: String
-  exams: [AnamnesisExam!]
+  exams: [EvaluationExam!]
 
   """Fattori che aggravano i sintomi"""
   fattoriAggravanti: [String!]
@@ -1256,7 +1309,7 @@ type PatientAnamnesis {
 
   """Valutazione movimento passivo"""
   movimentoPassivo: String
-  objectives: [AnamnesisObjective!]
+  objectives: [EvaluationObjective!]
   operator: Operator!
   operatorId: ID!
 
@@ -1286,51 +1339,12 @@ type PatientAnamnesis {
 
   """Farmaci in uso"""
   terapiaFarmacologica: [String!]
-  tests: [AnamnesisTest!]
+  tests: [EvaluationTest!]
   therapeuticPath: TherapeuticPath!
   therapeuticPathId: ID!
 
   """Traumi precedenti"""
   traumi: String
-  updatedAt: DateTime!
-}
-
-type PatientEvaluation {
-  """Fattori aggravanti"""
-  aggravatingFactors: String
-
-  """Motivo della visita"""
-  chiefComplaint: String
-
-  """Conclusioni della valutazione"""
-  conclusions: String
-  createdAt: DateTime!
-
-  """Dynamic field values from template (JSON)"""
-  fieldValues: JSON
-
-  """Valutazione funzionale"""
-  functionalAssessment: String
-
-  """Storia della malattia attuale"""
-  historyOfPresentIllness: String
-  id: ID!
-  operator: Operator!
-  operatorId: ID!
-
-  """Obiettivi del paziente"""
-  patientGoals: String
-
-  """Fattori allevianti"""
-  relievingFactors: String
-
-  """Template ID for dynamic forms (future use)"""
-  templateId: ID
-  therapeuticPath: TherapeuticPath!
-  therapeuticPathId: ID!
-
-  """Obiettivi del terapista"""
-  therapistGoals: String
   updatedAt: DateTime!
 }
 
@@ -1546,7 +1560,6 @@ type Query {
   activeTherapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
-  anamnesisByPath(pathId: ID!): PatientAnamnesis
   availabilityAppointment(id: ID!): AvailabilityAppointment
   availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
   availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
@@ -1565,8 +1578,8 @@ type Query {
   currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
   documentsByPath(pathId: ID!): [PathDocument!]!
   documentsByPathAndCategory(category: DocumentCategory!, pathId: ID!): [PathDocument!]!
-  evaluationsByPath(pathId: ID!): [PatientEvaluation!]!
-  examsByAnamnesis(anamnesisId: ID!): [AnamnesisExam!]!
+  evaluationByPath(pathId: ID!): PatientEvaluation
+  examsByEvaluation(evaluationId: ID!): [EvaluationExam!]!
   generalSetting(key: String!): GeneralSettings
   generalSettings: [GeneralSettings!]!
   generalSettingsByCategory(category: String!): [GeneralSettings!]!
@@ -1587,6 +1600,9 @@ type Query {
   gymSchedule(id: ID!): GymSchedule
   gymSchedules(gymRoomId: ID, operatorId: ID): [GymSchedule!]!
   gymSchedulesByRoomAndDay(dayOfWeek: Int!, gymRoomId: ID!): [GymSchedule!]!
+
+  """Verifica se il paziente ha un'anamnesi"""
+  hasPatientAnamnesis(patientId: Int!): Boolean!
   holidays(year: Int!): [HolidayInfo!]!
   instrument(id: ID!): Instrument
   instrumentCategories(macroCategory: OperatorMacroCategory): [InstrumentCategory!]!
@@ -1595,9 +1611,9 @@ type Query {
   isHoliday(date: String!): Boolean!
   isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
   objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
-  objectivesByAnamnesis(anamnesisId: ID!): [AnamnesisObjective!]!
-  objectivesProgress(anamnesisId: ID!): ObjectivesProgress!
-  objectivesWithHistory(anamnesisId: ID!): [AnamnesisObjective!]!
+  objectivesByEvaluation(evaluationId: ID!): [EvaluationObjective!]!
+  objectivesProgress(evaluationId: ID!): ObjectivesProgress!
+  objectivesWithHistory(evaluationId: ID!): [EvaluationObjective!]!
   operator(id: ID!): Operator
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
   operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
@@ -1609,7 +1625,12 @@ type Query {
 
   """Get a single patient by ID"""
   patient(id: ID!): PatientModel
+
+  """Ottiene anamnesi per ID"""
   patientAnamnesis(id: ID!): PatientAnamnesis
+
+  """Ottiene anamnesi per paziente ID"""
+  patientAnamnesisByPatient(patientId: Int!): PatientAnamnesis
 
   """Find patient by Italian tax code (Codice Fiscale)"""
   patientByCodiceFiscale(codiceFiscale: String!): PatientModel
@@ -1649,9 +1670,9 @@ type Query {
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
   testEvaluationHistory(testId: ID!): [TestEvaluationHistory!]!
-  testsByAnamnesis(anamnesisId: ID!): [AnamnesisTest!]!
-  testsProgress(anamnesisId: ID!): TestsProgress!
-  testsWithHistory(anamnesisId: ID!): [AnamnesisTest!]!
+  testsByEvaluation(evaluationId: ID!): [EvaluationTest!]!
+  testsProgress(evaluationId: ID!): TestsProgress!
+  testsWithHistory(evaluationId: ID!): [EvaluationTest!]!
   therapeuticPath(id: ID!): TherapeuticPath
   therapeuticPathsByOperator(operatorId: ID!): [TherapeuticPath!]!
   therapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
@@ -1935,7 +1956,7 @@ type TestEvaluationHistory {
   treatmentsSinceLast: Int!
 }
 
-"""Sezione dell'anamnesi in cui si trova il test"""
+"""Sezione della valutazione in cui si trova il test"""
 enum TestSection {
   ESAME_OBIETTIVO
   MONITORAGGIO
@@ -1954,7 +1975,6 @@ type TherapeuticPath {
   createdAt: DateTime!
   diagnosis: String
   documents: [PathDocument!]
-  evaluations: [PatientEvaluation!]
   externalDoctorName: String
   externalPrescriptionRef: String
   icdCode: String
@@ -2105,42 +2125,6 @@ enum TreatmentStatus {
   WAITING
 }
 
-input UpdateAnamnesisInput {
-  andamentoDolore: String
-  bmi: Float
-  bodyMapMarkers: [BodyMapMarkerInput!]
-  criticita: [String!]
-  diagnosiFisioterapica: String
-  equilibrio: String
-  esameNeurologico: String
-  esordioSintomi: String
-  exams: [AnamnesisExamInput!]
-  fattoriAggravanti: [String!]
-  fattoriAllevianti: [String!]
-  fattoriPrognosticiNegativi: String
-  fattoriPrognosticiPositivi: String
-  forzaMuscolare: String
-  frequenzaSedute: String
-  interventiChirurgici: String
-  interventiProposti: [String!]
-  limitazioniAttivita: String
-  motivoConsulto: String
-  movimentoAttivo: String
-  movimentoPassivo: String
-  objectives: [AnamnesisObjectiveInput!]
-  osservazione: String
-  outcome: String
-  palpazione: String
-  patologiePregresse: String
-  professione: String
-  sportPraticati: [String!]
-  statoAttualeSintomi: String
-  strategieCoping: String
-  terapiaFarmacologica: [String!]
-  tests: [AnamnesisTestInput!]
-  traumi: String
-}
-
 input UpdateAvailabilityAppointmentInput {
   appointmentDate: String
   bookingStatus: BookingStatus
@@ -2165,15 +2149,39 @@ input UpdateAvailabilityAppointmentInput {
 }
 
 input UpdateEvaluationInput {
-  aggravatingFactors: String
-  chiefComplaint: String
-  conclusions: String
-  fieldValues: JSON
-  functionalAssessment: String
-  historyOfPresentIllness: String
-  patientGoals: String
-  relievingFactors: String
-  therapistGoals: String
+  andamentoDolore: String
+  bmi: Float
+  bodyMapMarkers: [BodyMapMarkerInput!]
+  criticita: [String!]
+  diagnosiFisioterapica: String
+  equilibrio: String
+  esameNeurologico: String
+  esordioSintomi: String
+  exams: [EvaluationExamInput!]
+  fattoriAggravanti: [String!]
+  fattoriAllevianti: [String!]
+  fattoriPrognosticiNegativi: String
+  fattoriPrognosticiPositivi: String
+  forzaMuscolare: String
+  frequenzaSedute: String
+  interventiChirurgici: String
+  interventiProposti: [String!]
+  limitazioniAttivita: String
+  motivoConsulto: String
+  movimentoAttivo: String
+  movimentoPassivo: String
+  objectives: [EvaluationObjectiveInput!]
+  osservazione: String
+  outcome: String
+  palpazione: String
+  patologiePregresse: String
+  professione: String
+  sportPraticati: [String!]
+  statoAttualeSintomi: String
+  strategieCoping: String
+  terapiaFarmacologica: [String!]
+  tests: [EvaluationTestInput!]
+  traumi: String
 }
 
 input UpdateGymExceptionInput {
@@ -2219,6 +2227,32 @@ input UpdateOperatorInput {
   royaltyPercentage: Float
   surname: String
   userId: Int
+}
+
+input UpdatePatientAnamnesisInput {
+  """Allergie note"""
+  allergie: String
+
+  """Interventi chirurgici subiti"""
+  interventiChirurgici: String
+
+  """Note generali"""
+  note: String
+
+  """ID operatore che modifica"""
+  operatorId: ID
+
+  """Patologie pregresse"""
+  patologiePregresse: String
+
+  """Storia familiare / Anamnesi familiare"""
+  storiaFamiliare: String
+
+  """Terapia farmacologica in corso"""
+  terapiaFarmacologica: [String!]
+
+  """Traumi significativi"""
+  traumi: String
 }
 
 """Input for updating an existing patient (all fields optional)"""

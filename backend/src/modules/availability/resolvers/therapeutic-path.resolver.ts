@@ -1,13 +1,10 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
-import { PatientEvaluation } from '../entities/patient-evaluation.entity';
 import { PathDocument, DocumentCategory } from '../entities/path-document.entity';
 import { TherapeuticPathService } from '../services/therapeutic-path.service';
 import {
   CreateTherapeuticPathInput,
   UpdateTherapeuticPathInput,
-  CreateEvaluationInput,
-  UpdateEvaluationInput,
   CreateDocumentInput,
 } from '../dto/therapeutic-path.input';
 
@@ -88,61 +85,6 @@ export class TherapeuticPathResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {
     return this.pathService.deletePath(id);
-  }
-
-  // ==================== EVALUATION QUERIES ====================
-
-  /**
-   * Query: Ottiene una valutazione per ID
-   */
-  @Query(() => PatientEvaluation, { name: 'patientEvaluation', nullable: true })
-  async getPatientEvaluation(
-    @Args('id', { type: () => ID }) id: string,
-  ): Promise<PatientEvaluation | null> {
-    return this.pathService.findEvaluationById(id);
-  }
-
-  /**
-   * Query: Ottiene le valutazioni di un percorso
-   */
-  @Query(() => [PatientEvaluation], { name: 'evaluationsByPath' })
-  async getEvaluationsByPath(
-    @Args('pathId', { type: () => ID }) pathId: string,
-  ): Promise<PatientEvaluation[]> {
-    return this.pathService.findEvaluationsByPath(pathId);
-  }
-
-  // ==================== EVALUATION MUTATIONS ====================
-
-  /**
-   * Mutation: Crea una nuova valutazione
-   */
-  @Mutation(() => PatientEvaluation, { name: 'createPatientEvaluation' })
-  async createPatientEvaluation(
-    @Args('input') input: CreateEvaluationInput,
-  ): Promise<PatientEvaluation> {
-    return this.pathService.createEvaluation(input);
-  }
-
-  /**
-   * Mutation: Aggiorna una valutazione
-   */
-  @Mutation(() => PatientEvaluation, { name: 'updatePatientEvaluation' })
-  async updatePatientEvaluation(
-    @Args('id', { type: () => ID }) id: string,
-    @Args('input') input: UpdateEvaluationInput,
-  ): Promise<PatientEvaluation> {
-    return this.pathService.updateEvaluation(id, input);
-  }
-
-  /**
-   * Mutation: Elimina una valutazione
-   */
-  @Mutation(() => Boolean, { name: 'deletePatientEvaluation' })
-  async deletePatientEvaluation(
-    @Args('id', { type: () => ID }) id: string,
-  ): Promise<boolean> {
-    return this.pathService.deleteEvaluation(id);
   }
 
   // ==================== DOCUMENT QUERIES ====================

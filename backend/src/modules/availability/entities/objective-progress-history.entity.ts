@@ -8,7 +8,7 @@ import {
   Index
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
-import { AnamnesisObjective } from './anamnesis-objective.entity';
+import { EvaluationObjective } from './evaluation-objective.entity';
 import { Operator } from './operator.entity';
 
 /**
@@ -62,9 +62,9 @@ export class ObjectiveProgressHistory {
 
   // ==================== RELATIONS ====================
 
-  @ManyToOne(() => AnamnesisObjective, objective => objective.progressHistory, { onDelete: 'CASCADE' })
+  @ManyToOne(() => EvaluationObjective, objective => objective.progressHistory, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'objective_id' })
-  objective: AnamnesisObjective;
+  objective: EvaluationObjective;
 
   @Field(() => Operator, { nullable: true })
   @ManyToOne(() => Operator)

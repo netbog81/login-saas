@@ -10,21 +10,22 @@ import {
   Index
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
-import { PatientAnamnesis } from './patient-anamnesis.entity';
+import { PatientEvaluation } from './patient-evaluation.entity';
 import { ObjectiveProgressHistory } from './objective-progress-history.entity';
-import { ObjectiveType } from './anamnesis-enums';
+import { ObjectiveType } from './evaluation-enums';
 
 /**
- * AnamnesisObjective - Obiettivi terapeutici (breve/medio/lungo termine)
+ * EvaluationObjective - Obiettivi terapeutici (breve/medio/lungo termine)
+ * (ex AnamnesisObjective - rinominato per chiarezza)
  *
- * Sezione 7 dell'anamnesi: Pianificazione Trattamento
+ * Sezione 7 della valutazione: Pianificazione Trattamento
  * Ogni obiettivo può essere marcato come raggiunto nel tempo (Valutazione Trattamento)
  */
-@ObjectType('AnamnesisObjective')
-@Entity('anamnesis_objectives')
-@Index('IDX_anamnesis_objectives_anamnesis', ['anamnesisId'])
-@Index('IDX_anamnesis_objectives_tipo', ['tipo'])
-export class AnamnesisObjective {
+@ObjectType('EvaluationObjective')
+@Entity('evaluation_objectives')
+@Index('IDX_evaluation_objectives_evaluation', ['evaluationId'])
+@Index('IDX_evaluation_objectives_tipo', ['tipo'])
+export class EvaluationObjective {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -33,12 +34,12 @@ export class AnamnesisObjective {
 
   @Field(() => ID)
   @Column('uuid')
-  anamnesisId: string;
+  evaluationId: string;
 
   // ==================== FIELDS ====================
 
   @Field(() => ObjectiveType, { description: 'Tipo di obiettivo (breve, medio, lungo termine)' })
-  @Column({ type: 'enum', enum: ObjectiveType })
+  @Column({ type: 'enum', enum: ObjectiveType, enumName: 'evaluation_objectives_tipo_enum' })
   tipo: ObjectiveType;
 
   @Field({ description: 'Descrizione dell\'obiettivo' })
@@ -73,9 +74,9 @@ export class AnamnesisObjective {
 
   // ==================== RELATIONS ====================
 
-  @ManyToOne(() => PatientAnamnesis, anamnesis => anamnesis.objectives, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'anamnesisId' })
-  anamnesis: PatientAnamnesis;
+  @ManyToOne(() => PatientEvaluation, evaluation => evaluation.objectives, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'evaluationId' })
+  evaluation: PatientEvaluation;
 
   @Field(() => [ObjectiveProgressHistory], { nullable: true, description: 'Storico avanzamenti' })
   @OneToMany(() => ObjectiveProgressHistory, history => history.objective)

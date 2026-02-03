@@ -2,7 +2,6 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager } from 'typeorm';
 import { TherapeuticPath, TherapeuticPathStatus } from '../entities/therapeutic-path.entity';
-import { PatientEvaluation } from '../entities/patient-evaluation.entity';
 import { PathDocument, DocumentType, DocumentCategory } from '../entities/path-document.entity';
 import { Patient } from '../../../entities/patient.entity';
 
@@ -29,33 +28,6 @@ export interface UpdateTherapeuticPathInput {
   notes?: string;
 }
 
-export interface CreateEvaluationInput {
-  therapeuticPathId: string;
-  operatorId: string;
-  templateId?: string;
-  chiefComplaint?: string;
-  historyOfPresentIllness?: string;
-  aggravatingFactors?: string;
-  relievingFactors?: string;
-  patientGoals?: string;
-  therapistGoals?: string;
-  functionalAssessment?: string;
-  conclusions?: string;
-  fieldValues?: Record<string, unknown>;
-}
-
-export interface UpdateEvaluationInput {
-  chiefComplaint?: string;
-  historyOfPresentIllness?: string;
-  aggravatingFactors?: string;
-  relievingFactors?: string;
-  patientGoals?: string;
-  therapistGoals?: string;
-  functionalAssessment?: string;
-  conclusions?: string;
-  fieldValues?: Record<string, unknown>;
-}
-
 export interface CreateDocumentInput {
   therapeuticPathId: string;
   type: DocumentType;
@@ -79,8 +51,6 @@ export class TherapeuticPathService {
   constructor(
     @InjectRepository(TherapeuticPath)
     private pathRepo: Repository<TherapeuticPath>,
-    @InjectRepository(PatientEvaluation)
-    private evaluationRepo: Repository<PatientEvaluation>,
     @InjectRepository(PathDocument)
     private documentRepo: Repository<PathDocument>,
     @InjectRepository(Patient)
@@ -120,7 +90,7 @@ export class TherapeuticPathService {
   async findById(id: string): Promise<TherapeuticPath | null> {
     return this.pathRepo.findOne({
       where: { id },
-      relations: ['patient', 'primaryOperator', 'evaluations', 'documents']
+      relations: ['patient', 'primaryOperator', 'documents']
     });
   }
 
@@ -130,7 +100,7 @@ export class TherapeuticPathService {
   async findByPatient(patientId: number): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { patientId },
-      relations: ['patient', 'primaryOperator', 'evaluations', 'documents'],
+      relations: ['patient', 'primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -144,7 +114,7 @@ export class TherapeuticPathService {
         patientId,
         status: TherapeuticPathStatus.ACTIVE
       },
-      relations: ['patient', 'primaryOperator', 'evaluations', 'documents'],
+      relations: ['patient', 'primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -155,7 +125,7 @@ export class TherapeuticPathService {
   async findByOperator(operatorId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { primaryOperatorId: operatorId },
-      relations: ['patient', 'primaryOperator', 'evaluations', 'documents'],
+      relations: ['patient', 'primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -187,68 +157,6 @@ export class TherapeuticPathService {
    */
   async deletePath(id: string): Promise<boolean> {
     const result = await this.pathRepo.delete(id);
-    return (result.affected ?? 0) > 0;
-  }
-
-  // ==================== PATIENT EVALUATION CRUD ====================
-
-  /**
-   * Crea una nuova valutazione
-   */
-  async createEvaluation(input: CreateEvaluationInput): Promise<PatientEvaluation> {
-    // Verifica che il percorso esista
-    const path = await this.pathRepo.findOne({
-      where: { id: input.therapeuticPathId }
-    });
-
-    if (!path) {
-      throw new NotFoundException(`Percorso terapeutico ${input.therapeuticPathId} non trovato`);
-    }
-
-    const evaluation = this.evaluationRepo.create(input);
-    return this.evaluationRepo.save(evaluation);
-  }
-
-  /**
-   * Ottiene una valutazione per ID
-   */
-  async findEvaluationById(id: string): Promise<PatientEvaluation | null> {
-    return this.evaluationRepo.findOne({
-      where: { id },
-      relations: ['therapeuticPath', 'operator']
-    });
-  }
-
-  /**
-   * Ottiene tutte le valutazioni di un percorso
-   */
-  async findEvaluationsByPath(pathId: string): Promise<PatientEvaluation[]> {
-    return this.evaluationRepo.find({
-      where: { therapeuticPathId: pathId },
-      relations: ['operator'],
-      order: { createdAt: 'DESC' }
-    });
-  }
-
-  /**
-   * Aggiorna una valutazione
-   */
-  async updateEvaluation(id: string, input: UpdateEvaluationInput): Promise<PatientEvaluation> {
-    const evaluation = await this.findEvaluationById(id);
-
-    if (!evaluation) {
-      throw new NotFoundException(`Valutazione ${id} non trovata`);
-    }
-
-    Object.assign(evaluation, input);
-    return this.evaluationRepo.save(evaluation);
-  }
-
-  /**
-   * Elimina una valutazione
-   */
-  async deleteEvaluation(id: string): Promise<boolean> {
-    const result = await this.evaluationRepo.delete(id);
     return (result.affected ?? 0) > 0;
   }
 

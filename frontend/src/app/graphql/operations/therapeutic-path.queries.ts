@@ -2,23 +2,68 @@ import { gql } from 'apollo-angular';
 
 // ==================== FRAGMENTS ====================
 
+/**
+ * PatientEvaluation fragment - Valutazione del percorso terapeutico
+ * (ex Anamnesi del percorso)
+ *
+ * NOTA: Questa è la valutazione legata al percorso terapeutico,
+ * NON la nuova anamnesi paziente (che usa SimplePatientAnamnesisService)
+ */
 export const PATIENT_EVALUATION_FRAGMENT = gql`
   fragment PatientEvaluationFields on PatientEvaluation {
     id
     therapeuticPathId
     operatorId
-    templateId
-    chiefComplaint
-    historyOfPresentIllness
-    aggravatingFactors
-    relievingFactors
-    patientGoals
-    therapistGoals
-    functionalAssessment
-    conclusions
-    fieldValues
+
+    # Sezione 1: Informazioni generali
+    professione
+    sportPraticati
+    bmi
+
+    # Sezione 2: Immagine corporea
+    bodyMapMarkers
+
+    # Sezione 3: Anamnesi patologica remota (storico, editing in PatientAnamnesis)
+    patologiePregresse
+    interventiChirurgici
+    traumi
+    terapiaFarmacologica
+
+    # Sezione 4: Anamnesi patologica prossima
+    motivoConsulto
+    esordioSintomi
+    statoAttualeSintomi
+    fattoriAllevianti
+    fattoriAggravanti
+    andamentoDolore
+
+    # Sezione 5: Esame obiettivo
+    osservazione
+    palpazione
+    movimentoPassivo
+    movimentoAttivo
+    forzaMuscolare
+    equilibrio
+    esameNeurologico
+    limitazioniAttivita
+    fattoriPrognosticiPositivi
+    fattoriPrognosticiNegativi
+    strategieCoping
+    diagnosiFisioterapica
+
+    # Sezione 7: Pianificazione trattamento
+    interventiProposti
+    frequenzaSedute
+
+    # Sezione 8: Monitoraggio
+    outcome
+    criticita
+
+    # Audit
     createdAt
     updatedAt
+
+    # Relations
     operator {
       id
       name
@@ -78,18 +123,21 @@ export const THERAPEUTIC_PATH_FRAGMENT = gql`
   }
 `;
 
+/**
+ * Fragment con relazioni per TherapeuticPath
+ *
+ * NOTA: 'evaluations' è stato rimosso - la relazione PatientEvaluation
+ * è ora 1:1 con TherapeuticPath e si carica separatamente tramite
+ * evaluationByPath(pathId: ID!)
+ */
 export const THERAPEUTIC_PATH_WITH_RELATIONS_FRAGMENT = gql`
   fragment TherapeuticPathWithRelationsFields on TherapeuticPath {
     ...TherapeuticPathFields
-    evaluations {
-      ...PatientEvaluationFields
-    }
     documents {
       ...PathDocumentFields
     }
   }
   ${THERAPEUTIC_PATH_FRAGMENT}
-  ${PATIENT_EVALUATION_FRAGMENT}
   ${PATH_DOCUMENT_FRAGMENT}
 `;
 
@@ -142,14 +190,21 @@ export const GET_PATIENT_EVALUATION = gql`
   ${PATIENT_EVALUATION_FRAGMENT}
 `;
 
-export const GET_EVALUATIONS_BY_PATH = gql`
-  query GetEvaluationsByPath($pathId: ID!) {
-    evaluationsByPath(pathId: $pathId) {
+/**
+ * Query per ottenere la valutazione di un percorso terapeutico
+ * Relazione 1:1 tra PatientEvaluation e TherapeuticPath
+ */
+export const GET_EVALUATION_BY_PATH = gql`
+  query GetEvaluationByPath($pathId: ID!) {
+    evaluationByPath(pathId: $pathId) {
       ...PatientEvaluationFields
     }
   }
   ${PATIENT_EVALUATION_FRAGMENT}
 `;
+
+// Legacy alias per compatibilità
+export const GET_EVALUATIONS_BY_PATH = GET_EVALUATION_BY_PATH;
 
 // ==================== DOCUMENT QUERIES ====================
 

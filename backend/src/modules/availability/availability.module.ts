@@ -33,14 +33,14 @@ import { AppointmentService } from './entities/appointment-service.entity';
 import { TreatmentService as TreatmentServiceEntity } from './entities/treatment-service.entity';
 import { ServiceSubcategory } from './entities/service-subcategory.entity';
 import { TherapeuticPath } from './entities/therapeutic-path.entity';
-import { PatientEvaluation } from './entities/patient-evaluation.entity';
 import { PathDocument } from './entities/path-document.entity';
-import { PatientAnamnesis } from './entities/patient-anamnesis.entity';
-import { AnamnesisObjective } from './entities/anamnesis-objective.entity';
-import { AnamnesisTest } from './entities/anamnesis-test.entity';
-import { AnamnesisExam } from './entities/anamnesis-exam.entity';
+import { PatientEvaluation } from './entities/patient-evaluation.entity';
+import { EvaluationObjective } from './entities/evaluation-objective.entity';
+import { EvaluationTest } from './entities/evaluation-test.entity';
+import { EvaluationExam } from './entities/evaluation-exam.entity';
 import { ObjectiveProgressHistory } from './entities/objective-progress-history.entity';
 import { TestEvaluationHistory } from './entities/test-evaluation-history.entity';
+import { PatientAnamnesis } from './entities/patient-anamnesis.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -64,6 +64,7 @@ import { AppointmentConflictService } from './services/appointment-conflict.serv
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 import { TreatmentService } from './services/treatment.service';
 import { TherapeuticPathService } from './services/therapeutic-path.service';
+import { PatientEvaluationService } from './services/patient-evaluation.service';
 import { PatientAnamnesisService } from './services/patient-anamnesis.service';
 
 // Resolvers
@@ -87,6 +88,7 @@ import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
 import { TreatmentResolver } from './resolvers/treatment.resolver';
 import { TherapeuticPathResolver } from './resolvers/therapeutic-path.resolver';
 import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.resolver';
+import { PatientEvaluationResolver } from './resolvers/patient-evaluation.resolver';
 import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver';
 
 @Module({
@@ -124,14 +126,14 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
       Treatment,
       ServiceSubcategory,
       TherapeuticPath,
-      PatientEvaluation,
       PathDocument,
-      PatientAnamnesis,
-      AnamnesisObjective,
-      AnamnesisTest,
-      AnamnesisExam,
+      PatientEvaluation,
+      EvaluationObjective,
+      EvaluationTest,
+      EvaluationExam,
       ObjectiveProgressHistory,
       TestEvaluationHistory,
+      PatientAnamnesis,
     ]),
   ],
   providers: [
@@ -157,6 +159,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
     AvailabilityAppointmentService,
     TreatmentService,
     TherapeuticPathService,
+    PatientEvaluationService,
     PatientAnamnesisService,
     // Resolvers
     AvailabilityResolver,
@@ -179,6 +182,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
     TreatmentResolver,
     TherapeuticPathResolver,
     ServiceSubcategoryResolver,
+    PatientEvaluationResolver,
     PatientAnamnesisResolver,
   ],
   exports: [
@@ -203,6 +207,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
     AvailabilityAppointmentService,
     TreatmentService,
     TherapeuticPathService,
+    PatientEvaluationService,
     PatientAnamnesisService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],

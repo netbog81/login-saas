@@ -3,7 +3,6 @@ import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 import { Patient } from '../../../entities/patient.entity';
 import { PatientModel } from '../../../patients/models/patient.model';
-import { PatientEvaluation } from './patient-evaluation.entity';
 import { PathDocument } from './path-document.entity';
 import { Treatment } from './treatment.entity';
 import { TherapeuticPathStatus } from './therapeutic-path-enums';
@@ -96,10 +95,6 @@ export class TherapeuticPath {
   @ManyToOne(() => Operator, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'primaryOperatorId' })
   primaryOperator: Operator;
-
-  @Field(() => [PatientEvaluation], { nullable: true })
-  @OneToMany(() => PatientEvaluation, evaluation => evaluation.therapeuticPath)
-  evaluations?: PatientEvaluation[];
 
   @Field(() => [PathDocument], { nullable: true })
   @OneToMany(() => PathDocument, document => document.therapeuticPath)

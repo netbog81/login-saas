@@ -10,7 +10,7 @@ export enum ObjectiveType {
 }
 
 /**
- * TestSection - Sezione dell'anamnesi in cui si trova il test
+ * TestSection - Sezione della valutazione in cui si trova il test
  */
 export enum TestSection {
   ESAME_OBIETTIVO = 'esame_obiettivo',   // Test nella sezione 5 (Esame Obiettivo)
@@ -25,5 +25,5 @@ registerEnumType(ObjectiveType, {
 
 registerEnumType(TestSection, {
   name: 'TestSection',
-  description: 'Sezione dell\'anamnesi in cui si trova il test',
+  description: 'Sezione della valutazione in cui si trova il test',
 });

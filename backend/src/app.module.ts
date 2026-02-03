@@ -54,16 +54,17 @@ import { AppointmentService } from './modules/availability/entities/appointment-
 import { TreatmentService } from './modules/availability/entities/treatment-service.entity';
 // Therapeutic path entities
 import { TherapeuticPath } from './modules/availability/entities/therapeutic-path.entity';
-import { PatientEvaluation } from './modules/availability/entities/patient-evaluation.entity';
 import { PathDocument } from './modules/availability/entities/path-document.entity';
-// Patient anamnesis entities
-import { PatientAnamnesis } from './modules/availability/entities/patient-anamnesis.entity';
-import { AnamnesisObjective } from './modules/availability/entities/anamnesis-objective.entity';
-import { AnamnesisTest } from './modules/availability/entities/anamnesis-test.entity';
-import { AnamnesisExam } from './modules/availability/entities/anamnesis-exam.entity';
+// Patient evaluation entities (renamed from anamnesis)
+import { PatientEvaluation } from './modules/availability/entities/patient-evaluation.entity';
+import { EvaluationObjective } from './modules/availability/entities/evaluation-objective.entity';
+import { EvaluationTest } from './modules/availability/entities/evaluation-test.entity';
+import { EvaluationExam } from './modules/availability/entities/evaluation-exam.entity';
 // Progress tracking entities
 import { ObjectiveProgressHistory } from './modules/availability/entities/objective-progress-history.entity';
 import { TestEvaluationHistory } from './modules/availability/entities/test-evaluation-history.entity';
+// Patient anamnesis entity (NEW - linked to patient, not path)
+import { PatientAnamnesis } from './modules/availability/entities/patient-anamnesis.entity';
 // Pazienti module entities
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
@@ -119,16 +120,17 @@ import { PazientePersonaRelazione } from './patients/entities/paziente-persona-r
         TreatmentService,
         // Therapeutic path entities
         TherapeuticPath,
-        PatientEvaluation,
         PathDocument,
-        // Patient anamnesis entities
-        PatientAnamnesis,
-        AnamnesisObjective,
-        AnamnesisTest,
-        AnamnesisExam,
+        // Patient evaluation entities (renamed from anamnesis)
+        PatientEvaluation,
+        EvaluationObjective,
+        EvaluationTest,
+        EvaluationExam,
         // Progress tracking entities
         ObjectiveProgressHistory,
         TestEvaluationHistory,
+        // Patient anamnesis (NEW - linked to patient, not path)
+        PatientAnamnesis,
         // Pazienti module entities
         PersonaRiferimento,
         PazientePersonaRelazione,

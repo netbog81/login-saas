@@ -8,8 +8,13 @@ import { TherapeuticPath, PathTreatment, Anamnesis, PathDocument } from '../../.
 
 /**
  * Tab disponibili nella scheda paziente
+ * - patient-anamnesis: Anamnesi del paziente (sempre visibile, indipendente dal percorso)
+ * - treatments: Trattamenti del percorso selezionato
+ * - anamnesis: Valutazione del percorso (ex anamnesi terapeutica)
+ * - obiettivi: Obiettivi e test del percorso
+ * - documents: Documenti del percorso
  */
-export type PatientFolderTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documents';
+export type PatientFolderTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 'obiettivi' | 'documents';
 
 /**
  * Stato UI della Scheda Paziente
@@ -87,7 +92,7 @@ export function createInitialPatientFolderUIState(): PatientFolderUIState {
   return {
     sidebarCollapsed: false,
     selectedPathId: null,
-    activeTab: 'treatments',
+    activeTab: 'patient-anamnesis',
     selectedTreatmentId: null,
     showTreatmentDetail: false,
     loadingPatient: false,

@@ -129,3 +129,14 @@ body {
   opacity: 1 !important;
   visibility: visible !important;
 }
+
+/* Fix Tailwind + Angular Material outline conflict */
+/* Tailwind preflight sets border-style: solid, Material expects none */
+.mdc-notched-outline__notch {
+  border-right: none !important;
+}
+
+/* Fix per prefix icon border */
+.mat-mdc-form-field-icon-prefix {
+  border: none !important;
+}

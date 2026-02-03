@@ -36,6 +36,7 @@ import { TreatmentsTabComponent } from '../treatments-tab/treatments-tab.compone
 import { AnamnesisTabComponent } from '../anamnesis-tab/anamnesis-tab.component';
 import { ObjectivesTabComponent } from '../objectives-tab/objectives-tab.component';
 import { DocumentsTabComponent } from '../documents-tab/documents-tab.component';
+import { PatientAnamnesisTabComponent } from '../patient-anamnesis-tab/patient-anamnesis-tab.component';
 import {
   ObjectiveWithProgress,
   TestWithEvaluations,
@@ -45,8 +46,9 @@ import {
   TestResetEvent,
   TestDeleteEvent
 } from '../../models/objectives-tracking.model';
+import { PatientAnamnesis } from '../../models/patient-anamnesis.model';
 
-export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documents';
+export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 'obiettivi' | 'documents';
 
 @Component({
   selector: 'app-path-content',
@@ -61,7 +63,8 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documen
     TreatmentsTabComponent,
     AnamnesisTabComponent,
     ObjectivesTabComponent,
-    DocumentsTabComponent
+    DocumentsTabComponent,
+    PatientAnamnesisTabComponent
   ],
   template: `
     <div class="path-content" [class.no-path]="!path">
@@ -119,6 +122,26 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documen
           (selectedIndexChange)="onTabIndexChange($event)"
           animationDuration="200ms">
 
+          <!-- Tab 0: Anamnesi Paziente (sempre visibile) -->
+          <mat-tab>
+            <ng-template mat-tab-label>
+              <mat-icon>medical_information</mat-icon>
+              <span>Anamnesi</span>
+              @if (patientAnamnesis) {
+                <mat-icon class="tab-indicator">check_circle</mat-icon>
+              }
+            </ng-template>
+            <div class="tab-content">
+              <app-patient-anamnesis-tab
+                [anamnesis]="patientAnamnesis"
+                [loading]="loadingPatientAnamnesis"
+                (edit)="onEditPatientAnamnesis()"
+                (delete)="onDeletePatientAnamnesis()">
+              </app-patient-anamnesis-tab>
+            </div>
+          </mat-tab>
+
+          <!-- Tab 1: Trattamenti -->
           <mat-tab>
             <ng-template mat-tab-label>
               <mat-icon>medical_services</mat-icon>
@@ -142,7 +165,7 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documen
           <mat-tab>
             <ng-template mat-tab-label>
               <mat-icon>assignment</mat-icon>
-              <span>Anamnesi</span>
+              <span>Valutazione</span>
               @if (anamnesis) {
                 <mat-icon class="tab-indicator">check_circle</mat-icon>
               }
@@ -152,9 +175,9 @@ export type PathContentTab = 'treatments' | 'anamnesis' | 'obiettivi' | 'documen
                 [anamnesis]="anamnesis"
                 [anamnesisComplete]="anamnesisComplete"
                 [loading]="loadingAnamnesis"
-                (edit)="onEditAnamnesis()"
-                (delete)="onDeleteAnamnesis()"
-                (expand)="onExpandAnamnesis()">
+                (edit)="onEditEvaluation()"
+                (delete)="onDeleteEvaluation()"
+                (expand)="onExpandEvaluation()">
               </app-anamnesis-tab>
             </div>
           </mat-tab>
@@ -458,15 +481,18 @@ export class PathContentComponent {
   // Obiettivi tab inputs
   @Input() objectivesWithProgress: ObjectiveWithProgress[] = [];
   @Input() testsWithEvaluations: TestWithEvaluations[] = [];
+  // Patient anamnesis inputs
+  @Input() patientAnamnesis: PatientAnamnesis | null = null;
+  @Input() loadingPatientAnamnesis = false;
 
   @Output() tabChange = new EventEmitter<PathContentTab>();
   @Output() editPath = new EventEmitter<void>();
   @Output() treatmentSelect = new EventEmitter<Treatment>();
   @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
   @Output() treatmentEdit = new EventEmitter<Treatment>();
-  @Output() editAnamnesis = new EventEmitter<void>();
-  @Output() deleteAnamnesis = new EventEmitter<void>();
-  @Output() expandAnamnesis = new EventEmitter<void>();
+  @Output() editEvaluation = new EventEmitter<void>();
+  @Output() deleteEvaluation = new EventEmitter<void>();
+  @Output() expandEvaluation = new EventEmitter<void>();
   @Output() documentOpen = new EventEmitter<PathDocument>();
   @Output() documentUpload = new EventEmitter<void>();
   @Output() documentDownload = new EventEmitter<PathDocument>();
@@ -480,8 +506,11 @@ export class PathContentComponent {
   @Output() testDeleted = new EventEmitter<TestDeleteEvent>();
   @Output() openTestHistory = new EventEmitter<TestWithEvaluations>();
   @Output() expandObjectives = new EventEmitter<void>();
+  // Patient anamnesis outputs
+  @Output() editPatientAnamnesis = new EventEmitter<void>();
+  @Output() deletePatientAnamnesis = new EventEmitter<void>();
 
-  private readonly tabIndexMap: PathContentTab[] = ['treatments', 'anamnesis', 'obiettivi', 'documents'];
+  private readonly tabIndexMap: PathContentTab[] = ['patient-anamnesis', 'treatments', 'anamnesis', 'obiettivi', 'documents'];
 
   getTabIndex(): number {
     return this.tabIndexMap.indexOf(this.activeTab);
@@ -511,16 +540,16 @@ export class PathContentComponent {
     this.treatmentEdit.emit(treatment);
   }
 
-  onEditAnamnesis(): void {
-    this.editAnamnesis.emit();
+  onEditEvaluation(): void {
+    this.editEvaluation.emit();
   }
 
-  onDeleteAnamnesis(): void {
-    this.deleteAnamnesis.emit();
+  onDeleteEvaluation(): void {
+    this.deleteEvaluation.emit();
   }
 
-  onExpandAnamnesis(): void {
-    this.expandAnamnesis.emit();
+  onExpandEvaluation(): void {
+    this.expandEvaluation.emit();
   }
 
   onDocumentOpen(doc: PathDocument): void {
@@ -584,5 +613,15 @@ export class PathContentComponent {
 
   onExpandObjectives(): void {
     this.expandObjectives.emit();
+  }
+
+  // === Patient Anamnesis tab methods ===
+
+  onEditPatientAnamnesis(): void {
+    this.editPatientAnamnesis.emit();
+  }
+
+  onDeletePatientAnamnesis(): void {
+    this.deletePatientAnamnesis.emit();
   }
 }

@@ -9,17 +9,18 @@ import {
   Index
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
-import { PatientAnamnesis } from './patient-anamnesis.entity';
+import { PatientEvaluation } from './patient-evaluation.entity';
 
 /**
- * AnamnesisExam - Esami diagnostici allegati all'anamnesi
+ * EvaluationExam - Esami diagnostici allegati alla valutazione
+ * (ex AnamnesisExam - rinominato per chiarezza)
  *
  * Sezione 6: Esami Diagnostici (RX, RMN, TAC, analisi, etc.)
  */
-@ObjectType('AnamnesisExam')
-@Entity('anamnesis_exams')
-@Index('IDX_anamnesis_exams_anamnesis', ['anamnesisId'])
-export class AnamnesisExam {
+@ObjectType('EvaluationExam')
+@Entity('evaluation_exams')
+@Index('IDX_evaluation_exams_evaluation', ['evaluationId'])
+export class EvaluationExam {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -28,7 +29,7 @@ export class AnamnesisExam {
 
   @Field(() => ID)
   @Column('uuid')
-  anamnesisId: string;
+  evaluationId: string;
 
   // ==================== FIELDS ====================
 
@@ -60,7 +61,7 @@ export class AnamnesisExam {
 
   // ==================== RELATIONS ====================
 
-  @ManyToOne(() => PatientAnamnesis, anamnesis => anamnesis.exams, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'anamnesisId' })
-  anamnesis: PatientAnamnesis;
+  @ManyToOne(() => PatientEvaluation, evaluation => evaluation.exams, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'evaluationId' })
+  evaluation: PatientEvaluation;
 }

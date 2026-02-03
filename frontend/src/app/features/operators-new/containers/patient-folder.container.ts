@@ -21,6 +21,8 @@ import {
   ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
 import { Subject } from 'rxjs';
 import { takeUntil, tap } from 'rxjs/operators';
 
@@ -29,19 +31,22 @@ import { TherapeuticPath, Anamnesis, PathDocument } from '../../../models/therap
 import { Treatment } from '../../../models/treatment.model';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { TreatmentService } from '../../../services/treatment.service';
-import { PatientAnamnesisService, CreateAnamnesisInput } from '../../../services/patient-anamnesis.service';
+import { PatientEvaluationService } from '../../../services/patient-evaluation.service';
 import { ObjectivesTrackingService } from '../../../services/objectives-tracking.service';
+import { SimplePatientAnamnesisService } from '../../../services/simple-patient-anamnesis.service';
 
 import { PatientHeaderComponent } from '../components/patient-header/patient-header.component';
 import { PathContentComponent, PathContentTab } from '../components/path-content/path-content.component';
 import { PathDialogContainer } from './path-dialog.container';
 import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dialog.container';
-import { AnamnesisFormContainer } from './anamnesis-form.container';
-import { AnamnesisDialogContainer } from './anamnesis-dialog.container';
+import { EvaluationFormContainer } from './evaluation-form.container';
+import { EvaluationDialogContainer } from './evaluation-dialog.container';
 import { ObjectivesDialogContainer } from './objectives-dialog.container';
 import { TestHistoryDialogContainer } from './test-history-dialog.container';
+import { PatientAnamnesisFormContainer } from './patient-anamnesis-form.container';
 import { ConfirmResetDialogComponent } from '../components/confirm-reset-dialog/confirm-reset-dialog.component';
-import { AnamnesisComplete } from '../models/anamnesis.model';
+import { EvaluationComplete, Obiettivo, TestSpecifico, TestEvaluationHistoryEntry } from '../models/evaluation.model';
+import { PatientAnamnesis } from '../models/patient-anamnesis.model';
 import {
   PatientFolderUIState,
   PatientFolderTab,
@@ -68,14 +73,17 @@ import {
   standalone: true,
   imports: [
     CommonModule,
+    MatIconModule,
+    MatButtonModule,
     PatientHeaderComponent,
     PathContentComponent,
     PathDialogContainer,
     TreatmentDetailDialogContainerComponent,
-    AnamnesisFormContainer,
-    AnamnesisDialogContainer,
+    EvaluationFormContainer,
+    EvaluationDialogContainer,
     ObjectivesDialogContainer,
     TestHistoryDialogContainer,
+    PatientAnamnesisFormContainer,
     ConfirmResetDialogComponent
   ],
   template: `
@@ -142,7 +150,7 @@ import {
               [activeTab]="uiState.activeTab"
               [treatments]="filteredTreatments"
               [anamnesis]="selectedPath?.anamnesis || null"
-              [anamnesisComplete]="currentAnamnesis"
+              [anamnesisComplete]="currentEvaluation"
               [documents]="selectedPath?.documents || []"
               [selectedTreatmentId]="uiState.selectedTreatmentId"
               [loadingTreatments]="uiState.loadingTreatments"
@@ -150,15 +158,17 @@ import {
               [loadingDocuments]="uiState.loadingDocuments"
               [objectivesWithProgress]="objectivesWithProgress"
               [testsWithEvaluations]="testsWithEvaluations"
+              [patientAnamnesis]="patientAnamnesis"
+              [loadingPatientAnamnesis]="loadingPatientAnamnesis"
               (tabChange)="onTabChange($event)"
               (editPath)="onEditPath()"
               (deletePath)="onDeletePath()"
               (treatmentSelect)="onTreatmentSelect($event)"
               (treatmentDoubleClick)="onTreatmentDoubleClick($event)"
               (treatmentEdit)="onTreatmentEdit($event)"
-              (editAnamnesis)="onEditAnamnesis()"
-              (deleteAnamnesis)="onDeleteAnamnesis()"
-              (expandAnamnesis)="onExpandAnamnesis()"
+              (editEvaluation)="onEditEvaluation()"
+              (deleteEvaluation)="onDeleteEvaluation()"
+              (expandEvaluation)="onExpandEvaluation()"
               (documentOpen)="onDocumentOpen($event)"
               (documentUpload)="onDocumentUpload()"
               (documentDownload)="onDocumentDownload($event)"
@@ -169,7 +179,9 @@ import {
               (testReset)="onTestResetRequested($event)"
               (testDeleted)="onTestDeleted($event)"
               (openTestHistory)="onOpenTestHistory($event)"
-              (expandObjectives)="onExpandObjectives()">
+              (expandObjectives)="onExpandObjectives()"
+              (editPatientAnamnesis)="onEditPatientAnamnesis()"
+              (deletePatientAnamnesis)="onDeletePatientAnamnesis()">
             </app-path-content>
           </main>
         </div>
@@ -193,38 +205,38 @@ import {
       (editTreatment)="onTreatmentEdit($event)">
     </app-treatment-detail-dialog-container>
 
-    <!-- Anamnesis Form Dialog -->
-    @if (showAnamnesisForm) {
+    <!-- Evaluation Form Dialog -->
+    @if (showEvaluationForm) {
       <div class="dialog-overlay">
-        <app-anamnesis-form-container
-          [mode]="anamnesisFormMode"
+        <app-evaluation-form-container
+          [mode]="evaluationFormMode"
           [patient]="patient"
           [path]="selectedPath"
-          [anamnesis]="currentAnamnesis"
+          [evaluation]="currentEvaluation"
           [operatorId]="currentOperatorId || ''"
-          (saved)="onAnamnesisSaved($event)"
-          (close)="closeAnamnesisForm()">
-        </app-anamnesis-form-container>
+          (saved)="onEvaluationSaved($event)"
+          (close)="closeEvaluationForm()">
+        </app-evaluation-form-container>
       </div>
     }
 
-    <!-- Anamnesis Expand Dialog -->
-    <app-anamnesis-dialog-container
-      #anamnesisDialog
+    <!-- Evaluation Expand Dialog -->
+    <app-evaluation-dialog-container
+      #evaluationDialog
       [patient]="patient"
       [path]="selectedPath"
-      [anamnesisComplete]="currentAnamnesis"
-      (edit)="onEditAnamnesis()"
-      (delete)="onDeleteAnamnesis()"
-      (close)="onAnamnesisDialogClose()">
-    </app-anamnesis-dialog-container>
+      [evaluationComplete]="currentEvaluation"
+      (edit)="onEditEvaluation()"
+      (delete)="onDeleteEvaluation()"
+      (close)="onEvaluationDialogClose()">
+    </app-evaluation-dialog-container>
 
     <!-- Objectives Expand Dialog -->
     <app-objectives-dialog-container
       #objectivesDialog
       [patient]="patient"
       [path]="selectedPath"
-      [anamnesisComplete]="currentAnamnesis"
+      [anamnesisComplete]="currentEvaluation"
       [objectivesWithProgress]="objectivesWithProgress"
       [testsWithEvaluations]="testsWithEvaluations"
       (objectiveProgressChanged)="onObjectiveProgressChanged($event)"
@@ -252,6 +264,67 @@ import {
         (confirm)="onConfirmReset()"
         (cancel)="onCancelReset()">
       </app-confirm-reset-dialog>
+    }
+
+    <!-- Patient Anamnesis Form Dialog -->
+    @if (showPatientAnamnesisForm && patient) {
+      <div class="dialog-overlay">
+        <app-patient-anamnesis-form-container
+          [anamnesis]="patientAnamnesis"
+          [patientId]="patient.id"
+          [operatorId]="currentOperatorId || null"
+          (saved)="onPatientAnamnesisSaved($event)"
+          (close)="closePatientAnamnesisForm()">
+        </app-patient-anamnesis-form-container>
+      </div>
+    }
+
+    <!-- Anamnesis Check Dialog -->
+    @if (showAnamnesisCheckDialog) {
+      <div class="dialog-overlay">
+        <div class="anamnesis-check-dialog">
+          @if (anamnesisCheckMode === 'missing') {
+            <!-- Caso 1: Anamnesi mancante -->
+            <div class="dialog-header warning">
+              <mat-icon>warning</mat-icon>
+              <h3>Anamnesi Mancante</h3>
+            </div>
+            <div class="dialog-content">
+              <p>Prima di creare un nuovo percorso terapeutico è necessario compilare l'anamnesi del paziente.</p>
+              <p class="subtitle">Vuoi compilarla adesso?</p>
+            </div>
+            <div class="dialog-actions">
+              <button mat-stroked-button (click)="onCancelAnamnesisCheck()">
+                Annulla
+              </button>
+              <button mat-flat-button color="primary" (click)="onCreateAnamnesisFromCheck()">
+                <mat-icon>edit_note</mat-icon>
+                Compila Anamnesi
+              </button>
+            </div>
+          } @else if (anamnesisCheckMode === 'exists') {
+            <!-- Caso 2: Anamnesi esistente -->
+            <div class="dialog-header info">
+              <mat-icon>info</mat-icon>
+              <h3>Anamnesi Presente</h3>
+            </div>
+            <div class="dialog-content">
+              <p>Anamnesi per il paziente già presente.</p>
+              <p class="subtitle">I dati sono da aggiornare?</p>
+            </div>
+            <div class="dialog-actions">
+              <button mat-stroked-button (click)="onUpdateAnamnesisFromCheck()">
+                <mat-icon>edit</mat-icon>
+                Aggiorna Anamnesi
+              </button>
+              <button mat-flat-button color="primary" (click)="onProceedWithPathCreation()">
+                <mat-icon>arrow_forward</mat-icon>
+                Prosegui Creazione Percorso
+              </button>
+            </div>
+          }
+        </div>
+      </div>
     }
   `,
   styles: [`
@@ -501,6 +574,95 @@ import {
       z-index: 1000;
       padding: 24px;
     }
+
+    /* Dialog content wrapper - Material Design elevation */
+    .dialog-overlay > * {
+      background: white;
+      border-radius: 12px;
+      max-width: 600px;
+      max-height: 90vh;
+      width: 100%;
+      overflow: auto;
+      box-shadow: 0 11px 15px -7px rgba(0,0,0,.2),
+                  0 24px 38px 3px rgba(0,0,0,.14),
+                  0 9px 46px 8px rgba(0,0,0,.12);
+    }
+
+    @media (max-width: 599px) {
+      .dialog-overlay {
+        padding: 16px;
+      }
+      .dialog-overlay > * {
+        max-height: 95vh;
+        max-width: 100%;
+        border-radius: 8px;
+      }
+    }
+
+    /* Anamnesis Check Dialog */
+    .anamnesis-check-dialog {
+      background: white;
+      border-radius: 12px;
+      max-width: 450px;
+      width: 100%;
+      box-shadow: 0 11px 15px -7px rgba(0,0,0,.2),
+                  0 24px 38px 3px rgba(0,0,0,.14),
+                  0 9px 46px 8px rgba(0,0,0,.12);
+      overflow: hidden;
+    }
+
+    .anamnesis-check-dialog .dialog-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      color: white;
+
+      &.warning {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      }
+
+      &.info {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      }
+
+      mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      h3 {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+      }
+    }
+
+    .anamnesis-check-dialog .dialog-content {
+      padding: 20px;
+
+      p {
+        margin: 0 0 8px;
+        color: #374151;
+        font-size: 0.9375rem;
+        line-height: 1.5;
+      }
+
+      .subtitle {
+        color: #6b7280;
+        font-weight: 500;
+      }
+    }
+
+    .anamnesis-check-dialog .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px 20px;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -517,7 +679,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   @Output() editTreatment = new EventEmitter<Treatment>();
 
   @ViewChild('treatmentDetailDialog') treatmentDetailDialog!: TreatmentDetailDialogContainerComponent;
-  @ViewChild('anamnesisDialog') anamnesisDialog!: AnamnesisDialogContainer;
+  @ViewChild('evaluationDialog') evaluationDialog!: EvaluationDialogContainer;
   @ViewChild('objectivesDialog') objectivesDialog!: ObjectivesDialogContainer;
 
   // State
@@ -530,10 +692,10 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   showPathDialog = false;
   pathDialogData: PathDialogData | null = null;
 
-  // Anamnesis state
-  showAnamnesisForm = false;
-  anamnesisFormMode: 'create' | 'edit' = 'create';
-  currentAnamnesis: AnamnesisComplete | null = null;
+  // Evaluation state
+  showEvaluationForm = false;
+  evaluationFormMode: 'create' | 'edit' = 'create';
+  currentEvaluation: EvaluationComplete | null = null;
 
   // Objectives tracking state
   objectivesWithProgress: ObjectiveWithProgress[] = [];
@@ -547,11 +709,22 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   showConfirmResetDialog = false;
   selectedTestForReset: TestWithEvaluations | null = null;
 
+  // Patient Anamnesis state (nuova anamnesi legata al paziente)
+  patientAnamnesis: PatientAnamnesis | null = null;
+  loadingPatientAnamnesis = false;
+  showPatientAnamnesisForm = false;
+
+  // Anamnesis check dialog state (verifica prima di creare percorso)
+  showAnamnesisCheckDialog = false;
+  anamnesisCheckMode: 'missing' | 'exists' | null = null;
+  pendingPathCreation = false;
+
   constructor(
     private pathService: TherapeuticPathService,
     private treatmentService: TreatmentService,
-    private anamnesisService: PatientAnamnesisService,
+    private evaluationService: PatientEvaluationService,
     private objectivesTrackingService: ObjectivesTrackingService,
+    private patientAnamnesisService: SimplePatientAnamnesisService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -562,16 +735,19 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       this.selectedPath = null;
       this.paths = [];
       this.treatments = [];
+      this.patientAnamnesis = null;
       this.uiState = { ...this.uiState, selectedPathId: null, selectedTreatmentId: null };
       this.cdr.markForCheck();
 
       // Poi carica i nuovi dati
       this.loadPaths();
       this.loadTreatments();
+      this.loadPatientAnamnesis();
     } else if (changes['patient'] && !this.patient) {
       this.paths = [];
       this.selectedPath = null;
       this.treatments = [];
+      this.patientAnamnesis = null;
       this.uiState = createInitialPatientFolderUIState();
       this.cdr.markForCheck();
     }
@@ -653,6 +829,32 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       });
   }
 
+  /**
+   * Carica l'anamnesi del paziente (nuova entità legata al paziente, non al percorso)
+   */
+  private loadPatientAnamnesis(): void {
+    if (!this.patient?.id) return;
+
+    this.loadingPatientAnamnesis = true;
+    this.cdr.markForCheck();
+
+    this.patientAnamnesisService.getAnamnesisByPatient(Number(this.patient.id))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (anamnesis) => {
+          this.patientAnamnesis = anamnesis;
+          this.loadingPatientAnamnesis = false;
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error loading patient anamnesis:', err);
+          this.patientAnamnesis = null;
+          this.loadingPatientAnamnesis = false;
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
   // Event handlers
   onPathSelect(path: TherapeuticPath): void {
     this.selectPath(path);
@@ -680,11 +882,73 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   onCreatePath(): void {
     if (!this.patient) return;
 
+    // Verifica se esiste anamnesi prima di creare percorso
+    if (!this.patientAnamnesis) {
+      // Caso 1: Anamnesi non presente
+      this.anamnesisCheckMode = 'missing';
+      this.showAnamnesisCheckDialog = true;
+      this.cdr.markForCheck();
+    } else {
+      // Caso 2: Anamnesi già presente
+      this.anamnesisCheckMode = 'exists';
+      this.showAnamnesisCheckDialog = true;
+      this.cdr.markForCheck();
+    }
+  }
+
+  /**
+   * Helper per aprire il PathDialog
+   */
+  private openPathDialog(): void {
+    if (!this.patient) return;
     this.pathDialogData = createNewPathDialogData(
       Number(this.patient.id),
       this.currentOperatorId
     );
     this.showPathDialog = true;
+  }
+
+  // ==================== Anamnesis Check Dialog Handlers ====================
+
+  /**
+   * Caso 1: Anamnesi mancante - utente sceglie di crearla
+   */
+  onCreateAnamnesisFromCheck(): void {
+    this.showAnamnesisCheckDialog = false;
+    this.anamnesisCheckMode = null;
+    this.pendingPathCreation = true;
+    this.showPatientAnamnesisForm = true;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Caso 1: Anamnesi mancante - utente annulla
+   */
+  onCancelAnamnesisCheck(): void {
+    this.showAnamnesisCheckDialog = false;
+    this.anamnesisCheckMode = null;
+    this.pendingPathCreation = false;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Caso 2: Anamnesi esistente - utente vuole aggiornarla
+   */
+  onUpdateAnamnesisFromCheck(): void {
+    this.showAnamnesisCheckDialog = false;
+    this.anamnesisCheckMode = null;
+    this.pendingPathCreation = true;
+    this.showPatientAnamnesisForm = true;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Caso 2: Anamnesi esistente - utente prosegue senza aggiornare
+   */
+  onProceedWithPathCreation(): void {
+    this.showAnamnesisCheckDialog = false;
+    this.anamnesisCheckMode = null;
+    this.openPathDialog();
     this.cdr.markForCheck();
   }
 
@@ -795,27 +1059,27 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     console.log('[PatientFolderContainer] Treatment detail dialog closed');
   }
 
-  onEditAnamnesis(): void {
+  onEditEvaluation(): void {
     console.log('[PatientFolderContainer] Edit anamnesis');
-    this.anamnesisFormMode = this.currentAnamnesis ? 'edit' : 'create';
-    this.showAnamnesisForm = true;
+    this.evaluationFormMode = this.currentEvaluation ? 'edit' : 'create';
+    this.showEvaluationForm = true;
     this.cdr.markForCheck();
   }
 
-  onDeleteAnamnesis(): void {
-    if (!this.currentAnamnesis) return;
+  onDeleteEvaluation(): void {
+    if (!this.currentEvaluation) return;
 
     const confirmed = confirm('Eliminare l\'anamnesi?\n\nQuesta azione non può essere annullata.');
     if (!confirmed) return;
 
-    const anamnesisId = this.currentAnamnesis.id;
+    const anamnesisId = this.currentEvaluation.id;
 
-    this.anamnesisService.deleteAnamnesis(anamnesisId)
+    this.evaluationService.deleteEvaluation(anamnesisId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (success) => {
           if (success) {
-            this.currentAnamnesis = null;
+            this.currentEvaluation = null;
             this.cdr.markForCheck();
           }
         },
@@ -827,27 +1091,27 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       });
   }
 
-  onExpandAnamnesis(): void {
+  onExpandEvaluation(): void {
     console.log('[PatientFolderContainer] Expand anamnesis');
-    if (this.anamnesisDialog) {
-      this.anamnesisDialog.open();
+    if (this.evaluationDialog) {
+      this.evaluationDialog.open();
     }
   }
 
-  onAnamnesisSaved(anamnesis: AnamnesisComplete): void {
-    console.log('[PatientFolderContainer] Anamnesis saved:', anamnesis);
-    // Aggiorna anamnesi locale (già salvata dal form container)
-    this.currentAnamnesis = anamnesis;
-    this.showAnamnesisForm = false;
+  onEvaluationSaved(evaluation: EvaluationComplete): void {
+    console.log('[PatientFolderContainer] Evaluation saved:', evaluation);
+    // Aggiorna valutazione locale (già salvata dal form container)
+    this.currentEvaluation = evaluation;
+    this.showEvaluationForm = false;
     this.cdr.markForCheck();
   }
 
-  closeAnamnesisForm(): void {
-    this.showAnamnesisForm = false;
+  closeEvaluationForm(): void {
+    this.showEvaluationForm = false;
     this.cdr.markForCheck();
   }
 
-  onAnamnesisDialogClose(): void {
+  onEvaluationDialogClose(): void {
     console.log('[PatientFolderContainer] Anamnesis dialog closed');
   }
 
@@ -901,8 +1165,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         error: (err) => {
           console.error('[PatientFolderContainer] Error updating objective progress:', err);
           // Rollback: ricarica i dati
-          if (this.currentAnamnesis) {
-            this.populateObjectivesAndTests(this.currentAnamnesis);
+          if (this.currentEvaluation) {
+            this.populateObjectivesAndTests(this.currentEvaluation);
             this.cdr.markForCheck();
           }
         }
@@ -957,8 +1221,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         error: (err) => {
           console.error('[PatientFolderContainer] Error adding test evaluation:', err);
           // Rollback: ricarica i dati
-          if (this.currentAnamnesis) {
-            this.populateObjectivesAndTests(this.currentAnamnesis);
+          if (this.currentEvaluation) {
+            this.populateObjectivesAndTests(this.currentEvaluation);
             this.cdr.markForCheck();
           }
         }
@@ -1008,8 +1272,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         error: (err) => {
           console.error('[PatientFolderContainer] Error editing test evaluation:', err);
           // Rollback: ricarica i dati
-          if (this.currentAnamnesis) {
-            this.populateObjectivesAndTests(this.currentAnamnesis);
+          if (this.currentEvaluation) {
+            this.populateObjectivesAndTests(this.currentEvaluation);
             this.cdr.markForCheck();
           }
         }
@@ -1065,8 +1329,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         error: (err) => {
           console.error('[PatientFolderContainer] Error resetting test:', err);
           // Rollback: ricarica i dati
-          if (this.currentAnamnesis) {
-            this.populateObjectivesAndTests(this.currentAnamnesis);
+          if (this.currentEvaluation) {
+            this.populateObjectivesAndTests(this.currentEvaluation);
             this.cdr.markForCheck();
           }
         }
@@ -1143,8 +1407,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         error: (err) => {
           console.error('[PatientFolderContainer] Error deleting test:', err);
           // Rollback: ricarica i dati
-          if (this.currentAnamnesis) {
-            this.populateObjectivesAndTests(this.currentAnamnesis);
+          if (this.currentEvaluation) {
+            this.populateObjectivesAndTests(this.currentEvaluation);
             this.cdr.markForCheck();
           }
         }
@@ -1197,7 +1461,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
    */
   private loadAnamnesis(pathId: string): void {
     this.uiState = { ...this.uiState, loadingAnamnesis: true };
-    this.currentAnamnesis = null;
+    this.currentEvaluation = null;
     // NON resettare gli array per evitare destroy/recreate dei componenti UI
     // durante l'aggiornamento. Gli array vengono aggiornati da populateObjectivesAndTests()
     this.cdr.markForCheck();
@@ -1210,11 +1474,11 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       sesso: this.patient.genere || null
     } : undefined;
 
-    this.anamnesisService.getAnamnesisByPath(pathId, patientInfo)
+    this.evaluationService.getEvaluationByPath(pathId, patientInfo)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (anamnesis) => {
-          this.currentAnamnesis = anamnesis;
+          this.currentEvaluation = anamnesis;
           // Popola gli obiettivi e i test dall'anamnesi per la tab Obiettivi
           this.populateObjectivesAndTests(anamnesis);
           this.uiState = { ...this.uiState, loadingAnamnesis: false };
@@ -1222,7 +1486,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
         },
         error: (err) => {
           console.error('[PatientFolderContainer] Error loading anamnesis:', err);
-          this.currentAnamnesis = null;
+          this.currentEvaluation = null;
           this.objectivesWithProgress = [];
           this.testsWithEvaluations = [];
           this.uiState = { ...this.uiState, loadingAnamnesis: false };
@@ -1232,30 +1496,30 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   /**
-   * Popola gli array objectivesWithProgress e testsWithEvaluations dall'anamnesi
+   * Popola gli array objectivesWithProgress e testsWithEvaluations dalla valutazione
    */
-  private populateObjectivesAndTests(anamnesis: AnamnesisComplete | null): void {
-    if (!anamnesis) {
+  private populateObjectivesAndTests(evaluation: EvaluationComplete | null): void {
+    if (!evaluation) {
       this.objectivesWithProgress = [];
       this.testsWithEvaluations = [];
       return;
     }
 
-    // Converti gli obiettivi dell'anamnesi in ObjectiveWithProgress
+    // Converti gli obiettivi della valutazione in ObjectiveWithProgress
     const allObjectives: ObjectiveWithProgress[] = [
-      ...(anamnesis.treatmentPlan.obiettiviBreveTermine || []).map(obj => ({
+      ...(evaluation.treatmentPlan.obiettiviBreveTermine || []).map((obj: Obiettivo) => ({
         ...obj,
         tipo: ObjectiveType.BREVE_TERMINE,
         progressLevel: obj.raggiunto ? 5 : 0,
         progressHistory: []
       })),
-      ...(anamnesis.treatmentPlan.obiettiviMedioTermine || []).map(obj => ({
+      ...(evaluation.treatmentPlan.obiettiviMedioTermine || []).map((obj: Obiettivo) => ({
         ...obj,
         tipo: ObjectiveType.MEDIO_TERMINE,
         progressLevel: obj.raggiunto ? 5 : 0,
         progressHistory: []
       })),
-      ...(anamnesis.treatmentPlan.obiettiviLungoTermine || []).map(obj => ({
+      ...(evaluation.treatmentPlan.obiettiviLungoTermine || []).map((obj: Obiettivo) => ({
         ...obj,
         tipo: ObjectiveType.LUNGO_TERMINE,
         progressLevel: obj.raggiunto ? 5 : 0,
@@ -1264,12 +1528,12 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     ];
     this.objectivesWithProgress = allObjectives;
 
-    // Converti i test dell'anamnesi in TestWithEvaluations
+    // Converti i test della valutazione in TestWithEvaluations
     // I test possono venire sia dalla sezione objectiveExam che da monitoring
     const allTests = [
-      ...(anamnesis.objectiveExam.testSpecifici || []).map(test => {
+      ...(evaluation.objectiveExam.testSpecifici || []).map((test: TestSpecifico) => {
         const history = (test.evaluationHistory || [])
-          .map(entry => ({
+          .map((entry: TestEvaluationHistoryEntry) => ({
             id: entry.id,
             evaluationLevel: entry.evaluationLevel,
             note: entry.note,
@@ -1278,7 +1542,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
             createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
           }))
           // Ordina per data decrescente: la più recente in posizione 0
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+          .sort((a: { createdAt: Date }, b: { createdAt: Date }) => b.createdAt.getTime() - a.createdAt.getTime());
         // currentLevel è l'ultima valutazione (la più recente) o 0
         const currentLevel = history.length > 0 ? history[0].evaluationLevel : 0;
         return {
@@ -1288,9 +1552,9 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
           canRepeat: history.length > 0
         };
       }),
-      ...(anamnesis.monitoring.testSpecifici || []).map(test => {
+      ...(evaluation.monitoring.testSpecifici || []).map((test: TestSpecifico) => {
         const history = (test.evaluationHistory || [])
-          .map(entry => ({
+          .map((entry: TestEvaluationHistoryEntry) => ({
             id: entry.id,
             evaluationLevel: entry.evaluationLevel,
             note: entry.note,
@@ -1299,7 +1563,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
             createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : entry.createdAt
           }))
           // Ordina per data decrescente: la più recente in posizione 0
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+          .sort((a: { createdAt: Date }, b: { createdAt: Date }) => b.createdAt.getTime() - a.createdAt.getTime());
         // currentLevel è l'ultima valutazione (la più recente) o 0
         const currentLevel = history.length > 0 ? history[0].evaluationLevel : 0;
         return {
@@ -1362,5 +1626,69 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       return this.treatments;
     }
     return this.treatments.filter(t => t.therapeuticPathId === this.selectedPath!.id);
+  }
+
+  // === Patient Anamnesis Handlers ===
+
+  /**
+   * Apre il form per modificare/creare l'anamnesi paziente
+   */
+  onEditPatientAnamnesis(): void {
+    console.log('[PatientFolderContainer] Edit patient anamnesis');
+    this.showPatientAnamnesisForm = true;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Elimina l'anamnesi paziente
+   */
+  onDeletePatientAnamnesis(): void {
+    if (!this.patientAnamnesis) return;
+
+    const confirmed = confirm('Eliminare l\'anamnesi del paziente?\n\nQuesta azione non può essere annullata.');
+    if (!confirmed) return;
+
+    const anamnesisId = this.patientAnamnesis.id;
+
+    this.patientAnamnesisService.deleteAnamnesis(anamnesisId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (success) => {
+          if (success) {
+            this.patientAnamnesis = null;
+            this.cdr.markForCheck();
+          }
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error deleting patient anamnesis:', err);
+          alert('Errore durante l\'eliminazione dell\'anamnesi. Riprova.');
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  /**
+   * Callback quando l'anamnesi paziente viene salvata
+   */
+  onPatientAnamnesisSaved(anamnesis: PatientAnamnesis): void {
+    console.log('[PatientFolderContainer] Patient anamnesis saved:', anamnesis);
+    this.patientAnamnesis = anamnesis;
+    this.showPatientAnamnesisForm = false;
+
+    // Se c'era una creazione percorso in sospeso, aprila ora
+    if (this.pendingPathCreation) {
+      this.pendingPathCreation = false;
+      this.openPathDialog();
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Chiude il form anamnesi paziente
+   */
+  closePatientAnamnesisForm(): void {
+    this.showPatientAnamnesisForm = false;
+    this.cdr.markForCheck();
   }
 }
