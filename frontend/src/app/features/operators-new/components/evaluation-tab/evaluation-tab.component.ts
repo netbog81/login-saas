@@ -1,12 +1,15 @@
 /**
- * Anamnesis Tab Component
+ * Evaluation Tab Component
  * Layer 1: Dumb Component (Presentational)
  *
  * Responsabilità:
- * - Visualizzare anamnesi completa con 8 sezioni
+ * - Visualizzare valutazione completa con 8 sezioni
  * - Sezioni collassabili con mat-expansion-panel
  * - Toolbar con bottoni: Modifica, Elimina, Espandi
  * - Supporta sia il vecchio model Anamnesis che il nuovo AnamnesisComplete
+ *
+ * NOTA: Questo componente mostra la "Valutazione" del percorso terapeutico.
+ * NON confondere con PatientAnamnesisTabComponent che mostra l'anamnesi paziente.
  */
 
 import {
@@ -32,7 +35,7 @@ import { AnamnesisComplete, BodyMapMarker, isSectionFilled } from '../../models/
 import { BodyMapComponent } from '../body-map/body-map.component';
 
 @Component({
-  selector: 'app-anamnesis-tab',
+  selector: 'app-evaluation-tab',
   standalone: true,
   imports: [
     CommonModule,
@@ -46,13 +49,13 @@ import { BodyMapComponent } from '../body-map/body-map.component';
     BodyMapComponent
   ],
   template: `
-    <div class="anamnesis-tab">
+    <div class="evaluation-tab">
       @if (loading) {
         <div class="loading-state">
           <mat-spinner diameter="32"></mat-spinner>
-          <span>Caricamento anamnesi...</span>
+          <span>Caricamento valutazione...</span>
         </div>
-      } @else if (!hasAnamnesis) {
+      } @else if (!hasEvaluation) {
         <div class="empty-state">
           <mat-icon>assignment</mat-icon>
           <p>Valutazione non compilata</p>
@@ -62,10 +65,10 @@ import { BodyMapComponent } from '../body-map/body-map.component';
           </button>
         </div>
       } @else {
-        <div class="anamnesis-content">
+        <div class="evaluation-content">
           <!-- Toolbar con azioni -->
-          <div class="anamnesis-toolbar">
-            <div class="anamnesis-info">
+          <div class="evaluation-toolbar">
+            <div class="evaluation-info">
               <div class="last-update">
                 <mat-icon>update</mat-icon>
                 <span>Ultimo aggiornamento: {{ formatDate(getUpdatedAt()) }}</span>
@@ -78,10 +81,10 @@ import { BodyMapComponent } from '../body-map/body-map.component';
               }
             </div>
             <div class="toolbar-actions">
-              <button mat-icon-button (click)="onEdit()" matTooltip="Modifica anamnesi">
+              <button mat-icon-button (click)="onEdit()" matTooltip="Modifica valutazione">
                 <mat-icon>edit</mat-icon>
               </button>
-              <button mat-icon-button (click)="onDelete()" matTooltip="Elimina anamnesi" color="warn">
+              <button mat-icon-button (click)="onDelete()" matTooltip="Elimina valutazione" color="warn">
                 <mat-icon>delete</mat-icon>
               </button>
               <button mat-icon-button (click)="onExpand()" matTooltip="Espandi vista">
@@ -630,7 +633,7 @@ import { BodyMapComponent } from '../body-map/body-map.component';
       min-height: 0;
     }
 
-    .anamnesis-tab {
+    .evaluation-tab {
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -660,7 +663,7 @@ import { BodyMapComponent } from '../body-map/body-map.component';
       }
     }
 
-    .anamnesis-content {
+    .evaluation-content {
       flex: 1;
       min-height: 0;  // Critico per scroll
       overflow-y: auto;
@@ -687,7 +690,7 @@ import { BodyMapComponent } from '../body-map/body-map.component';
       }
     }
 
-    .anamnesis-toolbar {
+    .evaluation-toolbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -697,7 +700,7 @@ import { BodyMapComponent } from '../body-map/body-map.component';
       border-radius: 8px;
     }
 
-    .anamnesis-info {
+    .evaluation-info {
       display: flex;
       flex-wrap: wrap;
       gap: 16px;
@@ -1000,7 +1003,7 @@ import { BodyMapComponent } from '../body-map/body-map.component';
 
     /* Responsive */
     @media (max-width: 599px) {
-      .anamnesis-toolbar {
+      .evaluation-toolbar {
         flex-direction: column;
         gap: 8px;
         align-items: flex-start;
@@ -1023,7 +1026,7 @@ import { BodyMapComponent } from '../body-map/body-map.component';
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AnamnesisTabComponent {
+export class EvaluationTabComponent {
   // Supporta sia il vecchio model che il nuovo
   @Input() anamnesis: Anamnesis | null = null;
   @Input() anamnesisComplete: AnamnesisComplete | null = null;
@@ -1037,7 +1040,7 @@ export class AnamnesisTabComponent {
   // COMPUTED PROPERTIES
   // ============================================================
 
-  get hasAnamnesis(): boolean {
+  get hasEvaluation(): boolean {
     return !!(this.anamnesis || this.anamnesisComplete);
   }
 

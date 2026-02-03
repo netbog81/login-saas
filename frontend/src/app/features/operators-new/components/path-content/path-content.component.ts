@@ -33,7 +33,7 @@ import { Treatment } from '../../../../models/treatment.model';
 import { AnamnesisComplete } from '../../models/anamnesis.model';
 
 import { TreatmentsTabComponent } from '../treatments-tab/treatments-tab.component';
-import { AnamnesisTabComponent } from '../anamnesis-tab/anamnesis-tab.component';
+import { EvaluationTabComponent } from '../evaluation-tab/evaluation-tab.component';
 import { ObjectivesTabComponent } from '../objectives-tab/objectives-tab.component';
 import { DocumentsTabComponent } from '../documents-tab/documents-tab.component';
 import { PatientAnamnesisTabComponent } from '../patient-anamnesis-tab/patient-anamnesis-tab.component';
@@ -61,7 +61,7 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
     MatTooltipModule,
     MatBadgeModule,
     TreatmentsTabComponent,
-    AnamnesisTabComponent,
+    EvaluationTabComponent,
     ObjectivesTabComponent,
     DocumentsTabComponent,
     PatientAnamnesisTabComponent
@@ -173,14 +173,14 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
               }
             </ng-template>
             <div class="tab-content">
-              <app-anamnesis-tab
+              <app-evaluation-tab
                 [anamnesis]="anamnesis"
                 [anamnesisComplete]="anamnesisComplete"
                 [loading]="loadingAnamnesis"
                 (edit)="onEditEvaluation()"
                 (delete)="onDeleteEvaluation()"
                 (expand)="onExpandEvaluation()">
-              </app-anamnesis-tab>
+              </app-evaluation-tab>
             </div>
           </mat-tab>
 

@@ -5,9 +5,9 @@
  * Responsabilità:
  * - Visualizzare l'anamnesi semplice del paziente (legata al paziente, NON al percorso terapeutico)
  * - Campi: patologie pregresse, interventi chirurgici, traumi, terapia farmacologica, allergie, storia familiare
- * - Toolbar con bottoni: Modifica, Elimina
+ * - Toolbar con bottoni: Modifica, Elimina, Espandi
  *
- * NOTA: Questo è DIVERSO da AnamnesisTabComponent (ora EvaluationTabComponent)
+ * NOTA: Questo è DIVERSO da EvaluationTabComponent
  * che mostra la valutazione completa del percorso terapeutico.
  */
 

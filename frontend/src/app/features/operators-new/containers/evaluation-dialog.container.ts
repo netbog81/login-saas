@@ -25,7 +25,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 // Components
-import { AnamnesisTabComponent } from '../components/anamnesis-tab/anamnesis-tab.component';
+import { EvaluationTabComponent } from '../components/evaluation-tab/evaluation-tab.component';
 
 // Models
 import { EvaluationComplete, AnamnesisComplete } from '../models/evaluation.model';
@@ -42,7 +42,7 @@ import { TherapeuticPath } from '../../../models/therapeutic-path.model';
     MatButtonModule,
     MatIconModule,
     MatTooltipModule,
-    AnamnesisTabComponent
+    EvaluationTabComponent
   ],
   template: `
     @if (isOpen) {
@@ -69,14 +69,14 @@ import { TherapeuticPath } from '../../../models/therapeutic-path.model';
 
           <!-- Content -->
           <div class="dialog-content">
-            <app-anamnesis-tab
+            <app-evaluation-tab
               [anamnesis]="anamnesis"
               [anamnesisComplete]="evaluationComplete"
               [loading]="false"
               (edit)="onEditClick()"
               (delete)="onDeleteClick()"
               (expand)="onClose()">
-            </app-anamnesis-tab>
+            </app-evaluation-tab>
           </div>
 
           <!-- Footer -->

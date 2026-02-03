@@ -154,7 +154,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 2: IMMAGINE CORPOREA -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>accessibility_new</mat-icon>
@@ -177,7 +177,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 3: ANAMNESI PATOLOGICA REMOTA -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>history</mat-icon>
@@ -226,7 +226,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 4: ANAMNESI PATOLOGICA PROSSIMA -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>report_problem</mat-icon>
@@ -302,7 +302,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 5: ESAME OBIETTIVO -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>biotech</mat-icon>
@@ -424,7 +424,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 6: ESAMI DIAGNOSTICI -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>science</mat-icon>
@@ -475,7 +475,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 7: PIANIFICAZIONE TRATTAMENTO -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>event_note</mat-icon>
@@ -582,7 +582,7 @@ import { Patient } from '../../../../models/patient.model';
         <!-- ================================================================ -->
         <!-- SEZIONE 8: MONITORAGGIO E RIVALUTAZIONE -->
         <!-- ================================================================ -->
-        <mat-expansion-panel>
+        <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>trending_up</mat-icon>
