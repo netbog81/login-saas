@@ -136,7 +136,8 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
                 [anamnesis]="patientAnamnesis"
                 [loading]="loadingPatientAnamnesis"
                 (edit)="onEditPatientAnamnesis()"
-                (delete)="onDeletePatientAnamnesis()">
+                (delete)="onDeletePatientAnamnesis()"
+                (expand)="onExpandPatientAnamnesis()">
               </app-patient-anamnesis-tab>
             </div>
           </mat-tab>
@@ -157,7 +158,8 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
                 [selectedTreatmentId]="selectedTreatmentId"
                 (treatmentSelect)="onTreatmentSelect($event)"
                 (treatmentDoubleClick)="onTreatmentDoubleClick($event)"
-                (treatmentEdit)="onTreatmentEdit($event)">
+                (treatmentEdit)="onTreatmentEdit($event)"
+                (expand)="onExpandTreatments()">
               </app-treatments-tab>
             </div>
           </mat-tab>
@@ -506,9 +508,11 @@ export class PathContentComponent {
   @Output() testDeleted = new EventEmitter<TestDeleteEvent>();
   @Output() openTestHistory = new EventEmitter<TestWithEvaluations>();
   @Output() expandObjectives = new EventEmitter<void>();
+  @Output() expandTreatments = new EventEmitter<void>();
   // Patient anamnesis outputs
   @Output() editPatientAnamnesis = new EventEmitter<void>();
   @Output() deletePatientAnamnesis = new EventEmitter<void>();
+  @Output() expandPatientAnamnesis = new EventEmitter<void>();
 
   private readonly tabIndexMap: PathContentTab[] = ['patient-anamnesis', 'treatments', 'anamnesis', 'obiettivi', 'documents'];
 
@@ -615,6 +619,10 @@ export class PathContentComponent {
     this.expandObjectives.emit();
   }
 
+  onExpandTreatments(): void {
+    this.expandTreatments.emit();
+  }
+
   // === Patient Anamnesis tab methods ===
 
   onEditPatientAnamnesis(): void {
@@ -623,5 +631,9 @@ export class PathContentComponent {
 
   onDeletePatientAnamnesis(): void {
     this.deletePatientAnamnesis.emit();
+  }
+
+  onExpandPatientAnamnesis(): void {
+    this.expandPatientAnamnesis.emit();
   }
 }

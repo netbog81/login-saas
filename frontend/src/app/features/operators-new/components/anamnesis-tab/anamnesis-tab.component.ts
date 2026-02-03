@@ -55,10 +55,10 @@ import { BodyMapComponent } from '../body-map/body-map.component';
       } @else if (!hasAnamnesis) {
         <div class="empty-state">
           <mat-icon>assignment</mat-icon>
-          <p>Anamnesi non compilata</p>
+          <p>Valutazione non compilata</p>
           <button mat-flat-button color="primary" (click)="onEdit()">
             <mat-icon>add</mat-icon>
-            Compila Anamnesi
+            Compila valutazione
           </button>
         </div>
       } @else {

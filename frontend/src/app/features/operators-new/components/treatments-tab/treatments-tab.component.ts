@@ -45,6 +45,16 @@ import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../
           <span>I trattamenti appariranno qui dopo ogni seduta</span>
         </div>
       } @else {
+        <!-- Header con espandi -->
+        <div class="treatments-header">
+          <h3>Trattamenti</h3>
+          @if (showExpandButton) {
+            <button mat-icon-button matTooltip="Espandi vista" (click)="onExpand()">
+              <mat-icon>open_in_full</mat-icon>
+            </button>
+          }
+        </div>
+
         <div class="treatments-list">
           @for (treatment of treatments; track treatment.id) {
             <div
@@ -129,6 +139,31 @@ import { Treatment, getTreatmentStatusLabel, getTreatmentStatusColor } from '../
       flex-direction: column;
       height: 100%;
       min-height: 0;  // Critico per scroll
+    }
+
+    .treatments-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      flex-shrink: 0;
+
+      h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1e293b;
+      }
+
+      button {
+        color: #64748b;
+
+        &:hover {
+          color: #667eea;
+        }
+      }
     }
 
     .loading-state, .empty-state {
@@ -439,10 +474,12 @@ export class TreatmentsTabComponent {
   @Input() treatments: Treatment[] = [];
   @Input() loading = false;
   @Input() selectedTreatmentId: string | null = null;
+  @Input() showExpandButton = true;
 
   @Output() treatmentSelect = new EventEmitter<Treatment>();
   @Output() treatmentDoubleClick = new EventEmitter<Treatment>();
   @Output() treatmentEdit = new EventEmitter<Treatment>();
+  @Output() expand = new EventEmitter<void>();
 
   onTreatmentClick(treatment: Treatment): void {
     this.treatmentSelect.emit(treatment);
@@ -454,6 +491,10 @@ export class TreatmentsTabComponent {
 
   onTreatmentEdit(treatment: Treatment): void {
     this.treatmentEdit.emit(treatment);
+  }
+
+  onExpand(): void {
+    this.expand.emit();
   }
 
   formatDay(date: Date | string): string {

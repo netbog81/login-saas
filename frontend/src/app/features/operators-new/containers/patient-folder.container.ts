@@ -42,6 +42,8 @@ import { TreatmentDetailDialogContainerComponent } from './treatment-detail-dial
 import { EvaluationFormContainer } from './evaluation-form.container';
 import { EvaluationDialogContainer } from './evaluation-dialog.container';
 import { ObjectivesDialogContainer } from './objectives-dialog.container';
+import { TreatmentsDialogContainer } from './treatments-dialog.container';
+import { PatientAnamnesisDialogContainer } from './patient-anamnesis-dialog.container';
 import { TestHistoryDialogContainer } from './test-history-dialog.container';
 import { PatientAnamnesisFormContainer } from './patient-anamnesis-form.container';
 import { ConfirmResetDialogComponent } from '../components/confirm-reset-dialog/confirm-reset-dialog.component';
@@ -82,6 +84,8 @@ import {
     EvaluationFormContainer,
     EvaluationDialogContainer,
     ObjectivesDialogContainer,
+    TreatmentsDialogContainer,
+    PatientAnamnesisDialogContainer,
     TestHistoryDialogContainer,
     PatientAnamnesisFormContainer,
     ConfirmResetDialogComponent
@@ -180,8 +184,10 @@ import {
               (testDeleted)="onTestDeleted($event)"
               (openTestHistory)="onOpenTestHistory($event)"
               (expandObjectives)="onExpandObjectives()"
+              (expandTreatments)="onExpandTreatments()"
               (editPatientAnamnesis)="onEditPatientAnamnesis()"
-              (deletePatientAnamnesis)="onDeletePatientAnamnesis()">
+              (deletePatientAnamnesis)="onDeletePatientAnamnesis()"
+              (expandPatientAnamnesis)="onExpandPatientAnamnesis()">
             </app-path-content>
           </main>
         </div>
@@ -247,6 +253,31 @@ import {
       (openTestHistory)="onOpenTestHistory($event)"
       (close)="onObjectivesDialogClose()">
     </app-objectives-dialog-container>
+
+    <!-- Treatments Expand Dialog -->
+    <app-treatments-dialog-container
+      #treatmentsDialog
+      [patient]="patient"
+      [path]="selectedPath"
+      [treatments]="filteredTreatments"
+      [loading]="uiState.loadingTreatments"
+      [selectedTreatmentId]="uiState.selectedTreatmentId"
+      (treatmentSelect)="onTreatmentSelect($event)"
+      (treatmentDoubleClick)="onTreatmentDoubleClick($event)"
+      (treatmentEdit)="onTreatmentEdit($event)"
+      (close)="onTreatmentsDialogClose()">
+    </app-treatments-dialog-container>
+
+    <!-- Patient Anamnesis Expand Dialog -->
+    <app-patient-anamnesis-dialog-container
+      #patientAnamnesisDialog
+      [patient]="patient"
+      [anamnesis]="patientAnamnesis"
+      [loading]="loadingPatientAnamnesis"
+      (edit)="onEditPatientAnamnesis()"
+      (delete)="onDeletePatientAnamnesis()"
+      (close)="onPatientAnamnesisDialogClose()">
+    </app-patient-anamnesis-dialog-container>
 
     <!-- Test History Dialog -->
     <app-test-history-dialog-container
@@ -681,6 +712,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   @ViewChild('treatmentDetailDialog') treatmentDetailDialog!: TreatmentDetailDialogContainerComponent;
   @ViewChild('evaluationDialog') evaluationDialog!: EvaluationDialogContainer;
   @ViewChild('objectivesDialog') objectivesDialog!: ObjectivesDialogContainer;
+  @ViewChild('treatmentsDialog') treatmentsDialog!: TreatmentsDialogContainer;
+  @ViewChild('patientAnamnesisDialog') patientAnamnesisDialog!: PatientAnamnesisDialogContainer;
 
   // State
   uiState: PatientFolderUIState = createInitialPatientFolderUIState();
@@ -1124,6 +1157,28 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   onObjectivesDialogClose(): void {
     console.log('[PatientFolderContainer] Objectives dialog closed');
+  }
+
+  onExpandTreatments(): void {
+    console.log('[PatientFolderContainer] Expand treatments');
+    if (this.treatmentsDialog) {
+      this.treatmentsDialog.open();
+    }
+  }
+
+  onTreatmentsDialogClose(): void {
+    console.log('[PatientFolderContainer] Treatments dialog closed');
+  }
+
+  onExpandPatientAnamnesis(): void {
+    console.log('[PatientFolderContainer] Expand patient anamnesis');
+    if (this.patientAnamnesisDialog) {
+      this.patientAnamnesisDialog.open();
+    }
+  }
+
+  onPatientAnamnesisDialogClose(): void {
+    console.log('[PatientFolderContainer] Patient anamnesis dialog closed');
   }
 
   // === Objectives Tracking Handlers ===

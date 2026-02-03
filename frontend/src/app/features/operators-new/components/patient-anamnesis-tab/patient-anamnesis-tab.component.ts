@@ -81,6 +81,11 @@ import { PatientAnamnesis, isAnamnesisFilled } from '../../models/patient-anamne
               <button mat-icon-button (click)="onDelete()" matTooltip="Elimina anamnesi" color="warn">
                 <mat-icon>delete</mat-icon>
               </button>
+              @if (showExpandButton) {
+                <button mat-icon-button (click)="onExpand()" matTooltip="Espandi vista">
+                  <mat-icon>open_in_full</mat-icon>
+                </button>
+              }
             </div>
           </div>
 
@@ -359,9 +364,11 @@ import { PatientAnamnesis, isAnamnesisFilled } from '../../models/patient-anamne
 export class PatientAnamnesisTabComponent {
   @Input() anamnesis: PatientAnamnesis | null = null;
   @Input() loading = false;
+  @Input() showExpandButton = true;
 
   @Output() edit = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
+  @Output() expand = new EventEmitter<void>();
 
   get hasData(): boolean {
     return isAnamnesisFilled(this.anamnesis);
@@ -373,6 +380,10 @@ export class PatientAnamnesisTabComponent {
 
   onDelete(): void {
     this.delete.emit();
+  }
+
+  onExpand(): void {
+    this.expand.emit();
   }
 
   formatDate(date: Date | string | null | undefined): string {

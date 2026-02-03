@@ -46,7 +46,7 @@ import { TestEvaluationItemComponent } from '../test-evaluation-item/test-evalua
       <!-- Header -->
       <div class="objectives-header">
         <div class="header-row">
-          <h3>Valutazione Trattamento</h3>
+          <h3>Valutazione percorso terapeutico</h3>
           @if (showExpandButton) {
             <button mat-icon-button
                     matTooltip="Espandi vista"
