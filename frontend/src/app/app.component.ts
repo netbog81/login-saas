@@ -138,7 +138,7 @@ import { ContextPreservationService } from './core/services/context-preservation
     .app-content {
       flex: 1;
       background: #f5f5f5;
-      overflow: auto;
+      overflow: hidden;
       min-height: 0;
     }
 
