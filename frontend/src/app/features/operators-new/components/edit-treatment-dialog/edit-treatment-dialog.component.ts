@@ -141,11 +141,49 @@ import {
                 </div>
               }
 
+              <!-- Sezione Valutazione Dolore (espansa) -->
+              <mat-expansion-panel class="pain-expansion-panel" expanded>
+                <mat-expansion-panel-header>
+                  <mat-panel-title>
+                    <mat-icon>assessment</mat-icon>
+                    Valutazione Dolore (VAS)
+                  </mat-panel-title>
+                </mat-expansion-panel-header>
+
+                <div class="pain-assessment">
+                  <div class="pain-slider-group">
+                    <label>Dolore Prima: {{ form.get('painBefore')?.value ?? '-' }}/10</label>
+                    <mat-slider min="0" max="10" step="1" discrete class="pain-slider">
+                      <input matSliderThumb formControlName="painBefore">
+                    </mat-slider>
+                    <button mat-icon-button type="button" (click)="clearPainBefore()" matTooltip="Rimuovi">
+                      <mat-icon>clear</mat-icon>
+                    </button>
+                  </div>
+                  <div class="pain-slider-group">
+                    <label>Dolore Dopo: {{ form.get('painAfter')?.value ?? '-' }}/10</label>
+                    <mat-slider min="0" max="10" step="1" discrete class="pain-slider">
+                      <input matSliderThumb formControlName="painAfter">
+                    </mat-slider>
+                    <button mat-icon-button type="button" (click)="clearPainAfter()" matTooltip="Rimuovi">
+                      <mat-icon>clear</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              </mat-expansion-panel>
+
               <!-- Note Cliniche -->
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Note Cliniche</mat-label>
                 <textarea matInput formControlName="clinicalNotes" rows="3"
                           placeholder="Note cliniche per il trattamento..."></textarea>
+              </mat-form-field>
+
+              <!-- Note Paziente -->
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Note per il Paziente</mat-label>
+                <textarea matInput formControlName="patientNotes" rows="2"
+                          placeholder="Indicazioni per il paziente..."></textarea>
               </mat-form-field>
 
               <!-- Note Segreteria -->
@@ -192,39 +230,8 @@ import {
                 }
               </div>
 
-              <!-- Sezione Valutazione Dolore (espandibile) -->
-              <mat-expansion-panel class="pain-expansion-panel">
-                <mat-expansion-panel-header>
-                  <mat-panel-title>
-                    <mat-icon>assessment</mat-icon>
-                    Valutazione Dolore (VAS)
-                  </mat-panel-title>
-                </mat-expansion-panel-header>
-
-                <div class="pain-assessment">
-                  <div class="pain-slider-group">
-                    <label>Dolore Prima: {{ form.get('painBefore')?.value ?? '-' }}/10</label>
-                    <mat-slider min="0" max="10" step="1" discrete class="pain-slider">
-                      <input matSliderThumb formControlName="painBefore">
-                    </mat-slider>
-                    <button mat-icon-button type="button" (click)="clearPainBefore()" matTooltip="Rimuovi">
-                      <mat-icon>clear</mat-icon>
-                    </button>
-                  </div>
-                  <div class="pain-slider-group">
-                    <label>Dolore Dopo: {{ form.get('painAfter')?.value ?? '-' }}/10</label>
-                    <mat-slider min="0" max="10" step="1" discrete class="pain-slider">
-                      <input matSliderThumb formControlName="painAfter">
-                    </mat-slider>
-                    <button mat-icon-button type="button" (click)="clearPainAfter()" matTooltip="Rimuovi">
-                      <mat-icon>clear</mat-icon>
-                    </button>
-                  </div>
-                </div>
-              </mat-expansion-panel>
-
-              <!-- Sezione Riprogrammazione (espandibile) -->
-              <mat-expansion-panel class="expansion-section">
+              <!-- Sezione Riprogrammazione (espansa) -->
+              <mat-expansion-panel class="expansion-section" expanded>
                 <mat-expansion-panel-header>
                   <mat-panel-title>
                     <mat-icon>event_repeat</mat-icon>
@@ -273,13 +280,6 @@ import {
                   }
                 </div>
               </mat-expansion-panel>
-
-              <!-- Note Paziente -->
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Note per il Paziente</mat-label>
-                <textarea matInput formControlName="patientNotes" rows="2"
-                          placeholder="Indicazioni per il paziente..."></textarea>
-              </mat-form-field>
 
               <mat-divider></mat-divider>
 
@@ -335,10 +335,10 @@ import {
             <div class="footer-left">
               @if (data.treatment.status?.toLowerCase() === 'in_progress') {
                 <button mat-raised-button color="accent"
-                        [disabled]="isSaving"
+                        [disabled]="!form.valid || isSaving"
                         (click)="onCompleteTreatment()">
                   <mat-icon>check_circle</mat-icon>
-                  Completa Trattamento
+                  {{ form.dirty ? 'Salva e Completa Trattamento' : 'Completa Trattamento' }}
                 </button>
               }
               @if (data.treatment.status?.toLowerCase() === 'operator_completed') {
@@ -709,7 +709,7 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   @Output() save = new EventEmitter<EditTreatmentFormResult>();
   @Output() cancel = new EventEmitter<void>();
   @Output() cashCollection = new EventEmitter<void>();
-  @Output() completeTreatment = new EventEmitter<void>();
+  @Output() completeTreatment = new EventEmitter<EditTreatmentFormResult | null>();
   @Output() reopenTreatment = new EventEmitter<void>();
 
   form!: FormGroup;
@@ -1127,7 +1127,12 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   }
 
   onCompleteTreatment(): void {
-    this.completeTreatment.emit();
+    if (this.form.dirty) {
+      if (!this.form.valid) return;
+      this.completeTreatment.emit(this.buildFormResult());
+    } else {
+      this.completeTreatment.emit(null);
+    }
   }
 
   onReopenTreatment(): void {
@@ -1145,7 +1150,10 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
 
   onSave(): void {
     if (!this.form.valid) return;
+    this.save.emit(this.buildFormResult());
+  }
 
+  private buildFormResult(): EditTreatmentFormResult {
     const formValue = this.form.value;
 
     // Helper per formattare Date in stringa ISO YYYY-MM-DD
@@ -1174,7 +1182,7 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       };
     });
 
-    const result: EditTreatmentFormResult = {
+    return {
       therapeuticPathId: formValue.therapeuticPathId || undefined,
       // Manteniamo serviceId per retrocompatibilità (primo servizio selezionato)
       serviceId: this.selectedServices.length > 0 ? this.selectedServices[0].serviceId : (formValue.serviceId || undefined),
@@ -1207,7 +1215,5 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       collectedByOperator: this.cashCollected,
       paymentMethod: this.cashPaymentMethod
     };
-
-    this.save.emit(result);
   }
 }

@@ -30,7 +30,8 @@ import { Treatment } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { ServiceService } from '../../../services/service.service';
-import { Service } from '../../../graphql/generated/types';
+import { InstrumentService } from '../../../services/instrument.service';
+import { Service, Instrument } from '../../../graphql/generated/types';
 
 import { StartTreatmentDialogComponent } from '../components/start-treatment-dialog/start-treatment-dialog.component';
 import { CashCollectionConfirmDialogComponent } from '../components/cash-collection-confirm-dialog/cash-collection-confirm-dialog.component';
@@ -38,7 +39,8 @@ import {
   StartTreatmentDialogData,
   StartTreatmentFormResult,
   CashCollectionData,
-  AppointmentServiceData
+  AppointmentServiceData,
+  BaseInstrumentData
 } from '../models/start-treatment-dialog.model';
 
 export interface StartTreatmentResult {
@@ -62,8 +64,7 @@ export interface StartTreatmentResult {
         [data]="dialogData"
         [saving]="saving"
         (save)="onSave($event)"
-        (cancel)="onCancel()"
-        (cashCollection)="onOpenCashCollection()">
+        (cancel)="onCancel()">
       </app-start-treatment-dialog>
     }
 
@@ -382,6 +383,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
   dialogData: StartTreatmentDialogData | null = null;
   activePaths: TherapeuticPath[] = [];
   availableServices: Service[] = [];
+  availableInstruments: Instrument[] = [];
   pendingFormResult: StartTreatmentFormResult | null = null;
   cashCollectionData: CashCollectionData | null = null;
 
@@ -389,6 +391,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
     private treatmentService: TreatmentService,
     private pathService: TherapeuticPathService,
     private serviceService: ServiceService,
+    private instrumentService: InstrumentService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -466,23 +469,27 @@ export class StartTreatmentDialogContainer implements OnDestroy {
 
     console.log('[StartTreatmentDialogContainer] Loading paths and services for patientId:', numericPatientId);
 
-    // Carica percorsi e servizi in parallelo
+    // Carica percorsi, servizi e strumenti in parallelo
     // NOTA: Apollo/ApolloZoneService già eseguono dentro NgZone,
     // non serve wrapping aggiuntivo con ngZone.run()
     forkJoin({
       paths: this.pathService.getPathsByPatient(numericPatientId),
-      services: this.serviceService.getServicesOnce()
+      services: this.serviceService.getServicesOnce(),
+      instruments: this.instrumentService.getInstruments()
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: ({ paths, services }) => {
+        next: ({ paths, services, instruments }) => {
           // Filtra solo percorsi ATTIVI (case-insensitive)
           this.activePaths = paths.filter(p => p.status?.toLowerCase() === 'active');
           // Filtra solo servizi attivi
           this.availableServices = services.filter(s => s.isActive);
+          // Salva strumenti
+          this.availableInstruments = instruments;
 
           console.log('[StartTreatmentDialogContainer] Active paths:', this.activePaths.length);
           console.log('[StartTreatmentDialogContainer] Available services:', this.availableServices.length);
+          console.log('[StartTreatmentDialogContainer] Available instruments:', this.availableInstruments.length);
 
           if (this.activePaths.length === 0) {
             // Nessun percorso attivo: mostra warning
@@ -495,7 +502,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
           }
         },
         error: (error) => {
-          console.error('[StartTreatmentDialogContainer] Error loading paths/services:', error);
+          console.error('[StartTreatmentDialogContainer] Error loading paths/services/instruments:', error);
           // In caso di errore, mostra comunque il warning
           this.showNoPathsWarning = true;
           this.cdr.markForCheck();
@@ -515,7 +522,9 @@ export class StartTreatmentDialogContainer implements OnDestroy {
       availableServices: this.availableServices,
       defaultServiceId: this.serviceId,
       defaultPathId: this.defaultPathId,
-      appointmentServices: this.appointmentServices  // Passa i servizi dell'appuntamento
+      appointmentServices: this.appointmentServices,  // Passa i servizi dell'appuntamento
+      availableInstruments: this.availableInstruments,  // Passa gli strumenti disponibili
+      appointmentInstruments: []  // TODO: convertire strumenti appuntamento se disponibili
     };
     this.showDialog = true;
     this.cdr.markForCheck();
@@ -552,12 +561,6 @@ export class StartTreatmentDialogContainer implements OnDestroy {
     console.log('[StartTreatmentDialogContainer] Cash collection confirmed:', data);
     this.cashCollectionData = data;
     this.showCashCollectionDialog = false;
-
-    // Aggiorna il componente dialog per mostrare il badge "incassato"
-    if (this.dialogComponent) {
-      this.dialogComponent.setCashCollected(data.paymentMethod);
-    }
-
     this.cdr.markForCheck();
   }
 

@@ -5,7 +5,7 @@
  * Responsabilità:
  * - Form UI per iniziare un nuovo trattamento
  * - Input: dati dialog, percorsi attivi, stati loading
- * - Output: eventi save, cancel, cashCollection
+ * - Output: eventi save, cancel
  * - NO logica business, NO chiamate service
  */
 
@@ -27,7 +27,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatRadioModule } from '@angular/material/radio';
@@ -58,7 +57,6 @@ import {
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    MatSlideToggleModule,
     MatSliderModule,
     MatExpansionModule,
     MatRadioModule,
@@ -117,7 +115,7 @@ import {
                 <app-service-multi-select
                   [availableServices]="selectableServices"
                   [selectedServices]="selectedServices"
-                  [useScontoFE]="form.get('isScontoFE')?.value"
+                  [useScontoFE]="false"
                   [showPrices]="true"
                   [editablePrices]="true"
                   [disabled]="false"
@@ -135,51 +133,8 @@ import {
                         placeholder="Note cliniche per il trattamento..."></textarea>
             </mat-form-field>
 
-            <!-- Note Segreteria -->
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Note Segreteria</mat-label>
-              <textarea matInput formControlName="secretaryNotes" rows="2"
-                        placeholder="Comunicazioni per la segreteria..."></textarea>
-            </mat-form-field>
-
-            <!-- Prezzo -->
-            <mat-form-field appearance="outline" class="price-field">
-              <mat-label>Prezzo</mat-label>
-              <mat-icon matPrefix>euro</mat-icon>
-              <input matInput type="number" formControlName="price" min="0" step="0.01">
-            </mat-form-field>
-
-            <!-- Sconto FE Section -->
-            <div class="sconto-fe-section">
-              <mat-slide-toggle formControlName="isScontoFE" color="primary">
-                Sconto FE
-              </mat-slide-toggle>
-
-              @if (form.get('isScontoFE')?.value) {
-                <div class="cash-collection-section">
-                  @if (!cashCollected) {
-                    <button mat-raised-button color="accent"
-                            type="button"
-                            (click)="onCashCollection()"
-                            class="cash-btn">
-                      <mat-icon>payments</mat-icon>
-                      Incassato da Operatore
-                    </button>
-                  } @else {
-                    <div class="cash-collected-badge">
-                      <mat-icon>check_circle</mat-icon>
-                      <span>Incassato: {{ form.get('price')?.value | currency:'EUR' }}</span>
-                      <button mat-icon-button (click)="resetCashCollection()" matTooltip="Annulla incasso">
-                        <mat-icon>cancel</mat-icon>
-                      </button>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-
-            <!-- Sezione Valutazione Dolore (espandibile) -->
-            <mat-expansion-panel class="expansion-section">
+            <!-- Sezione Valutazione Dolore (espansa) -->
+            <mat-expansion-panel class="expansion-section" expanded>
               <mat-expansion-panel-header>
                 <mat-panel-title>
                   <mat-icon>assessment</mat-icon>
@@ -203,8 +158,15 @@ import {
               </div>
             </mat-expansion-panel>
 
-            <!-- Sezione Riprogrammazione (espandibile) -->
-            <mat-expansion-panel class="expansion-section">
+            <!-- Note Segreteria -->
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Note Segreteria</mat-label>
+              <textarea matInput formControlName="secretaryNotes" rows="2"
+                        placeholder="Comunicazioni per la segreteria..."></textarea>
+            </mat-form-field>
+
+            <!-- Sezione Riprogrammazione (espansa) -->
+            <mat-expansion-panel class="expansion-section" expanded>
               <mat-expansion-panel-header>
                 <mat-panel-title>
                   <mat-icon>event_repeat</mat-icon>
@@ -366,42 +328,6 @@ import {
       width: 100%;
     }
 
-    .price-field {
-      width: 200px;
-    }
-
-    .sconto-fe-section {
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      margin: 16px 0;
-      padding: 16px;
-      background: #fafafa;
-      border-radius: 8px;
-    }
-
-    .cash-collection-section {
-      flex: 1;
-    }
-
-    .cash-btn {
-      mat-icon {
-        margin-right: 8px;
-      }
-    }
-
-    .cash-collected-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #4caf50;
-      font-weight: 500;
-
-      mat-icon {
-        color: #4caf50;
-      }
-    }
-
     .expansion-section {
       margin: 16px 0;
 
@@ -512,11 +438,8 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
 
   @Output() save = new EventEmitter<StartTreatmentFormResult>();
   @Output() cancel = new EventEmitter<void>();
-  @Output() cashCollection = new EventEmitter<void>();
 
   form!: FormGroup;
-  cashCollected = false;
-  collectedPaymentMethod?: string;
 
   // Servizi selezionati per multi-select
   selectedServices: SelectedServiceItem[] = [];
@@ -560,9 +483,6 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
 
       // Inizializza selectedServices dai servizi dell'appuntamento
       this.initializeSelectedServices();
-
-      // Aggiorna il prezzo in base ai servizi selezionati e sconto FE
-      this.updatePriceFromServices();
     }
   }
 
@@ -618,8 +538,6 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       serviceId: [this.data?.defaultServiceId || ''],
       clinicalNotes: [''],
       secretaryNotes: [''],
-      price: [this.data?.servicePrice || null],
-      isScontoFE: [false],
       painBefore: [null],
       painAfter: [null],
       reschedulingType: ['none'],
@@ -636,36 +554,6 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
     } else if (this.data?.activePaths?.length === 1) {
       this.form.patchValue({ pathId: this.data.activePaths[0].id });
     }
-
-    // Aggiorna prezzo quando cambia sconto FE
-    this.form.get('isScontoFE')?.valueChanges.subscribe(() => {
-      this.updatePriceFromServices();
-      // Reset cash collection quando si disattiva sconto FE
-      if (!this.form.get('isScontoFE')?.value) {
-        this.resetCashCollection();
-      }
-    });
-  }
-
-  /**
-   * Aggiorna il prezzo in base ai servizi selezionati e allo sconto FE
-   */
-  private updatePriceFromServices(): void {
-    const isScontoFE = this.form.get('isScontoFE')?.value;
-    let total = 0;
-
-    for (const item of this.selectedServices) {
-      if (item.customPrice !== undefined && item.customPrice !== null) {
-        total += item.customPrice;
-      } else if (item.service) {
-        const price = isScontoFE && item.service.discountFE !== undefined && item.service.discountFE !== null
-          ? item.service.discountFE
-          : (item.service.defaultPrice || 0);
-        total += price;
-      }
-    }
-
-    this.form.patchValue({ price: total });
   }
 
   /**
@@ -673,14 +561,13 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
    */
   onServicesChange(services: SelectedServiceItem[]): void {
     this.selectedServices = services;
-    this.updatePriceFromServices();
   }
 
   /**
    * Handler per il cambio del prezzo totale calcolato dal componente multi-select
    */
   onTotalPriceChange(totalPrice: number): void {
-    this.form.patchValue({ price: totalPrice });
+    // Prezzo gestito esternamente, non più nel form
   }
 
   /**
@@ -743,10 +630,7 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
       serviceId: this.selectedServices.length > 0 ? this.selectedServices[0].serviceId : undefined,
       clinicalNotes: formValue.clinicalNotes || undefined,
       secretaryNotes: formValue.secretaryNotes || undefined,
-      price: formValue.price || undefined,
-      isScontoFE: formValue.isScontoFE,
-      collectedByOperator: this.cashCollected,
-      paymentMethod: this.collectedPaymentMethod as any,
+      isScontoFE: false,
       painAssessment: {
         painBefore: formValue.painBefore,
         painAfter: formValue.painAfter
@@ -764,20 +648,5 @@ export class StartTreatmentDialogComponent implements OnInit, OnChanges {
     };
 
     this.save.emit(result);
-  }
-
-  onCashCollection(): void {
-    this.cashCollection.emit();
-  }
-
-  // Chiamato dal container dopo la conferma dell'incasso
-  setCashCollected(paymentMethod: string): void {
-    this.cashCollected = true;
-    this.collectedPaymentMethod = paymentMethod;
-  }
-
-  resetCashCollection(): void {
-    this.cashCollected = false;
-    this.collectedPaymentMethod = undefined;
   }
 }

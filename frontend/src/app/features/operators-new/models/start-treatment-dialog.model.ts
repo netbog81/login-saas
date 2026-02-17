@@ -5,7 +5,7 @@
 
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
 import { PaymentMethod } from '../../../models/treatment.model';
-import { Service } from '../../../graphql/generated/types';
+import { Service, Instrument } from '../../../graphql/generated/types';
 
 /**
  * Servizio associato all'appuntamento
@@ -15,6 +15,34 @@ export interface AppointmentServiceData {
   customPrice?: number;
   customDuration?: number;
   orderPosition?: number;
+}
+
+/**
+ * Base interface for instrument data from appointment.
+ */
+export interface BaseInstrumentData {
+  instrumentId: string;
+  instrument?: {
+    id: string;
+    name: string;
+  };
+  startOffsetMinutes: number;
+  endOffsetMinutes: number;
+  instrumentCategoryId?: string;
+  wasUsed?: boolean;
+  notes?: string;
+}
+
+/**
+ * Input for instrument in start treatment form
+ */
+export interface StartTreatmentInstrumentInput {
+  instrumentId: string;
+  instrumentCategoryId?: string;
+  wasUsed?: boolean;
+  startOffsetMinutes?: number;
+  endOffsetMinutes?: number;
+  notes?: string;
 }
 
 /**
@@ -32,6 +60,8 @@ export interface StartTreatmentDialogData {
   defaultServiceId?: string;       // @deprecated - usa appointmentServices
   defaultPathId?: string;          // Percorso terapeutico da pre-selezionare (dalla scheda paziente)
   appointmentServices?: AppointmentServiceData[];  // Servizi dell'appuntamento (nuovo sistema)
+  availableInstruments?: Instrument[];  // Lista strumenti disponibili
+  appointmentInstruments?: BaseInstrumentData[];  // Strumenti dell'appuntamento
 }
 
 /**
@@ -60,6 +90,7 @@ export interface StartTreatmentFormResult {
   rescheduling?: ReschedulingData;   // Dati riprogrammazione
   patientNotes?: string;             // Note per il paziente
   treatmentServices?: TreatmentServiceInput[];  // Servizi del trattamento (nuovo sistema)
+  instruments?: StartTreatmentInstrumentInput[];  // Strumenti utilizzati
 }
 
 /**

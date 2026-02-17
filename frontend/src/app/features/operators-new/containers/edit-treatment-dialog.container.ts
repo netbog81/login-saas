@@ -20,7 +20,7 @@ import {
   ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, forkJoin, takeUntil } from 'rxjs';
+import { Subject, forkJoin, switchMap, takeUntil } from 'rxjs';
 import { EditTreatmentDialogComponent } from '../components/edit-treatment-dialog/edit-treatment-dialog.component';
 import { CashCollectionConfirmDialogComponent } from '../components/cash-collection-confirm-dialog/cash-collection-confirm-dialog.component';
 import { EditTreatmentDialogData, EditTreatmentFormResult, BaseInstrumentData } from '../models/edit-treatment-dialog.model';
@@ -44,7 +44,7 @@ import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.mod
       (save)="onSave($event)"
       (cancel)="onCancel()"
       (cashCollection)="onOpenCashCollection()"
-      (completeTreatment)="onCompleteTreatment()"
+      (completeTreatment)="onCompleteTreatment($event)"
       (reopenTreatment)="onReopenTreatment()">
     </app-edit-treatment-dialog>
 
@@ -347,45 +347,107 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
 
   /**
    * Completa il trattamento (status -> operator_completed)
+   * Se formResult è presente, prima salva le modifiche poi completa
    */
-  onCompleteTreatment(): void {
+  onCompleteTreatment(formResult: EditTreatmentFormResult | null): void {
     if (!this.currentTreatment) return;
-
-    if (!confirm('Confermi di voler completare il trattamento?')) {
-      return;
-    }
-
-    console.log('[EditTreatmentDialogContainer] Completing treatment:', this.currentTreatment.id);
 
     this.isSaving = true;
     this.cdr.markForCheck();
 
-    const input: CompleteTreatmentInput = {
-      price: this.currentTreatment.price || 0,
-      clinicalNotes: this.currentTreatment.clinicalNotes,
-      secretaryNotes: this.currentTreatment.secretaryNotes,
-      operatorNotes: this.currentTreatment.operatorNotes
-    };
+    if (formResult) {
+      // Form modificato: prima salva le modifiche, poi completa
+      console.log('[EditTreatmentDialogContainer] Saving changes and completing treatment:', this.currentTreatment.id);
 
-    this.treatmentService.completeTreatment(this.currentTreatment.id, input)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (updatedTreatment) => {
-          console.log('[EditTreatmentDialogContainer] Treatment completed:', updatedTreatment.id);
-          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+      const shouldResetPayment = this.currentTreatment.isPaid && !formResult.collectedByOperator;
+
+      this.treatmentService.updateTreatment({
+        id: this.currentTreatment.id,
+        therapeuticPathId: formResult.therapeuticPathId,
+        serviceId: formResult.serviceId,
+        clinicalNotes: formResult.clinicalNotes,
+        secretaryNotes: formResult.secretaryNotes,
+        patientNotes: formResult.patientNotes,
+        price: formResult.price,
+        scontoFE: formResult.scontoFE,
+        painLevel: formResult.painLevel,
+        painBefore: formResult.painBefore,
+        painAfter: formResult.painAfter,
+        rescheduleRequested: formResult.rescheduleRequested,
+        reschedulingType: formResult.reschedulingType,
+        suggestInDays: formResult.suggestInDays,
+        suggestDateRangeStart: formResult.suggestDateRangeStart,
+        suggestDateRangeEnd: formResult.suggestDateRangeEnd,
+        reschedulingNotes: formResult.reschedulingNotes,
+        isPaid: shouldResetPayment ? false : undefined,
+        treatmentServices: formResult.treatmentServices,
+        instruments: formResult.instruments?.map(inst => ({
+          instrumentId: inst.instrumentId,
+          instrumentCategoryId: inst.instrumentCategoryId,
+          wasUsed: inst.wasUsed,
+          startOffsetMinutes: inst.startOffsetMinutes,
+          endOffsetMinutes: inst.endOffsetMinutes,
+          notes: inst.notes,
+        })),
+      }).pipe(
+        switchMap(updatedTreatment => {
+          console.log('[EditTreatmentDialogContainer] Changes saved, now completing treatment');
+          const input: CompleteTreatmentInput = {
+            price: updatedTreatment.price || 0,
+            clinicalNotes: updatedTreatment.clinicalNotes,
+            secretaryNotes: updatedTreatment.secretaryNotes,
+            operatorNotes: updatedTreatment.operatorNotes
+          };
+          return this.treatmentService.completeTreatment(updatedTreatment.id, input);
+        }),
+        takeUntil(this.destroy$)
+      ).subscribe({
+        next: (completedTreatment) => {
+          console.log('[EditTreatmentDialogContainer] Treatment saved and completed:', completedTreatment.id);
           this.isSaving = false;
           this.isVisible = false;
-          this.treatmentUpdated.emit(updatedTreatment);
+          this.treatmentUpdated.emit(completedTreatment);
           this.cdr.markForCheck();
         },
         error: (err) => {
-          console.error('[EditTreatmentDialogContainer] Error completing treatment:', err);
-          // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
+          console.error('[EditTreatmentDialogContainer] Error saving/completing treatment:', err);
           this.isSaving = false;
-          alert('Errore durante il completamento del trattamento');
+          const errorMessage = err?.graphQLErrors?.[0]?.message
+            || err?.message
+            || 'Errore durante il salvataggio e completamento del trattamento';
+          alert(errorMessage);
           this.cdr.markForCheck();
         }
       });
+    } else {
+      // Form non modificato: completa direttamente
+      console.log('[EditTreatmentDialogContainer] Completing treatment:', this.currentTreatment.id);
+
+      const input: CompleteTreatmentInput = {
+        price: this.currentTreatment.price || 0,
+        clinicalNotes: this.currentTreatment.clinicalNotes,
+        secretaryNotes: this.currentTreatment.secretaryNotes,
+        operatorNotes: this.currentTreatment.operatorNotes
+      };
+
+      this.treatmentService.completeTreatment(this.currentTreatment.id, input)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: (updatedTreatment) => {
+            console.log('[EditTreatmentDialogContainer] Treatment completed:', updatedTreatment.id);
+            this.isSaving = false;
+            this.isVisible = false;
+            this.treatmentUpdated.emit(updatedTreatment);
+            this.cdr.markForCheck();
+          },
+          error: (err) => {
+            console.error('[EditTreatmentDialogContainer] Error completing treatment:', err);
+            this.isSaving = false;
+            alert('Errore durante il completamento del trattamento');
+            this.cdr.markForCheck();
+          }
+        });
+    }
   }
 
   /**
