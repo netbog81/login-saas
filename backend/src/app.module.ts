@@ -1,10 +1,13 @@
-import { Module } from '@nestjs/common';
+import { Module, DynamicModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { join } from 'path';
+import { OpenbaoBaseModule, OpenbaoBaseService } from '@curandis/openbao-core';
+import { MainDbCredentialManager } from './database/main-db-credential-manager.service';
 import { UsersModule } from './users/users.module';
 import { PazientiModule } from './patients/patients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
@@ -69,100 +72,110 @@ import { PatientAnamnesis } from './modules/availability/entities/patient-anamne
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
 
-@Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-    // Schedule module for cron jobs
-    ScheduleModule.forRoot(),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT) || 5432,
-      username: process.env.DB_USERNAME || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_DATABASE || 'calendar_db',
-      entities: [
-        User,
-        Patient,
-        Appointment,
-        Availability,
-        // New availability management entities
-        Operator,
-        OperatorCategory,
-        Service,
-        OperatorService,
-        AvailabilityTemplate,
-        PatternGroup,
-        TemplatePattern,
-        TemplateAssignment,
-        AvailabilityException,
-        GroupException,
-        AvailabilityCache,
-        AvailabilityAppointment,
-        InstrumentCategory,
-        Instrument,
-        GymRoom,
-        GymSchedule,
-        GymPatternGroup,
-        GymTemplatePattern,
-        GymException,
-        Room,
-        ServiceInstrument,
-        AppointmentInstrument,
-        AppointmentLog,
-        GeneralSettings,
-        ServiceSubcategory,
-        Treatment,
-        TreatmentInstrument,
-        AppointmentService,
-        TreatmentService,
-        // Therapeutic path entities
-        TherapeuticPath,
-        PathDocument,
-        // Patient evaluation entities (renamed from anamnesis)
-        PatientEvaluation,
-        EvaluationObjective,
-        EvaluationTest,
-        EvaluationExam,
-        // Progress tracking entities
-        ObjectiveProgressHistory,
-        TestEvaluationHistory,
-        // Patient anamnesis (NEW - linked to patient, not path)
-        PatientAnamnesis,
-        // Pazienti module entities
-        PersonaRiferimento,
-        PazientePersonaRelazione,
+/** All entities registered in the application */
+const ALL_ENTITIES = [
+  User,
+  Patient,
+  Appointment,
+  Availability,
+  Operator,
+  OperatorCategory,
+  Service,
+  OperatorService,
+  AvailabilityTemplate,
+  PatternGroup,
+  TemplatePattern,
+  TemplateAssignment,
+  AvailabilityException,
+  GroupException,
+  AvailabilityCache,
+  AvailabilityAppointment,
+  InstrumentCategory,
+  Instrument,
+  GymRoom,
+  GymSchedule,
+  GymPatternGroup,
+  GymTemplatePattern,
+  GymException,
+  Room,
+  ServiceInstrument,
+  AppointmentInstrument,
+  AppointmentLog,
+  GeneralSettings,
+  ServiceSubcategory,
+  Treatment,
+  TreatmentInstrument,
+  AppointmentService,
+  TreatmentService,
+  TherapeuticPath,
+  PathDocument,
+  PatientEvaluation,
+  EvaluationObjective,
+  EvaluationTest,
+  EvaluationExam,
+  ObjectiveProgressHistory,
+  TestEvaluationHistory,
+  PatientAnamnesis,
+  PersonaRiferimento,
+  PazientePersonaRelazione,
+];
+
+interface AppModuleOptions {
+  mainDbCredentials: { username: string; password: string };
+  openbaoService: OpenbaoBaseService;
+}
+
+@Module({})
+export class AppModule {
+  /**
+   * Bootstrap dinamico con credenziali DB da OpenBao.
+   * Chiamato da main.ts dopo aver ottenuto le credenziali.
+   * Quando OpenBao ruota le credenziali, MainDbCredentialManager
+   * esegue il hot-swap del DataSource automaticamente.
+   */
+  static forRootAsync(options: AppModuleOptions): DynamicModule {
+    return {
+      module: AppModule,
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
+        EventEmitterModule.forRoot(),
+        ScheduleModule.forRoot(),
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '5432', 10),
+          username: options.mainDbCredentials.username,
+          password: options.mainDbCredentials.password,
+          database: process.env.DB_DATABASE || 'calendar_db',
+          entities: ALL_ENTITIES,
+          autoLoadEntities: false,
+          synchronize: false,
+          logging: process.env.NODE_ENV === 'development',
+          migrationsRun: true,
+          migrations: [__dirname + '/migrations/*.{ts,js}'],
+          migrationsTableName: 'migrations',
+        }),
+        GraphQLModule.forRoot<ApolloDriverConfig>({
+          driver: ApolloDriver,
+          autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+          sortSchema: true,
+          playground: true,
+          introspection: true,
+        }),
+        OpenbaoBaseModule.forRoot(options.openbaoService),
+        UsersModule,
+        PazientiModule,
+        AppointmentsModule,
+        AvailabilitiesModule,
+        SeedModule,
+        AvailabilityModule,
+        SettingsModule,
+        TasksModule,
+        EventsModule,
       ],
-      autoLoadEntities: false, // Disabled to prevent conflicts
-      synchronize: false, // Disabled to prevent conflicts - use migrations instead
-      logging: process.env.NODE_ENV === 'development',
-      migrationsRun: true,
-      migrations: [__dirname + '/../migrations/*.ts'], // ✅ AGGIUNGI QUESTA
-      migrationsTableName: 'migrations', // ✅ OPZIONALE MA CONSIGLIATO
-    }),
-    // GraphQL configuration
-    GraphQLModule.forRoot<ApolloDriverConfig>({
-      driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-      sortSchema: true,
-      playground: true, // Enable GraphQL Playground
-      introspection: true, // Enable introspection for development
-    }),
-    UsersModule,
-    PazientiModule,
-    AppointmentsModule,
-    AvailabilitiesModule,
-    SeedModule,
-    // New availability management module (separate from existing)
-    AvailabilityModule,
-    // Settings module
-    SettingsModule,
-    // Tasks module (cron jobs)
-    TasksModule,
-    // Events module (SSE)
-    EventsModule,
-  ],
-})
-export class AppModule {}
+      providers: [
+        MainDbCredentialManager,
+      ],
+    };
+  }
+}
