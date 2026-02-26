@@ -432,6 +432,14 @@ input CreateItManagerInput {
   surname: String
 }
 
+input CreateKeycloakUserInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  realmRole: String
+  username: String!
+}
+
 input CreateOperatorInput {
   categoryId: String
   color: String
@@ -1013,10 +1021,29 @@ The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](
 """
 scalar JSONObject
 
+type KeycloakOrgMember {
+  email: String
+  emailVerified: Boolean!
+  enabled: Boolean!
+  firstName: String
+  id: ID!
+  isLinked: Boolean!
+  lastName: String
+  linkedAppUserId: String
+  linkedAppUserName: String
+  realmRoles: [KeycloakRealmRoleType!]
+  username: String!
+}
+
+type KeycloakRealmRoleType {
+  description: String
+  id: ID!
+  name: String!
+}
+
 input LinkKeycloakUserInput {
   appUserId: ID!
   keycloakUserId: String!
-  userMappingId: String!
 }
 
 input MarkObjectiveAchievedInput {
@@ -1029,6 +1056,7 @@ type Mutation {
 
   """Anonymize patient data (irreversible GDPR compliance action)"""
   anonymizePatient(id: ID!): PatientModel!
+  assignKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   assignPermissionToRole(permissionId: ID!, roleId: ID!): RolePermission!
   assignRole(input: AssignRoleInput!): UserRole!
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
@@ -1053,6 +1081,7 @@ type Mutation {
   createInstrument(brand: String, categoryId: ID!, color: String, model: String, name: String!, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
   createItManager(input: CreateItManagerInput!): ItManager!
+  createKeycloakUser(input: CreateKeycloakUserInput!): KeycloakOrgMember!
   createOperator(input: CreateOperatorInput!): Operator!
   createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
   createPathDocument(input: CreateDocumentInput!): PathDocument!
@@ -1078,6 +1107,7 @@ type Mutation {
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
   deleteAllTreatments: Int!
+  deleteAppUser(id: ID!): Boolean!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
   deleteEvaluation(id: ID!): Boolean!
@@ -1094,6 +1124,7 @@ type Mutation {
   deleteInstrument(id: ID!): Boolean!
   deleteInstrumentCategory(id: ID!): Boolean!
   deleteItManager(id: ID!): Boolean!
+  deleteKeycloakUser(keycloakUserId: ID!): Boolean!
   deleteOperator(id: ID!): Boolean!
   deleteOperatorCategory(id: ID!): Boolean!
   deletePathDocument(id: ID!): Boolean!
@@ -1137,7 +1168,6 @@ type Mutation {
   markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): EvaluationObjective!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
-  provisionKeycloakUser(input: ProvisionUserInput!): AppUser!
   provisionTenantSchema: TenantSchemaStatus!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   recordTreatmentPayment(id: ID!, input: RecordPaymentInput!): Treatment!
@@ -1152,10 +1182,12 @@ type Mutation {
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
+  revokeKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   revokePermissionFromRole(permissionId: ID!, roleId: ID!): Boolean!
   revokeRole(input: AssignRoleInput!): Boolean!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
+  unlinkKeycloakUser(appUserId: ID!): AppUser!
   updateAppUser(id: ID!, input: UpdateAppUserInput!): AppUser!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
@@ -1681,12 +1713,6 @@ type PrivacyOfficer {
   updatedAt: DateTime!
 }
 
-input ProvisionUserInput {
-  appUserId: ID!
-  keycloakRoles: [String!]!
-  temporaryPassword: String!
-}
-
 type Query {
   activeTherapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
@@ -1747,6 +1773,8 @@ type Query {
   isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
   itManager(id: ID!): ItManager
   itManagers: [ItManager!]!
+  keycloakOrgMembers: [KeycloakOrgMember!]!
+  keycloakRealmRoles: [KeycloakRealmRoleType!]!
   objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
   objectivesByEvaluation(evaluationId: ID!): [EvaluationObjective!]!
   objectivesProgress(evaluationId: ID!): ObjectivesProgress!

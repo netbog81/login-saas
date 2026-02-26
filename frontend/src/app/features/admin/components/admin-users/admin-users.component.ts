@@ -1,19 +1,22 @@
+/**
+ * Container (Layer 2) - Gestione Utenti Admin
+ *
+ * APPROACH: Architettura a 5 layer (architettura-componenti.md)
+ * - Dumb components: AppUsersTable, KcMembersTable, CreateAppUserForm, CreateKcUserForm
+ * - Container: questo componente (solo UI state + coordinamento)
+ * - Service: AppUserService (Layer 3, BaseGraphQLService)
+ */
 import { Component, inject, signal, OnInit, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { MatCardModule } from '@angular/material/card';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatTableModule } from '@angular/material/table';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatSelectModule } from '@angular/material/select';
-import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDividerModule } from '@angular/material/divider';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatChipsModule } from '@angular/material/chips';
 import { firstValueFrom } from 'rxjs';
 import {
   AppUserService,
@@ -21,14 +24,15 @@ import {
   AppUserType,
   Role,
   CreateAppUserInput,
+  KeycloakOrgMember,
+  KeycloakRealmRole,
+  CreateKeycloakUserInput,
 } from '../../../../services/app-user.service';
-
-const USER_TYPE_LABELS: Record<AppUserType, string> = {
-  OPERATOR: 'Operatore',
-  SECRETARY: 'Segreteria',
-  PRIVACY_OFFICER: 'Responsabile Privacy',
-  IT_MANAGER: 'IT Manager',
-};
+// Dumb components (Layer 1)
+import { AppUsersTableComponent } from './components/app-users-table.component';
+import { KcMembersTableComponent } from './components/kc-members-table.component';
+import { CreateAppUserFormComponent } from './components/create-app-user-form.component';
+import { CreateKcUserFormComponent } from './components/create-kc-user-form.component';
 
 @Component({
   selector: 'app-admin-users',
@@ -36,25 +40,24 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
   imports: [
     CommonModule,
     FormsModule,
-    ReactiveFormsModule,
-    MatCardModule,
     MatButtonModule,
     MatIconModule,
-    MatTableModule,
-    MatChipsModule,
     MatSelectModule,
-    MatInputModule,
     MatFormFieldModule,
-    MatProgressSpinnerModule,
     MatSnackBarModule,
     MatExpansionModule,
     MatDividerModule,
-    MatTooltipModule,
+    MatChipsModule,
+    // Dumb components
+    AppUsersTableComponent,
+    KcMembersTableComponent,
+    CreateAppUserFormComponent,
+    CreateKcUserFormComponent,
   ],
   template: `
     <div class="users-section">
 
-      <!-- Lista Utenti -->
+      <!-- Pannello 1: Lista Utenti App -->
       <mat-expansion-panel [expanded]="true">
         <mat-expansion-panel-header>
           <mat-panel-title>
@@ -64,190 +67,92 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
         </mat-expansion-panel-header>
 
         <div class="panel-content">
-          @if (loadingUsers()) {
-            <div class="loading-row">
-              <mat-spinner diameter="32"></mat-spinner>
-              <span>Caricamento utenti...</span>
-            </div>
-          } @else {
-            <table mat-table [dataSource]="users()" class="users-table">
-              <ng-container matColumnDef="name">
-                <th mat-header-cell *matHeaderCellDef>Nome</th>
-                <td mat-cell *matCellDef="let u">{{ u.name }} {{ u.surname }}</td>
-              </ng-container>
-
-              <ng-container matColumnDef="email">
-                <th mat-header-cell *matHeaderCellDef>Email</th>
-                <td mat-cell *matCellDef="let u">{{ u.email || '—' }}</td>
-              </ng-container>
-
-              <ng-container matColumnDef="type">
-                <th mat-header-cell *matHeaderCellDef>Tipo</th>
-                <td mat-cell *matCellDef="let u">
-                  <mat-chip>{{ userTypeLabel(u.userType) }}</mat-chip>
-                </td>
-              </ng-container>
-
-              <ng-container matColumnDef="status">
-                <th mat-header-cell *matHeaderCellDef>Stato</th>
-                <td mat-cell *matCellDef="let u">
-                  <div class="status-chip" [class.linked]="u.keycloakId" [class.unlinked]="!u.keycloakId">
-                    <mat-icon>{{ u.keycloakId ? 'link' : 'link_off' }}</mat-icon>
-                    {{ u.keycloakId ? 'Collegato' : 'Non collegato' }}
-                  </div>
-                </td>
-              </ng-container>
-
-              <ng-container matColumnDef="roles">
-                <th mat-header-cell *matHeaderCellDef>Ruoli</th>
-                <td mat-cell *matCellDef="let u">
-                  <div class="role-chips">
-                    @for (ur of u.userRoles; track ur.role.id) {
-                      <mat-chip class="role-chip">{{ ur.role.name }}</mat-chip>
-                    }
-                    @if (!u.userRoles?.length) { <span class="no-roles">Nessun ruolo</span> }
-                  </div>
-                </td>
-              </ng-container>
-
-              <ng-container matColumnDef="actions">
-                <th mat-header-cell *matHeaderCellDef>Azioni</th>
-                <td mat-cell *matCellDef="let u">
-                  <button mat-icon-button
-                    matTooltip="Assegna Ruolo"
-                    (click)="openAssignRole(u)">
-                    <mat-icon>manage_accounts</mat-icon>
-                  </button>
-                  <button mat-icon-button
-                    [matTooltip]="u.isActive ? 'Disattiva' : 'Attiva'"
-                    (click)="toggleActive(u)">
-                    <mat-icon>{{ u.isActive ? 'person_off' : 'person' }}</mat-icon>
-                  </button>
-                </td>
-              </ng-container>
-
-              <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
-            </table>
-
-            @if (!users().length) {
-              <p class="empty-state">Nessun utente trovato.</p>
-            }
-          }
+          <app-users-table
+            [users]="users()"
+            [loading]="loadingUsers()"
+            (toggleActive)="onToggleActive($event)"
+            (manageRoles)="openAssignRole($event)"
+            (delete)="onDeleteUser($event)"
+            (unlink)="onUnlinkUser($event)">
+          </app-users-table>
         </div>
       </mat-expansion-panel>
 
-      <!-- Crea Utente -->
-      <mat-expansion-panel>
+      <!-- Pannello 2: Membri Organizzazione Keycloak -->
+      <mat-expansion-panel (opened)="loadKcMembers()">
         <mat-expansion-panel-header>
           <mat-panel-title>
-            <mat-icon>person_add</mat-icon>
-            Crea Nuovo Utente
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-
-        <div class="panel-content">
-          <form [formGroup]="createForm" (ngSubmit)="onCreateUser()" class="create-form">
-            <mat-form-field appearance="outline">
-              <mat-label>Nome *</mat-label>
-              <input matInput formControlName="name">
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Cognome</mat-label>
-              <input matInput formControlName="surname">
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Email</mat-label>
-              <input matInput type="email" formControlName="email">
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Telefono</mat-label>
-              <input matInput formControlName="phone">
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Tipo Utente *</mat-label>
-              <mat-select formControlName="userType">
-                @for (type of userTypes; track type) {
-                  <mat-option [value]="type">{{ userTypeLabel(type) }}</mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
-
-            <div class="form-actions">
-              <button mat-stroked-button type="button" (click)="createForm.reset()">Annulla</button>
-              <button mat-raised-button color="primary" type="submit"
-                [disabled]="createForm.invalid || creatingUser()">
-                @if (creatingUser()) {
-                  <mat-spinner diameter="20"></mat-spinner>
-                } @else {
-                  <mat-icon>save</mat-icon>
-                }
-                Crea Utente
-              </button>
-            </div>
-          </form>
-        </div>
-      </mat-expansion-panel>
-
-      <!-- Link Utente a Keycloak -->
-      <mat-expansion-panel>
-        <mat-expansion-panel-header>
-          <mat-panel-title>
-            <mat-icon>link</mat-icon>
-            Collega Utente a Account Keycloak
+            <mat-icon>group</mat-icon>
+            Membri Organizzazione Keycloak
           </mat-panel-title>
           <mat-panel-description>
-            Utenti non collegati: {{ unlinkedUsers().length }}
+            {{ kcMembers().length }} membri
           </mat-panel-description>
         </mat-expansion-panel-header>
 
         <div class="panel-content">
-          <form [formGroup]="linkForm" (ngSubmit)="onLinkUser()" class="create-form">
-            <mat-form-field appearance="outline">
-              <mat-label>Utente App (non collegato)</mat-label>
-              <mat-select formControlName="appUserId">
-                @for (u of unlinkedUsers(); track u.id) {
-                  <mat-option [value]="u.id">{{ u.name }} {{ u.surname }} ({{ userTypeLabel(u.userType) }})</mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Keycloak User ID</mat-label>
-              <input matInput formControlName="keycloakUserId" placeholder="UUID dell'utente in Keycloak">
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Mapping ID</mat-label>
-              <input matInput formControlName="userMappingId" placeholder="ID mapping nell'Auth Microservice">
-            </mat-form-field>
-
-            <div class="form-actions">
-              <button mat-raised-button color="accent" type="submit"
-                [disabled]="linkForm.invalid || linkingUser()">
-                @if (linkingUser()) {
-                  <mat-spinner diameter="20"></mat-spinner>
-                } @else {
-                  <mat-icon>link</mat-icon>
-                }
-                Collega Utente
-              </button>
-            </div>
-          </form>
+          <app-kc-members-table
+            [members]="kcMembers()"
+            [unlinkedAppUsers]="unlinkedUsers()"
+            [realmRoles]="kcRealmRoles()"
+            [loading]="loadingKcMembers()"
+            [assigningMemberId]="assigningMember()"
+            [managingRolesMemberId]="managingKcRolesMemberId()"
+            (assign)="onAssignKeycloakMember($event)"
+            (startAssign)="assigningMember.set($event)"
+            (cancelAssign)="assigningMember.set(null)"
+            (manageRoles)="managingKcRolesMemberId.set($event)"
+            (assignKcRole)="onAssignKcRole($event)"
+            (revokeKcRole)="onRevokeKcRole($event)"
+            (deleteKcUser)="onDeleteKcUser($event)"
+            (unlinkKcUser)="onUnlinkKcUser($event)">
+          </app-kc-members-table>
         </div>
       </mat-expansion-panel>
 
-      <!-- Assegna Ruolo (pannello contestuale) -->
+      <!-- Pannello 3: Crea Utente App -->
+      <mat-expansion-panel>
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <mat-icon>person_add</mat-icon>
+            Crea Nuovo Utente App
+          </mat-panel-title>
+        </mat-expansion-panel-header>
+
+        <div class="panel-content">
+          <app-create-app-user-form
+            [userTypes]="userTypes"
+            [submitting]="creatingUser()"
+            (create)="onCreateUser($event)">
+          </app-create-app-user-form>
+        </div>
+      </mat-expansion-panel>
+
+      <!-- Pannello 4: Crea Utente Keycloak -->
+      <mat-expansion-panel (opened)="loadKcRealmRoles()">
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <mat-icon>person_add</mat-icon>
+            Crea Utente Keycloak
+          </mat-panel-title>
+        </mat-expansion-panel-header>
+
+        <div class="panel-content">
+          <app-create-kc-user-form
+            [realmRoles]="kcRealmRoles()"
+            [submitting]="creatingKcUser()"
+            (create)="onCreateKeycloakUser($event)">
+          </app-create-kc-user-form>
+        </div>
+      </mat-expansion-panel>
+
+      <!-- Pannello 5: Gestione Ruoli (contestuale) -->
       @if (selectedUser()) {
         <mat-expansion-panel [expanded]="true">
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>manage_accounts</mat-icon>
-              Gestione Ruoli: {{ selectedUser()!.name }} {{ selectedUser()!.surname }}
+              Gestione Ruoli App: {{ selectedUser()!.name }} {{ selectedUser()!.surname }}
             </mat-panel-title>
           </mat-expansion-panel-header>
 
@@ -270,7 +175,7 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
             <mat-divider style="margin: 16px 0"></mat-divider>
 
             <div class="assign-role-row">
-              <mat-form-field appearance="outline" style="flex: 1">
+              <mat-form-field appearance="outline" class="role-select">
                 <mat-label>Assegna Ruolo</mat-label>
                 <mat-select [(ngModel)]="roleToAssign">
                   @for (r of availableRoles(); track r.id) {
@@ -303,23 +208,6 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
     }
     mat-expansion-panel-header mat-icon { margin-right: 8px; }
     .panel-content { padding: 16px 0; }
-    .loading-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 16px;
-      color: rgba(0,0,0,0.6);
-    }
-    .users-table { width: 100%; }
-    .status-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.85rem;
-      font-weight: 500;
-      &.linked { color: #2e7d32; }
-      &.unlinked { color: #c62828; }
-    }
     .role-chips {
       display: flex;
       flex-wrap: wrap;
@@ -327,40 +215,43 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
     }
     .role-chip { font-size: 0.8rem; }
     .no-roles { color: rgba(0,0,0,0.4); font-size: 0.85rem; }
-    .empty-state { text-align: center; color: rgba(0,0,0,0.4); padding: 24px; }
-    .create-form {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0 16px;
-    }
-    .form-actions {
-      grid-column: 1 / -1;
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-    }
     .assign-role-row {
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
+    }
+    .role-select { flex: 1; min-width: 200px; }
+    @media (max-width: 599px) {
+      .assign-role-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .role-select { min-width: unset; }
     }
   `],
 })
 export class AdminUsersComponent implements OnInit {
   private readonly userService = inject(AppUserService);
   private readonly snackBar = inject(MatSnackBar);
-  private readonly fb = inject(FormBuilder);
 
+  // ─── UI State (signals) ─────────────────────────────────────
   users = signal<AppUser[]>([]);
   unlinkedUsers = signal<AppUser[]>([]);
   roles = signal<Role[]>([]);
+  kcMembers = signal<KeycloakOrgMember[]>([]);
+  kcRealmRoles = signal<KeycloakRealmRole[]>([]);
+
   loadingUsers = signal(false);
   creatingUser = signal(false);
-  linkingUser = signal(false);
+  loadingKcMembers = signal(false);
+  creatingKcUser = signal(false);
+  assigningMember = signal<string | null>(null);
+  managingKcRolesMemberId = signal<string | null>(null);
+
   selectedUser = signal<AppUser | null>(null);
   roleToAssign: string | null = null;
 
-  displayedColumns = ['name', 'email', 'type', 'status', 'roles', 'actions'];
   userTypes: AppUserType[] = ['OPERATOR', 'SECRETARY', 'PRIVACY_OFFICER', 'IT_MANAGER'];
 
   availableRoles = computed(() => {
@@ -370,27 +261,13 @@ export class AdminUsersComponent implements OnInit {
     return this.roles().filter((r) => !assignedIds.has(r.id));
   });
 
-  createForm = this.fb.group({
-    name: ['', Validators.required],
-    surname: [''],
-    email: ['', Validators.email],
-    phone: [''],
-    userType: ['OPERATOR' as AppUserType, Validators.required],
-  });
-
-  linkForm = this.fb.group({
-    appUserId: ['', Validators.required],
-    keycloakUserId: ['', Validators.required],
-    userMappingId: ['', Validators.required],
-  });
-
-  userTypeLabel(type: AppUserType): string {
-    return USER_TYPE_LABELS[type] ?? type;
-  }
+  // ─── Lifecycle ──────────────────────────────────────────────
 
   async ngOnInit(): Promise<void> {
     await Promise.all([this.loadUsers(), this.loadRoles()]);
   }
+
+  // ─── Data Loading ───────────────────────────────────────────
 
   async loadUsers(): Promise<void> {
     this.loadingUsers.set(true);
@@ -415,13 +292,36 @@ export class AdminUsersComponent implements OnInit {
     } catch { /* ignora */ }
   }
 
-  async onCreateUser(): Promise<void> {
-    if (this.createForm.invalid) return;
+  async loadKcMembers(): Promise<void> {
+    this.loadingKcMembers.set(true);
+    try {
+      const [members, roles] = await Promise.all([
+        firstValueFrom(this.userService.getKeycloakOrgMembers()),
+        firstValueFrom(this.userService.getKeycloakRealmRoles()),
+      ]);
+      this.kcMembers.set(members);
+      this.kcRealmRoles.set(roles);
+    } catch (err: any) {
+      this.snackBar.open(`Errore caricamento membri Keycloak: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    } finally {
+      this.loadingKcMembers.set(false);
+    }
+  }
+
+  async loadKcRealmRoles(): Promise<void> {
+    if (this.kcRealmRoles().length > 0) return; // già caricati
+    try {
+      const roles = await firstValueFrom(this.userService.getKeycloakRealmRoles());
+      this.kcRealmRoles.set(roles);
+    } catch { /* ignora */ }
+  }
+
+  // ─── Event Handlers (delegano al service) ───────────────────
+
+  async onCreateUser(input: CreateAppUserInput): Promise<void> {
     this.creatingUser.set(true);
     try {
-      const input = this.createForm.value as CreateAppUserInput;
       await firstValueFrom(this.userService.createUser(input));
-      this.createForm.reset({ userType: 'OPERATOR' });
       this.snackBar.open('Utente creato con successo.', 'OK', { duration: 3000 });
       await this.loadUsers();
     } catch (err: any) {
@@ -431,23 +331,40 @@ export class AdminUsersComponent implements OnInit {
     }
   }
 
-  async onLinkUser(): Promise<void> {
-    if (this.linkForm.invalid) return;
-    this.linkingUser.set(true);
+  async onCreateKeycloakUser(input: CreateKeycloakUserInput): Promise<void> {
+    this.creatingKcUser.set(true);
     try {
-      const { appUserId, keycloakUserId, userMappingId } = this.linkForm.value;
+      await firstValueFrom(this.userService.createKeycloakUser(input));
+      this.snackBar.open('Utente Keycloak creato con successo.', 'OK', { duration: 3000 });
+      await this.loadKcMembers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore creazione utente: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    } finally {
+      this.creatingKcUser.set(false);
+    }
+  }
+
+  async onAssignKeycloakMember(event: { keycloakUserId: string; appUserId: string }): Promise<void> {
+    try {
       await firstValueFrom(this.userService.linkKeycloakUser({
-        appUserId: appUserId!,
-        keycloakUserId: keycloakUserId!,
-        userMappingId: userMappingId!,
+        appUserId: event.appUserId,
+        keycloakUserId: event.keycloakUserId,
       }));
-      this.linkForm.reset();
+      this.assigningMember.set(null);
       this.snackBar.open('Utente collegato con successo.', 'OK', { duration: 3000 });
+      await Promise.all([this.loadUsers(), this.loadKcMembers()]);
+    } catch (err: any) {
+      this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onToggleActive(user: AppUser): Promise<void> {
+    try {
+      await firstValueFrom(this.userService.updateUser(user.id, { isActive: !user.isActive }));
+      this.snackBar.open(`Utente ${user.isActive ? 'disattivato' : 'attivato'}.`, 'OK', { duration: 3000 });
       await this.loadUsers();
     } catch (err: any) {
       this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
-    } finally {
-      this.linkingUser.set(false);
     }
   }
 
@@ -463,7 +380,6 @@ export class AdminUsersComponent implements OnInit {
       await firstValueFrom(this.userService.assignRole({ appUserId: user.id, roleId: this.roleToAssign }));
       this.snackBar.open('Ruolo assegnato.', 'OK', { duration: 3000 });
       await this.loadUsers();
-      // Aggiorna il selectedUser con i dati freschi
       const updated = this.users().find((u) => u.id === user.id);
       this.selectedUser.set(updated ?? null);
       this.roleToAssign = null;
@@ -484,11 +400,76 @@ export class AdminUsersComponent implements OnInit {
     }
   }
 
-  async toggleActive(user: AppUser): Promise<void> {
+  // ─── Keycloak Realm Roles ─────────────────────────────────────
+
+  async onAssignKcRole(event: { keycloakUserId: string; roleName: string }): Promise<void> {
     try {
-      await firstValueFrom(this.userService.updateUser(user.id, { isActive: !user.isActive }));
-      this.snackBar.open(`Utente ${user.isActive ? 'disattivato' : 'attivato'}.`, 'OK', { duration: 3000 });
+      await firstValueFrom(this.userService.assignKcRealmRole(event.keycloakUserId, event.roleName));
+      this.snackBar.open('Ruolo KC assegnato.', 'OK', { duration: 3000 });
+      await this.loadKcMembers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onRevokeKcRole(event: { keycloakUserId: string; roleName: string }): Promise<void> {
+    try {
+      await firstValueFrom(this.userService.revokeKcRealmRole(event.keycloakUserId, event.roleName));
+      this.snackBar.open('Ruolo KC rimosso.', 'OK', { duration: 3000 });
+      await this.loadKcMembers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  // ─── Delete & Unlink ─────────────────────────────────────────
+
+  async onDeleteUser(user: AppUser): Promise<void> {
+    const msg = user.keycloakId
+      ? `Eliminare ${user.name} ${user.surname || ''}? L'utente Keycloak collegato NON verra' eliminato.`
+      : `Eliminare ${user.name} ${user.surname || ''}?`;
+    if (!confirm(msg)) return;
+    try {
+      await firstValueFrom(this.userService.deleteUser(user.id));
+      this.snackBar.open('Utente eliminato.', 'OK', { duration: 3000 });
+      if (this.selectedUser()?.id === user.id) this.selectedUser.set(null);
       await this.loadUsers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onUnlinkUser(user: AppUser): Promise<void> {
+    if (!confirm(`Scollegare ${user.name} ${user.surname || ''} dall'utente Keycloak?`)) return;
+    try {
+      await firstValueFrom(this.userService.unlinkKeycloakUser(user.id));
+      this.snackBar.open('Utente scollegato da Keycloak.', 'OK', { duration: 3000 });
+      await Promise.all([this.loadUsers(), this.loadKcMembers()]);
+    } catch (err: any) {
+      this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onDeleteKcUser(keycloakUserId: string): Promise<void> {
+    if (!confirm('Eliminare questo utente da Keycloak? Se collegato, il collegamento verra\' rimosso.')) return;
+    try {
+      await firstValueFrom(this.userService.deleteKeycloakUser(keycloakUserId));
+      this.snackBar.open('Utente Keycloak eliminato.', 'OK', { duration: 3000 });
+      await Promise.all([this.loadKcMembers(), this.loadUsers()]);
+    } catch (err: any) {
+      this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onUnlinkKcUser(keycloakUserId: string): Promise<void> {
+    // Trova l'app user collegato
+    const member = this.kcMembers().find(m => m.id === keycloakUserId);
+    if (!member?.linkedAppUserId) return;
+    if (!confirm(`Scollegare ${member.firstName} ${member.lastName} dall'utente app?`)) return;
+    try {
+      await firstValueFrom(this.userService.unlinkKeycloakUser(member.linkedAppUserId));
+      this.snackBar.open('Utente scollegato.', 'OK', { duration: 3000 });
+      await Promise.all([this.loadUsers(), this.loadKcMembers()]);
     } catch (err: any) {
       this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
     }

@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { HttpModule } from '@nestjs/axios';
 // Entities
 import { AppUser } from './entities/app-user.entity';
 import { Role } from './entities/role.entity';
@@ -10,10 +9,12 @@ import { RolePermission } from './entities/role-permission.entity';
 import { Secretary } from './entities/secretary.entity';
 import { PrivacyOfficer } from './entities/privacy-officer.entity';
 import { ItManager } from './entities/it-manager.entity';
+import { Operator } from '../availability/entities/operator.entity';
 // Services
 import { AppUserService } from './services/app-user.service';
 import { RoleService } from './services/role.service';
 import { UserLinkingService } from './services/user-linking.service';
+import { KeycloakAdminService } from './services/keycloak-admin.service';
 import { SecretaryService } from './services/secretary.service';
 import { PrivacyOfficerService } from './services/privacy-officer.service';
 import { ItManagerService } from './services/it-manager.service';
@@ -37,14 +38,15 @@ import { AuthorizationGuard } from './guards/authorization.guard';
       Secretary,
       PrivacyOfficer,
       ItManager,
+      Operator,
     ]),
-    HttpModule,
   ],
   providers: [
     // Services
     AppUserService,
     RoleService,
     UserLinkingService,
+    KeycloakAdminService,
     SecretaryService,
     PrivacyOfficerService,
     ItManagerService,
@@ -61,6 +63,7 @@ import { AuthorizationGuard } from './guards/authorization.guard';
     AppUserService,
     RoleService,
     UserLinkingService,
+    KeycloakAdminService,
     SecretaryService,
     PrivacyOfficerService,
     ItManagerService,
