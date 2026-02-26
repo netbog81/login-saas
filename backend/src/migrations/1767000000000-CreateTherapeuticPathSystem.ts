@@ -5,19 +5,13 @@ export class CreateTherapeuticPathSystem1767000000000 implements MigrationInterf
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         // 1. Create therapeutic_path_status enum
-        await queryRunner.query(`
-            CREATE TYPE "public"."therapeutic_paths_status_enum" AS ENUM('active', 'suspended', 'completed', 'archived')
-        `);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."therapeutic_paths_status_enum" AS ENUM('active', 'suspended', 'completed', 'archived'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 2. Create document_type enum
-        await queryRunner.query(`
-            CREATE TYPE "public"."path_documents_type_enum" AS ENUM('pdf', 'image', 'video', 'other')
-        `);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."path_documents_type_enum" AS ENUM('pdf', 'image', 'video', 'other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 3. Create document_category enum
-        await queryRunner.query(`
-            CREATE TYPE "public"."path_documents_category_enum" AS ENUM('prescription', 'report', 'radiology', 'consent', 'other')
-        `);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."path_documents_category_enum" AS ENUM('prescription', 'report', 'radiology', 'consent', 'other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 4. Create therapeutic_paths table
         await queryRunner.query(`

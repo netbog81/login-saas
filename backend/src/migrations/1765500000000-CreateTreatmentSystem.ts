@@ -15,10 +15,10 @@ export class CreateTreatmentSystem1765500000000 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "availability_appointments" ADD "cancellationHoursNotice" decimal(10,2)`);
 
         // 3. Create treatment_status enum
-        await queryRunner.query(`CREATE TYPE "public"."treatments_status_enum" AS ENUM('in_progress', 'operator_completed', 'closed')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."treatments_status_enum" AS ENUM('in_progress', 'operator_completed', 'closed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 4. Create payment_method enum
-        await queryRunner.query(`CREATE TYPE "public"."treatments_paymentmethod_enum" AS ENUM('cash', 'card', 'transfer', 'satispay', 'other')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."treatments_paymentmethod_enum" AS ENUM('cash', 'card', 'transfer', 'satispay', 'other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 5. Create treatments table
         await queryRunner.query(`

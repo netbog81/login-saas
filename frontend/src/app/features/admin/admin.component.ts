@@ -1,0 +1,148 @@
+import { Component, inject, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatIconModule } from '@angular/material/icon';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatButtonModule } from '@angular/material/button';
+import { AdminDatabaseComponent } from './components/admin-database/admin-database.component';
+import { AdminUsersComponent } from './components/admin-users/admin-users.component';
+import { AdminBackupComponent } from './components/admin-backup/admin-backup.component';
+import { OidcAuthService } from '../../core/auth/oidc-auth.service';
+
+const TAB_NAMES = ['database', 'utenti', 'backup'] as const;
+type TabName = typeof TAB_NAMES[number];
+
+@Component({
+  selector: 'app-admin',
+  standalone: true,
+  imports: [
+    CommonModule,
+    MatTabsModule,
+    MatIconModule,
+    MatToolbarModule,
+    MatButtonModule,
+    AdminDatabaseComponent,
+    AdminUsersComponent,
+    AdminBackupComponent,
+  ],
+  template: `
+    <div class="admin-container">
+      <mat-toolbar color="primary" class="admin-toolbar">
+        <mat-icon>admin_panel_settings</mat-icon>
+        <span class="toolbar-title">Amministrazione Tenant</span>
+        <span class="toolbar-spacer"></span>
+        <span class="tenant-badge">{{ tenantId }}</span>
+        <button mat-icon-button (click)="goToApp()" matTooltip="Torna all'applicazione">
+          <mat-icon>apps</mat-icon>
+        </button>
+      </mat-toolbar>
+
+      <mat-tab-group
+        [selectedIndex]="selectedTabIndex"
+        (selectedIndexChange)="onTabChange($event)"
+        animationDuration="200ms"
+        class="admin-tabs">
+
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">storage</mat-icon>
+            Database
+          </ng-template>
+          <div class="tab-content">
+            <app-admin-database></app-admin-database>
+          </div>
+        </mat-tab>
+
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">people</mat-icon>
+            Utenti
+          </ng-template>
+          <div class="tab-content">
+            <app-admin-users></app-admin-users>
+          </div>
+        </mat-tab>
+
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">backup</mat-icon>
+            Backup
+          </ng-template>
+          <div class="tab-content">
+            <app-admin-backup></app-admin-backup>
+          </div>
+        </mat-tab>
+
+      </mat-tab-group>
+    </div>
+  `,
+  styles: [`
+    .admin-container {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #f5f5f5;
+    }
+    .admin-toolbar {
+      flex-shrink: 0;
+    }
+    .toolbar-title {
+      margin-left: 12px;
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+    .toolbar-spacer { flex: 1; }
+    .tenant-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 2px 12px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      margin-right: 8px;
+      font-family: monospace;
+    }
+    .admin-tabs {
+      flex: 1;
+      overflow: hidden;
+      background: white;
+    }
+    .tab-icon { margin-right: 6px; font-size: 18px; }
+    .tab-content {
+      padding: 24px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+  `],
+})
+export class AdminComponent implements OnInit {
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  readonly authService = inject(OidcAuthService);
+
+  selectedTabIndex = 0;
+
+  get tenantId(): string {
+    return this.authService.currentUser()?.tenantId ?? '';
+  }
+
+  ngOnInit(): void {
+    this.route.queryParams.subscribe((params) => {
+      const tab = (params['tab'] as TabName) ?? 'database';
+      const idx = TAB_NAMES.indexOf(tab);
+      this.selectedTabIndex = idx >= 0 ? idx : 0;
+    });
+  }
+
+  onTabChange(index: number): void {
+    const tab = TAB_NAMES[index] ?? 'database';
+    this.router.navigate([], {
+      queryParams: { tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  goToApp(): void {
+    this.router.navigate(['/calendar']);
+  }
+}

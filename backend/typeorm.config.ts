@@ -52,8 +52,8 @@ export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
-  username: process.env.MAIN_DB_USERNAME || process.env.DB_USERNAME || 'postgres',
-  password: process.env.MAIN_DB_PASSWORD || process.env.DB_PASSWORD || 'postgres',
+  username: process.env.MIGRATOR_DB_USERNAME || 'migrator',
+  password: process.env.MIGRATOR_DB_PASSWORD || 'migrator',
   database: process.env.DB_DATABASE || 'calendar_db',
 
   entities: ['src/**/*.entity.ts'],

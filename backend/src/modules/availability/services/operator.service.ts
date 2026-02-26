@@ -1,15 +1,21 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
 import { CreateOperatorInput } from '../dto/create-operator.input';
 import { UpdateOperatorInput } from '../dto/update-operator.input';
+import { AppUser } from '../../users/entities/app-user.entity';
+import { AppUserType } from '../../users/enums/app-user-type.enum';
 
 @Injectable()
 export class OperatorService {
+  private readonly logger = new Logger(OperatorService.name);
+
   constructor(
     @InjectRepository(Operator)
     private readonly operatorRepo: Repository<Operator>,
+    @InjectRepository(AppUser)
+    private readonly appUserRepo: Repository<AppUser>,
   ) {}
 
   /**
@@ -130,10 +136,23 @@ export class OperatorService {
       }
     }
 
-    // Crea operatore
+    // Crea app_user associato
+    const appUser = this.appUserRepo.create({
+      name: input.name,
+      surname: input.surname,
+      email: input.email,
+      phone: input.phone,
+      userType: AppUserType.OPERATOR,
+      isActive: input.isActive ?? true,
+      attributes: {},
+    });
+    const savedAppUser = await this.appUserRepo.save(appUser);
+
+    // Crea operatore con riferimento ad app_user
     const operator = this.operatorRepo.create({
       ...input,
-      isActive: input.isActive ?? true, // Default attivo se non specificato
+      appUserId: savedAppUser.id,
+      isActive: input.isActive ?? true,
       maxConcurrentAppointments: input.maxConcurrentAppointments || 1,
     });
 
@@ -188,6 +207,20 @@ export class OperatorService {
 
     // Aggiorna campi
     Object.assign(operator, input);
+
+    // Sincronizza campi identita' con app_users
+    if (operator.appUserId) {
+      const identityUpdate: Partial<AppUser> = {};
+      if (input.name !== undefined) identityUpdate.name = input.name;
+      if (input.surname !== undefined) identityUpdate.surname = input.surname;
+      if (input.email !== undefined) identityUpdate.email = input.email;
+      if (input.phone !== undefined) identityUpdate.phone = input.phone;
+      if (input.isActive !== undefined) identityUpdate.isActive = input.isActive;
+
+      if (Object.keys(identityUpdate).length > 0) {
+        await this.appUserRepo.update(operator.appUserId, identityUpdate);
+      }
+    }
 
     return this.operatorRepo.save(operator);
   }

@@ -1,4 +1,6 @@
 import { Routes } from '@angular/router';
+import { authGuard, linkedGuard } from './core/auth/auth.guard';
+import { schemaGuard } from './core/auth/schema.guard';
 import { CalendarContainerComponent } from './components/calendar-cdk/calendar-container/calendar-container.component';
 import { AvailabilityDashboardComponent } from './components/availability/availability-dashboard/availability-dashboard.component';
 import { ConflictDashboardComponent } from './components/conflict-dashboard/conflict-dashboard.component';
@@ -9,72 +11,123 @@ import { OperatorWorkspaceContainer } from './features/operators-new/containers/
 import { OperatorsNewLayoutComponent } from './features/operators-new/layout/operators-new-layout.component';
 import { OperatorsDashboardContainer } from './features/operators-new/containers/operators-dashboard.container';
 import { OperatorsPatientsContainer } from './features/operators-new/containers/operators-patients.container';
+import { CallbackComponent } from './features/auth/components/callback/callback.component';
+import { PendingActivationComponent } from './features/auth/components/pending-activation/pending-activation.component';
+import { PendingSchemaComponent } from './features/auth/components/pending-schema/pending-schema.component';
+import { UnauthorizedComponent } from './features/auth/components/unauthorized/unauthorized.component';
+import { AdminComponent } from './features/admin/admin.component';
 
 export const routes: Routes = [
+  // --- Callback OIDC Keycloak (nessun guard: la libreria processa il code qui) ---
+  {
+    path: 'callback',
+    component: CallbackComponent,
+    title: 'Accesso in corso...',
+  },
+  {
+    path: 'unauthorized',
+    component: UnauthorizedComponent,
+    title: 'Accesso Negato',
+  },
+
+  // --- Rotte protette (solo auth, mapping non richiesto) ---
+  {
+    path: 'pending-activation',
+    component: PendingActivationComponent,
+    canActivate: [authGuard],
+    title: 'Attivazione in corso',
+  },
+  {
+    path: 'pending-schema',
+    component: PendingSchemaComponent,
+    canActivate: [authGuard],
+    title: 'Database in configurazione',
+  },
+
+  // --- Admin Dashboard (auth + linked, nessun schemaGuard: l'admin gestisce lo schema qui) ---
+  {
+    path: 'admin',
+    component: AdminComponent,
+    canActivate: [authGuard, linkedGuard],
+    data: { roles: ['admin', 'amministratore', 'superadmin', 'it_manager'] },
+    title: 'Amministrazione',
+  },
+
+  // --- Rotte protette (auth + mapping attivo + schema pronto) ---
   {
     path: 'calendar',
     component: CalendarContainerComponent,
-    title: 'Calendario'
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    title: 'Calendario',
   },
   {
     path: 'patients',
     component: PatientManagementComponent,
-    title: 'Gestione Pazienti'
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    title: 'Gestione Pazienti',
   },
   {
     path: 'operatori',
     component: OperatorWorkspaceComponent,
-    title: 'Workspace Operatore'
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    title: 'Workspace Operatore',
   },
   {
     path: 'operatori-new',
     component: OperatorsNewLayoutComponent,
+    canActivate: [authGuard, linkedGuard, schemaGuard],
     title: 'Workspace Operatore (New)',
     children: [
       {
         path: '',
         redirectTo: 'appuntamenti',
-        pathMatch: 'full'
+        pathMatch: 'full',
       },
       {
         path: 'dashboard',
         component: OperatorsDashboardContainer,
-        title: 'Dashboard Operatori'
+        title: 'Dashboard Operatori',
       },
       {
         path: 'pazienti',
         component: OperatorsPatientsContainer,
-        title: 'Pazienti'
+        title: 'Pazienti',
       },
       {
         path: 'appuntamenti',
         component: OperatorWorkspaceContainer,
-        title: 'Appuntamenti'
-      }
-    ]
+        title: 'Appuntamenti',
+      },
+    ],
   },
   {
     path: 'availability',
     component: AvailabilityDashboardComponent,
-    title: 'Gestione Disponibilita'
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    title: 'Gestione Disponibilita',
   },
   {
     path: 'conflicts',
     component: ConflictDashboardComponent,
-    title: 'Dashboard Conflitti'
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    title: 'Dashboard Conflitti',
   },
   {
     path: 'settings',
     component: SettingsComponent,
-    title: 'Impostazioni Generali'
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['admin', 'amministratore', 'superadmin'] },
+    title: 'Impostazioni Generali',
   },
+
+  // --- Redirect ---
   {
     path: '',
     redirectTo: '/calendar',
-    pathMatch: 'full'
+    pathMatch: 'full',
   },
   {
     path: '**',
-    redirectTo: '/calendar'
-  }
+    redirectTo: '/calendar',
+  },
 ];

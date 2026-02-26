@@ -13,10 +13,7 @@ export class CreateServiceSubcategories1766821781021 implements MigrationInterfa
         `);
 
         // STEP 2: Creare enum per la tabella sottocategorie
-        await queryRunner.query(`
-            CREATE TYPE "public"."service_subcategories_macrocategory_enum" 
-            AS ENUM('doctor', 'physiotherapist', 'gym_instructor', 'other')
-        `);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."service_subcategories_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor', 'other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // STEP 3: Creare tabella service_subcategories
         await queryRunner.query(`

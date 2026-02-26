@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, OneToOne, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { AvailabilityTemplate } from './availability-template.entity';
 import { AvailabilityException } from './availability-exception.entity';
@@ -8,6 +8,7 @@ import { OperatorMacroCategory } from './operator-macro-category.enum';
 import { OperatorCategory } from './operator-category.entity';
 import { GymSchedule } from './gym-schedule.entity';
 import { TemplateAssignment } from './template-assignment.entity';
+import { AppUser } from '../../users/entities/app-user.entity';
 
 @ObjectType()
 @Entity('operators')
@@ -88,6 +89,15 @@ export class Operator {
   @Field({ nullable: true })
   @Column({ name: 'professional_registration', length: 255, nullable: true })
   professionalRegistration?: string;
+
+  @Field({ nullable: true })
+  @Column({ name: 'app_user_id', type: 'uuid', nullable: true })
+  appUserId?: string;
+
+  @Field(() => AppUser, { nullable: true })
+  @OneToOne(() => AppUser, { nullable: true, eager: false })
+  @JoinColumn({ name: 'app_user_id' })
+  appUser?: AppUser;
 
   @Field()
   @CreateDateColumn()

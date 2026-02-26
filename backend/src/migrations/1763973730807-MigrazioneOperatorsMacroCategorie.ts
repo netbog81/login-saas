@@ -4,13 +4,13 @@ export class MigrazioneOperatorsMacroCategorie1763973730807 implements Migration
     name = 'MigrazioneOperatorsMacroCategorie1763973730807'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`CREATE TYPE "public"."operator_categories_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."operator_categories_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
         await queryRunner.query(`CREATE TABLE "operator_categories" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "macroCategory" "public"."operator_categories_macrocategory_enum" NOT NULL, "name" character varying(255) NOT NULL, "description" text, "isActive" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_371a981e437515b54c6f4287031" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE TYPE "public"."instrument_categories_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."instrument_categories_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
         await queryRunner.query(`CREATE TABLE "instrument_categories" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "macroCategory" "public"."instrument_categories_macrocategory_enum" NOT NULL DEFAULT 'physiotherapist', "name" character varying(255) NOT NULL, "description" text, "isActive" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_30d5514b366f5dbd4b3528c75d9" PRIMARY KEY ("id"))`);
         await queryRunner.query(`ALTER TABLE "operators" DROP COLUMN "operatorType"`);
         await queryRunner.query(`DROP TYPE "public"."operators_operatortype_enum"`);
-        await queryRunner.query(`CREATE TYPE "public"."operators_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."operators_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
         await queryRunner.query(`ALTER TABLE "operators" ADD "macroCategory" "public"."operators_macrocategory_enum" NOT NULL DEFAULT 'physiotherapist'`);
         await queryRunner.query(`ALTER TABLE "operators" ADD "categoryId" uuid`);
         await queryRunner.query(`ALTER TABLE "operators" ADD "preferredDurations" integer array`);

@@ -1,0 +1,67 @@
+# =============================================================================
+# Curandis Frontend Routing
+# =============================================================================
+# tenants.curandis.cloud       -> Auth frontend (.15:4200)
+# {tenant}.curandis.cloud      -> Main App frontend (.24:4200)
+# agenda.curandis.cloud        -> Main App frontend (legacy, redirect futuro)
+#
+# NOTA: Il wildcard tenant ha priority: 1.
+# Tutti i router con Host() esatto (in questo file e negli altri file Traefik)
+# hanno priorita' calcolata piu' alta e vincono automaticamente.
+# Questo include: api, tenants, my, login, bao, openbao, agenda, ecc.
+# =============================================================================
+http:
+  routers:
+    # Auth / Gestione Tenant frontend
+    frontend-auth:
+      rule: "Host(`tenants.curandis.cloud`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: le-dns
+      middlewares:
+        - no-cache-dev@file
+      service: auth-frontend-svc
+
+    # Main App frontend - Lista esplicita dei tenant
+    # Per aggiungere un nuovo tenant: aggiungere Host(`nometenante.curandis.cloud`) con ||
+    frontend-tenant:
+      rule: "Host(`demo4.curandis.cloud`) || Host(`bdq.curandis.cloud`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: le-dns
+      middlewares:
+        - no-cache-dev@file
+      service: main-frontend-svc
+
+    # Legacy: vecchio dominio agenda.curandis.cloud
+    # Il Host() esatto ha priorita' > wildcard, quindi funziona
+    # Punta al Main App frontend (senza tenant, il frontend mostrera' il login)
+    frontend-legacy-agenda:
+      rule: "Host(`agenda.curandis.cloud`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: le-dns
+      middlewares:
+        - no-cache-dev@file
+      service: main-frontend-svc
+
+  middlewares:
+    no-cache-dev:
+      headers:
+        customResponseHeaders:
+          Cache-Control: "no-cache, no-store, must-revalidate"
+          Pragma: "no-cache"
+          Expires: "0"
+
+  services:
+    auth-frontend-svc:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://192.168.88.15:4200"
+
+    main-frontend-svc:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://192.168.88.24:4200"

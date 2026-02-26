@@ -13,19 +13,19 @@ export function initializeApp(apolloZone: ApolloZoneService): () => Promise<void
   return () => {
     console.log('🔧 Initializing ApolloZoneService...');
     return new Promise<void>((resolve) => {
-      // Query di test per "scaldare" Apollo e verificare che NgZone funzioni
+      // Warmup con cache-only: inizializza Apollo + NgZone senza chiamata HTTP.
+      // Al bootstrap non c'è ancora un token Keycloak, quindi network-only darebbe 401.
       apolloZone.query({
         query: gql`query { __typename }`,
-        fetchPolicy: 'network-only'
+        fetchPolicy: 'cache-only'
       }).subscribe({
         next: () => {
           console.log('✅ ApolloZoneService ready');
           resolve();
         },
-        error: (err) => {
-          // Log dell'errore ma risolvi comunque per non bloccare l'app
-          // L'errore potrebbe essere "Schema introspection not allowed" che è ok
-          console.warn('⚠️ ApolloZoneService warmup query failed (this may be normal):', err.message);
+        error: () => {
+          // cache-only senza dati in cache è un "miss" silenzioso — risolvi comunque
+          console.log('✅ ApolloZoneService ready (cache empty, normal at startup)');
           resolve();
         }
       });

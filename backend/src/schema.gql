@@ -10,6 +10,30 @@ input AddTestEvaluationInput {
   note: String
 }
 
+type AppUser {
+  attributes: JSONObject
+  createdAt: DateTime!
+  email: String
+  id: ID!
+  isActive: Boolean!
+  keycloakId: String
+  linkedAt: DateTime
+  name: String!
+  phone: String
+  surname: String
+  updatedAt: DateTime!
+  userRoles: [UserRole!]
+  userType: AppUserType!
+}
+
+"""Tipologia di utente applicativo"""
+enum AppUserType {
+  IT_MANAGER
+  OPERATOR
+  PRIVACY_OFFICER
+  SECRETARY
+}
+
 type AppointmentInstrument {
   appointment: AvailabilityAppointment!
   appointmentId: String!
@@ -55,6 +79,11 @@ enum AppointmentStatus {
 enum AppointmentType {
   GYM
   STANDARD
+}
+
+input AssignRoleInput {
+  appUserId: ID!
+  roleId: ID!
 }
 
 input AssignTemplateToOperatorInput {
@@ -246,6 +275,15 @@ type ConflictStatsOutput {
   totalConflicts: Int!
 }
 
+input CreateAppUserInput {
+  attributes: JSONObject
+  email: String
+  name: String!
+  phone: String
+  surname: String
+  userType: AppUserType!
+}
+
 input CreateAvailabilityAppointmentInput {
   appointmentDate: String!
   clientEmail: String
@@ -382,6 +420,16 @@ input CreateGymTemplatePatternInput {
   endTime: String!
   operatorId: ID!
   startTime: String!
+}
+
+input CreateItManagerInput {
+  canManageIntegrations: Boolean = true
+  canManageTenant: Boolean = true
+  email: String
+  name: String!
+  notes: String
+  phone: String
+  surname: String
 }
 
 input CreateOperatorInput {
@@ -555,6 +603,26 @@ input CreatePatternGroupInput {
   name: String!
   patternDuration: Int!
   patterns: [PatternInput!]!
+}
+
+input CreatePrivacyOfficerInput {
+  certification: String
+  certificationExpiry: DateTime
+  dpoRegistrationNumber: String
+  email: String
+  name: String!
+  phone: String
+  surname: String
+}
+
+input CreateSecretaryInput {
+  canManageAppointments: Boolean = false
+  canManageBilling: Boolean = false
+  department: String
+  email: String
+  name: String!
+  phone: String
+  surname: String
 }
 
 input CreateTemplatePatternInput {
@@ -924,6 +992,17 @@ enum InstrumentStatus {
   UNAVAILABLE
 }
 
+type ItManager {
+  appUser: AppUser!
+  appUserId: ID!
+  canManageIntegrations: Boolean!
+  canManageTenant: Boolean!
+  createdAt: DateTime!
+  id: ID!
+  notes: String
+  updatedAt: DateTime!
+}
+
 """
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
@@ -933,6 +1012,12 @@ scalar JSON
 The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSONObject
+
+input LinkKeycloakUserInput {
+  appUserId: ID!
+  keycloakUserId: String!
+  userMappingId: String!
+}
 
 input MarkObjectiveAchievedInput {
   raggiunto: Boolean!
@@ -944,6 +1029,8 @@ type Mutation {
 
   """Anonymize patient data (irreversible GDPR compliance action)"""
   anonymizePatient(id: ID!): PatientModel!
+  assignPermissionToRole(permissionId: ID!, roleId: ID!): RolePermission!
+  assignRole(input: AssignRoleInput!): UserRole!
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
   cancelAppointmentWithNotice(cancelledBy: ID!, id: ID!, reason: String!): AvailabilityAppointment!
@@ -951,6 +1038,7 @@ type Mutation {
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
   confirmAvailabilityAppointment(id: ID!): AvailabilityAppointment!
+  createAppUser(input: CreateAppUserInput!): AppUser!
   createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
@@ -964,6 +1052,7 @@ type Mutation {
   createGymSchedule(dayOfWeek: Int!, endTime: String!, gymRoomId: ID!, operatorId: ID!, startTime: String!, validFrom: DateTime, validUntil: DateTime): GymSchedule!
   createInstrument(brand: String, categoryId: ID!, color: String, model: String, name: String!, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   createInstrumentCategory(description: String, macroCategory: OperatorMacroCategory, name: String!): InstrumentCategory!
+  createItManager(input: CreateItManagerInput!): ItManager!
   createOperator(input: CreateOperatorInput!): Operator!
   createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
   createPathDocument(input: CreateDocumentInput!): PathDocument!
@@ -974,7 +1063,10 @@ type Mutation {
   """Crea nuova anamnesi paziente"""
   createPatientAnamnesis(input: CreatePatientAnamnesisInput!): PatientAnamnesis!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
+  createPrivacyOfficer(input: CreatePrivacyOfficerInput!): PrivacyOfficer!
+  createRole(description: String, name: String!): Role!
   createRoom(capacity: Int, color: String, name: String!): Room!
+  createSecretary(input: CreateSecretaryInput!): Secretary!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, subcategoryId: ID): Service!
   createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
@@ -1001,6 +1093,7 @@ type Mutation {
   deleteHolidaysForYear(year: Int!): Int!
   deleteInstrument(id: ID!): Boolean!
   deleteInstrumentCategory(id: ID!): Boolean!
+  deleteItManager(id: ID!): Boolean!
   deleteOperator(id: ID!): Boolean!
   deleteOperatorCategory(id: ID!): Boolean!
   deletePathDocument(id: ID!): Boolean!
@@ -1011,7 +1104,10 @@ type Mutation {
   """Elimina anamnesi paziente"""
   deletePatientAnamnesis(id: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
+  deletePrivacyOfficer(id: ID!): Boolean!
+  deleteRole(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
+  deleteSecretary(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
   deleteServiceSubcategory(id: ID!): Boolean!
   deleteTemplateAssignment(id: ID!): Boolean!
@@ -1034,12 +1130,15 @@ type Mutation {
   """Increment no-show counter for current year"""
   incrementNoShows(id: ID!): PatientModel!
   initializeDefaultSettings: Boolean!
+  linkKeycloakUser(input: LinkKeycloakUserInput!): AppUser!
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   markAppointmentAttended(id: ID!): AvailabilityAppointment!
   markAppointmentNoShow(id: ID!): AvailabilityAppointment!
   markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): EvaluationObjective!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
+  provisionKeycloakUser(input: ProvisionUserInput!): AppUser!
+  provisionTenantSchema: TenantSchemaStatus!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   recordTreatmentPayment(id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
@@ -1053,8 +1152,11 @@ type Mutation {
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
+  revokePermissionFromRole(permissionId: ID!, roleId: ID!): Boolean!
+  revokeRole(input: AssignRoleInput!): Boolean!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
+  updateAppUser(id: ID!, input: UpdateAppUserInput!): AppUser!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
   updateEvaluation(id: ID!, input: UpdateEvaluationInput!): PatientEvaluation!
@@ -1133,6 +1235,8 @@ type ObjectivesProgress {
 }
 
 type Operator {
+  appUser: AppUser
+  appUserId: String
   appointments: [AvailabilityAppointment!]
   availabilityExceptions: [AvailabilityException!]
   availabilityTemplates: [AvailabilityTemplate!]
@@ -1548,6 +1652,16 @@ enum PaymentMethod {
   TRANSFER
 }
 
+type Permission {
+  action: String
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  name: String!
+  resourceType: String
+  rolePermissions: [RolePermission!]
+}
+
 type PhysiotherapistSlotOutput {
   available: Boolean!
   endTime: String!
@@ -1556,10 +1670,31 @@ type PhysiotherapistSlotOutput {
   suggestedInstruments: [InstrumentSlotOutput!]
 }
 
+type PrivacyOfficer {
+  appUser: AppUser!
+  appUserId: ID!
+  certification: String
+  certificationExpiry: DateTime
+  createdAt: DateTime!
+  dpoRegistrationNumber: String
+  id: ID!
+  updatedAt: DateTime!
+}
+
+input ProvisionUserInput {
+  appUserId: ID!
+  keycloakRoles: [String!]!
+  temporaryPassword: String!
+}
+
 type Query {
   activeTherapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
+  appUser(id: ID!): AppUser
+  appUserByKeycloakId(keycloakId: String!): AppUser
+  appUserPermissions(appUserId: ID!): [String!]!
+  appUsers(isActive: Boolean, userType: AppUserType): [AppUser!]!
   availabilityAppointment(id: ID!): AvailabilityAppointment
   availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
   availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
@@ -1610,6 +1745,8 @@ type Query {
   instruments(categoryId: ID, status: InstrumentStatus): [Instrument!]!
   isHoliday(date: String!): Boolean!
   isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
+  itManager(id: ID!): ItManager
+  itManagers: [ItManager!]!
   objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
   objectivesByEvaluation(evaluationId: ID!): [EvaluationObjective!]!
   objectivesProgress(evaluationId: ID!): ObjectivesProgress!
@@ -1655,12 +1792,19 @@ type Query {
   patientsRequiringPrivacyUpdate: [PatientModel!]!
   patternGroup(id: ID!): PatternGroup
   patternGroups: [PatternGroup!]!
+  permissions: [Permission!]!
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
+  privacyOfficer(id: ID!): PrivacyOfficer
+  privacyOfficers: [PrivacyOfficer!]!
+  role(id: ID!): Role
+  roles: [Role!]!
   room(id: ID!): Room
   rooms(onlyActive: Boolean = false): [Room!]!
 
   """Search patients with various filters and pagination"""
   searchPatients(searchInput: SearchPatientInput!): [PatientModel!]!
+  secretaries: [Secretary!]!
+  secretary(id: ID!): Secretary
   service(id: ID!): Service
   serviceOperators(serviceId: ID!): [OperatorService!]!
   serviceSubcategories(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [ServiceSubcategory!]!
@@ -1669,6 +1813,7 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+  tenantSchemaStatus: TenantSchemaStatus!
   testEvaluationHistory(testId: ID!): [TestEvaluationHistory!]!
   testsByEvaluation(evaluationId: ID!): [EvaluationTest!]!
   testsProgress(evaluationId: ID!): TestsProgress!
@@ -1684,6 +1829,8 @@ type Query {
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
   treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
   treatmentsPendingClosure: [Treatment!]!
+  unlinkedAppUsers(userType: AppUserType): [AppUser!]!
+  userRoles(appUserId: ID!): [Role!]!
 }
 
 input RecordPaymentInput {
@@ -1721,6 +1868,24 @@ input RepeatConfigInput {
 
   """Data di fine (se endType = UNTIL)"""
   untilDate: String
+}
+
+type Role {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  isSystem: Boolean!
+  name: String!
+  rolePermissions: [RolePermission!]
+  userRoles: [UserRole!]
+}
+
+type RolePermission {
+  assignedAt: DateTime!
+  permission: Permission!
+  permissionId: ID!
+  role: Role!
+  roleId: ID!
 }
 
 type Room {
@@ -1797,6 +1962,17 @@ input SearchPatientInput {
 
   """Filtra per tipo paziente"""
   tipoPaziente: TipoPaziente
+}
+
+type Secretary {
+  appUser: AppUser!
+  appUserId: ID!
+  canManageAppointments: Boolean!
+  canManageBilling: Boolean!
+  createdAt: DateTime!
+  department: String
+  id: ID!
+  updatedAt: DateTime!
 }
 
 type Service {
@@ -1937,6 +2113,14 @@ type TemplatePattern {
   patternGroupId: ID!
   startTime: String!
   updatedAt: DateTime!
+}
+
+type TenantSchemaStatus {
+  existsInMainDb: Boolean!
+  isAligned: Boolean!
+  message: String
+  schemaName: String!
+  tenantStatus: String!
 }
 
 type TestEvaluationHistory {
@@ -2123,6 +2307,15 @@ enum TreatmentStatus {
   IN_PROGRESS
   OPERATOR_COMPLETED
   WAITING
+}
+
+input UpdateAppUserInput {
+  attributes: JSONObject
+  email: String
+  isActive: Boolean
+  name: String
+  phone: String
+  surname: String
 }
 
 input UpdateAvailabilityAppointmentInput {
@@ -2434,4 +2627,12 @@ input UpdateTreatmentInstrumentInput {
   notes: String
   startOffsetMinutes: Int
   wasUsed: Boolean
+}
+
+type UserRole {
+  appUser: AppUser!
+  appUserId: ID!
+  assignedAt: DateTime!
+  role: Role!
+  roleId: ID!
 }

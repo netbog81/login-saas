@@ -1,13 +1,23 @@
-import { Module, DynamicModule } from '@nestjs/common';
+import { Module, DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { HttpModule } from '@nestjs/axios';
 import { join } from 'path';
 import { OpenbaoBaseModule, OpenbaoBaseService } from '@curandis/openbao-core';
 import { MainDbCredentialManager } from './database/main-db-credential-manager.service';
+import { TenantSchemaService } from './database/tenant-schema.service';
+import { TenantSchemaContextService } from './database/tenant-schema-context.service';
+import { TenantSchemaSubscriber } from './database/tenant-schema.subscriber';
+import { TenantAuditService } from './database/tenant-audit.service';
+import { TenantAdminResolver } from './database/tenant-admin.resolver';
+import { TenantOpenbaoResolverService } from './database/tenant-openbao-resolver.service';
+import { TenantContextMiddleware } from './middleware/tenant-context.middleware';
+import { JwksService } from './auth/jwks.service';
+import { MeController } from './auth/me.controller';
 import { UsersModule } from './users/users.module';
 import { PazientiModule } from './patients/patients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
@@ -71,6 +81,16 @@ import { PatientAnamnesis } from './modules/availability/entities/patient-anamne
 // Pazienti module entities
 import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
 import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
+// App Users module (multi-type user management + RBAC)
+import { AppUsersModule } from './modules/users/app-users.module';
+import { AppUser } from './modules/users/entities/app-user.entity';
+import { Role } from './modules/users/entities/role.entity';
+import { Permission } from './modules/users/entities/permission.entity';
+import { UserRole } from './modules/users/entities/user-role.entity';
+import { RolePermission } from './modules/users/entities/role-permission.entity';
+import { Secretary } from './modules/users/entities/secretary.entity';
+import { PrivacyOfficer } from './modules/users/entities/privacy-officer.entity';
+import { ItManager } from './modules/users/entities/it-manager.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -118,6 +138,15 @@ const ALL_ENTITIES = [
   PatientAnamnesis,
   PersonaRiferimento,
   PazientePersonaRelazione,
+  // App Users system
+  AppUser,
+  Role,
+  Permission,
+  UserRole,
+  RolePermission,
+  Secretary,
+  PrivacyOfficer,
+  ItManager,
 ];
 
 interface AppModuleOptions {
@@ -126,7 +155,7 @@ interface AppModuleOptions {
 }
 
 @Module({})
-export class AppModule {
+export class AppModule implements NestModule {
   /**
    * Bootstrap dinamico con credenziali DB da OpenBao.
    * Chiamato da main.ts dopo aver ottenuto le credenziali.
@@ -140,6 +169,7 @@ export class AppModule {
         ConfigModule.forRoot({ isGlobal: true }),
         EventEmitterModule.forRoot(),
         ScheduleModule.forRoot(),
+        HttpModule,
         TypeOrmModule.forRoot({
           type: 'postgres',
           host: process.env.DB_HOST || 'localhost',
@@ -172,10 +202,29 @@ export class AppModule {
         SettingsModule,
         TasksModule,
         EventsModule,
+        AppUsersModule,
       ],
+      controllers: [MeController],
       providers: [
         MainDbCredentialManager,
+        TenantSchemaService,
+        TenantSchemaContextService,
+        TenantSchemaSubscriber,
+        TenantAuditService,
+        TenantAdminResolver,
+        TenantOpenbaoResolverService,
+        TenantContextMiddleware,
+        JwksService,
       ],
     };
+  }
+
+  configure(consumer: MiddlewareConsumer) {
+    // Applica TenantContextMiddleware a tutte le rotte operative
+    // Escludi: health check, graphql playground, rotte SSE
+    consumer
+      .apply(TenantContextMiddleware)
+      .exclude('health', 'events/(.*)')
+      .forRoutes('*');
   }
 }

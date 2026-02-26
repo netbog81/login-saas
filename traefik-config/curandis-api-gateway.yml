@@ -1,0 +1,56 @@
+# =============================================================================
+# Curandis API Gateway - api.curandis.cloud
+# =============================================================================
+# Path-based routing: un unico dominio per tutti i microservizi backend
+#
+#   /auth/*          -> Auth Microservice (.15:3001)
+#   /api/evolution/* -> Evolution MS (futuro)
+#   /api/notify/*    -> Notifiche MS (futuro)
+#   /* (resto)       -> Main App backend (.24:3000)  [priority: 1]
+# =============================================================================
+http:
+  routers:
+    # Auth Microservice: /auth/*
+    api-auth:
+      rule: "Host(`api.curandis.cloud`) && PathPrefix(`/auth`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: le-dns
+      service: auth-backend-svc
+
+    # Evolution Microservice (futuro): /api/evolution/*
+    # api-evolution:
+    #   rule: "Host(`api.curandis.cloud`) && PathPrefix(`/api/evolution`)"
+    #   entryPoints: [websecure]
+    #   tls:
+    #     certResolver: le-dns
+    #   service: evolution-svc
+
+    # Main App backend: tutto il resto (/graphql, /users, /appointments, ecc.)
+    # priority: 1 -> le regole specifiche sopra vincono sempre
+    api-main:
+      rule: "Host(`api.curandis.cloud`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: le-dns
+      priority: 1
+      service: main-backend-svc
+
+  services:
+    auth-backend-svc:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://192.168.88.15:3001"
+
+    main-backend-svc:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://192.168.88.24:3000"
+
+    # evolution-svc:
+    #   loadBalancer:
+    #     passHostHeader: true
+    #     servers:
+    #       - url: "http://192.168.88.xx:port"

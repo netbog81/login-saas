@@ -41,6 +41,7 @@ import { EvaluationExam } from './entities/evaluation-exam.entity';
 import { ObjectiveProgressHistory } from './entities/objective-progress-history.entity';
 import { TestEvaluationHistory } from './entities/test-evaluation-history.entity';
 import { PatientAnamnesis } from './entities/patient-anamnesis.entity';
+import { AppUser } from '../users/entities/app-user.entity';
 
 // Services
 import { AvailabilityService } from './services/availability.service';
@@ -95,6 +96,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
   imports: [
     SettingsModule,
     TypeOrmModule.forFeature([
+      AppUser,
       Operator,
       OperatorCategory,
       Service,

@@ -14,11 +14,11 @@ export class CreazioneAppuntamentiStrumentiFixIndiciUnivoci1763976154607 impleme
         await queryRunner.query(`CREATE UNIQUE INDEX "UQ_appointment_instruments_appointment_instrument" ON "appointment_instruments" ("appointmentId", "instrumentId") `);
         await queryRunner.query(`CREATE TABLE "service_instruments" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "serviceId" uuid NOT NULL, "instrumentCategoryId" uuid NOT NULL, "isRequired" boolean NOT NULL DEFAULT true, "orderPosition" integer, "quantity" integer NOT NULL DEFAULT '1', "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_48a68e7368dd9272d8b66de4202" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE UNIQUE INDEX "UQ_service_instruments_service_category" ON "service_instruments" ("serviceId", "instrumentCategoryId") `);
-        await queryRunner.query(`CREATE TYPE "public"."services_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."services_macrocategory_enum" AS ENUM('doctor', 'physiotherapist', 'gym_instructor'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
         await queryRunner.query(`ALTER TABLE "services" ADD "macroCategory" "public"."services_macrocategory_enum"`);
         await queryRunner.query(`ALTER TABLE "services" ADD "preferredDuration" integer`);
         await queryRunner.query(`ALTER TABLE "services" ADD "instrumentOrderMatters" boolean NOT NULL DEFAULT false`);
-        await queryRunner.query(`CREATE TYPE "public"."availability_appointments_appointmenttype_enum" AS ENUM('standard', 'gym')`);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."availability_appointments_appointmenttype_enum" AS ENUM('standard', 'gym'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
         await queryRunner.query(`ALTER TABLE "availability_appointments" ADD "appointmentType" "public"."availability_appointments_appointmenttype_enum" NOT NULL DEFAULT 'standard'`);
         await queryRunner.query(`ALTER TABLE "availability_appointments" ADD "gymRoomId" uuid`);
         await queryRunner.query(`ALTER TABLE "availability_appointments" ADD "instrumentOrderMatters" boolean NOT NULL DEFAULT false`);

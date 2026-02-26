@@ -5,14 +5,10 @@ export class CreatePatientAnamnesisSystem1768900000000 implements MigrationInter
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         // 1. Create objective_type enum
-        await queryRunner.query(`
-            CREATE TYPE "public"."anamnesis_objectives_tipo_enum" AS ENUM('breve_termine', 'medio_termine', 'lungo_termine')
-        `);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."anamnesis_objectives_tipo_enum" AS ENUM('breve_termine', 'medio_termine', 'lungo_termine'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 2. Create test_section enum
-        await queryRunner.query(`
-            CREATE TYPE "public"."anamnesis_tests_sezione_enum" AS ENUM('esame_obiettivo', 'monitoraggio')
-        `);
+        await queryRunner.query(`DO $$ BEGIN CREATE TYPE "public"."anamnesis_tests_sezione_enum" AS ENUM('esame_obiettivo', 'monitoraggio'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
         // 3. Create patient_anamnesis table (main entity with all 8 sections)
         await queryRunner.query(`
