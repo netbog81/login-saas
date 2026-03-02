@@ -1,5 +1,5 @@
 import { InputType, Field, ID, Int } from '@nestjs/graphql';
-import { IsOptional, IsString, IsUUID, IsInt, IsEnum, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsEnum, MaxLength, IsInt } from 'class-validator';
 import { TherapeuticPathStatus, DocumentType, DocumentCategory } from '../entities/therapeutic-path-enums';
 
 /**
@@ -7,9 +7,9 @@ import { TherapeuticPathStatus, DocumentType, DocumentCategory } from '../entiti
  */
 @InputType()
 export class CreateTherapeuticPathInput {
-  @Field(() => Int)
-  @IsInt()
-  patientId: number;
+  @Field(() => ID)
+  @IsUUID('4', { message: 'ID paziente non valido' })
+  patientId: string;
 
   @Field(() => ID)
   @IsUUID('4', { message: 'ID operatore non valido' })

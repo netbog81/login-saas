@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsBoolean,
   IsNumber,
+  IsUUID,
   Min,
   Max,
 } from 'class-validator';
@@ -18,13 +19,11 @@ import {
 } from '../enums/pazienti-enums';
 
 export class CreateConsensoRequestDto {
-  @IsNumber({}, { message: 'ID paziente deve essere numerico' })
-  @Type(() => Number)
-  pazienteId: number;
+  @IsUUID('4', { message: 'ID paziente deve essere un UUID valido' })
+  pazienteId: string;
 
-  @IsNumber({}, { message: 'ID persona riferimento deve essere numerico' })
-  @Type(() => Number)
-  personaRiferimentoId: number;
+  @IsUUID('4', { message: 'ID persona riferimento deve essere un UUID valido' })
+  personaRiferimentoId: string;
 
   @IsOptional()
   @IsEnum(TipoTrattamentoConsenso, { message: 'Tipo trattamento non valido' })
@@ -57,13 +56,11 @@ export class CreateConsensoRequestDto {
 }
 
 export class ConsensoResponseDto {
-  @IsNumber({}, { message: 'ID paziente deve essere numerico' })
-  @Type(() => Number)
-  pazienteId: number;
+  @IsUUID('4', { message: 'ID paziente deve essere un UUID valido' })
+  pazienteId: string;
 
-  @IsNumber({}, { message: 'ID persona riferimento deve essere numerico' })
-  @Type(() => Number)
-  personaRiferimentoId: number;
+  @IsUUID('4', { message: 'ID persona riferimento deve essere un UUID valido' })
+  personaRiferimentoId: string;
 
   @IsBoolean({ message: 'Consenso dato deve essere boolean' })
   consensoDato: boolean;
@@ -121,9 +118,8 @@ export class RevokeConsensoDto {
 }
 
 export class CheckConsensoDto {
-  @IsNumber({}, { message: 'ID paziente deve essere numerico' })
-  @Type(() => Number)
-  pazienteId: number;
+  @IsUUID('4', { message: 'ID paziente deve essere un UUID valido' })
+  pazienteId: string;
 
   @IsEnum(TipoTrattamentoConsenso, { message: 'Tipo trattamento non valido' })
   tipoTrattamento: TipoTrattamentoConsenso;

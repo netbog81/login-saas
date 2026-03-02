@@ -1,7 +1,7 @@
 import { OperatorMacroCategory } from '../graphql/generated/types';
 
 export interface User {
-  id: number;
+  id: string;
   name: string;
   type: string;
   color: string;

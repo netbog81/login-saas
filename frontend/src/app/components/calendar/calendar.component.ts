@@ -19,14 +19,14 @@ interface DragState {
 }
 
 interface TempAppointment {
-  userId: number;
+  userId: string;
   appointment: Appointment;
   dateStr: string;
 }
 
 interface MoveConfirmation {
   appointment: Appointment;
-  userId: number;
+  userId: string;
   oldDate: string;
   newDate: string;
   oldStartTime: string;
@@ -47,18 +47,18 @@ export class CalendarComponent implements OnInit {
   Math = Math;
 
   users: User[] = [];
-  selectedUsers: number[] = [];
+  selectedUsers: string[] = [];
   currentDate: Date = new Date();
   timeSlotList: string[] = [];
-  appointments: { [userId: number]: { [date: string]: Appointment[] } } = {};
-  availabilities: { [userId: number]: { [date: string]: Availability[] } } = {};
+  appointments: { [userId: string]: { [date: string]: Appointment[] } } = {};
+  availabilities: { [userId: string]: { [date: string]: Availability[] } } = {};
 
   // Vista settimanale
   viewMode: 'daily' | 'weekly' = 'daily';
   weekDays: Date[] = [];
   showSaturday = true;  // Toggle per mostrare/nascondere sabato
   showSunday = true;    // Toggle per mostrare/nascondere domenica
-  hoveredAppointment: { userId: number; appointmentId: number; date: string } | null = null;
+  hoveredAppointment: { userId: string; appointmentId: number; date: string } | null = null;
   hoverTimeout: any = null;
 
   // Durata slot variabile
@@ -92,7 +92,7 @@ export class CalendarComponent implements OnInit {
   // Modal state
   showEditModal = false;
   editingAppointment: {
-    userId: number;
+    userId: string;
     appointmentId: number;
     dateStr: string;
   } | null = null;
@@ -116,7 +116,7 @@ export class CalendarComponent implements OnInit {
   filteredPatients: Patient[] = [];
 
   showDeleteConfirm: {
-    userId: number;
+    userId: string;
     appointmentId: number;
     dateStr: string;
     appointmentTitle: string;
@@ -226,7 +226,7 @@ export class CalendarComponent implements OnInit {
     });
   }
 
-  getAppointmentForDateUserSlot(date: Date, userId: number, timeSlot: string): Appointment | null {
+  getAppointmentForDateUserSlot(date: Date, userId: string, timeSlot: string): Appointment | null {
     const dateStr = this.formatDateISO(date);
     const userAppointments = this.appointments[userId] || {};
     const dayAppointments = userAppointments[dateStr] || [];
@@ -236,13 +236,13 @@ export class CalendarComponent implements OnInit {
     }) || null;
   }
 
-  isSlotAvailableForDate(date: Date, userId: number, timeSlot: string): boolean {
+  isSlotAvailableForDate(date: Date, userId: string, timeSlot: string): boolean {
     const dateStr = this.formatDateISO(date);
     return this.isSlotAvailable(userId, dateStr, timeSlot);
   }
 
   // Hover con delay di 1 secondo
-  handleAppointmentHover(userId: number, appointmentId: number, date: string, enter: boolean): void {
+  handleAppointmentHover(userId: string, appointmentId: number, date: string, enter: boolean): void {
     if (enter) {
       this.hoverTimeout = setTimeout(() => {
         this.hoveredAppointment = { userId, appointmentId, date };
@@ -369,7 +369,7 @@ export class CalendarComponent implements OnInit {
     });
   }
 
-  toggleUser(userId: number): void {
+  toggleUser(userId: string): void {
     const index = this.selectedUsers.indexOf(userId);
     if (index > -1) {
       this.selectedUsers.splice(index, 1);
@@ -397,7 +397,7 @@ export class CalendarComponent implements OnInit {
     return date.toISOString().split('T')[0];
   }
 
-  getAppointmentForSlot(userId: number, timeSlot: string, date?: Date): Appointment | null {
+  getAppointmentForSlot(userId: string, timeSlot: string, date?: Date): Appointment | null {
     const dateStr = date ? this.formatDateISO(date) : this.formatDateISO(this.currentDate);
     const userAppointments = this.appointments[userId] || {};
     const dayAppointments = userAppointments[dateStr] || [];
@@ -418,7 +418,7 @@ export class CalendarComponent implements OnInit {
   }
 
   // Rileva se una cella contiene sia fine che inizio di appuntamenti diversi
-  getAppointmentsInSlot(userId: number, timeSlot: string, date?: Date): {ending: Appointment | null, starting: Appointment | null} {
+  getAppointmentsInSlot(userId: string, timeSlot: string, date?: Date): {ending: Appointment | null, starting: Appointment | null} {
     const dateStr = date ? this.formatDateISO(date) : this.formatDateISO(this.currentDate);
     const userAppointments = this.appointments[userId] || {};
     const dayAppointments = userAppointments[dateStr] || [];
@@ -477,7 +477,7 @@ export class CalendarComponent implements OnInit {
       newB.toString(16).padStart(2, '0');
   }
 
-  isSlotAvailable(userId: number, dateStr: string, timeSlot: string): boolean {
+  isSlotAvailable(userId: string, dateStr: string, timeSlot: string): boolean {
     const availList = this.availabilities[userId]?.[dateStr] || [];
 
     const slotHour = parseInt(timeSlot.split(':')[0]);
@@ -500,7 +500,7 @@ export class CalendarComponent implements OnInit {
   }
 
   // === FEATURE 1: Drag and Drop per spostare appuntamenti ===
-  handleMouseDown(userId: number, timeSlot: string, event: MouseEvent): void {
+  handleMouseDown(userId: string, timeSlot: string, event: MouseEvent): void {
     const dateStr = this.formatDateISO(this.currentDate);
     const existingAppointment = this.getAppointmentForSlot(userId, timeSlot);
     const slotIndex = this.timeSlotList.indexOf(timeSlot);
@@ -584,7 +584,7 @@ export class CalendarComponent implements OnInit {
     }
   }
 
-  handleMouseEnter(userId: number, timeSlot: string): void {
+  handleMouseEnter(userId: string, timeSlot: string): void {
     if (!this.dragState.isDragging || this.dragState.currentUser !== userId) {
       return;
     }
@@ -624,7 +624,7 @@ export class CalendarComponent implements OnInit {
     }
   }
 
-  canExtendToSlot(userId: number, dateStr: string, startSlot: string, endSlot: string): boolean {
+  canExtendToSlot(userId: string, dateStr: string, startSlot: string, endSlot: string): boolean {
     // Calcola il range temporale in minuti
     const startMinutes = this.timeToMinutes(startSlot);
     const endMinutes = this.timeToMinutes(endSlot);
@@ -813,7 +813,7 @@ export class CalendarComponent implements OnInit {
 
   updateAppointmentTime(
     appointmentId: number,
-    userId: number,
+    userId: string,
     dateStr: string,
     newStartTime: string,
     newEndTime: string
@@ -837,7 +837,7 @@ export class CalendarComponent implements OnInit {
     });
   }
 
-  hasAppointmentsInRange(userId: number, dateStr: string, startTime: string, endTime: string): boolean {
+  hasAppointmentsInRange(userId: string, dateStr: string, startTime: string, endTime: string): boolean {
     const userAppointments = this.appointments[userId] || {};
     const dayAppointments = userAppointments[dateStr] || [];
 
@@ -854,7 +854,7 @@ export class CalendarComponent implements OnInit {
   }
 
   checkAppointmentOverlap(
-    userId: number,
+    userId: string,
     date: string,
     startTime: string,
     endTime: string,
@@ -883,7 +883,7 @@ export class CalendarComponent implements OnInit {
   }
 
   createAvailability(
-    userId: number,
+    userId: string,
     date: string,
     startTime: string,
     endTime: string,
@@ -915,7 +915,7 @@ export class CalendarComponent implements OnInit {
   }
 
   // FEATURE 3: Visual feedback durante il drag
-  getCellClass(userId: number, timeSlot: string): string {
+  getCellClass(userId: string, timeSlot: string): string {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
     let className = 'calendar-cell border-b border-gray-100 cursor-pointer transition-colors duration-100 flex items-center px-1 text-xs relative';
 
@@ -987,7 +987,7 @@ export class CalendarComponent implements OnInit {
     return className;
   }
 
-  isSlotInDragRange(userId: number, timeSlot: string): boolean {
+  isSlotInDragRange(userId: string, timeSlot: string): boolean {
     if (!this.dragState.isDragging || this.dragState.currentUser !== userId) {
       return false;
     }
@@ -1016,7 +1016,7 @@ export class CalendarComponent implements OnInit {
     return slotMinutes >= minMinutes && slotMinutes <= maxMinutes;
   }
 
-  isSlotInWeeklyDragRange(date: Date, userId: number, timeSlot: string): boolean {
+  isSlotInWeeklyDragRange(date: Date, userId: string, timeSlot: string): boolean {
     if (!this.dragState.isDragging || this.dragState.currentUser !== userId) {
       return false;
     }
@@ -1048,7 +1048,7 @@ export class CalendarComponent implements OnInit {
     return slotMinutes >= minMinutes && slotMinutes <= maxMinutes;
   }
 
-  getCellStyle(userId: number | null, timeSlot: string, date?: Date): any {
+  getCellStyle(userId: string | null, timeSlot: string, date?: Date): any {
     const baseHeight = Math.max(16, 20 * this.zoomLevel);
     const baseStyle: any = {
       height: `${baseHeight}px`,
@@ -1163,7 +1163,7 @@ export class CalendarComponent implements OnInit {
     return endMinutes > slotMinutes && endMinutes <= nextSlotMinutes;
   }
 
-  openEditModal(userId: number, appointmentId: number, dateStr: string, appointment?: Appointment): void {
+  openEditModal(userId: string, appointmentId: number, dateStr: string, appointment?: Appointment): void {
     this.editingAppointment = { userId, appointmentId, dateStr };
 
     if (appointment) {
@@ -1302,7 +1302,7 @@ export class CalendarComponent implements OnInit {
     }
   }
 
-  deleteAppointment(userId: number, appointmentId: number, dateStr: string): void {
+  deleteAppointment(userId: string, appointmentId: number, dateStr: string): void {
     this.apiService.deleteAppointment(appointmentId).subscribe({
       next: () => {
         this.showEditModal = false;
@@ -1382,7 +1382,7 @@ export class CalendarComponent implements OnInit {
     return this.users.find(u => u.id === id);
   }
 
-  getUserSurname(userId: number): string {
+  getUserSurname(userId: string): string {
     const user = this.getUserById(userId);
     if (!user || !user.name) return '';
     const parts = user.name.split(' ');
@@ -1397,7 +1397,7 @@ export class CalendarComponent implements OnInit {
 
   // === METODI VISTA SETTIMANALE ===
 
-  getWeeklyCellClass(date: Date, userId: number, timeSlot: string): string {
+  getWeeklyCellClass(date: Date, userId: string, timeSlot: string): string {
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
     const dateStr = this.formatDateISO(date);
     const isAvailable = this.isSlotAvailable(userId, dateStr, timeSlot);
@@ -1462,7 +1462,7 @@ export class CalendarComponent implements OnInit {
     }
   }
 
-  getWeeklyCellStyle(date: Date, userId: number, timeSlot: string): any {
+  getWeeklyCellStyle(date: Date, userId: string, timeSlot: string): any {
     const baseStyle = this.getCellStyle(userId, timeSlot, date);
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
     const user = this.getUserById(userId);
@@ -1485,7 +1485,7 @@ export class CalendarComponent implements OnInit {
     return baseStyle;
   }
 
-  handleWeeklyHover(date: Date, userId: number, timeSlot: string, enter: boolean): void {
+  handleWeeklyHover(date: Date, userId: string, timeSlot: string, enter: boolean): void {
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
 
     if (appointment && enter) {
@@ -1511,7 +1511,7 @@ export class CalendarComponent implements OnInit {
 
   // === WEEKLY VIEW CRUD OPERATIONS ===
 
-  handleWeeklyMouseDown(date: Date, userId: number, timeSlot: string, event: MouseEvent): void {
+  handleWeeklyMouseDown(date: Date, userId: string, timeSlot: string, event: MouseEvent): void {
     this.weeklyDragDate = date;
     const dateStr = this.formatDateISO(date);
     const existingAppointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
@@ -1589,7 +1589,7 @@ export class CalendarComponent implements OnInit {
     }
   }
 
-  handleWeeklyMouseEnter(date: Date, userId: number, timeSlot: string): void {
+  handleWeeklyMouseEnter(date: Date, userId: string, timeSlot: string): void {
     if (!this.dragState.isDragging || this.dragState.currentUser !== userId) {
       return;
     }
@@ -1738,7 +1738,7 @@ export class CalendarComponent implements OnInit {
     this.weeklyDragDate = null;
   }
 
-  handleWeeklyDoubleClick(date: Date, userId: number, timeSlot: string): void {
+  handleWeeklyDoubleClick(date: Date, userId: string, timeSlot: string): void {
     const appointment = this.getAppointmentForDateUserSlot(date, userId, timeSlot);
     if (appointment) {
       const dateStr = this.formatDateISO(date);

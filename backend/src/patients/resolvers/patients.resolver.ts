@@ -2,7 +2,7 @@
 // Handles all GraphQL queries, mutations, and field resolvers
 
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
-import { ParseIntPipe } from '@nestjs/common';
+
 import { PatientModel } from '../models/patient.model';
 import {
   CreatePatientInput,
@@ -49,7 +49,7 @@ export class PatientsResolver {
     nullable: true,
   })
   async getPatient(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<Patient | null> {
     return this.pazientiService.findOne(id);
   }
@@ -172,7 +172,7 @@ export class PatientsResolver {
     description: 'Update an existing patient record',
   })
   async updatePatient(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
     @Args('updatePatientInput', { type: () => UpdatePatientInput })
     updatePatientInput: UpdatePatientInput,
   ): Promise<Patient> {
@@ -193,7 +193,7 @@ export class PatientsResolver {
     description: 'Delete patient (performs GDPR-compliant anonymization)',
   })
   async deletePatient(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {
     await this.pazientiService.delete(id);
     return true;
@@ -206,7 +206,7 @@ export class PatientsResolver {
     description: 'Update patient record status (workflow state)',
   })
   async updatePatientStatus(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
     @Args('status', { type: () => String }) status: string,
   ): Promise<Patient> {
     return this.pazientiService.updateStatoAnagrafica(id, status);
@@ -219,7 +219,7 @@ export class PatientsResolver {
     description: 'Update patient privacy documentation status',
   })
   async updatePatientPrivacyStatus(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
     @Args('status', { type: () => String }) status: string,
   ): Promise<Patient> {
     return this.pazientiService.updateStatoPrivacy(id, status);
@@ -232,7 +232,7 @@ export class PatientsResolver {
     description: 'Update patient GDPR consent',
   })
   async grantGdprConsent(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
     @Args('consensoGdpr', { type: () => Boolean }) consensoGdpr: boolean,
     @Args('consensoMarketing', { type: () => Boolean, nullable: true }) consensoMarketing?: boolean,
     @Args('consensoTerzi', { type: () => Boolean, nullable: true }) consensoTerzi?: boolean,
@@ -251,7 +251,7 @@ export class PatientsResolver {
     description: 'Request patient data deletion (GDPR Article 17 - Right to be Forgotten)',
   })
   async requestPatientDeletion(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<Patient> {
     return this.pazientiService.requestDeletion(id);
   }
@@ -263,7 +263,7 @@ export class PatientsResolver {
     description: 'Anonymize patient data (irreversible GDPR compliance action)',
   })
   async anonymizePatient(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<Patient> {
     return this.pazientiService.anonymize(id);
   }
@@ -275,7 +275,7 @@ export class PatientsResolver {
     description: 'Increment appointment cancellations counter for current year',
   })
   async incrementCancellations(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<Patient> {
     const currentYear = new Date().getFullYear().toString();
     return this.pazientiService.incrementCounter(id, 'cancellationsByYear', currentYear);
@@ -288,7 +288,7 @@ export class PatientsResolver {
     description: 'Increment no-show counter for current year',
   })
   async incrementNoShows(
-    @Args('id', { type: () => ID }, ParseIntPipe) id: number,
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<Patient> {
     const currentYear = new Date().getFullYear().toString();
     return this.pazientiService.incrementCounter(id, 'noShowsByYear', currentYear);

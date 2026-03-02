@@ -91,7 +91,7 @@ export interface GymAppointment {
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   appointmentDate: string;
   startTime: string;
   endTime: string;
@@ -157,7 +157,7 @@ export interface CreateGymAppointmentInput {
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   /** @deprecated Usa services invece */
   serviceId?: string;
   /** Lista dei servizi associati all'appuntamento */
@@ -184,7 +184,7 @@ export interface UpdateGymAppointmentInput {
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   /** @deprecated Usa services invece */
   serviceId?: string;
   /** Lista dei servizi associati all'appuntamento */

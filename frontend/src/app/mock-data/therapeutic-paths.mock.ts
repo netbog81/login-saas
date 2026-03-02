@@ -13,7 +13,7 @@ export const MOCK_THERAPEUTIC_PATHS: TherapeuticPath[] = [
   // ========== PAZIENTE 1: Mario Rossi ==========
   {
     id: 'path-001',
-    patientId: 1,
+    patientId: '1',
     name: 'Riabilitazione ginocchio DX post-artroscopia',
     description: 'Percorso riabilitativo post intervento di artroscopia meniscale',
     diagnosis: 'Lesione menisco mediale ginocchio destro',
@@ -264,7 +264,7 @@ export const MOCK_THERAPEUTIC_PATHS: TherapeuticPath[] = [
   // Percorso completato per lo stesso paziente
   {
     id: 'path-002',
-    patientId: 1,
+    patientId: '1',
     name: 'Cervicalgia cronica',
     description: 'Trattamento conservativo per cervicalgia muscolo-tensiva',
     diagnosis: 'Cervicalgia muscolo-tensiva cronica',
@@ -342,7 +342,7 @@ export const MOCK_THERAPEUTIC_PATHS: TherapeuticPath[] = [
   // ========== PAZIENTE 2: Anna Bianchi ==========
   {
     id: 'path-003',
-    patientId: 2,
+    patientId: '2',
     name: 'Lombalgia acuta',
     description: 'Trattamento per episodio acuto di lombalgia',
     diagnosis: 'Lombalgia acuta aspecifica',
@@ -438,7 +438,7 @@ export const MOCK_THERAPEUTIC_PATHS: TherapeuticPath[] = [
   // ========== PAZIENTE 3: Paolo Verdi ==========
   {
     id: 'path-004',
-    patientId: 3,
+    patientId: '3',
     name: 'Percorso dimagrimento',
     description: 'Programma nutrizionale e attivita fisica per perdita peso',
     diagnosis: 'Sovrappeso (BMI 28)',
@@ -517,7 +517,7 @@ export const MOCK_THERAPEUTIC_PATHS: TherapeuticPath[] = [
   // Percorso sospeso
   {
     id: 'path-005',
-    patientId: 3,
+    patientId: '3',
     name: 'Riabilitazione spalla SX',
     description: 'Riabilitazione post-lussazione',
     diagnosis: 'Esiti lussazione spalla sinistra',
@@ -553,7 +553,7 @@ export const MOCK_THERAPEUTIC_PATHS: TherapeuticPath[] = [
 /**
  * Helper per ottenere mock paths filtrati per paziente
  */
-export function getMockPathsByPatientId(patientId: number): TherapeuticPath[] {
+export function getMockPathsByPatientId(patientId: string): TherapeuticPath[] {
   return MOCK_THERAPEUTIC_PATHS.filter((p) => p.patientId === patientId);
 }
 

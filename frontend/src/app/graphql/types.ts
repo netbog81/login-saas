@@ -38,8 +38,8 @@ export interface Operator {
   categoryId?: string;
   category?: OperatorCategory;
   preferredDurations?: number[];
-  userId?: number;
-  legacyUserId?: number;
+  userId?: string;
+  legacyUserId?: string;
   maxConcurrentAppointments: number;
   isActive: boolean;
   createdAt: Date;
@@ -179,8 +179,8 @@ export interface CreateOperatorInput {
   categoryId?: string;
   preferredDurations?: number[];
   maxConcurrentAppointments?: number;
-  userId?: number;
-  legacyUserId?: number;
+  userId?: string;
+  legacyUserId?: string;
   isActive?: boolean;
 }
 
@@ -195,7 +195,7 @@ export interface UpdateOperatorInput {
   preferredDurations?: number[];
   maxConcurrentAppointments?: number;
   isActive?: boolean;
-  userId?: number;
+  userId?: string;
 }
 
 export interface CreateOperatorCategoryInput {

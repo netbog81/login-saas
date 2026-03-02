@@ -148,7 +148,7 @@ export const GET_TREATMENTS_PENDING_CLOSURE = gql`
 `;
 
 export const GET_TREATMENTS_BY_PATIENT = gql`
-  query GetTreatmentsByPatient($patientId: Int!, $limit: Int, $offset: Int) {
+  query GetTreatmentsByPatient($patientId: ID!, $limit: Int, $offset: Int) {
     treatmentsByPatient(patientId: $patientId, limit: $limit, offset: $offset) {
       ...TreatmentWithRelationsFields
     }

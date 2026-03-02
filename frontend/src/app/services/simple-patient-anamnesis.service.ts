@@ -43,7 +43,7 @@ import {
 
 interface BackendPatientAnamnesis {
   id: string;
-  patientId: number;
+  patientId: string;
   operatorId?: string;
 
   patologiePregresse?: string;
@@ -104,7 +104,7 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
   /**
    * Converte anamnesi frontend in input per creazione
    */
-  mapToCreateInput(anamnesis: Partial<PatientAnamnesis>, patientId: number, operatorId?: string): CreatePatientAnamnesisInput {
+  mapToCreateInput(anamnesis: Partial<PatientAnamnesis>, patientId: string, operatorId?: string): CreatePatientAnamnesisInput {
     return {
       patientId,
       operatorId,
@@ -155,7 +155,7 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
   /**
    * Ottiene l'anamnesi di un paziente dato il patientId
    */
-  getAnamnesisByPatient(patientId: number): Observable<PatientAnamnesis | null> {
+  getAnamnesisByPatient(patientId: string): Observable<PatientAnamnesis | null> {
     return this.query<{ patientAnamnesisByPatient: BackendPatientAnamnesis | null }>(
       GET_PATIENT_ANAMNESIS_BY_PATIENT,
       { patientId }
@@ -171,7 +171,7 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
   /**
    * Verifica se un paziente ha un'anamnesi
    */
-  hasAnamnesis(patientId: number): Observable<boolean> {
+  hasAnamnesis(patientId: string): Observable<boolean> {
     return this.query<{ hasPatientAnamnesis: boolean }>(
       HAS_PATIENT_ANAMNESIS,
       { patientId }
@@ -208,10 +208,10 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
    * Crea o aggiorna l'anamnesi di un paziente (upsert)
    * Utile quando non si sa se esiste già o meno
    */
-  upsertAnamnesis(patientId: number, input: UpdatePatientAnamnesisInput): Observable<PatientAnamnesis> {
+  upsertAnamnesis(patientId: string, input: UpdatePatientAnamnesisInput): Observable<PatientAnamnesis> {
     return this.mutate<{ upsertPatientAnamnesis: BackendPatientAnamnesis }>(
       UPSERT_PATIENT_ANAMNESIS,
-      { patientId: Number(patientId), input }
+      { patientId, input }
     ).pipe(
       map((result) => this.mapBackendToFrontend(result.upsertPatientAnamnesis))
     );

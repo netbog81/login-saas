@@ -81,7 +81,7 @@ export class TreatmentResolver {
    */
   @Query(() => [Treatment], { name: 'treatmentsByPatient' })
   async getTreatmentsByPatient(
-    @Args('patientId', { type: () => Int }) patientId: number,
+    @Args('patientId', { type: () => ID }) patientId: string,
     @Args('limit', { type: () => Int, nullable: true }) limit?: number,
     @Args('offset', { type: () => Int, nullable: true }) offset?: number,
   ): Promise<Treatment[]> {

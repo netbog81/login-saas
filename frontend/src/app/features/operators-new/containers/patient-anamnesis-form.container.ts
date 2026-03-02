@@ -47,7 +47,7 @@ import { PatientAnamnesis } from '../models/patient-anamnesis.model';
 })
 export class PatientAnamnesisFormContainer {
   @Input() anamnesis: PatientAnamnesis | null = null;
-  @Input() patientId: number = 0;
+  @Input() patientId: string = '';
   @Input() operatorId: string | null = null;
 
   @Output() saved = new EventEmitter<PatientAnamnesis>();

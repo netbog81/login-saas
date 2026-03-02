@@ -14,7 +14,7 @@ import {
 @ObjectType({ description: 'Anagrafica paziente completa' })
 export class PatientModel {
   @Field(() => ID, { description: 'ID univoco paziente' })
-  id: number;
+  id: string;
 
   // ==================== DATI ANAGRAFICI ====================
 

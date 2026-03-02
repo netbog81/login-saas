@@ -111,7 +111,7 @@ export interface PathTreatment {
  */
 export interface TherapeuticPath {
   id: string;
-  patientId: number;
+  patientId: string;
   // Info percorso
   name: string;
   description?: string;

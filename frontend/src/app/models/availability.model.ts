@@ -2,7 +2,7 @@ import { User } from './user.model';
 import { Operator } from '../graphql/generated/types';
 
 export interface Availability {
-  id: number;
+  id: string;
   operatorId: string;
   operator?: Operator;
   date: string;

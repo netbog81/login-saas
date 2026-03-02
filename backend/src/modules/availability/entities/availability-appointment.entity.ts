@@ -103,9 +103,9 @@ export class AvailabilityAppointment {
   @Column({ length: 50, nullable: true })
   clientPhone?: string;
 
-  @Field(() => Int, { nullable: true })
-  @Column('integer', { nullable: true })
-  patientId?: number;
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  patientId?: string;
 
   // ==================== DATE/TIME ====================
 

@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { PathDocument, DocumentCategory } from '../entities/path-document.entity';
 import { TherapeuticPathService } from '../services/therapeutic-path.service';
@@ -29,7 +29,7 @@ export class TherapeuticPathResolver {
    */
   @Query(() => [TherapeuticPath], { name: 'therapeuticPathsByPatient' })
   async getTherapeuticPathsByPatient(
-    @Args('patientId', { type: () => Int }) patientId: number,
+    @Args('patientId', { type: () => ID }) patientId: string,
   ): Promise<TherapeuticPath[]> {
     return this.pathService.findByPatient(patientId);
   }
@@ -39,7 +39,7 @@ export class TherapeuticPathResolver {
    */
   @Query(() => [TherapeuticPath], { name: 'activeTherapeuticPathsByPatient' })
   async getActiveTherapeuticPathsByPatient(
-    @Args('patientId', { type: () => Int }) patientId: number,
+    @Args('patientId', { type: () => ID }) patientId: string,
   ): Promise<TherapeuticPath[]> {
     return this.pathService.findActiveByPatient(patientId);
   }

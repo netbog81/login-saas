@@ -100,7 +100,7 @@ export interface Appointment {
   service?: { id: string; name: string };  // Oggetto servizio per visualizzazione (legacy)
   /** Servizi associati all'appuntamento (nuovo sistema ManyToMany) */
   appointmentServices?: AppointmentServiceItem[];
-  patientId?: number;
+  patientId?: string;
   patient?: Patient;
   notes?: string;
 

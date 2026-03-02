@@ -153,7 +153,7 @@ export const GET_THERAPEUTIC_PATH = gql`
 `;
 
 export const GET_THERAPEUTIC_PATHS_BY_PATIENT = gql`
-  query GetTherapeuticPathsByPatient($patientId: Int!) {
+  query GetTherapeuticPathsByPatient($patientId: ID!) {
     therapeuticPathsByPatient(patientId: $patientId) {
       ...TherapeuticPathWithRelationsFields
     }
@@ -162,7 +162,7 @@ export const GET_THERAPEUTIC_PATHS_BY_PATIENT = gql`
 `;
 
 export const GET_ACTIVE_THERAPEUTIC_PATHS_BY_PATIENT = gql`
-  query GetActiveTherapeuticPathsByPatient($patientId: Int!) {
+  query GetActiveTherapeuticPathsByPatient($patientId: ID!) {
     activeTherapeuticPathsByPatient(patientId: $patientId) {
       ...TherapeuticPathWithRelationsFields
     }

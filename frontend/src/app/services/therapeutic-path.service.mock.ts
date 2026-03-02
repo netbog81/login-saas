@@ -24,7 +24,7 @@ export class TherapeuticPathService {
   /**
    * Ottiene tutti i percorsi terapeutici di un paziente
    */
-  getPathsByPatient(patientId: number): Observable<TherapeuticPath[]> {
+  getPathsByPatient(patientId: string): Observable<TherapeuticPath[]> {
     const paths = this.mockPaths.filter((p) => p.patientId === patientId);
     // Ordina per data inizio decrescente (piu recenti prima)
     const sorted = paths.sort(
@@ -73,7 +73,7 @@ export class TherapeuticPathService {
   /**
    * Conta i percorsi attivi per paziente (per badge/statistiche)
    */
-  getActivePathsCount(patientId: number): Observable<number> {
+  getActivePathsCount(patientId: string): Observable<number> {
     const count = this.mockPaths.filter(
       (p) => p.patientId === patientId && p.status === 'active'
     ).length;
@@ -98,7 +98,7 @@ export class TherapeuticPathService {
   /**
    * Ottiene statistiche per paziente
    */
-  getPatientPathStats(patientId: number): Observable<{
+  getPatientPathStats(patientId: string): Observable<{
     total: number;
     active: number;
     completed: number;

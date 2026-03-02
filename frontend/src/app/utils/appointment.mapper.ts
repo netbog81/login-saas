@@ -17,7 +17,7 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     service: aa.service ? { id: aa.service.id, name: aa.service.name } : undefined,
     // Servizi multipli (nuovo sistema ManyToMany)
     appointmentServices: mapAppointmentServices(aa.appointmentServices),
-    patientId: aa.patientId || undefined,
+    patientId: aa.patientId?.toString() || undefined,
     notes: aa.notes || undefined,
 
     // Status
@@ -142,7 +142,7 @@ export function mapAppointmentToCreateInput(appointment: Appointment): {
   startTime: string;
   endTime: string;
   clientName: string;
-  patientId?: number;
+  patientId?: string;
   notes?: string;
 } {
   return {

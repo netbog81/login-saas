@@ -1,7 +1,7 @@
 // src/pazienti/entities/persona-riferimento.entity.ts
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
@@ -29,8 +29,8 @@ import type { Patient } from '../../entities/patient.entity';
 @Index(['pazienteId', 'tipoRiferimento'])
 @Index(['dataInizio', 'dataFine'])
 export class PersonaRiferimento {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn({ type: 'uuid', default: () => "public.uuid_generate_v4()" })
+  id: string;
 
   // ==================== DATI ANAGRAFICI ====================
 
@@ -191,8 +191,8 @@ export class PersonaRiferimento {
 
   // ==================== RELAZIONI ====================
 
-  @Column({ name: 'paziente_id' })
-  pazienteId: number;
+  @Column({ name: 'paziente_id', type: 'uuid' })
+  pazienteId: string;
 
   // ✅ LAZY LOADING per evitare dipendenze circolari
   @ManyToOne('Patient', { onDelete: 'CASCADE', lazy: true })
@@ -200,8 +200,8 @@ export class PersonaRiferimento {
   paziente: Promise<Patient>;
 
   // Relazione autoreferenziale per gestire coniugi che sono entrambi pazienti
-  @Column({ name: 'coniuge_paziente_id', nullable: true })
-  coniugePazienteId?: number;
+  @Column({ name: 'coniuge_paziente_id', type: 'uuid', nullable: true })
+  coniugePazienteId?: string;
 
   @ManyToOne('Patient', { nullable: true, lazy: true })
   @JoinColumn({ name: 'coniuge_paziente_id' })
@@ -212,11 +212,11 @@ export class PersonaRiferimento {
   @Column({ default: true })
   attivo: boolean;
 
-  @Column({ name: 'creato_da_utente_id', nullable: true })
-  creatoDaUtenteId?: number;
+  @Column({ name: 'creato_da_utente_id', type: 'uuid', nullable: true })
+  creatoDaUtenteId?: string;
 
-  @Column({ name: 'modificato_da_utente_id', nullable: true })
-  modificatoDaUtenteId?: number;
+  @Column({ name: 'modificato_da_utente_id', type: 'uuid', nullable: true })
+  modificatoDaUtenteId?: string;
 
   // ==================== TIMESTAMP ====================
 

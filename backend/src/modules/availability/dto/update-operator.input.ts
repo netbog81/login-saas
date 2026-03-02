@@ -1,5 +1,5 @@
-import { InputType, Field, Int, Float } from '@nestjs/graphql';
-import { IsString, IsEmail, IsOptional, MaxLength, IsInt, Min, Max, IsBoolean, IsArray, IsEnum, IsNumber } from 'class-validator';
+import { InputType, Field, Int, Float, ID } from '@nestjs/graphql';
+import { IsString, IsEmail, IsOptional, MaxLength, IsInt, IsUUID, Min, Max, IsBoolean, IsArray, IsEnum, IsNumber } from 'class-validator';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 
 @InputType()
@@ -62,10 +62,10 @@ export class UpdateOperatorInput {
   @IsBoolean()
   isActive?: boolean;
 
-  @Field(() => Int, { nullable: true })
+  @Field(() => ID, { nullable: true })
   @IsOptional()
-  @IsInt()
-  userId?: number;
+  @IsUUID('4', { message: 'ID utente non valido' })
+  userId?: string;
 
   @Field(() => Float, { nullable: true })
   @IsOptional()

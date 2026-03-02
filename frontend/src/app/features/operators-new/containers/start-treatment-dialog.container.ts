@@ -357,7 +357,7 @@ export class StartTreatmentDialogContainer implements OnDestroy {
 
   // Input per inizializzare il dialog
   @Input() appointmentId: string = '';
-  @Input() patientId: number = 0;
+  @Input() patientId: string = '';
   @Input() patientName: string = '';
   @Input() operatorId: string = '';
   @Input() serviceId?: string;       // @deprecated - usa appointmentServices
@@ -458,22 +458,21 @@ export class StartTreatmentDialogContainer implements OnDestroy {
   }
 
   private loadActivePaths(): void {
-    // Valida e converti patientId a numero
-    const numericPatientId = Number(this.patientId);
-    if (!numericPatientId || numericPatientId <= 0 || isNaN(numericPatientId)) {
+    // Valida patientId
+    if (!this.patientId) {
       console.error('[StartTreatmentDialogContainer] Invalid patientId:', this.patientId, 'type:', typeof this.patientId);
       this.showNoPathsWarning = true;
       this.cdr.markForCheck();
       return;
     }
 
-    console.log('[StartTreatmentDialogContainer] Loading paths and services for patientId:', numericPatientId);
+    console.log('[StartTreatmentDialogContainer] Loading paths and services for patientId:', this.patientId);
 
     // Carica percorsi, servizi e strumenti in parallelo
     // NOTA: Apollo/ApolloZoneService già eseguono dentro NgZone,
     // non serve wrapping aggiuntivo con ngZone.run()
     forkJoin({
-      paths: this.pathService.getPathsByPatient(numericPatientId),
+      paths: this.pathService.getPathsByPatient(this.patientId),
       services: this.serviceService.getServicesOnce(),
       instruments: this.instrumentService.getInstruments()
     })

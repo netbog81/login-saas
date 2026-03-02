@@ -72,7 +72,7 @@ export interface AvailableSlot {
 interface PersistedCalendarState {
   version: number;                    // Per migrazioni future
   timestamp: number;                  // Unix timestamp per scadenza
-  selectedOperatorIds: number[];      // Solo ID numerici, no nomi
+  selectedOperatorIds: string[];      // Solo ID UUID, no nomi
   searchFilters: AppointmentSearchFilters | null;
   slotSearchEnabled: boolean;         // Toggle ricerca slot disponibili
   config: {
@@ -95,7 +95,7 @@ export class CalendarStateService {
   private readonly MAX_STORAGE_SIZE = 50000; // 50KB max
 
   // Track selected operator IDs for persistence (ISO 27001 A.8.11 - only IDs, no personal data)
-  private _selectedOperatorIds = new Set<number>();
+  private _selectedOperatorIds = new Set<string>();
   // State streams
   private configSubject = new BehaviorSubject<CalendarConfig>({
     slotDuration: 45,
@@ -248,7 +248,7 @@ export class CalendarStateService {
     // Save only IDs for persistence (ISO 27001 A.8.11 - no personal data)
     this._selectedOperatorIds = new Set(
       operators
-        .filter(o => o && typeof o.id === 'number')
+        .filter(o => o && o.id)
         .map(o => o.id)
     );
     this.selectedOperatorsSubject.next(operators);
@@ -593,7 +593,7 @@ export class CalendarStateService {
     // Verify selectedOperatorIds
     if (!Array.isArray(state['selectedOperatorIds'])) return null;
     const operatorIds = state['selectedOperatorIds'] as unknown[];
-    if (!operatorIds.every(id => typeof id === 'number' && Number.isInteger(id) && id > 0)) {
+    if (!operatorIds.every(id => typeof id === 'string' && id.length > 0)) {
       console.warn('[CalendarState] Invalid operator IDs in stored state');
       return null;
     }
@@ -683,7 +683,7 @@ export class CalendarStateService {
         version: this.STORAGE_VERSION,
         timestamp: Date.now(),
         selectedOperatorIds: Array.from(this._selectedOperatorIds)
-          .filter(id => Number.isInteger(id) && id > 0)
+          .filter(id => typeof id === 'string' && id.length > 0)
           .slice(0, this.MAX_OPERATORS),
         searchFilters: this.searchFiltersSubject.value,
         slotSearchEnabled: this.slotSearchEnabledSubject.value,
@@ -761,8 +761,8 @@ export class CalendarStateService {
   /**
    * Check if an operator was previously selected (from storage)
    */
-  wasOperatorSelected(operatorId: number): boolean {
-    if (!Number.isInteger(operatorId) || operatorId <= 0) return false;
+  wasOperatorSelected(operatorId: string): boolean {
+    if (!operatorId) return false;
     return this._selectedOperatorIds.has(operatorId);
   }
 
@@ -776,7 +776,7 @@ export class CalendarStateService {
   /**
    * Get stored operator IDs (for restoration in CalendarContainerComponent)
    */
-  getStoredOperatorIds(): number[] {
+  getStoredOperatorIds(): string[] {
     return Array.from(this._selectedOperatorIds);
   }
 }

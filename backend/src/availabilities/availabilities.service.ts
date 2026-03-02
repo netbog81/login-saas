@@ -13,7 +13,7 @@ export class AvailabilitiesService {
   async findByDateRange(
     startDate: string,
     endDate: string,
-    userId?: number
+    userId?: string
   ): Promise<Availability[]> {
     const where: any = {
       date: Between(startDate, endDate)
@@ -30,7 +30,7 @@ export class AvailabilitiesService {
     });
   }
 
-  async findByDate(date: string, userId?: number): Promise<Availability[]> {
+  async findByDate(date: string, userId?: string): Promise<Availability[]> {
     const where: any = { date };
 
     if (userId) {
@@ -44,7 +44,7 @@ export class AvailabilitiesService {
     });
   }
 
-  findOne(id: number): Promise<Availability> {
+  findOne(id: string): Promise<Availability> {
     return this.availabilitiesRepository.findOne({
       where: { id },
       relations: ['user']
@@ -63,17 +63,17 @@ export class AvailabilitiesService {
     return this.availabilitiesRepository.save(entities);
   }
 
-  async update(id: number, availabilityData: Partial<Availability>): Promise<Availability> {
+  async update(id: string, availabilityData: Partial<Availability>): Promise<Availability> {
     await this.availabilitiesRepository.update(id, availabilityData);
     return this.findOne(id);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     await this.availabilitiesRepository.delete(id);
   }
 
   async setDefaultAvailability(
-    userId: number,
+    userId: string,
     startDate: string,
     endDate: string,
     startTime: string,

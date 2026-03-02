@@ -1,5 +1,5 @@
-import { InputType, Field, Int, ID } from '@nestjs/graphql';
-import { IsOptional, IsString, IsUUID, IsInt, IsArray, ValidateNested, IsBoolean, Matches, IsEmail, MaxLength, IsEnum } from 'class-validator';
+import { InputType, Field, ID } from '@nestjs/graphql';
+import { IsOptional, IsString, IsUUID, IsArray, ValidateNested, IsBoolean, Matches, IsEmail, MaxLength, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AppointmentInstrumentInput, ServiceInputItem } from './create-availability-appointment.input';
 import { BookingStatus } from '../entities/availability-appointment.entity';
@@ -24,10 +24,10 @@ export class UpdateAvailabilityAppointmentInput {
   @MaxLength(50, { message: 'Numero di telefono troppo lungo' })
   clientPhone?: string;
 
-  @Field(() => Int, { nullable: true })
+  @Field(() => ID, { nullable: true })
   @IsOptional()
-  @IsInt()
-  patientId?: number;
+  @IsUUID('4', { message: 'ID paziente non valido' })
+  patientId?: string;
 
   /**
    * @deprecated Usa services invece. Mantenuto per retrocompatibilità.

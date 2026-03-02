@@ -22,9 +22,9 @@ export class TherapeuticPath {
 
   // ==================== RELATIONS ====================
 
-  @Field(() => Int)
-  @Column('int')
-  patientId: number;
+  @Field(() => ID)
+  @Column('uuid')
+  patientId: string;
 
   @Field(() => ID)
   @Column('uuid')

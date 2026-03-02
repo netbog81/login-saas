@@ -1,12 +1,12 @@
-import { InputType, Field, Int, ID } from '@nestjs/graphql';
+import { InputType, Field, ID } from '@nestjs/graphql';
 
 /**
  * Input per creazione nuova anamnesi paziente
  */
 @InputType()
 export class CreatePatientAnamnesisInput {
-  @Field(() => Int, { description: 'ID del paziente' })
-  patientId: number;
+  @Field(() => ID, { description: 'ID del paziente' })
+  patientId: string;
 
   @Field(() => ID, { nullable: true, description: 'ID operatore che compila' })
   operatorId?: string;

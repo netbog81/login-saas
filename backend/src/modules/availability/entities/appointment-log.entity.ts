@@ -50,8 +50,8 @@ export class AppointmentLog {
    * ID del paziente (se presente)
    */
   @Field(() => ID, { nullable: true })
-  @Column('integer', { nullable: true })
-  patientId?: number;
+  @Column('uuid', { nullable: true })
+  patientId?: string;
 
   /**
    * ID dell'operatore coinvolto

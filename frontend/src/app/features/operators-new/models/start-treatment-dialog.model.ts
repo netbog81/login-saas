@@ -50,7 +50,7 @@ export interface StartTreatmentInstrumentInput {
  */
 export interface StartTreatmentDialogData {
   appointmentId: string;
-  patientId: number;
+  patientId: string;
   patientName: string;
   activePaths: TherapeuticPath[];  // Solo percorsi ATTIVI del paziente
   operatorId: string;
@@ -128,7 +128,7 @@ export interface CashCollectionData {
  */
 export function createStartTreatmentDialogData(
   appointmentId: string,
-  patientId: number,
+  patientId: string,
   patientName: string,
   activePaths: TherapeuticPath[],
   operatorId: string,

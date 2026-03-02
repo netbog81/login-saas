@@ -78,7 +78,7 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
   clientPhone: string = '';
   clientEmail: string = '';
   notes: string = '';
-  selectedPatientId: number | null = null;
+  selectedPatientId: string | null = null;
 
   // Service selection (legacy singolo)
   serviceId: string | null = null;
@@ -210,8 +210,7 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
       this.notes = apt.notes || '';
       this.serviceId = apt.serviceId || null;
       this.bookingStatus = apt.bookingStatus || 'scheduled';
-      // Forza conversione a number (GraphQL ID può essere stringa)
-      this.selectedPatientId = apt.patientId ? Number(apt.patientId) : null;
+      this.selectedPatientId = apt.patientId || null;
 
       // Carica i servizi multipli (se presenti)
       if (apt.appointmentServices?.length) {
@@ -344,8 +343,7 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
 
   selectPatient(patient: Patient): void {
     this.runInZone(() => {
-      // Forza conversione a number (GraphQL ID può essere stringa)
-      this.selectedPatientId = Number(patient.id);
+      this.selectedPatientId = patient.id;
       this.clientName = `${patient.nome} ${patient.cognome}`;
       this.clientPhone = patient.cellulare || patient.telefono || '';
       this.clientEmail = patient.email || '';
@@ -676,8 +674,7 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
         clientName: this.clientName.trim(),
         clientPhone: this.clientPhone.trim() || undefined,
         clientEmail: this.clientEmail.trim() || undefined,
-        // Forza conversione a Int per GraphQL
-        patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
+        patientId: this.selectedPatientId || undefined,
         // Usa servizi multipli se presenti, altrimenti fallback a serviceId singolo
         serviceId: !servicesInput && this.serviceId ? this.serviceId : undefined,
         services: servicesInput,
@@ -710,8 +707,7 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
         clientName: this.clientName.trim(),
         clientPhone: this.clientPhone.trim() || undefined,
         clientEmail: this.clientEmail.trim() || undefined,
-        // Forza conversione a Int per GraphQL
-        patientId: this.selectedPatientId ? Number(this.selectedPatientId) : undefined,
+        patientId: this.selectedPatientId || undefined,
         // Usa servizi multipli se presenti, altrimenti fallback a serviceId singolo
         serviceId: !servicesInput && this.serviceId ? this.serviceId : undefined,
         services: servicesInput,

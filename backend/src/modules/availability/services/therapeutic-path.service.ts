@@ -8,7 +8,7 @@ import { Patient } from '../../../entities/patient.entity';
 // ==================== INPUT INTERFACES ====================
 
 export interface CreateTherapeuticPathInput {
-  patientId: number;
+  patientId: string;
   primaryOperatorId: string;
   name: string;
   diagnosis?: string;
@@ -97,7 +97,7 @@ export class TherapeuticPathService {
   /**
    * Ottiene tutti i percorsi di un paziente
    */
-  async findByPatient(patientId: number): Promise<TherapeuticPath[]> {
+  async findByPatient(patientId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { patientId },
       relations: ['patient', 'primaryOperator', 'documents'],
@@ -108,7 +108,7 @@ export class TherapeuticPathService {
   /**
    * Ottiene i percorsi attivi di un paziente
    */
-  async findActiveByPatient(patientId: number): Promise<TherapeuticPath[]> {
+  async findActiveByPatient(patientId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: {
         patientId,
@@ -226,7 +226,7 @@ export class TherapeuticPathService {
   /**
    * Conta i percorsi per stato di un paziente
    */
-  async countPathsByStatus(patientId: number): Promise<Record<TherapeuticPathStatus, number>> {
+  async countPathsByStatus(patientId: string): Promise<Record<TherapeuticPathStatus, number>> {
     const counts = await this.pathRepo
       .createQueryBuilder('path')
       .select('path.status', 'status')

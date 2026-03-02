@@ -1,5 +1,5 @@
-import { InputType, Field, ID, Int } from '@nestjs/graphql';
-import { IsUUID, IsString, IsOptional, IsInt, Min, IsDateString, Matches, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import { InputType, Field, ID } from '@nestjs/graphql';
+import { IsUUID, IsString, IsOptional, IsDateString, Matches, IsBoolean, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import GraphQLJSON from 'graphql-type-json';
 import { ServiceInputItem } from './create-availability-appointment.input';
@@ -42,11 +42,10 @@ export class CreateGymAppointmentInput {
   @IsString()
   clientPhone?: string;
 
-  @Field(() => Int, { nullable: true })
+  @Field(() => ID, { nullable: true })
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  patientId?: number;
+  @IsUUID('4', { message: 'ID paziente non valido' })
+  patientId?: string;
 
   /**
    * @deprecated Usa services invece. Mantenuto per retrocompatibilità.

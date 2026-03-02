@@ -41,7 +41,7 @@ export class AppointmentsService {
     });
   }
 
-  findOne(id: number): Promise<Appointment> {
+  findOne(id: string): Promise<Appointment> {
     return this.appointmentsRepository.findOne({
       where: { id },
       relations: ['operator', 'patient']
@@ -74,12 +74,12 @@ export class AppointmentsService {
     return appointments;
   }
 
-  async update(id: number, appointmentData: Partial<Appointment>): Promise<Appointment> {
+  async update(id: string, appointmentData: Partial<Appointment>): Promise<Appointment> {
     await this.appointmentsRepository.update(id, appointmentData);
     return this.findOne(id);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     await this.appointmentsRepository.delete(id);
   }
 
@@ -173,7 +173,7 @@ export class AppointmentsService {
     date: string,
     startTime: string,
     endTime: string,
-    excludeAppointmentId?: number
+    excludeAppointmentId?: string
   ): Promise<boolean> {
     const where: any = {
       operatorId,

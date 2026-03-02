@@ -17,7 +17,7 @@ export class UsersService {
     });
   }
 
-  findOne(id: number): Promise<User> {
+  findOne(id: string): Promise<User> {
     return this.usersRepository.findOne({ where: { id } });
   }
 
@@ -26,12 +26,12 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-  async update(id: number, userData: Partial<User>): Promise<User> {
+  async update(id: string, userData: Partial<User>): Promise<User> {
     await this.usersRepository.update(id, userData);
     return this.findOne(id);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     await this.usersRepository.update(id, { active: false });
   }
 }

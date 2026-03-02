@@ -10,7 +10,7 @@
  */
 export interface PatientAnamnesis {
   id: string;
-  patientId: number;
+  patientId: string;
 
   // Anamnesi Patologica Remota
   patologiePregresse: string | null;
@@ -36,7 +36,7 @@ export interface PatientAnamnesis {
  * Input per creazione anamnesi paziente
  */
 export interface CreatePatientAnamnesisInput {
-  patientId: number;
+  patientId: string;
   operatorId?: string;
   patologiePregresse?: string;
   interventiChirurgici?: string;
@@ -64,7 +64,7 @@ export interface UpdatePatientAnamnesisInput {
 /**
  * Crea un'anamnesi vuota con valori di default
  */
-export function createEmptyPatientAnamnesis(patientId: number): Omit<PatientAnamnesis, 'id' | 'createdAt' | 'updatedAt'> {
+export function createEmptyPatientAnamnesis(patientId: string): Omit<PatientAnamnesis, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     patientId,
     patologiePregresse: null,

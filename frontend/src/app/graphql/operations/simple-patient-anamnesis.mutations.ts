@@ -38,7 +38,7 @@ export const UPDATE_PATIENT_ANAMNESIS = gql`
  * Utile quando non si sa se esiste già o meno
  */
 export const UPSERT_PATIENT_ANAMNESIS = gql`
-  mutation UpsertPatientAnamnesis($patientId: Int!, $input: UpdatePatientAnamnesisInput!) {
+  mutation UpsertPatientAnamnesis($patientId: ID!, $input: UpdatePatientAnamnesisInput!) {
     upsertPatientAnamnesis(patientId: $patientId, input: $input) {
       ...SimplePatientAnamnesisFields
     }

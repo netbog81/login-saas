@@ -39,9 +39,9 @@ export class PatientAnamnesis {
 
   // ==================== RELATIONS ====================
 
-  @Field(() => Int)
-  @Column('int', { name: 'patient_id', unique: true })
-  patientId: number;
+  @Field(() => ID)
+  @Column('uuid', { name: 'patient_id', unique: true })
+  patientId: string;
 
   @Field(() => ID, { nullable: true })
   @Column('uuid', { name: 'operator_id', nullable: true })

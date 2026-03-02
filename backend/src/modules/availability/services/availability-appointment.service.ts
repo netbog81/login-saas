@@ -39,7 +39,7 @@ export interface CreateAvailabilityAppointmentInput {
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   appointmentDate: string; // YYYY-MM-DD
   startTime: string;       // HH:mm
   endTime: string;         // HH:mm
@@ -58,7 +58,7 @@ export interface UpdateAvailabilityAppointmentInput {
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   appointmentDate?: string;
   startTime?: string;
   endTime?: string;
@@ -968,7 +968,7 @@ export class AvailabilityAppointmentService {
   /**
    * Incrementa il contatore cancellazioni del paziente per l'anno corrente
    */
-  private async incrementPatientCancellation(patientId: number): Promise<void> {
+  private async incrementPatientCancellation(patientId: string): Promise<void> {
     const year = new Date().getFullYear().toString();
 
     // Query raw per aggiornare il JSONB direttamente
@@ -986,7 +986,7 @@ export class AvailabilityAppointmentService {
   /**
    * Incrementa il contatore no-show del paziente per l'anno corrente
    */
-  private async incrementPatientNoShow(patientId: number): Promise<void> {
+  private async incrementPatientNoShow(patientId: string): Promise<void> {
     const year = new Date().getFullYear().toString();
 
     // Query raw per aggiornare il JSONB direttamente

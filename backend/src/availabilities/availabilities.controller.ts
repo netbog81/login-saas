@@ -15,7 +15,7 @@ export class AvailabilitiesController {
     return this.availabilitiesService.findByDateRange(
       startDate,
       endDate,
-      userId ? +userId : undefined
+      userId || undefined
     );
   }
 
@@ -26,13 +26,13 @@ export class AvailabilitiesController {
   ): Promise<Availability[]> {
     return this.availabilitiesService.findByDate(
       date,
-      userId ? +userId : undefined
+      userId || undefined
     );
   }
 
   @Get(':id')
   findOne(@Param('id') id: string): Promise<Availability> {
-    return this.availabilitiesService.findOne(+id);
+    return this.availabilitiesService.findOne(id);
   }
 
   @Post()
@@ -48,7 +48,7 @@ export class AvailabilitiesController {
   @Post('set-default')
   setDefaultAvailability(
     @Body() data: {
-      userId: number;
+      userId: string;
       startDate: string;
       endDate: string;
       startTime: string;
@@ -69,11 +69,11 @@ export class AvailabilitiesController {
     @Param('id') id: string,
     @Body() availabilityData: Partial<Availability>
   ): Promise<Availability> {
-    return this.availabilitiesService.update(+id, availabilityData);
+    return this.availabilitiesService.update(id, availabilityData);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string): Promise<void> {
-    return this.availabilitiesService.remove(+id);
+    return this.availabilitiesService.remove(id);
   }
 }

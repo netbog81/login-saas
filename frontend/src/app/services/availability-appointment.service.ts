@@ -55,7 +55,7 @@ export interface CreateAvailabilityAppointmentInput {
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   appointmentDate: string;
   startTime: string;
   endTime: string;
@@ -74,7 +74,7 @@ export interface UpdateAvailabilityAppointmentInput {
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
-  patientId?: number;
+  patientId?: string;
   appointmentDate?: string;
   startTime?: string;
   endTime?: string;

@@ -57,6 +57,7 @@ interface NavLink {
             [operators]="(stateService.operators$ | async) || []"
             [selectedOperatorId]="(stateService.selectedOperator$ | async)?.id || null"
             [loading]="(stateService.loadingOperators$ | async) || false"
+            [disabled]="!(stateService.isAdmin$ | async)"
             (operatorChange)="onOperatorChange($event)">
           </app-operator-selector>
           <app-date-navigator

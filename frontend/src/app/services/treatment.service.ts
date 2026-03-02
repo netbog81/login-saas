@@ -97,7 +97,7 @@ export class TreatmentService extends BaseGraphQLService {
    * Get treatments by patient
    */
   getTreatmentsByPatient(
-    patientId: number,
+    patientId: string,
     limit?: number,
     offset?: number
   ): Observable<Treatment[]> {

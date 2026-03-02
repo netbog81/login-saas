@@ -58,13 +58,13 @@ export class Operator {
   @Column({ type: 'int', array: true, nullable: true })
   preferredDurations?: number[];
 
-  @Field(() => Int, { nullable: true })
-  @Column({ type: 'int', nullable: true })
-  legacyUserId?: number;
+  @Field(() => ID, { nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  legacyUserId?: string;
 
-  @Field(() => Int, { nullable: true })
-  @Column({ type: 'int', nullable: true })
-  userId?: number;
+  @Field(() => ID, { nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  userId?: string;
 
   @Field(() => Int)
   @Column({ default: 1 })

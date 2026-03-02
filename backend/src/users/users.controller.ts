@@ -13,7 +13,7 @@ export class UsersController {
 
   @Get(':id')
   findOne(@Param('id') id: string): Promise<User> {
-    return this.usersService.findOne(+id);
+    return this.usersService.findOne(id);
   }
 
   @Post()
@@ -23,11 +23,11 @@ export class UsersController {
 
   @Put(':id')
   update(@Param('id') id: string, @Body() userData: Partial<User>): Promise<User> {
-    return this.usersService.update(+id, userData);
+    return this.usersService.update(id, userData);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string): Promise<void> {
-    return this.usersService.remove(+id);
+    return this.usersService.remove(id);
   }
 }

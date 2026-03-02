@@ -3,7 +3,7 @@ import { GraphQLJSONObject } from 'graphql-type-json';
 // src/pazienti/entities/paziente.entity.ts
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
@@ -30,8 +30,8 @@ import type { PersonaRiferimento } from '../patients/entities/persona-riferiment
 @Index(['telefono'])
 @Index(['dataNascita'])
 export class Patient {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn({ type: 'uuid', default: () => "public.uuid_generate_v4()" })
+  id: string;
 
   // ==================== DATI ANAGRAFICI ====================
 
@@ -509,7 +509,7 @@ export class Patient {
     // Mantiene solo dati essenziali per ricerca medica
     this.nome = 'ANONIMO';
     this.cognome = 'ANONIMO';
-    this.codiceFiscale = `ANON${this.id.toString().padStart(12, '0')}`;
+    this.codiceFiscale = `ANON${this.id.replace(/-/g, '').substring(0, 12)}`;
     this.email = undefined;
     this.pec = undefined;
     this.telefono = undefined;
@@ -586,7 +586,7 @@ export class Patient {
     throw new Error('Method should be implemented in service layer');
   }
 
-  removePersonaRiferimento(personaId: number, motivo: string): void {
+  removePersonaRiferimento(personaId: string, motivo: string): void {
     // Questo metodo sarà implementato nel service
     throw new Error('Method should be implemented in service layer');
   }

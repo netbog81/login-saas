@@ -144,7 +144,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       <app-start-treatment-dialog-container
         #startTreatmentDialog
         [appointmentId]="selectedAppointment?.id?.toString() || ''"
-        [patientId]="selectedPatient?.id || 0"
+        [patientId]="selectedPatient?.id || ''"
         [patientName]="getPatientFullName()"
         [operatorId]="selectedOperator?.id || ''"
         [serviceId]="getServiceId()"
@@ -160,7 +160,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
       <!-- Edit Treatment Dialog Container -->
       <app-edit-treatment-dialog-container
         #editTreatmentDialog
-        [patientId]="selectedPatient?.id || 0"
+        [patientId]="selectedPatient?.id || ''"
         (treatmentUpdated)="onTreatmentUpdated($event)"
         (cancel)="onEditTreatmentDialogCancel()">
       </app-edit-treatment-dialog-container>
@@ -406,7 +406,7 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
       });
   }
 
-  private loadPatient(patientId: number): void {
+  private loadPatient(patientId: string): void {
     this.uiState = { ...this.uiState, loadingPatient: true };
     this.cdr.markForCheck();
 

@@ -214,7 +214,7 @@ export class EventMatDialogComponent implements OnInit {
       operatorId: [apt?.operatorId || this.data.defaultOperatorId || '', Validators.required],
       startTime: [apt?.startTime || this.data.defaultStartTime || '', Validators.required],
       endTime: [apt?.endTime || this.data.defaultEndTime || '', Validators.required],
-      patientId: [apt?.patientId ? Number(apt.patientId) : null],
+      patientId: [apt?.patientId || null],
       title: [apt?.title || ''],
       notes: [apt?.notes || ''],
       nonRetribuito: [apt?.nonRetribuito || false]
@@ -816,7 +816,7 @@ export class EventMatDialogComponent implements OnInit {
       endTime: f.endTime,
       operatorId: f.operatorId,
       serviceId: services[0]?.serviceId,
-      patientId: f.patientId ? Number(f.patientId) : undefined,
+      patientId: f.patientId || undefined,
       notes: f.notes || undefined
     };
 

@@ -11,7 +11,7 @@ import { TherapeuticPath, PathStatus } from '../../../models/therapeutic-path.mo
 export interface PathDialogData {
   mode: 'create' | 'edit';
   path?: TherapeuticPath;
-  patientId: number;
+  patientId: string;
   currentOperatorId?: string;
 }
 
@@ -50,7 +50,7 @@ export const PATH_STATUS_OPTIONS: PathStatusOption[] = [
 /**
  * Factory per creare dati dialog vuoti (create mode)
  */
-export function createNewPathDialogData(patientId: number, currentOperatorId?: string): PathDialogData {
+export function createNewPathDialogData(patientId: string, currentOperatorId?: string): PathDialogData {
   return {
     mode: 'create',
     patientId,
@@ -63,7 +63,7 @@ export function createNewPathDialogData(patientId: number, currentOperatorId?: s
  */
 export function createEditPathDialogData(
   path: TherapeuticPath,
-  patientId: number,
+  patientId: string,
   currentOperatorId?: string
 ): PathDialogData {
   return {

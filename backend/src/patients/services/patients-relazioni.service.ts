@@ -63,8 +63,8 @@ export interface CreatePersonaRiferimentoDto {
 }
 
 export interface ConsensoRequestDto {
-  pazienteId: number;
-  personaRiferimentoId: number;
+  pazienteId: string;
+  personaRiferimentoId: string;
   tipoTrattamento?: TipoTrattamentoConsenso;
   tipoConsensoRichiesto?: TipoConsensoRichiesto;
   etaMinimaConsensoAutonomo?: number;
@@ -73,8 +73,8 @@ export interface ConsensoRequestDto {
 }
 
 export interface ConsensoResponseDto {
-  pazienteId: number;
-  personaRiferimentoId: number;
+  pazienteId: string;
+  personaRiferimentoId: string;
   consensoDato: boolean;
   modalitaConsenso: string;
   documentoConsenso?: string;
@@ -98,9 +98,9 @@ export class PazientiRelazioniService {
   // ==================== GESTIONE PERSONE RIFERIMENTO ====================
 
   async addPersonaRiferimento(
-    pazienteId: number,
+    pazienteId: string,
     createDto: CreatePersonaRiferimentoDto,
-    cretedByUserId?: number,
+    cretedByUserId?: string,
   ): Promise<PersonaRiferimento> {
     const paziente = await this.pazientiRepository.findOne({
       where: { id: pazienteId },
@@ -162,9 +162,9 @@ export class PazientiRelazioniService {
   }
 
   async updatePersonaRiferimento(
-    personaId: number,
+    personaId: string,
     updateDto: Partial<CreatePersonaRiferimentoDto>,
-    modifiedByUserId?: number,
+    modifiedByUserId?: string,
   ): Promise<PersonaRiferimento> {
     const persona = await this.personeRiferimentoRepository.findOne({
       where: { id: personaId },
@@ -192,9 +192,9 @@ export class PazientiRelazioniService {
   }
 
   async removePersonaRiferimento(
-    personaId: number,
+    personaId: string,
     motivo: string,
-    removedByUserId?: number,
+    removedByUserId?: string,
   ): Promise<void> {
     const persona = await this.personeRiferimentoRepository.findOne({
       where: { id: personaId },
@@ -236,9 +236,9 @@ export class PazientiRelazioniService {
   }
 
   async giveConsenso(
-    relazioneId: number,
+    relazioneId: string,
     responseDto: ConsensoResponseDto,
-    collectedByUserId?: number,
+    collectedByUserId?: string,
   ): Promise<PazientePersonaRelazione> {
     const relazione = await this.relazioniRepository.findOne({
       where: { id: relazioneId },
@@ -274,7 +274,7 @@ export class PazientiRelazioniService {
   }
 
   async checkConsensoForTreatment(
-    pazienteId: number,
+    pazienteId: string,
     tipoTrattamento: TipoTrattamentoConsenso,
   ): Promise<{
     consensoValido: boolean;
@@ -366,7 +366,7 @@ export class PazientiRelazioniService {
   // ==================== METODI DI RICERCA ====================
 
   async getPersoneRiferimentoByPaziente(
-    pazienteId: number,
+    pazienteId: string,
   ): Promise<PersonaRiferimento[]> {
     return await this.personeRiferimentoRepository.find({
       where: { pazienteId, attivo: true },
@@ -375,7 +375,7 @@ export class PazientiRelazioniService {
   }
 
   async getPersoneRiferimentoByTipo(
-    pazienteId: number,
+    pazienteId: string,
     tipo: TipoRiferimento,
   ): Promise<PersonaRiferimento[]> {
     return await this.personeRiferimentoRepository.find({
@@ -397,7 +397,7 @@ export class PazientiRelazioniService {
   }
 
   async getConsensiByPaziente(
-    pazienteId: number,
+    pazienteId: string,
   ): Promise<PazientePersonaRelazione[]> {
     return await this.relazioniRepository.find({
       where: { pazienteId },
@@ -406,7 +406,7 @@ export class PazientiRelazioniService {
   }
 
   async getConsensiByPersona(
-    personaRiferimentoId: number,
+    personaRiferimentoId: string,
   ): Promise<PazientePersonaRelazione[]> {
     return await this.relazioniRepository.find({
       where: { personaRiferimentoId },
@@ -480,8 +480,8 @@ export class PazientiRelazioniService {
   }
 
   private async createDefaultConsensoRelation(
-    pazienteId: number,
-    personaRiferimentoId: number,
+    pazienteId: string,
+    personaRiferimentoId: string,
   ): Promise<void> {
     const defaultRelazione = this.relazioniRepository.create({
       pazienteId,
@@ -662,8 +662,8 @@ export class PazientiRelazioniService {
   }
 
   private async revocaAllConsensi(
-    pazienteId: number,
-    personaRiferimentoId: number,
+    pazienteId: string,
+    personaRiferimentoId: string,
     motivo: string,
   ): Promise<void> {
     await this.relazioniRepository
@@ -684,7 +684,7 @@ export class PazientiRelazioniService {
 
   // ==================== METODI UTILITY ====================
 
-  async getStatisticheConsensi(pazienteId: number): Promise<{
+  async getStatisticheConsensi(pazienteId: string): Promise<{
     totaleConsensi: number;
     consensiAttivi: number;
     consensiScaduti: number;
@@ -708,7 +708,7 @@ export class PazientiRelazioniService {
     };
   }
 
-  async generateConsensoReport(pazienteId: number): Promise<string> {
+  async generateConsensoReport(pazienteId: string): Promise<string> {
     const paziente = await this.pazientiRepository.findOne({
       where: { id: pazienteId },
     });

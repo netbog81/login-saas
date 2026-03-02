@@ -131,7 +131,7 @@ type AvailabilityAppointment {
   originalOperator: Operator
   originalOperatorId: ID
   participantCount: Int!
-  patientId: Int
+  patientId: ID
   recurringGroupId: ID
   repeatConfig: JSON
   service: Service
@@ -297,7 +297,7 @@ input CreateAvailabilityAppointmentInput {
   nonRetribuito: Boolean
   notes: String
   operatorId: ID!
-  patientId: Int
+  patientId: ID
 
   """Configurazione per appuntamenti ricorrenti"""
   repeatConfig: RepeatConfigInput
@@ -384,7 +384,7 @@ input CreateGymAppointmentInput {
   gymRoomId: ID!
   isRecurring: Boolean
   notes: String
-  patientId: Int
+  patientId: ID
   repeatConfig: JSON
   serviceId: ID
 
@@ -445,7 +445,7 @@ input CreateOperatorInput {
   color: String
   email: String
   isActive: Boolean
-  legacyUserId: Int
+  legacyUserId: ID
   macroCategory: OperatorMacroCategory!
   maxConcurrentAppointments: Int
   name: String!
@@ -454,7 +454,7 @@ input CreateOperatorInput {
   professionalRegistration: String
   royaltyPercentage: Float
   surname: String
-  userId: Int
+  userId: ID
 }
 
 input CreatePatientAnamnesisInput {
@@ -471,7 +471,7 @@ input CreatePatientAnamnesisInput {
   operatorId: ID
 
   """ID del paziente"""
-  patientId: Int!
+  patientId: ID!
 
   """Patologie pregresse"""
   patologiePregresse: String
@@ -649,7 +649,7 @@ input CreateTherapeuticPathInput {
   icdCode: String
   name: String!
   notes: String
-  patientId: Int!
+  patientId: ID!
   primaryOperatorId: ID!
 }
 
@@ -1230,7 +1230,7 @@ type Mutation {
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 
   """Crea o aggiorna anamnesi paziente"""
-  upsertPatientAnamnesis(input: UpdatePatientAnamnesisInput!, patientId: Int!): PatientAnamnesis!
+  upsertPatientAnamnesis(input: UpdatePatientAnamnesisInput!, patientId: ID!): PatientAnamnesis!
 }
 
 type ObjectiveProgressHistory {
@@ -1280,7 +1280,7 @@ type Operator {
   gymSchedules: [GymSchedule!]
   id: ID!
   isActive: Boolean!
-  legacyUserId: Int
+  legacyUserId: ID
   macroCategory: OperatorMacroCategory!
   maxConcurrentAppointments: Int!
   name: String!
@@ -1292,7 +1292,7 @@ type Operator {
   surname: String
   templateAssignments: [TemplateAssignment!]
   updatedAt: DateTime!
-  userId: Int
+  userId: ID
 }
 
 type OperatorCategory {
@@ -1366,7 +1366,7 @@ type PatientAnamnesis {
   operator: Operator
   operatorId: ID
   patient: PatientModel!
-  patientId: Int!
+  patientId: ID!
 
   """Patologie pregresse"""
   patologiePregresse: String
@@ -1714,7 +1714,7 @@ type PrivacyOfficer {
 }
 
 type Query {
-  activeTherapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
+  activeTherapeuticPathsByPatient(patientId: ID!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
   appUser(id: ID!): AppUser
@@ -1763,7 +1763,7 @@ type Query {
   gymSchedulesByRoomAndDay(dayOfWeek: Int!, gymRoomId: ID!): [GymSchedule!]!
 
   """Verifica se il paziente ha un'anamnesi"""
-  hasPatientAnamnesis(patientId: Int!): Boolean!
+  hasPatientAnamnesis(patientId: ID!): Boolean!
   holidays(year: Int!): [HolidayInfo!]!
   instrument(id: ID!): Instrument
   instrumentCategories(macroCategory: OperatorMacroCategory): [InstrumentCategory!]!
@@ -1775,6 +1775,7 @@ type Query {
   itManagers: [ItManager!]!
   keycloakOrgMembers: [KeycloakOrgMember!]!
   keycloakRealmRoles: [KeycloakRealmRoleType!]!
+  myOperator: Operator
   objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
   objectivesByEvaluation(evaluationId: ID!): [EvaluationObjective!]!
   objectivesProgress(evaluationId: ID!): ObjectivesProgress!
@@ -1795,7 +1796,7 @@ type Query {
   patientAnamnesis(id: ID!): PatientAnamnesis
 
   """Ottiene anamnesi per paziente ID"""
-  patientAnamnesisByPatient(patientId: Int!): PatientAnamnesis
+  patientAnamnesisByPatient(patientId: ID!): PatientAnamnesis
 
   """Find patient by Italian tax code (Codice Fiscale)"""
   patientByCodiceFiscale(codiceFiscale: String!): PatientModel
@@ -1848,11 +1849,11 @@ type Query {
   testsWithHistory(evaluationId: ID!): [EvaluationTest!]!
   therapeuticPath(id: ID!): TherapeuticPath
   therapeuticPathsByOperator(operatorId: ID!): [TherapeuticPath!]!
-  therapeuticPathsByPatient(patientId: Int!): [TherapeuticPath!]!
+  therapeuticPathsByPatient(patientId: ID!): [TherapeuticPath!]!
   treatment(id: ID!): Treatment
   treatmentByAppointment(appointmentId: ID!): Treatment
   treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
-  treatmentsByPatient(limit: Int, offset: Int, patientId: Int!): [Treatment!]!
+  treatmentsByPatient(limit: Int, offset: Int, patientId: ID!): [Treatment!]!
   treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
   treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
@@ -2194,7 +2195,7 @@ type TherapeuticPath {
   name: String!
   notes: String
   patient: PatientModel!
-  patientId: Int!
+  patientId: ID!
   primaryOperator: Operator!
   primaryOperatorId: ID!
   status: TherapeuticPathStatus!
@@ -2250,7 +2251,7 @@ type Treatment {
   painBefore: Int
   painLevel: Int
   patient: PatientModel
-  patientId: Int
+  patientId: ID
   patientInvoiceNumber: String
   patientNotes: String
   paymentMethod: PaymentMethod
@@ -2361,7 +2362,7 @@ input UpdateAvailabilityAppointmentInput {
   nonRetribuito: Boolean
   notes: String
   operatorNotes: String
-  patientId: Int
+  patientId: ID
   serviceId: ID
 
   """Servizi da associare all'appuntamento"""
@@ -2447,7 +2448,7 @@ input UpdateOperatorInput {
   professionalRegistration: String
   royaltyPercentage: Float
   surname: String
-  userId: Int
+  userId: ID
 }
 
 input UpdatePatientAnamnesisInput {

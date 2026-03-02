@@ -1,7 +1,7 @@
 // src/pazienti/entities/paziente-persona-relazione.entity.ts
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
@@ -28,21 +28,21 @@ import type { PersonaRiferimento } from './persona-riferimento.entity';
 @Index(['dataConsenso'])
 @Unique(['pazienteId', 'personaRiferimentoId', 'tipoTrattamento'])
 export class PazientePersonaRelazione {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn({ type: 'uuid', default: () => "public.uuid_generate_v4()" })
+  id: string;
 
   // ==================== RELAZIONI PRINCIPALI ====================
 
-  @Column({ name: 'paziente_id' })
-  pazienteId: number;
+  @Column({ name: 'paziente_id', type: 'uuid' })
+  pazienteId: string;
 
   // ✅ LAZY LOADING per evitare dipendenze circolari
   @ManyToOne('Patient', { onDelete: 'CASCADE', lazy: true })
   @JoinColumn({ name: 'paziente_id' })
   paziente: Promise<Patient>;
 
-  @Column({ name: 'persona_riferimento_id' })
-  personaRiferimentoId: number;
+  @Column({ name: 'persona_riferimento_id', type: 'uuid' })
+  personaRiferimentoId: string;
 
   @ManyToOne('PersonaRiferimento', { onDelete: 'CASCADE', lazy: true })
   @JoinColumn({ name: 'persona_riferimento_id' })
@@ -119,11 +119,11 @@ export class PazientePersonaRelazione {
 
   // ==================== DATI AMMINISTRATIVI ====================
 
-  @Column({ name: 'creato_da_utente_id', nullable: true })
-  creatoDaUtenteId?: number;
+  @Column({ name: 'creato_da_utente_id', type: 'uuid', nullable: true })
+  creatoDaUtenteId?: string;
 
-  @Column({ name: 'consenso_raccolto_da_utente_id', nullable: true })
-  consensoRaccoltoDaUtenteId?: number;
+  @Column({ name: 'consenso_raccolto_da_utente_id', type: 'uuid', nullable: true })
+  consensoRaccoltoDaUtenteId?: string;
 
   @Column({ default: true })
   attivo: boolean;

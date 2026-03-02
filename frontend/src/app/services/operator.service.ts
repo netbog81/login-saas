@@ -14,6 +14,7 @@ import {
   GET_OPERATOR,
   GET_OPERATOR_AVAILABILITY,
   CHECK_DUPLICATE_OPERATOR,
+  MY_OPERATOR,
 } from '../graphql/operations/operator.queries';
 import {
   GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
@@ -88,6 +89,15 @@ export class OperatorService extends BaseGraphQLService {
       { id },
       [{ query: GET_OPERATORS }]
     ).pipe(map((result) => result.deleteOperator));
+  }
+
+  /**
+   * Ottiene l'operatore associato all'utente corrente (mapping Keycloak → AppUser → Operator)
+   */
+  getMyOperator(): Observable<Operator | null> {
+    return this.query<{ myOperator: Operator | null }>(
+      MY_OPERATOR
+    ).pipe(map((result) => result.myOperator || null));
   }
 
   /**

@@ -20,7 +20,7 @@ export class ApiService {
     return this.http.get<User[]>(`${this.baseUrl}/users`);
   }
 
-  getUser(id: number): Observable<User> {
+  getUser(id: string): Observable<User> {
     return this.http.get<User>(`${this.baseUrl}/users/${id}`);
   }
 
@@ -32,7 +32,7 @@ export class ApiService {
     return this.http.get<Patient[]>(url);
   }
 
-  getPatient(id: number): Observable<Patient> {
+  getPatient(id: string): Observable<Patient> {
     return this.http.get<Patient>(`${this.baseUrl}/patients/${id}`);
   }
 
@@ -40,7 +40,7 @@ export class ApiService {
     return this.http.post<Patient>(`${this.baseUrl}/patients`, patient);
   }
 
-  updatePatient(id: number, patient: Partial<Patient>): Observable<Patient> {
+  updatePatient(id: string, patient: Partial<Patient>): Observable<Patient> {
     return this.http.put<Patient>(`${this.baseUrl}/patients/${id}`, patient);
   }
 
@@ -61,11 +61,11 @@ export class ApiService {
     return this.http.post<Appointment[]>(`${this.baseUrl}/appointments`, appointment);
   }
 
-  updateAppointment(id: number, appointment: Partial<Appointment>): Observable<Appointment> {
+  updateAppointment(id: string, appointment: Partial<Appointment>): Observable<Appointment> {
     return this.http.put<Appointment>(`${this.baseUrl}/appointments/${id}`, appointment);
   }
 
-  deleteAppointment(id: number): Observable<void> {
+  deleteAppointment(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/appointments/${id}`);
   }
 
@@ -74,7 +74,7 @@ export class ApiService {
     date: string,
     startTime: string,
     endTime: string,
-    excludeId?: number
+    excludeId?: string
   ): Observable<boolean> {
     let params = `operatorId=${operatorId}&date=${date}&startTime=${startTime}&endTime=${endTime}`;
     if (excludeId) {
@@ -84,12 +84,12 @@ export class ApiService {
   }
 
   // Availabilities
-  getAvailabilitiesByDate(date: string, userId?: number): Observable<Availability[]> {
+  getAvailabilitiesByDate(date: string, userId?: string): Observable<Availability[]> {
     const params = userId ? `?date=${date}&userId=${userId}` : `?date=${date}`;
     return this.http.get<Availability[]>(`${this.baseUrl}/availabilities/by-date${params}`);
   }
 
-  getAvailabilitiesByDateRange(startDate: string, endDate: string, userId?: number): Observable<Availability[]> {
+  getAvailabilitiesByDateRange(startDate: string, endDate: string, userId?: string): Observable<Availability[]> {
     const params = userId
       ? `?startDate=${startDate}&endDate=${endDate}&userId=${userId}`
       : `?startDate=${startDate}&endDate=${endDate}`;
@@ -105,7 +105,7 @@ export class ApiService {
   }
 
   setDefaultAvailability(data: {
-    userId: number;
+    userId: string;
     startDate: string;
     endDate: string;
     startTime: string;

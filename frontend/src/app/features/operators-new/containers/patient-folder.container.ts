@@ -798,7 +798,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     this.uiState = { ...this.uiState, loadingPaths: true };
     this.cdr.markForCheck();
 
-    this.pathService.getPathsByPatient(Number(this.patient.id))
+    this.pathService.getPathsByPatient(this.patient.id)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (paths) => {
@@ -836,7 +836,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
     console.log('[PatientFolderContainer] loadTreatments called for patient:', this.patient.id);
 
-    this.treatmentService.getTreatmentsByPatient(Number(this.patient.id))
+    this.treatmentService.getTreatmentsByPatient(this.patient.id)
       .pipe(
         tap({
           next: (data) => console.log('[PatientFolderContainer] treatments received:', data),
@@ -871,7 +871,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     this.loadingPatientAnamnesis = true;
     this.cdr.markForCheck();
 
-    this.patientAnamnesisService.getAnamnesisByPatient(Number(this.patient.id))
+    this.patientAnamnesisService.getAnamnesisByPatient(this.patient.id)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (anamnesis) => {
@@ -935,7 +935,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   private openPathDialog(): void {
     if (!this.patient) return;
     this.pathDialogData = createNewPathDialogData(
-      Number(this.patient.id),
+      this.patient.id,
       this.currentOperatorId
     );
     this.showPathDialog = true;
@@ -990,7 +990,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
     this.pathDialogData = createEditPathDialogData(
       this.selectedPath,
-      Number(this.patient.id),
+      this.patient.id,
       this.currentOperatorId
     );
     this.showPathDialog = true;

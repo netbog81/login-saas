@@ -10,7 +10,7 @@ export interface PatientsListUIState {
   searching: boolean;
   error: string | null;
   searchTerm: string;
-  selectedPatientId: number | null;
+  selectedPatientId: string | null;
 }
 
 export interface PatientsListData {

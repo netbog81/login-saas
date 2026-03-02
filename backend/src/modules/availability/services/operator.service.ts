@@ -48,10 +48,20 @@ export class OperatorService {
   /**
    * Trova operatore per User ID (per sistema auth)
    */
-  async findByUserId(userId: number): Promise<Operator | null> {
+  async findByUserId(userId: string): Promise<Operator | null> {
     return this.operatorRepo.findOne({
       where: { userId },
       relations: ['category'],
+    });
+  }
+
+  /**
+   * Trova operatore per AppUser ID (mapping Keycloak → Operator)
+   */
+  async findByAppUserId(appUserId: string): Promise<Operator | null> {
+    return this.operatorRepo.findOne({
+      where: { appUserId },
+      relations: ['category', 'templateAssignments'],
     });
   }
 

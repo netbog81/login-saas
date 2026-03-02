@@ -26,10 +26,10 @@ export class PatientService extends BaseGraphQLService {
   /**
    * Ottiene un singolo paziente per ID
    */
-  getPatient(id: number): Observable<Patient | null> {
+  getPatient(id: string): Observable<Patient | null> {
     return this.query<{ patient: Patient | null }>(
       GET_PATIENT,
-      { id: String(id) }
+      { id }
     ).pipe(map((result) => result.patient || null));
   }
 
@@ -58,10 +58,10 @@ export class PatientService extends BaseGraphQLService {
   /**
    * Aggiorna un paziente esistente
    */
-  updatePatient(id: number, patient: Partial<Patient>): Observable<Patient> {
+  updatePatient(id: string, patient: Partial<Patient>): Observable<Patient> {
     return this.mutate<{ updatePatient: Patient }>(
       UPDATE_PATIENT,
-      { id: String(id), updatePatientInput: patient }
+      { id, updatePatientInput: patient }
     ).pipe(map((result) => result.updatePatient));
   }
 }

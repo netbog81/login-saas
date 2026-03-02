@@ -6,6 +6,7 @@
  * - Gestire stato condiviso tra le pagine (Dashboard, Pazienti, Appuntamenti)
  * - Mantenere selezione operatore e data persistente tra navigazioni
  * - Esporre Observable per change detection OnPush
+ * - Gestire accesso role-based: admin vede tutti gli operatori, operatore/medico solo se stesso
  */
 
 import { Injectable, NgZone } from '@angular/core';
@@ -13,6 +14,10 @@ import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { Operator } from '../../../graphql/generated/types';
 import { OperatorWorkspaceService } from './operator-workspace.service';
+import { OperatorService } from '../../../services/operator.service';
+import { OidcAuthService } from '../../../core/auth/oidc-auth.service';
+
+const ADMIN_ROLES = ['admin', 'amministratore', 'superadmin', 'it_manager'];
 
 @Injectable({
   providedIn: 'root'
@@ -25,6 +30,7 @@ export class OperatorWorkspaceStateService {
   private loadingOperatorsSubject = new BehaviorSubject<boolean>(false);
   private errorSubject = new BehaviorSubject<string | null>(null);
   private initializedSubject = new BehaviorSubject<boolean>(false);
+  private isAdminSubject = new BehaviorSubject<boolean>(false);
 
   // Observables pubblici
   readonly operators$ = this.operatorsSubject.asObservable();
@@ -33,11 +39,14 @@ export class OperatorWorkspaceStateService {
   readonly loadingOperators$ = this.loadingOperatorsSubject.asObservable();
   readonly error$ = this.errorSubject.asObservable();
   readonly initialized$ = this.initializedSubject.asObservable();
+  readonly isAdmin$ = this.isAdminSubject.asObservable();
 
   private destroy$ = new Subject<void>();
 
   constructor(
     private workspaceService: OperatorWorkspaceService,
+    private operatorService: OperatorService,
+    private authService: OidcAuthService,
     private ngZone: NgZone
   ) {}
 
@@ -67,21 +76,34 @@ export class OperatorWorkspaceStateService {
     return this.initializedSubject.value;
   }
 
+  get isAdmin(): boolean {
+    return this.isAdminSubject.value;
+  }
+
   // ============ METODI PUBBLICI ============
 
   /**
-   * Inizializza il servizio caricando gli operatori
-   * Chiamare dal layout component all'init
+   * Inizializza il servizio caricando gli operatori.
+   * Admin: carica tutti gli operatori (dropdown abilitato).
+   * Operatore/Medico: carica solo il proprio operatore (dropdown disabilitato).
    */
   initialize(): void {
     if (this.isInitialized || this.isLoading) {
       return;
     }
-    this.loadOperators();
+
+    const admin = this.authService.hasRole(ADMIN_ROLES);
+    this.isAdminSubject.next(admin);
+
+    if (admin) {
+      this.loadOperators();
+    } else {
+      this.loadMyOperator();
+    }
   }
 
   /**
-   * Carica la lista operatori dal backend
+   * Carica la lista di tutti gli operatori dal backend (modalità admin)
    */
   loadOperators(): void {
     this.loadingOperatorsSubject.next(true);
@@ -111,6 +133,40 @@ export class OperatorWorkspaceStateService {
           this.ngZone.run(() => {
             this.loadingOperatorsSubject.next(false);
             this.errorSubject.next('Errore nel caricamento degli operatori');
+          });
+        }
+      });
+  }
+
+  /**
+   * Carica solo l'operatore associato all'utente corrente (modalità operatore/medico)
+   */
+  private loadMyOperator(): void {
+    this.loadingOperatorsSubject.next(true);
+    this.errorSubject.next(null);
+
+    this.operatorService.getMyOperator()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (operator) => {
+          this.ngZone.run(() => {
+            this.loadingOperatorsSubject.next(false);
+            this.initializedSubject.next(true);
+
+            if (operator) {
+              this.operatorsSubject.next([operator]);
+              this.setSelectedOperator(operator);
+            } else {
+              this.operatorsSubject.next([]);
+              this.errorSubject.next('Nessun operatore associato al tuo account');
+            }
+          });
+        },
+        error: (err) => {
+          console.error('[OperatorWorkspaceStateService] Error loading my operator:', err);
+          this.ngZone.run(() => {
+            this.loadingOperatorsSubject.next(false);
+            this.errorSubject.next('Errore nel caricamento del tuo profilo operatore');
           });
         }
       });
@@ -168,6 +224,7 @@ export class OperatorWorkspaceStateService {
     this.loadingOperatorsSubject.next(false);
     this.errorSubject.next(null);
     this.initializedSubject.next(false);
+    this.isAdminSubject.next(false);
   }
 
   /**

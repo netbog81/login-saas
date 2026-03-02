@@ -76,7 +76,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   startTime: string = '';
   endTime: string = '';
   operatorId: string = '';
-  patientId: number | null = null;
+  patientId: string | null = null;
   notes: string = '';
   nonRetribuito: boolean = false;
 
@@ -150,7 +150,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       this.startTime = apt.startTime;
       this.endTime = apt.endTime;
       this.operatorId = apt.operatorId;
-      this.patientId = apt.patientId ? Number(apt.patientId) : null;
+      this.patientId = apt.patientId || null;
       this.notes = apt.notes || '';
       this.bookingStatus = (apt.bookingStatus as BookingStatus) || 'scheduled';
       this.nonRetribuito = apt.nonRetribuito || false;
@@ -611,7 +611,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
     });
   }
 
-  onPatientSelect(patientId: number | null): void {
+  onPatientSelect(patientId: string | null): void {
     this.runInZone(() => {
       this.patientId = patientId;
       this.patientSearch = '';  // Chiude il dropdown di ricerca
@@ -677,8 +677,8 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       const created = await firstValueFrom(this.patientService.createPatient(this.newPatient));
       // Add to patients list (create new array to avoid immutability issues with Apollo cache)
       this.data.patients = [...this.data.patients, created];
-      // Select the new patient - forza conversione a number (GraphQL ID può essere string)
-      this.onPatientSelect(Number(created.id));
+      // Select the new patient
+      this.onPatientSelect(created.id);
       // Close form
       this.showNewPatientForm = false;
       this.newPatient = {};
@@ -736,7 +736,7 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       startTime: this.startTime,
       endTime: this.endTime,
       operatorId: this.operatorId,
-      patientId: this.patientId ? Number(this.patientId) : undefined,  // Forza conversione a Int per GraphQL
+      patientId: this.patientId || undefined,
       notes: this.notes || undefined,
       // Multi-servizio
       appointmentServices: this.selectedServices.length > 0

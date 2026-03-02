@@ -2,7 +2,7 @@
 
 export interface Patient {
   // Identificazione
-  id: number;
+  id: string;
   nome: string;
   cognome: string;
   codiceFiscale?: string;

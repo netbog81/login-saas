@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { PatientAnamnesis } from '../entities/patient-anamnesis.entity';
 import { PatientAnamnesisService } from '../services/patient-anamnesis.service';
 import {
@@ -33,7 +33,7 @@ export class PatientAnamnesisResolver {
    */
   @Query(() => PatientAnamnesis, { nullable: true, description: 'Ottiene anamnesi per paziente ID' })
   async patientAnamnesisByPatient(
-    @Args('patientId', { type: () => Int }) patientId: number,
+    @Args('patientId', { type: () => ID }) patientId: string,
   ): Promise<PatientAnamnesis | null> {
     return this.anamnesisService.findByPatientId(patientId);
   }
@@ -43,7 +43,7 @@ export class PatientAnamnesisResolver {
    */
   @Query(() => Boolean, { description: 'Verifica se il paziente ha un\'anamnesi' })
   async hasPatientAnamnesis(
-    @Args('patientId', { type: () => Int }) patientId: number,
+    @Args('patientId', { type: () => ID }) patientId: string,
   ): Promise<boolean> {
     return this.anamnesisService.existsForPatient(patientId);
   }
@@ -76,7 +76,7 @@ export class PatientAnamnesisResolver {
    */
   @Mutation(() => PatientAnamnesis, { description: 'Crea o aggiorna anamnesi paziente' })
   async upsertPatientAnamnesis(
-    @Args('patientId', { type: () => Int }) patientId: number,
+    @Args('patientId', { type: () => ID }) patientId: string,
     @Args('input') input: UpdatePatientAnamnesisInput,
   ): Promise<PatientAnamnesis> {
     return this.anamnesisService.upsert(patientId, input);

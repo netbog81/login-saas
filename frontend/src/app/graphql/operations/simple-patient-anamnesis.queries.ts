@@ -58,7 +58,7 @@ export const GET_SIMPLE_PATIENT_ANAMNESIS = gql`
  * Ottiene l'anamnesi di un paziente dato il patientId
  */
 export const GET_PATIENT_ANAMNESIS_BY_PATIENT = gql`
-  query GetPatientAnamnesisByPatient($patientId: Int!) {
+  query GetPatientAnamnesisByPatient($patientId: ID!) {
     patientAnamnesisByPatient(patientId: $patientId) {
       ...SimplePatientAnamnesisFields
     }
@@ -70,7 +70,7 @@ export const GET_PATIENT_ANAMNESIS_BY_PATIENT = gql`
  * Verifica se un paziente ha un'anamnesi
  */
 export const HAS_PATIENT_ANAMNESIS = gql`
-  query HasPatientAnamnesis($patientId: Int!) {
+  query HasPatientAnamnesis($patientId: ID!) {
     hasPatientAnamnesis(patientId: $patientId)
   }
 `;

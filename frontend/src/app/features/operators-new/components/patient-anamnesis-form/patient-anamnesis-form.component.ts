@@ -331,7 +331,7 @@ import { PatientAnamnesis, createEmptyPatientAnamnesis } from '../../models/pati
 })
 export class PatientAnamnesisFormComponent implements OnInit, OnChanges {
   @Input() anamnesis: PatientAnamnesis | null = null;
-  @Input() patientId: number = 0;
+  @Input() patientId: string = '';
   @Input() saving = false;
 
   @Output() save = new EventEmitter<Partial<PatientAnamnesis>>();

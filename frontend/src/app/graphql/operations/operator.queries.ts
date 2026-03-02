@@ -106,6 +106,39 @@ export const GET_OPERATOR = gql`
   }
 `;
 
+export const MY_OPERATOR = gql`
+  query MyOperator {
+    myOperator {
+      id
+      name
+      surname
+      email
+      phone
+      color
+      macroCategory
+      categoryId
+      category {
+        id
+        name
+        macroCategory
+        description
+      }
+      preferredDurations
+      legacyUserId
+      maxConcurrentAppointments
+      isActive
+      royaltyPercentage
+      professionalRegistration
+      createdAt
+      updatedAt
+      templateAssignments {
+        id
+        isCurrent
+      }
+    }
+  }
+`;
+
 export const GET_OPERATOR_AVAILABILITY = gql`
   query GetOperatorAvailability($operatorId: ID!, $startDate: String!, $endDate: String!) {
     operatorAvailability(operatorId: $operatorId, startDate: $startDate, endDate: $endDate) {

@@ -170,10 +170,10 @@ export class CreateAvailabilityAppointmentInput {
   @MaxLength(50, { message: 'Numero di telefono troppo lungo' })
   clientPhone?: string;
 
-  @Field(() => Int, { nullable: true })
+  @Field(() => ID, { nullable: true })
   @IsOptional()
-  @IsInt()
-  patientId?: number;
+  @IsUUID('4', { message: 'ID paziente non valido' })
+  patientId?: string;
 
   @Field()
   @IsNotEmpty({ message: 'La data è obbligatoria' })

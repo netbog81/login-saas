@@ -74,7 +74,7 @@ export interface Treatment {
   id: string;
   appointmentId: string;
   operatorId: string;
-  patientId?: number;
+  patientId?: string;
   /** @deprecated Usa treatmentServices invece */
   serviceId?: string;
   therapeuticPathId: string;

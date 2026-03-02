@@ -45,13 +45,13 @@ export class AppointmentsController {
       date,
       startTime,
       endTime,
-      excludeId ? +excludeId : undefined
+      excludeId || undefined
     );
   }
 
   @Get(':id')
   findOne(@Param('id') id: string): Promise<Appointment> {
-    return this.appointmentsService.findOne(+id);
+    return this.appointmentsService.findOne(id);
   }
 
   @Post()
@@ -64,12 +64,12 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body() appointmentData: UpdateAppointmentDto
   ): Promise<Appointment> {
-    return this.appointmentsService.update(+id, appointmentData);
+    return this.appointmentsService.update(id, appointmentData);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string): Promise<void> {
-    return this.appointmentsService.remove(+id);
+    return this.appointmentsService.remove(id);
   }
 
   @Delete('recurring-group/:groupId')

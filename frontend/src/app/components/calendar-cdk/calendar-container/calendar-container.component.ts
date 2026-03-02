@@ -460,7 +460,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       const hasCurrentTemplate = op.templateAssignments?.some(ta => ta.isCurrent) ?? false;
 
       return {
-        id: op.legacyUserId ?? this.hashUUID(op.id),
+        id: op.legacyUserId?.toString() ?? op.id,
         name: `${op.name} ${op.surname || ''}`.trim(),
         type: this.translateCategory(op.macroCategory),
         macroCategory: op.macroCategory,
@@ -615,7 +615,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           const availabilities: Availability[] = daily.slots
             .filter(slot => slot.isAvailable)
             .map(slot => ({
-              id: user.id * 1000000 + (++slotCounter),
+              id: `${user.id}-slot-${++slotCounter}`,
               operatorId: user.operatorId!,
               date: daily.date,
               startTime: slot.startTime,
@@ -1981,7 +1981,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     }
   }
 
-  getUserById(userId: number): User | undefined {
+  getUserById(userId: string): User | undefined {
     return this.allUsers.find(u => u.id === userId);
   }
 

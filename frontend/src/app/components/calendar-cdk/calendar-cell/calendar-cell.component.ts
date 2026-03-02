@@ -4,7 +4,7 @@ import { TimeSlot } from '../services/calendar-state.service';
 import { User } from '../../../models/user.model';
 
 export interface CellEvent {
-  userId: number;  // Legacy ID for backward compatibility
+  userId: string;  // Legacy ID for backward compatibility
   operatorId: string;  // UUID for API calls
   date: string;
   timeSlot: TimeSlot;

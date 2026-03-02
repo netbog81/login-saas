@@ -35,11 +35,11 @@ export class RepeatConfigDto {
 }
 
 export class CreateAppointmentDto {
-  // Campo id opzionale - il frontend lo invia come 0 per nuovi appuntamenti
+  // Campo id opzionale - il frontend lo invia come stringa vuota per nuovi appuntamenti
   // Verrà ignorato dal service durante la creazione
   @IsOptional()
-  @IsNumber()
-  id?: number;
+  @IsString()
+  id?: string;
 
   @IsString()
   title: string;
@@ -57,8 +57,8 @@ export class CreateAppointmentDto {
   operatorId: string;
 
   @IsOptional()
-  @IsNumber()
-  patientId?: number;
+  @IsUUID()
+  patientId?: string;
 
   @IsOptional()
   @IsString()

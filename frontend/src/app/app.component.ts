@@ -36,18 +36,22 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
             <a class="nav-item" routerLink="/patients" routerLinkActive="active">
               Pazienti
             </a>
-            <a class="nav-item" routerLink="/operatori" routerLinkActive="active">
-              Operatori
-            </a>
-            <a class="nav-item" routerLink="/operatori-new" routerLinkActive="active">
-              Operatori New
-            </a>
+            @if (authService.hasRole(['operatore', 'medico', 'admin', 'amministratore', 'superadmin', 'it_manager'])) {
+              <a class="nav-item" routerLink="/operatori-new" routerLinkActive="active">
+                Operatori
+              </a>
+            }
             <a class="nav-item" routerLink="/availability" routerLinkActive="active">
-              Disponibilita
+              Configurazioni
             </a>
             <a class="nav-item" routerLink="/conflicts" routerLinkActive="active">
               Conflitti
             </a>
+            @if (authService.hasRole(['admin', 'amministratore', 'superadmin', 'it_manager'])) {
+              <a class="nav-item" routerLink="/admin" routerLinkActive="active">
+                Admin
+              </a>
+            }
             @if (authService.hasRole(['admin', 'amministratore', 'superadmin'])) {
               <a class="nav-item" routerLink="/settings" routerLinkActive="active">
                 Impostazioni

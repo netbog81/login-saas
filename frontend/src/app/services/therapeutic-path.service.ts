@@ -35,7 +35,7 @@ import {
 // Backend types (from GraphQL)
 interface BackendTherapeuticPath {
   id: string;
-  patientId: number;
+  patientId: string;
   primaryOperatorId: string;
   name: string;
   diagnosis?: string;
@@ -53,7 +53,7 @@ interface BackendTherapeuticPath {
     surname: string;
   };
   patient?: {
-    id: number;
+    id: string;
     nome: string;
     cognome: string;
     codiceFiscale?: string;
@@ -107,7 +107,7 @@ interface BackendPathDocument {
 
 // Input types for mutations
 export interface CreateTherapeuticPathInput {
-  patientId: number;
+  patientId: string;
   primaryOperatorId: string;
   name: string;
   diagnosis?: string;
@@ -274,7 +274,7 @@ export class TherapeuticPathService extends BaseGraphQLService {
   /**
    * Ottiene tutti i percorsi terapeutici di un paziente
    */
-  getPathsByPatient(patientId: number): Observable<TherapeuticPath[]> {
+  getPathsByPatient(patientId: string): Observable<TherapeuticPath[]> {
     return this.query<{ therapeuticPathsByPatient: BackendTherapeuticPath[] }>(
       GET_THERAPEUTIC_PATHS_BY_PATIENT,
       { patientId }
@@ -302,7 +302,7 @@ export class TherapeuticPathService extends BaseGraphQLService {
   /**
    * Ottiene i percorsi attivi di un paziente
    */
-  getActivePathsByPatient(patientId: number): Observable<TherapeuticPath[]> {
+  getActivePathsByPatient(patientId: string): Observable<TherapeuticPath[]> {
     return this.query<{ activeTherapeuticPathsByPatient: BackendTherapeuticPath[] }>(
       GET_ACTIVE_THERAPEUTIC_PATHS_BY_PATIENT,
       { patientId }
@@ -330,14 +330,14 @@ export class TherapeuticPathService extends BaseGraphQLService {
   /**
    * Conta i percorsi attivi per paziente (per badge/statistiche)
    */
-  getActivePathsCount(patientId: number): Observable<number> {
+  getActivePathsCount(patientId: string): Observable<number> {
     return this.getActivePathsByPatient(patientId).pipe(map((paths) => paths.length));
   }
 
   /**
    * Ottiene statistiche per paziente
    */
-  getPatientPathStats(patientId: number): Observable<{
+  getPatientPathStats(patientId: string): Observable<{
     total: number;
     active: number;
     completed: number;

@@ -80,7 +80,7 @@ export class OperatorWorkspaceService extends BaseGraphQLService {
   /**
    * Carica dati paziente
    */
-  loadPatient(patientId: number): Observable<PatientLoadResult> {
+  loadPatient(patientId: string): Observable<PatientLoadResult> {
     return this.patientService.getPatient(patientId).pipe(
       map(patient => ({ patient })),
       catchError(error => {

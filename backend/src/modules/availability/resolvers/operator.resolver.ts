@@ -1,14 +1,22 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Context } from '@nestjs/graphql';
+import { Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { OperatorService } from '../services/operator.service';
 import { CreateOperatorInput } from '../dto/create-operator.input';
 import { UpdateOperatorInput } from '../dto/update-operator.input';
+import { AppUser } from '../../users/entities/app-user.entity';
 
 @Resolver(() => Operator)
 export class OperatorResolver {
+  private readonly logger = new Logger(OperatorResolver.name);
+
   constructor(
     private readonly operatorService: OperatorService,
+    @InjectRepository(AppUser)
+    private readonly appUserRepo: Repository<AppUser>,
   ) {}
 
   // Queries
@@ -45,6 +53,27 @@ export class OperatorResolver {
     @Args('surname', { nullable: true }) surname?: string,
   ): Promise<Operator[]> {
     return this.operatorService.findSimilarOperators(name, surname);
+  }
+
+  @Query(() => Operator, { name: 'myOperator', nullable: true })
+  async getMyOperator(
+    @Context() context: any,
+  ): Promise<Operator | null> {
+    const keycloakId = context.req?.tenantContext?.userId;
+    if (!keycloakId) {
+      this.logger.warn('[myOperator] No keycloakId in tenant context');
+      return null;
+    }
+
+    const appUser = await this.appUserRepo.findOne({
+      where: { keycloakId },
+    });
+    if (!appUser) {
+      this.logger.warn(`[myOperator] No AppUser found for keycloakId ${keycloakId}`);
+      return null;
+    }
+
+    return this.operatorService.findByAppUserId(appUser.id);
   }
 
   // Mutations

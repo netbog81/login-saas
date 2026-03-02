@@ -38,9 +38,9 @@ export class Treatment {
   @Column('uuid')
   operatorId: string;
 
-  @Field(() => Int, { nullable: true })
-  @Column('int', { nullable: true })
-  patientId?: number;
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  patientId?: string;
 
   /**
    * @deprecated Usa treatmentServices invece. Mantenuto per retrocompatibilità.

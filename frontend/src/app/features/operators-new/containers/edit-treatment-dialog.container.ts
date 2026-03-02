@@ -77,7 +77,7 @@ import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.mod
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditTreatmentDialogContainerComponent implements OnDestroy {
-  @Input() patientId!: number;
+  @Input() patientId!: string;
 
   @Output() treatmentUpdated = new EventEmitter<Treatment>();
   @Output() cancel = new EventEmitter<void>();
@@ -142,7 +142,7 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
   /**
    * Carica i dati necessari per il dialog
    */
-  private loadData(patientId: number): void {
+  private loadData(patientId: string): void {
     console.log('[EditTreatmentDialogContainer] Loading data for patient:', patientId);
 
     forkJoin({

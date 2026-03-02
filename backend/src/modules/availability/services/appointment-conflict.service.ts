@@ -399,7 +399,7 @@ export class AppointmentConflictService {
    * Incrementa contatore disdette per un paziente
    * Da chiamare quando il PAZIENTE disdice (non per conflitti)
    */
-  async incrementPatientCancellation(patientId: number, year?: number): Promise<void> {
+  async incrementPatientCancellation(patientId: string, year?: number): Promise<void> {
     const currentYear = year || new Date().getFullYear();
     const patient = await this.patientRepo.findOne({ where: { id: patientId } });
 
@@ -416,7 +416,7 @@ export class AppointmentConflictService {
   /**
    * Incrementa contatore no-show per un paziente
    */
-  async incrementPatientNoShow(patientId: number, year?: number): Promise<void> {
+  async incrementPatientNoShow(patientId: string, year?: number): Promise<void> {
     const currentYear = year || new Date().getFullYear();
     const patient = await this.patientRepo.findOne({ where: { id: patientId } });
 

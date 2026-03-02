@@ -15,7 +15,7 @@ import { Transform, Type } from 'class-transformer';
 import { StatoAnagrafica, StatoPrivacy } from '../enums/pazienti-enums';
 
 export class PazienteResponseDto {
-  id: number;
+  id: string;
   nomeCompleto: string;
   eta: number;
   statoAnagrafica: StatoAnagrafica;

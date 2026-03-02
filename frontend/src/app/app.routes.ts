@@ -6,7 +6,6 @@ import { AvailabilityDashboardComponent } from './components/availability/availa
 import { ConflictDashboardComponent } from './components/conflict-dashboard/conflict-dashboard.component';
 import { SettingsComponent } from './components/settings/settings.component';
 import { PatientManagementComponent } from './components/patients/patient-management/patient-management.component';
-import { OperatorWorkspaceComponent } from './components/operators/operator-workspace/operator-workspace.component';
 import { OperatorWorkspaceContainer } from './features/operators-new/containers/operator-workspace.container';
 import { OperatorsNewLayoutComponent } from './features/operators-new/layout/operators-new-layout.component';
 import { OperatorsDashboardContainer } from './features/operators-new/containers/operators-dashboard.container';
@@ -67,16 +66,11 @@ export const routes: Routes = [
     title: 'Gestione Pazienti',
   },
   {
-    path: 'operatori',
-    component: OperatorWorkspaceComponent,
-    canActivate: [authGuard, linkedGuard, schemaGuard],
-    title: 'Workspace Operatore',
-  },
-  {
     path: 'operatori-new',
     component: OperatorsNewLayoutComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
-    title: 'Workspace Operatore (New)',
+    data: { roles: ['operatore', 'medico', 'admin', 'amministratore', 'superadmin', 'it_manager'] },
+    title: 'Workspace Operatore',
     children: [
       {
         path: '',

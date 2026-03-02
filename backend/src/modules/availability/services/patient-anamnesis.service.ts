@@ -35,7 +35,7 @@ export class PatientAnamnesisService {
   /**
    * Trova l'anamnesi per paziente ID
    */
-  async findByPatientId(patientId: number): Promise<PatientAnamnesis | null> {
+  async findByPatientId(patientId: string): Promise<PatientAnamnesis | null> {
     return this.anamnesisRepository.findOne({
       where: { patientId },
       relations: ['patient', 'operator'],
@@ -45,7 +45,7 @@ export class PatientAnamnesisService {
   /**
    * Verifica se un paziente ha già un'anamnesi
    */
-  async existsForPatient(patientId: number): Promise<boolean> {
+  async existsForPatient(patientId: string): Promise<boolean> {
     const count = await this.anamnesisRepository.count({
       where: { patientId },
     });
@@ -111,7 +111,7 @@ export class PatientAnamnesisService {
   /**
    * Aggiorna o crea l'anamnesi per un paziente (upsert)
    */
-  async upsert(patientId: number, input: UpdatePatientAnamnesisInput): Promise<PatientAnamnesis> {
+  async upsert(patientId: string, input: UpdatePatientAnamnesisInput): Promise<PatientAnamnesis> {
     const existing = await this.findByPatientId(patientId);
 
     if (existing) {
@@ -135,7 +135,7 @@ export class PatientAnamnesisService {
   /**
    * Elimina l'anamnesi di un paziente
    */
-  async deleteByPatientId(patientId: number): Promise<boolean> {
+  async deleteByPatientId(patientId: string): Promise<boolean> {
     const result = await this.anamnesisRepository.delete({ patientId });
     return (result.affected ?? 0) > 0;
   }

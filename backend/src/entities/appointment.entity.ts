@@ -1,11 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Operator } from '../modules/availability/entities/operator.entity';
 import { Patient } from './patient.entity';
 
 @Entity('appointments')
 export class Appointment {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn({ type: 'uuid', default: () => "public.uuid_generate_v4()" })
+  id: string;
 
   @Column()
   title: string;
@@ -30,8 +30,8 @@ export class Appointment {
   @JoinColumn({ name: 'patientId' })
   patient: Patient;
 
-  @Column({ nullable: true })
-  patientId: number;
+  @Column({ type: 'uuid', nullable: true })
+  patientId: string;
 
   @Column({ type: 'text', nullable: true })
   notes: string;

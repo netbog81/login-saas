@@ -737,7 +737,7 @@ export class TreatmentService {
   /**
    * Trattamenti di un paziente
    */
-  async getByPatient(patientId: number, limit?: number, offset?: number): Promise<Treatment[]> {
+  async getByPatient(patientId: string, limit?: number, offset?: number): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { patientId },
       relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],

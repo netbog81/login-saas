@@ -380,7 +380,7 @@ export class PazientiService {
   }
 
   ////////////////////////////////////   fine findTutti
-  async findOne(id: number): Promise<Patient> {
+  async findOne(id: string): Promise<Patient> {
     // ✅ CORREZIONE CRITICA: Rimuovi relations per evitare lazy loading conflicts
     const paziente = await this.pazientiRepository.findOne({
       where: { id },
@@ -394,7 +394,7 @@ export class PazientiService {
     return paziente;
   }
 
-  async findOneWithDetails(id: number): Promise<PazienteResponseDto> {
+  async findOneWithDetails(id: string): Promise<PazienteResponseDto> {
     const paziente = await this.findOne(id);
     return this.mapToResponseDto(paziente);
   }
@@ -455,7 +455,7 @@ export class PazientiService {
     return await this.pazientiRepository.save(paziente);
   }
 
-  async update(id: number, updateDto: UpdatePazienteDto): Promise<Patient> {
+  async update(id: string, updateDto: UpdatePazienteDto): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     // Validazioni per modifiche critiche
@@ -493,7 +493,7 @@ export class PazientiService {
     return await this.pazientiRepository.save(paziente);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const paziente = await this.findOne(id);
 
     // Verifica se ha relazioni attive
@@ -515,7 +515,7 @@ export class PazientiService {
   // ==================== WORKFLOW STATI ====================
 
   async updateWorkflowState(
-    id: number,
+    id: string,
     workflowDto: WorkflowStateDto,
   ): Promise<Patient> {
     const paziente = await this.findOne(id);
@@ -558,7 +558,7 @@ export class PazientiService {
 
   // ==================== PRIVACY E GDPR ====================
 
-  async setPrivacy(id: number, privacyDto: SetPrivacyDto): Promise<Patient> {
+  async setPrivacy(id: string, privacyDto: SetPrivacyDto): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     if (privacyDto.tipoPrivacy === 'cartacea') {
@@ -582,7 +582,7 @@ export class PazientiService {
   }
 
   async updateConsensi(
-    id: number,
+    id: string,
     consensiDto: UpdateConsensiDto,
   ): Promise<Patient> {
     const paziente = await this.findOne(id);
@@ -605,7 +605,7 @@ export class PazientiService {
     return await this.pazientiRepository.save(paziente);
   }
 
-  async handleGdprRequest(id: number, gdprDto: GdprRequestDto): Promise<any> {
+  async handleGdprRequest(id: string, gdprDto: GdprRequestDto): Promise<any> {
     const paziente = await this.findOne(id);
 
     switch (gdprDto.tipoRichiesta) {
@@ -814,7 +814,7 @@ export class PazientiService {
   /**
    * Aggiorna stato anagrafica
    */
-  async updateStatoAnagrafica(id: number, status: string): Promise<Patient> {
+  async updateStatoAnagrafica(id: string, status: string): Promise<Patient> {
     const paziente = await this.findOne(id);
     paziente.statoAnagrafica = status as StatoAnagrafica;
     return await this.pazientiRepository.save(paziente);
@@ -823,7 +823,7 @@ export class PazientiService {
   /**
    * Aggiorna stato privacy
    */
-  async updateStatoPrivacy(id: number, status: string): Promise<Patient> {
+  async updateStatoPrivacy(id: string, status: string): Promise<Patient> {
     const paziente = await this.findOne(id);
     paziente.statoPrivacy = status as StatoPrivacy;
     paziente.dataUltimaModificaPrivacy = new Date();
@@ -833,7 +833,7 @@ export class PazientiService {
   /**
    * Aggiorna consensi (usato dal resolver GraphQL)
    */
-  async updateConsents(id: number, consents: any): Promise<Patient> {
+  async updateConsents(id: string, consents: any): Promise<Patient> {
     const paziente = await this.findOne(id);
 
     if (consents.consensoGdpr !== undefined) {
@@ -858,7 +858,7 @@ export class PazientiService {
   /**
    * Richiede cancellazione dati (GDPR)
    */
-  async requestDeletion(id: number): Promise<Patient> {
+  async requestDeletion(id: string): Promise<Patient> {
     const paziente = await this.findOne(id);
     paziente.requestCancellazione();
     return await this.pazientiRepository.save(paziente);
@@ -867,7 +867,7 @@ export class PazientiService {
   /**
    * Anonimizza paziente (GDPR)
    */
-  async anonymize(id: number): Promise<Patient> {
+  async anonymize(id: string): Promise<Patient> {
     const paziente = await this.findOne(id);
     paziente.anonimizza();
     return await this.pazientiRepository.save(paziente);
@@ -877,7 +877,7 @@ export class PazientiService {
    * Incrementa contatore (cancellazioni o no-show)
    */
   async incrementCounter(
-    id: number,
+    id: string,
     field: 'cancellationsByYear' | 'noShowsByYear',
     year: string,
   ): Promise<Patient> {
@@ -894,7 +894,7 @@ export class PazientiService {
   /**
    * Elimina paziente (soft delete) - usato dal resolver
    */
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     return this.remove(id);
   }
 

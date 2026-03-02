@@ -259,7 +259,7 @@ export class PatientTableComponent implements AfterViewInit {
   }
 
   @Input() loading: boolean = false;
-  @Input() selectedPatientId: number | null = null;
+  @Input() selectedPatientId: string | null = null;
   @Input() emptyMessage: string = 'Nessun paziente trovato';
 
   @Output() patientSelect = new EventEmitter<Patient>();

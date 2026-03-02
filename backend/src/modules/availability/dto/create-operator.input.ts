@@ -1,5 +1,5 @@
-import { InputType, Field, Int, Float } from '@nestjs/graphql';
-import { IsNotEmpty, IsString, IsEmail, IsOptional, MaxLength, IsInt, Min, Max, IsArray, IsEnum, IsBoolean, IsNumber } from 'class-validator';
+import { InputType, Field, Int, Float, ID } from '@nestjs/graphql';
+import { IsNotEmpty, IsString, IsEmail, IsOptional, MaxLength, IsInt, IsUUID, Min, Max, IsArray, IsEnum, IsBoolean, IsNumber } from 'class-validator';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 
 @InputType()
@@ -56,15 +56,15 @@ export class CreateOperatorInput {
   @Min(1, { message: 'Numero massimo appuntamenti deve essere almeno 1' })
   maxConcurrentAppointments?: number;
 
-  @Field(() => Int, { nullable: true })
+  @Field(() => ID, { nullable: true })
   @IsOptional()
-  @IsInt()
-  userId?: number;
+  @IsUUID('4', { message: 'ID utente non valido' })
+  userId?: string;
 
-  @Field(() => Int, { nullable: true })
+  @Field(() => ID, { nullable: true })
   @IsOptional()
-  @IsInt()
-  legacyUserId?: number;
+  @IsUUID('4', { message: 'ID utente legacy non valido' })
+  legacyUserId?: string;
 
   @Field({ nullable: true })
   @IsOptional()

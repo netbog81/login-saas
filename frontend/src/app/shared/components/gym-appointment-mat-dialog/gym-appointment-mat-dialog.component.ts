@@ -511,8 +511,7 @@ export class GymAppointmentMatDialogComponent implements OnInit {
 
       const input: CreateGymAppointmentInput = {
         gymRoomId: this.data.gymRoom.id,
-        // Forza conversione a number (GraphQL ID viene serializzato come stringa)
-        patientId: this.form.value.patientId ? Number(this.form.value.patientId) : undefined,
+        patientId: this.form.value.patientId || undefined,
         clientName: clientName,
         clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || '',
         clientEmail: selectedPatient?.email || '',

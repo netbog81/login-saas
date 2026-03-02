@@ -29,7 +29,7 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   // Form State
   showPatientForm = false;
   isEditMode = false;
-  editingPatientId: number | null = null;
+  editingPatientId: string | null = null;
   editingPatient: Partial<Patient> = this.getEmptyPatient();
   formError: string | null = null;
   savingPatient = false;
