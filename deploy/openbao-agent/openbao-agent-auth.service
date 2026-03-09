@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenBao Agent - Auth Service
+Documentation=https://openbao.org/docs/agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openbao agent -config=/etc/openbao/agent-auth.hcl
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Sicurezza: esegui come utente dedicato (non root)
+User=openbao
+Group=openbao
+
+# Directory runtime per il token sink
+RuntimeDirectory=openbao-agent
+RuntimeDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target
