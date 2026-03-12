@@ -57,6 +57,11 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
                 Impostazioni
               </a>
             }
+            @if (authService.hasRole(['admin', 'amministratore', 'superadmin', 'segreteria'])) {
+              <a class="nav-item" routerLink="/whatsapp" routerLinkActive="active">
+                WhatsApp
+              </a>
+            }
           </div>
           <div class="nav-user">
             <button mat-button [matMenuTriggerFor]="userMenu" class="user-button">

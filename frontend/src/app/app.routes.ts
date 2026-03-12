@@ -15,6 +15,10 @@ import { PendingActivationComponent } from './features/auth/components/pending-a
 import { PendingSchemaComponent } from './features/auth/components/pending-schema/pending-schema.component';
 import { UnauthorizedComponent } from './features/auth/components/unauthorized/unauthorized.component';
 import { AdminComponent } from './features/admin/admin.component';
+import { WhatsappLayoutComponent } from './features/whatsapp/whatsapp-layout.component';
+import { WhatsappMonitorContainer } from './features/whatsapp/containers/whatsapp-monitor.container';
+import { WhatsappSettingsContainer } from './features/whatsapp/containers/whatsapp-settings.container';
+import { WhatsappLogManagementContainer } from './features/whatsapp/containers/whatsapp-log-management.container';
 
 export const routes: Routes = [
   // --- Callback OIDC Keycloak (nessun guard: la libreria processa il code qui) ---
@@ -112,6 +116,19 @@ export const routes: Routes = [
     canActivate: [authGuard, linkedGuard, schemaGuard],
     data: { roles: ['admin', 'amministratore', 'superadmin'] },
     title: 'Impostazioni Generali',
+  },
+  {
+    path: 'whatsapp',
+    component: WhatsappLayoutComponent,
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['admin', 'amministratore', 'superadmin', 'segreteria'] },
+    title: 'WhatsApp Gateway',
+    children: [
+      { path: '', redirectTo: 'monitor', pathMatch: 'full' },
+      { path: 'monitor', component: WhatsappMonitorContainer, title: 'Monitor Messaggi' },
+      { path: 'settings', component: WhatsappSettingsContainer, title: 'Configurazione WhatsApp' },
+      { path: 'log-management', component: WhatsappLogManagementContainer, title: 'Gestione Log' },
+    ],
   },
 
   // --- Redirect ---

@@ -44,7 +44,15 @@ export class Patient {
   @Column({ name: 'codice_fiscale', length: 16, nullable: true })
   codiceFiscale?: string;
 
-  @Column({ name: 'data_nascita', type: 'date', nullable: true })
+  @Column({
+    name: 'data_nascita',
+    type: 'date',
+    nullable: true,
+    transformer: {
+      to: (value: Date | string | null) => value,
+      from: (value: string | null) => value ? new Date(value + 'T00:00:00.000Z') : null,
+    },
+  })
   dataNascita?: Date;
 
   @Column({ name: 'comune_nascita', length: 100, nullable: true })
@@ -213,7 +221,15 @@ export class Patient {
   @Column({ name: 'data_anonimizzazione', type: 'timestamp', nullable: true })
   dataAnonimizzazione?: Date;
 
-  @Column({ name: 'conservazione_fino', type: 'date', nullable: true })
+  @Column({
+    name: 'conservazione_fino',
+    type: 'date',
+    nullable: true,
+    transformer: {
+      to: (value: Date | string | null) => value,
+      from: (value: string | null) => value ? new Date(value + 'T00:00:00.000Z') : null,
+    },
+  })
   conservazioneFino?: Date;
 
   // ==================== TRACKING FIELDS (from agendatest) ====================

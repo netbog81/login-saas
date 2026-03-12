@@ -1053,9 +1053,11 @@ input MarkObjectiveAchievedInput {
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
   addTestEvaluation(input: AddTestEvaluationInput!, operatorId: ID!, pathId: ID!, testId: ID!): EvaluationTest!
+  anonymizeExpiredWhatsappLogs: WhatsappLogManagementResult!
 
   """Anonymize patient data (irreversible GDPR compliance action)"""
   anonymizePatient(id: ID!): PatientModel!
+  anonymizeWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   assignKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   assignPermissionToRole(permissionId: ID!, roleId: ID!): RolePermission!
   assignRole(input: AssignRoleInput!): UserRole!
@@ -1114,6 +1116,7 @@ type Mutation {
   deleteEvaluationTest(evaluationId: ID!, testId: ID!): Boolean!
   deleteException(id: ID!): Boolean!
   deleteExceptionsByDateRange(endDate: String!, exceptionType: ExceptionType, operatorId: ID!, startDate: String!): Int!
+  deleteExpiredWhatsappLogs: WhatsappLogManagementResult!
   deleteGeneralSetting(key: String!): Boolean!
   deleteGroupException(id: ID!): Boolean!
   deleteGymException(id: ID!): Boolean!
@@ -1146,6 +1149,7 @@ type Mutation {
   deleteTestEvaluationEntry(evaluationHistoryId: ID!): Boolean!
   deleteTherapeuticPath(id: ID!): Boolean!
   deleteTreatment(id: ID!): Boolean!
+  deleteWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): EvaluationTest!
   editTestEvaluationEntry(evaluationHistoryId: ID!, evaluationLevel: Int!, note: String): TestEvaluationHistory!
@@ -1187,6 +1191,10 @@ type Mutation {
   revokeRole(input: AssignRoleInput!): Boolean!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
+  testWhatsappConnection: Boolean!
+  testWhatsappDirect(message: String, name: String!, phone: String!): WhatsappTestResult!
+  testWhatsappFullFlow(name: String!, phone: String!): WhatsappTestResult!
+  testWhatsappRecap(name: String!, phone: String!): WhatsappTestResult!
   unlinkKeycloakUser(appUserId: ID!): AppUser!
   updateAppUser(id: ID!, input: UpdateAppUserInput!): AppUser!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
@@ -1231,6 +1239,8 @@ type Mutation {
 
   """Crea o aggiorna anamnesi paziente"""
   upsertPatientAnamnesis(input: UpdatePatientAnamnesisInput!, patientId: ID!): PatientAnamnesis!
+  upsertWhatsappConfig(input: WhatsappConfigInput!): WhatsappTenantConfig!
+  upsertWhatsappTemplate(input: WhatsappTemplateInput!): WhatsappMessageTemplate!
 }
 
 type ObjectiveProgressHistory {
@@ -1860,6 +1870,14 @@ type Query {
   treatmentsPendingClosure: [Treatment!]!
   unlinkedAppUsers(userType: AppUserType): [AppUser!]!
   userRoles(appUserId: ID!): [Role!]!
+  whatsappConfig: WhatsappTenantConfig
+  whatsappExpiredLogs(limit: Int! = 50, page: Int! = 1): WhatsappMessageLogPage!
+  whatsappMessageLog(id: ID!): WhatsappMessageLog
+  whatsappMessageLogs(filters: WhatsappLogFilterInput!): WhatsappMessageLogPage!
+  whatsappMessageLogsByAppointment(appointmentId: ID!): [WhatsappMessageLog!]!
+  whatsappRetentionStats: WhatsappRetentionStats!
+  whatsappTemplate(type: WhatsappTemplateType!): WhatsappMessageTemplate
+  whatsappTemplates: [WhatsappMessageTemplate!]!
 }
 
 input RecordPaymentInput {
@@ -2664,4 +2682,128 @@ type UserRole {
   assignedAt: DateTime!
   role: Role!
   roleId: ID!
+}
+
+input WhatsappBulkLogIdsInput {
+  logIds: [String!]!
+}
+
+input WhatsappConfigInput {
+  apiKey: String
+  gatewayUrl: String!
+  isActive: Boolean
+  retentionDays: Int
+  sendCancelNotification: Boolean
+  tenantApiId: String!
+  webhookSecret: String
+}
+
+input WhatsappLogFilterInput {
+  dateFrom: DateTime
+  dateTo: DateTime
+  limit: Int! = 50
+  messageType: WhatsappMessageType
+  page: Int! = 1
+  patientName: String
+  status: WhatsappMessageStatus
+}
+
+type WhatsappLogManagementResult {
+  affectedCount: Int!
+  message: String
+  success: Boolean!
+}
+
+type WhatsappMessageLog {
+  anonymizedAt: DateTime
+  appointmentId: ID
+  correlationId: String!
+  createdAt: DateTime!
+  deliveredAt: DateTime
+  errorMessage: String
+  evolutionMessageId: String
+  id: ID!
+  isAnonymized: Boolean!
+  messageBody: String
+  messageType: WhatsappMessageType!
+  patientId: ID
+  patientName: String
+  phoneNumber: String!
+  readAt: DateTime
+  sentAt: DateTime
+  status: WhatsappMessageStatus!
+  updatedAt: DateTime!
+}
+
+type WhatsappMessageLogPage {
+  items: [WhatsappMessageLog!]!
+  total: Int!
+}
+
+"""Status del messaggio WhatsApp"""
+enum WhatsappMessageStatus {
+  DELIVERED
+  FAILED
+  PENDING
+  READ
+  SENT
+}
+
+type WhatsappMessageTemplate {
+  bodyTemplate: String!
+  createdAt: DateTime!
+  footerTemplate: String
+  id: ID!
+  isActive: Boolean!
+  templateType: WhatsappTemplateType!
+  updatedAt: DateTime!
+}
+
+"""Tipo di messaggio WhatsApp"""
+enum WhatsappMessageType {
+  CANCELLATION
+  RECAP_MULTI
+  RECAP_SINGLE
+  REMINDER_24H
+}
+
+type WhatsappRetentionStats {
+  anonymizedLogs: Int!
+  expiredLogs: Int!
+  retentionCutoffDate: DateTime!
+  retentionDays: Int!
+  totalLogs: Int!
+}
+
+input WhatsappTemplateInput {
+  bodyTemplate: String!
+  footerTemplate: String
+  isActive: Boolean
+  templateType: WhatsappTemplateType!
+}
+
+"""Tipo di template messaggio WhatsApp"""
+enum WhatsappTemplateType {
+  CANCELLATION
+  RECAP_MULTI
+  RECAP_SINGLE
+  REMINDER_24H
+}
+
+type WhatsappTenantConfig {
+  createdAt: DateTime!
+  gatewayUrl: String!
+  id: ID!
+  isActive: Boolean!
+  maskedApiKey: String
+  retentionDays: Int!
+  sendCancelNotification: Boolean!
+  tenantApiId: String!
+  updatedAt: DateTime!
+}
+
+type WhatsappTestResult {
+  data: JSON
+  message: String
+  success: Boolean!
 }

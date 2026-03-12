@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef, Optional, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not, Between, LessThanOrEqual, MoreThanOrEqual, DataSource, EntityManager } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,6 +13,8 @@ import { GymRoom } from '../entities/gym-room.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymPatternGroupService } from './gym-pattern-group.service';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
+import { Patient } from '../../../entities/patient.entity';
+import { WhatsappGatewayService } from '../../whatsapp/gateway/whatsapp-gateway.service';
 
 export interface RepeatConfigInput {
   type: RecurringType;
@@ -73,6 +75,8 @@ export interface UpdateAvailabilityAppointmentInput {
 
 @Injectable()
 export class AvailabilityAppointmentService {
+  private readonly logger = new Logger(AvailabilityAppointmentService.name);
+
   constructor(
     @InjectRepository(AvailabilityAppointment)
     private appointmentRepo: Repository<AvailabilityAppointment>,
@@ -86,9 +90,13 @@ export class AvailabilityAppointmentService {
     private instrumentCategoryRepo: Repository<InstrumentCategory>,
     @InjectRepository(GymRoom)
     private gymRoomRepo: Repository<GymRoom>,
+    @InjectRepository(Patient)
+    private patientRepo: Repository<Patient>,
     private dataSource: DataSource,
     @Inject(forwardRef(() => GymPatternGroupService))
     private gymPatternGroupService: GymPatternGroupService,
+    @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
+    private whatsappGateway?: WhatsappGatewayService,
   ) {}
 
   /**
@@ -99,13 +107,20 @@ export class AvailabilityAppointmentService {
   async create(input: CreateAvailabilityAppointmentInput): Promise<AvailabilityAppointment> {
     const { instruments, repeatConfig, ...appointmentData } = input;
 
+    let savedAppointment: AvailabilityAppointment;
+
     // Se c'è una configurazione di ricorrenza, crea appuntamenti multipli
     if (repeatConfig) {
-      return this.createRecurringAppointments(appointmentData, instruments, repeatConfig);
+      savedAppointment = await this.createRecurringAppointments(appointmentData, instruments, repeatConfig);
+    } else {
+      // Crea singolo appuntamento
+      savedAppointment = await this.createSingleAppointment(appointmentData, instruments);
     }
 
-    // Crea singolo appuntamento
-    return this.createSingleAppointment(appointmentData, instruments);
+    // Fire-and-forget WhatsApp dispatch
+    this.dispatchWhatsappBooking(savedAppointment);
+
+    return savedAppointment;
   }
 
   /**
@@ -789,6 +804,10 @@ export class AvailabilityAppointmentService {
     appointment.bookingStatus = BookingStatus.CANCELLED;
     appointment.cancellationReason = cancellationReason;
     await this.appointmentRepo.save(appointment);
+
+    // Fire-and-forget WhatsApp cancel
+    this.cancelWhatsappBooking(appointment);
+
     return this.findById(id);
   }
 
@@ -796,6 +815,13 @@ export class AvailabilityAppointmentService {
    * Elimina definitivamente un appuntamento
    */
   async delete(id: string): Promise<boolean> {
+    this.logger.log(`[DELETE] Called with id=${id}`);
+    // Caricare l'appuntamento prima della delete per notificare il gateway WhatsApp
+    const appointment = await this.appointmentRepo.findOne({ where: { id } });
+    this.logger.log(`[DELETE] appointment found=${!!appointment}, patientId=${appointment?.patientId}`);
+    if (appointment) {
+      this.cancelWhatsappBooking(appointment);
+    }
     // Le associazioni con gli strumenti vengono eliminate automaticamente (CASCADE)
     const result = await this.appointmentRepo.delete(id);
     return result.affected ? result.affected > 0 : false;
@@ -865,6 +891,9 @@ export class AvailabilityAppointmentService {
     if (isCancelledLate && appointment.patientId) {
       await this.incrementPatientCancellation(appointment.patientId);
     }
+
+    // Fire-and-forget WhatsApp cancel
+    this.cancelWhatsappBooking(appointment);
 
     return this.findById(id);
   }
@@ -1368,5 +1397,56 @@ export class AvailabilityAppointmentService {
         };
       })
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }
+
+  // ==================== WHATSAPP INTEGRATION ====================
+
+  /**
+   * Fire-and-forget: dispatch WhatsApp booking notification.
+   * Never throws - errors are logged silently.
+   */
+  private dispatchWhatsappBooking(appointment: AvailabilityAppointment): void {
+    if (!this.whatsappGateway || !appointment.patientId) return;
+
+    this.patientRepo
+      .findOne({ where: { id: appointment.patientId } })
+      .then((patient) => {
+        if (patient) {
+          return this.whatsappGateway!.dispatchBooking(appointment, patient);
+        }
+      })
+      .catch((err) => {
+        this.logger.warn(`WhatsApp dispatch failed: ${err?.message}`);
+      });
+  }
+
+  /**
+   * Fire-and-forget: cancel WhatsApp booking notification.
+   * Never throws - errors are logged silently.
+   */
+  private cancelWhatsappBooking(appointment: AvailabilityAppointment): void {
+    this.logger.log(`[WA-CANCEL-HOOK] appointmentId=${appointment.id} patientId=${appointment.patientId} gateway=${!!this.whatsappGateway}`);
+    if (!this.whatsappGateway) {
+      this.logger.warn(`[WA-CANCEL-HOOK] SKIP: whatsappGateway not injected`);
+      return;
+    }
+    if (!appointment.patientId) {
+      this.logger.warn(`[WA-CANCEL-HOOK] SKIP: no patientId on appointment ${appointment.id}`);
+      return;
+    }
+
+    this.patientRepo
+      .findOne({ where: { id: appointment.patientId } })
+      .then((patient) => {
+        if (patient) {
+          this.logger.log(`[WA-CANCEL-HOOK] Patient found: ${patient.nome} ${patient.cognome}, calling cancelBooking`);
+          return this.whatsappGateway!.cancelBooking(appointment, patient);
+        } else {
+          this.logger.warn(`[WA-CANCEL-HOOK] Patient not found for id=${appointment.patientId}`);
+        }
+      })
+      .catch((err) => {
+        this.logger.warn(`WhatsApp cancel failed: ${err?.message}`);
+      });
   }
 }

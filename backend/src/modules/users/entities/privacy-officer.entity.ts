@@ -26,7 +26,15 @@ export class PrivacyOfficer {
   certification?: string;
 
   @Field({ nullable: true })
-  @Column({ name: 'certification_expiry', type: 'date', nullable: true })
+  @Column({
+    name: 'certification_expiry',
+    type: 'date',
+    nullable: true,
+    transformer: {
+      to: (value: Date | string | null) => value,
+      from: (value: string | null) => value ? new Date(value + 'T00:00:00.000Z') : null,
+    },
+  })
   certificationExpiry?: Date;
 
   @Field({ nullable: true })

@@ -15,11 +15,11 @@ import { TenantSchemaContextService } from './tenant-schema-context.service';
  * Intercetta OGNI query TypeORM (beforeQuery) e imposta il search_path
  * sullo schema del tenant corrente, letto da AsyncLocalStorage.
  *
- * - Per query fuori transazione: SET search_path TO "schema", public
+ * - Per query fuori transazione: SET search_path TO "schema"
  *   (vale per la connessione; sicuro perché il search_path viene
  *    reimpostato per ogni query in base al contesto della request)
  *
- * - Per transazioni: SET LOCAL search_path TO "schema", public
+ * - Per transazioni: SET LOCAL search_path TO "schema"
  *   (vale solo per la transazione corrente, safe per il pool)
  *
  * COMPLIANCE:
@@ -66,7 +66,7 @@ export class TenantSchemaSubscriber implements EntitySubscriberInterface {
         `beforeQuery: ${setCmd} search_path TO "${schemaName}" (query: ${event.query?.substring(0, 60)}...)`,
       );
       await event.queryRunner.query(
-        `${setCmd} search_path TO "${schemaName}", public`,
+        `${setCmd} search_path TO "${schemaName}"`,
       );
     } catch (error: any) {
       this.logger.error(
@@ -87,7 +87,7 @@ export class TenantSchemaSubscriber implements EntitySubscriberInterface {
 
     try {
       await event.queryRunner.query(
-        `SET LOCAL search_path TO "${schemaName}", public`,
+        `SET LOCAL search_path TO "${schemaName}"`,
       );
       this.logger.verbose(
         `SET LOCAL search_path TO "${schemaName}" [tenant: ${this.tenantContext.getTenantId()}]`,

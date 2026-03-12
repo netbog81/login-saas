@@ -151,6 +151,6 @@ export class TenantSchemaService {
    * Imposta il search_path per la connessione corrente.
    */
   async setSearchPath(schemaName: string): Promise<void> {
-    await this.dataSource.query(`SET search_path TO "${schemaName}", public`);
+    await this.dataSource.query(`SET search_path TO "${schemaName}"`);
   }
 }

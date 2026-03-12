@@ -43,11 +43,25 @@ export class GymSchedule {
   endTime: string;
 
   @Field(() => GraphQLISODateTime, { nullable: true })
-  @Column({ type: 'date', nullable: true })
+  @Column({
+    type: 'date',
+    nullable: true,
+    transformer: {
+      to: (value: Date | string | null) => value,
+      from: (value: string | null) => value ? new Date(value + 'T00:00:00.000Z') : null,
+    },
+  })
   validFrom?: Date;
 
   @Field(() => GraphQLISODateTime, { nullable: true })
-  @Column({ type: 'date', nullable: true })
+  @Column({
+    type: 'date',
+    nullable: true,
+    transformer: {
+      to: (value: Date | string | null) => value,
+      from: (value: string | null) => value ? new Date(value + 'T00:00:00.000Z') : null,
+    },
+  })
   validUntil?: Date;
 
   @Field()

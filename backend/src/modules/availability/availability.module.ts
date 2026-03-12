@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SettingsModule } from '../settings/settings.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 // Entities
 import { Operator } from './entities/operator.entity';
@@ -95,6 +96,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
 @Module({
   imports: [
     SettingsModule,
+    forwardRef(() => WhatsappModule),
     TypeOrmModule.forFeature([
       AppUser,
       Operator,

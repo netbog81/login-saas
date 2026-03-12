@@ -91,6 +91,12 @@ import { RolePermission } from './modules/users/entities/role-permission.entity'
 import { Secretary } from './modules/users/entities/secretary.entity';
 import { PrivacyOfficer } from './modules/users/entities/privacy-officer.entity';
 import { ItManager } from './modules/users/entities/it-manager.entity';
+// WhatsApp Gateway integration module
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { WhatsappTenantConfig } from './modules/whatsapp/config/entities/whatsapp-tenant-config.entity';
+import { WhatsappMessageTemplate } from './modules/whatsapp/template/entities/whatsapp-message-template.entity';
+import { WhatsappMessageLog } from './modules/whatsapp/log/entities/whatsapp-message-log.entity';
+import { WhatsappWebhookEvent } from './modules/whatsapp/webhook/entities/whatsapp-webhook-event.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -147,6 +153,11 @@ const ALL_ENTITIES = [
   Secretary,
   PrivacyOfficer,
   ItManager,
+  // WhatsApp Gateway
+  WhatsappTenantConfig,
+  WhatsappMessageTemplate,
+  WhatsappMessageLog,
+  WhatsappWebhookEvent,
 ];
 
 interface AppModuleOptions {
@@ -165,6 +176,7 @@ export class AppModule implements NestModule {
   static forRootAsync(options: AppModuleOptions): DynamicModule {
     return {
       module: AppModule,
+      global: true,
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         EventEmitterModule.forRoot(),
@@ -203,6 +215,7 @@ export class AppModule implements NestModule {
         TasksModule,
         EventsModule,
         AppUsersModule,
+        WhatsappModule,
       ],
       controllers: [MeController],
       providers: [
@@ -216,6 +229,10 @@ export class AppModule implements NestModule {
         TenantContextMiddleware,
         JwksService,
       ],
+      exports: [
+        TenantSchemaContextService,
+        TenantOpenbaoResolverService,
+      ],
     };
   }
 
@@ -224,7 +241,7 @@ export class AppModule implements NestModule {
     // Escludi: health check, graphql playground, rotte SSE
     consumer
       .apply(TenantContextMiddleware)
-      .exclude('health', 'events/(.*)')
+      .exclude('health', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
   }
 }
