@@ -111,14 +111,14 @@ export class AvailabilityAppointmentService {
 
     // Se c'è una configurazione di ricorrenza, crea appuntamenti multipli
     if (repeatConfig) {
+      // Il dispatch WhatsApp avviene dentro createRecurringAppointments per ogni appuntamento
       savedAppointment = await this.createRecurringAppointments(appointmentData, instruments, repeatConfig);
     } else {
       // Crea singolo appuntamento
       savedAppointment = await this.createSingleAppointment(appointmentData, instruments);
+      // Fire-and-forget WhatsApp dispatch solo per singolo
+      this.dispatchWhatsappBooking(savedAppointment);
     }
-
-    // Fire-and-forget WhatsApp dispatch
-    this.dispatchWhatsappBooking(savedAppointment);
 
     return savedAppointment;
   }
@@ -252,6 +252,9 @@ export class AvailabilityAppointmentService {
           recurringGroupId,
           i === 0 ? repeatConfig : undefined, // Solo il primo appuntamento ha la config
         );
+
+        // WhatsApp dispatch per OGNI appuntamento della serie
+        this.dispatchWhatsappBooking(appointment);
 
         if (i === 0) {
           firstAppointment = appointment;
@@ -815,10 +818,8 @@ export class AvailabilityAppointmentService {
    * Elimina definitivamente un appuntamento
    */
   async delete(id: string): Promise<boolean> {
-    this.logger.log(`[DELETE] Called with id=${id}`);
     // Caricare l'appuntamento prima della delete per notificare il gateway WhatsApp
     const appointment = await this.appointmentRepo.findOne({ where: { id } });
-    this.logger.log(`[DELETE] appointment found=${!!appointment}, patientId=${appointment?.patientId}`);
     if (appointment) {
       this.cancelWhatsappBooking(appointment);
     }
@@ -1213,10 +1214,12 @@ export class AvailabilityAppointmentService {
     }
 
     // 5. Crea singolo appuntamento
-    return this.createSingleGymAppointment(
+    const savedGymAppointment = await this.createSingleGymAppointment(
       { ...appointmentData, operatorId: operator.id },
       gymRoom,
     );
+    this.dispatchWhatsappBooking(savedGymAppointment);
+    return savedGymAppointment;
   }
 
   /**
@@ -1345,6 +1348,9 @@ export class AvailabilityAppointmentService {
           recurringGroupId,
           i === 0 ? repeatConfig : undefined,
         );
+
+        // WhatsApp dispatch per OGNI appuntamento della serie
+        this.dispatchWhatsappBooking(appointment);
 
         if (i === 0) {
           firstAppointment = appointment;
