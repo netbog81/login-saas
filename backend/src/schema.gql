@@ -653,6 +653,15 @@ input CreateTherapeuticPathInput {
   primaryOperatorId: ID!
 }
 
+input CreateWaitingListEntryInput {
+  notes: String
+  operatorId: ID
+  patientId: ID
+  patientName: String!
+  phone: String
+  priority: Int! = 1
+}
+
 type DailyAvailability {
   date: String!
   hasAvailability: Boolean!
@@ -1105,6 +1114,7 @@ type Mutation {
   createTherapeuticPath(input: CreateTherapeuticPathInput!): TherapeuticPath!
   createTreatment(appointmentId: ID!, scontoFE: Boolean = false, therapeuticPathId: ID!): Treatment!
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
+  createWaitingListEntry(input: CreateWaitingListEntryInput!): WaitingListEntry!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
@@ -1149,6 +1159,7 @@ type Mutation {
   deleteTestEvaluationEntry(evaluationHistoryId: ID!): Boolean!
   deleteTherapeuticPath(id: ID!): Boolean!
   deleteTreatment(id: ID!): Boolean!
+  deleteWaitingListEntry(id: ID!): Boolean!
   deleteWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): EvaluationTest!
@@ -1177,6 +1188,7 @@ type Mutation {
   recordTreatmentPayment(id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   reopenTreatment(id: ID!): Treatment!
+  reorderWaitingList(input: ReorderWaitingListInput!): [WaitingListEntry!]!
 
   """
   Request patient data deletion (GDPR Article 17 - Right to be Forgotten)
@@ -1235,6 +1247,7 @@ type Mutation {
   updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
   updateTreatment(input: UpdateTreatmentInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
+  updateWaitingListEntry(id: ID!, input: UpdateWaitingListEntryInput!): WaitingListEntry!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 
   """Crea o aggiorna anamnesi paziente"""
@@ -1870,6 +1883,8 @@ type Query {
   treatmentsPendingClosure: [Treatment!]!
   unlinkedAppUsers(userType: AppUserType): [AppUser!]!
   userRoles(appUserId: ID!): [Role!]!
+  waitingListEntries(status: WaitingListStatus): [WaitingListEntry!]!
+  waitingListEntry(id: ID!): WaitingListEntry
   whatsappConfig: WhatsappTenantConfig
   whatsappExpiredLogs(limit: Int! = 50, page: Int! = 1): WhatsappMessageLogPage!
   whatsappMessageLog(id: ID!): WhatsappMessageLog
@@ -1898,6 +1913,15 @@ enum RecurringType {
   DAILY
   MONTHLY
   WEEKLY
+}
+
+input ReorderEntryItem {
+  id: ID!
+  position: Int!
+}
+
+input ReorderWaitingListInput {
+  entries: [ReorderEntryItem!]!
 }
 
 input RepeatConfigInput {
@@ -2676,12 +2700,45 @@ input UpdateTreatmentInstrumentInput {
   wasUsed: Boolean
 }
 
+input UpdateWaitingListEntryInput {
+  notes: String
+  operatorId: ID
+  patientName: String
+  phone: String
+  position: Int
+  priority: Int
+  status: WaitingListStatus
+}
+
 type UserRole {
   appUser: AppUser!
   appUserId: ID!
   assignedAt: DateTime!
   role: Role!
   roleId: ID!
+}
+
+type WaitingListEntry {
+  createdAt: DateTime!
+  id: ID!
+  notes: String
+  operator: Operator
+  operatorId: ID
+  patientId: ID
+  patientName: String!
+  phone: String
+  position: Int!
+  priority: Int!
+  status: WaitingListStatus!
+  updatedAt: DateTime!
+}
+
+"""Status of a waiting list entry"""
+enum WaitingListStatus {
+  CONTACTED
+  REMOVED
+  SCHEDULED
+  WAITING
 }
 
 input WhatsappBulkLogIdsInput {

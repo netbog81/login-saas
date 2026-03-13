@@ -97,6 +97,7 @@ import { WhatsappTenantConfig } from './modules/whatsapp/config/entities/whatsap
 import { WhatsappMessageTemplate } from './modules/whatsapp/template/entities/whatsapp-message-template.entity';
 import { WhatsappMessageLog } from './modules/whatsapp/log/entities/whatsapp-message-log.entity';
 import { WhatsappWebhookEvent } from './modules/whatsapp/webhook/entities/whatsapp-webhook-event.entity';
+import { WaitingListEntry } from './modules/availability/entities/waiting-list-entry.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -142,6 +143,7 @@ const ALL_ENTITIES = [
   ObjectiveProgressHistory,
   TestEvaluationHistory,
   PatientAnamnesis,
+  WaitingListEntry,
   PersonaRiferimento,
   PazientePersonaRelazione,
   // App Users system

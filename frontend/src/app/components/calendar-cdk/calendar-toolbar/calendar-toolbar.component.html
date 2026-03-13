@@ -97,6 +97,17 @@
     </label>
   </div>
 
+  <!-- Waiting list button -->
+  <div class="toolbar-group">
+    <button class="btn-waiting-list" (click)="openWaitingList.emit()" title="Apri lista d'attesa">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      <span>Lista d'attesa</span>
+    </button>
+  </div>
+
   <!-- Info display -->
   <div class="toolbar-info">
     <span class="info-text">Altezza cella: {{ slotHeightPx }}px</span>

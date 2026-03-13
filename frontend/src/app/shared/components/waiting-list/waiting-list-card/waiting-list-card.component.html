@@ -1,0 +1,90 @@
+<mat-card class="waiting-card" [class.editing]="editing">
+  @if (!editing) {
+    <!-- VIEW MODE -->
+    <div class="card-header">
+      <div class="card-drag-handle" cdkDragHandle>
+        <mat-icon class="drag-icon">drag_indicator</mat-icon>
+      </div>
+      <span class="priority-badge" [style.background-color]="priorityColor">{{ entry.priority }}</span>
+      <span class="patient-name">{{ displayName }}</span>
+      @if (entry.phone) {
+        <span class="patient-phone">
+          <mat-icon class="inline-icon">phone</mat-icon>
+          {{ entry.phone }}
+        </span>
+      }
+      <div class="card-actions">
+        <button mat-icon-button (click)="startEdit()" matTooltip="Modifica">
+          <mat-icon>edit</mat-icon>
+        </button>
+        @if (!confirmingDelete) {
+          <button mat-icon-button (click)="onDeleteClick()" matTooltip="Rimuovi" color="warn">
+            <mat-icon>delete_outline</mat-icon>
+          </button>
+        } @else {
+          <button mat-icon-button (click)="confirmDelete()" matTooltip="Conferma eliminazione" color="warn">
+            <mat-icon>check</mat-icon>
+          </button>
+          <button mat-icon-button (click)="cancelDelete()" matTooltip="Annulla">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </div>
+    </div>
+    @if (operatorName) {
+      <div class="card-operator">
+        <mat-icon class="inline-icon">medical_services</mat-icon>
+        @if (entry.operator?.color) {
+          <span class="operator-dot" [style.background-color]="entry.operator!.color"></span>
+        }
+        {{ operatorName }}
+      </div>
+    }
+    @if (entry.notes) {
+      <div class="card-notes">{{ entry.notes }}</div>
+    }
+  } @else {
+    <!-- EDIT MODE -->
+    <div class="edit-form">
+      <div class="edit-row">
+        <mat-form-field appearance="outline" class="edit-field">
+          <mat-label>Paziente</mat-label>
+          <input matInput [(ngModel)]="editPatientName">
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="edit-field">
+          <mat-label>Telefono</mat-label>
+          <input matInput [(ngModel)]="editPhone">
+        </mat-form-field>
+      </div>
+      <div class="edit-row">
+        <mat-form-field appearance="outline" class="edit-field">
+          <mat-label>Operatore</mat-label>
+          <mat-select [(ngModel)]="editOperatorId">
+            <mat-option [value]="null">-- Nessuno --</mat-option>
+            @for (op of operators; track op.id) {
+              <mat-option [value]="op.id">{{ op.name }} {{ op.surname || '' }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <div class="edit-priority" [style.--priority-color]="editPriorityColor">
+          <label class="priority-label">Priorità: {{ editPriority }}</label>
+          <mat-slider min="1" max="5" step="1" discrete showTickMarks class="priority-slider">
+            <input matSliderThumb [(ngModel)]="editPriority">
+          </mat-slider>
+        </div>
+      </div>
+      <mat-form-field appearance="outline" class="edit-field-full">
+        <mat-label>Note</mat-label>
+        <textarea matInput [(ngModel)]="editNotes" rows="2"></textarea>
+      </mat-form-field>
+      <div class="edit-actions">
+        <button mat-icon-button (click)="saveEdit()" color="primary" matTooltip="Salva">
+          <mat-icon>check</mat-icon>
+        </button>
+        <button mat-icon-button (click)="cancelEdit()" matTooltip="Annulla">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    </div>
+  }
+</mat-card>

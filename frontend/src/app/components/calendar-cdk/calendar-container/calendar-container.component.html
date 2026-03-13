@@ -15,7 +15,8 @@
   <app-calendar-toolbar
     [config]="config"
     (configChange)="onConfigChange($event)"
-    (openWorkingHoursDialog)="onOpenWorkingHoursDialog()">
+    (openWorkingHoursDialog)="onOpenWorkingHoursDialog()"
+    (openWaitingList)="onOpenWaitingList()">
   </app-calendar-toolbar>
 
   <!-- Users Legend (shown when user names don't fit in grid columns) - only in operators view -->

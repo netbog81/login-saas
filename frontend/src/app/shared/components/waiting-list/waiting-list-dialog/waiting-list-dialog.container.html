@@ -1,0 +1,45 @@
+<div class="dialog-title-bar" cdkDrag cdkDragRootElement=".cdk-overlay-pane" cdkDragBoundary=".cdk-overlay-container">
+  <div cdkDragHandle class="drag-handle">
+    <mat-icon>drag_indicator</mat-icon>
+    <h2>Lista d'attesa</h2>
+    <span class="entry-count" *ngIf="entries.length > 0">({{ entries.length }})</span>
+  </div>
+  <button mat-icon-button (click)="closeDialog()" class="close-btn">
+    <mat-icon>close</mat-icon>
+  </button>
+</div>
+
+<div class="dialog-content">
+  <!-- Form di inserimento (espandibile) -->
+  <mat-expansion-panel [expanded]="true" class="form-panel">
+    <mat-expansion-panel-header>
+      <mat-panel-title>
+        <mat-icon>add_circle_outline</mat-icon>
+        Nuovo inserimento
+      </mat-panel-title>
+    </mat-expansion-panel-header>
+    <app-waiting-list-form
+      [patients]="patients"
+      [operators]="operators"
+      (addEntry)="onAddEntry($event)"
+      (patientSearch)="onPatientSearch($event)">
+    </app-waiting-list-form>
+  </mat-expansion-panel>
+
+  <!-- Lista cards -->
+  <div class="cards-section">
+    @if (loading) {
+      <div class="loading-container">
+        <mat-spinner diameter="32"></mat-spinner>
+      </div>
+    } @else {
+      <app-waiting-list-cards-list
+        [entries]="entries"
+        [operators]="operators"
+        (update)="onUpdateEntry($event)"
+        (delete)="onDeleteEntry($event)"
+        (reorder)="onReorder($event)">
+      </app-waiting-list-cards-list>
+    }
+  </div>
+</div>

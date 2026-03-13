@@ -161,6 +161,42 @@
   }
 }
 
+.btn-waiting-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+
+  svg {
+    flex-shrink: 0;
+    color: #b45309;
+  }
+
+  &:hover {
+    background-color: #fde68a;
+    border-color: #d97706;
+    color: #78350f;
+  }
+
+  &:active {
+    background-color: #fcd34d;
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+  }
+}
+
 // Responsive
 @media (max-width: 1024px) {
   .calendar-toolbar {

@@ -1,0 +1,67 @@
+<form [formGroup]="form" (ngSubmit)="onSubmit()" class="waiting-list-form">
+  <div class="form-row">
+    <mat-form-field appearance="outline" class="field-patient">
+      <mat-label>Paziente</mat-label>
+      <input matInput
+             formControlName="patientName"
+             [matAutocomplete]="patientAuto"
+             (input)="onPatientInput($event)"
+             placeholder="Cerca o inserisci nome...">
+      <mat-autocomplete #patientAuto="matAutocomplete"
+                        [displayWith]="displayPatient"
+                        (optionSelected)="onPatientSelected($event)">
+        @for (patient of patients; track patient.id) {
+          <mat-option [value]="patient">
+            {{ patient.nomeCompleto || (patient.nome + ' ' + patient.cognome) }}
+            @if (patient.cellulare || patient.telefono) {
+              <span class="patient-phone-hint"> - {{ patient.cellulare || patient.telefono }}</span>
+            }
+          </mat-option>
+        }
+      </mat-autocomplete>
+      <mat-icon matPrefix>person_search</mat-icon>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="field-phone">
+      <mat-label>Telefono</mat-label>
+      <input matInput formControlName="phone" placeholder="Numero di telefono">
+      <mat-icon matPrefix>phone</mat-icon>
+    </mat-form-field>
+  </div>
+
+  <div class="form-row">
+    <mat-form-field appearance="outline" class="field-operator">
+      <mat-label>Operatore (facoltativo)</mat-label>
+      <mat-select formControlName="operatorId">
+        <mat-option [value]="null">-- Nessuno --</mat-option>
+        @for (op of operators; track op.id) {
+          <mat-option [value]="op.id">
+            @if (op.color) {
+              <span class="operator-color-dot" [style.background-color]="op.color"></span>
+            }
+            {{ op.name }} {{ op.surname || '' }}
+          </mat-option>
+        }
+      </mat-select>
+      <mat-icon matPrefix>medical_services</mat-icon>
+    </mat-form-field>
+
+    <div class="field-priority" [style.--priority-color]="priorityColor">
+      <label class="priority-label">Priorità: <strong>{{ form.get('priority')?.value }} - {{ getPriorityLabel(form.get('priority')?.value) }}</strong></label>
+      <mat-slider min="1" max="5" step="1" discrete showTickMarks class="priority-slider">
+        <input matSliderThumb formControlName="priority">
+      </mat-slider>
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" class="field-notes">
+    <mat-label>Note</mat-label>
+    <textarea matInput formControlName="notes" rows="2" placeholder="Esigenze del paziente..."></textarea>
+    <mat-icon matPrefix>notes</mat-icon>
+  </mat-form-field>
+
+  <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid" class="btn-add">
+    <mat-icon>add</mat-icon>
+    Aggiungi a lista d'attesa
+  </button>
+</form>

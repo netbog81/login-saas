@@ -1774,6 +1774,25 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     this.showWorkingHoursDialog = false;
   }
 
+  // Waiting List Dialog
+  private waitingListDialogRef: import('@angular/material/dialog').MatDialogRef<any> | null = null;
+
+  onOpenWaitingList(): void {
+    if (this.waitingListDialogRef) return;
+    import('../../../shared/components/waiting-list/waiting-list-dialog/waiting-list-dialog.container').then(m => {
+      this.waitingListDialogRef = this.dialog.open(m.WaitingListDialogContainer, {
+        width: '650px',
+        height: '80vh',
+        hasBackdrop: false,
+        panelClass: 'waiting-list-dialog-panel',
+        disableClose: false,
+      });
+      this.waitingListDialogRef.afterClosed().subscribe(() => {
+        this.waitingListDialogRef = null;
+      });
+    });
+  }
+
   // Utility methods
   private formatDate(date: Date): string {
     const year = date.getFullYear();

@@ -1,0 +1,22 @@
+@if (entries.length === 0) {
+  <div class="empty-state">
+    <mat-icon class="empty-icon">hourglass_empty</mat-icon>
+    <p>Nessun paziente in lista d'attesa</p>
+  </div>
+} @else {
+  <div cdkDropList
+       class="cards-container"
+       (cdkDropListDropped)="onDrop($event)">
+    @for (entry of entries; track trackById($index, entry)) {
+      <div cdkDrag [cdkDragDisabled]="card.editing" class="drag-item">
+        <app-waiting-list-card #card
+          [entry]="entry"
+          [operators]="operators"
+          (update)="onUpdate($event)"
+          (delete)="onDelete($event)">
+        </app-waiting-list-card>
+        <div *cdkDragPlaceholder class="drag-placeholder"></div>
+      </div>
+    }
+  </div>
+}

@@ -42,6 +42,7 @@ import { EvaluationExam } from './entities/evaluation-exam.entity';
 import { ObjectiveProgressHistory } from './entities/objective-progress-history.entity';
 import { TestEvaluationHistory } from './entities/test-evaluation-history.entity';
 import { PatientAnamnesis } from './entities/patient-anamnesis.entity';
+import { WaitingListEntry } from './entities/waiting-list-entry.entity';
 import { AppUser } from '../users/entities/app-user.entity';
 
 // Services
@@ -68,6 +69,7 @@ import { TreatmentService } from './services/treatment.service';
 import { TherapeuticPathService } from './services/therapeutic-path.service';
 import { PatientEvaluationService } from './services/patient-evaluation.service';
 import { PatientAnamnesisService } from './services/patient-anamnesis.service';
+import { WaitingListService } from './services/waiting-list.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
@@ -92,6 +94,7 @@ import { TherapeuticPathResolver } from './resolvers/therapeutic-path.resolver';
 import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.resolver';
 import { PatientEvaluationResolver } from './resolvers/patient-evaluation.resolver';
 import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver';
+import { WaitingListResolver } from './resolvers/waiting-list.resolver';
 
 @Module({
   imports: [
@@ -138,6 +141,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
       ObjectiveProgressHistory,
       TestEvaluationHistory,
       PatientAnamnesis,
+      WaitingListEntry,
     ]),
   ],
   providers: [
@@ -165,6 +169,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
     TherapeuticPathService,
     PatientEvaluationService,
     PatientAnamnesisService,
+    WaitingListService,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -188,6 +193,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
     ServiceSubcategoryResolver,
     PatientEvaluationResolver,
     PatientAnamnesisResolver,
+    WaitingListResolver,
   ],
   exports: [
     AvailabilityService,
@@ -213,6 +219,7 @@ import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver
     TherapeuticPathService,
     PatientEvaluationService,
     PatientAnamnesisService,
+    WaitingListService,
     TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })

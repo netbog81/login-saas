@@ -1,0 +1,171 @@
+.waiting-card {
+  margin-bottom: 6px;
+  padding: 8px 12px;
+  cursor: grab;
+  transition: box-shadow 0.2s;
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  &.editing {
+    cursor: default;
+    border-left: 3px solid #1976d2;
+  }
+
+  &.cdk-drag-preview {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-drag-handle {
+  cursor: grab;
+  display: flex;
+  align-items: center;
+
+  .drag-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: rgba(0, 0, 0, 0.3);
+  }
+}
+
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.patient-name {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.patient-phone {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.card-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0;
+
+  button {
+    width: 32px;
+    height: 32px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+  }
+}
+
+.card-operator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: 2px;
+  padding-left: 26px;
+}
+
+.operator-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.card-notes {
+  margin-top: 4px;
+  padding: 6px 8px;
+  padding-left: 26px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.8);
+  background: #f5f5f5;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.inline-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+// Edit mode
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.edit-field {
+  width: 100%;
+}
+
+.edit-field-full {
+  width: 100%;
+}
+
+.edit-priority {
+  display: flex;
+  flex-direction: column;
+  padding-right: 16px;
+
+  .priority-label {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  mat-slider {
+    width: calc(100% - 8px);
+  }
+}
+
+::ng-deep .priority-slider {
+  --mat-slider-active-track-color: var(--priority-color, #4caf50);
+  --mat-slider-handle-color: var(--priority-color, #4caf50);
+  --mat-slider-focus-handle-color: var(--priority-color, #4caf50);
+  --mat-slider-hover-handle-color: var(--priority-color, #4caf50);
+  --mat-slider-label-container-color: var(--priority-color, #4caf50);
+  --mat-slider-with-tick-marks-active-container-color: white;
+  --mat-slider-with-tick-marks-inactive-container-color: var(--priority-color, #4caf50);
+  --mat-slider-ripple-color: var(--priority-color, #4caf50);
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
