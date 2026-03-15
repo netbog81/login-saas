@@ -26,6 +26,10 @@ export class WhatsappMessageLog {
   @Column('uuid', { nullable: true })
   appointmentId?: string;
 
+  @Field(() => [String], { nullable: true })
+  @Column('jsonb', { nullable: true })
+  appointmentIds?: string[];
+
   @Field(() => ID, { nullable: true })
   @Column('uuid', { nullable: true })
   patientId?: string;

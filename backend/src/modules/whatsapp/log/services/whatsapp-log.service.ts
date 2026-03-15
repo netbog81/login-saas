@@ -14,12 +14,14 @@ import {
 
 export interface CreateLogData {
   appointmentId?: string;
+  appointmentIds?: string[];
   patientId?: string;
   patientName?: string;
   phoneNumber: string;
   messageType: WhatsappMessageType;
   correlationId: string;
   messageBody?: string;
+  status?: WhatsappMessageStatus;
 }
 
 export interface UpdateLogExtras {
@@ -29,6 +31,7 @@ export interface UpdateLogExtras {
   evolutionMessageId?: string;
   errorMessage?: string;
   messageBody?: string;
+  messageType?: WhatsappMessageType;
 }
 
 @Injectable()
@@ -43,7 +46,7 @@ export class WhatsappLogService {
   async createLog(data: CreateLogData): Promise<WhatsappMessageLog> {
     const log = this.logRepo.create({
       ...data,
-      status: WhatsappMessageStatus.PENDING,
+      status: data.status ?? WhatsappMessageStatus.DISPATCHED,
     });
     return this.logRepo.save(log);
   }
@@ -65,6 +68,7 @@ export class WhatsappLogService {
     if (extras?.evolutionMessageId) updateData.evolutionMessageId = extras.evolutionMessageId;
     if (extras?.errorMessage) updateData.errorMessage = extras.errorMessage;
     if (extras?.messageBody) updateData.messageBody = extras.messageBody;
+    if (extras?.messageType) updateData.messageType = extras.messageType;
 
     const result = await this.logRepo.update({ correlationId }, updateData);
 
@@ -109,6 +113,7 @@ export class WhatsappLogService {
     if (extras?.evolutionMessageId) updateData.evolutionMessageId = extras.evolutionMessageId;
     if (extras?.errorMessage) updateData.errorMessage = extras.errorMessage;
     if (extras?.messageBody) updateData.messageBody = extras.messageBody;
+    if (extras?.messageType) updateData.messageType = extras.messageType;
 
     await this.logRepo.update(pendingLog.id, updateData);
     this.logger.log(`[WA-LOG] Updated log ${pendingLog.id} to status=${newStatus}`);
@@ -129,6 +134,7 @@ export class WhatsappLogService {
     if (extras?.sentAt) updateData.sentAt = extras.sentAt;
     if (extras?.deliveredAt) updateData.deliveredAt = extras.deliveredAt;
     if (extras?.readAt) updateData.readAt = extras.readAt;
+    if (extras?.messageType) updateData.messageType = extras.messageType;
 
     const result = await this.logRepo.update({ evolutionMessageId }, updateData);
 
@@ -139,6 +145,33 @@ export class WhatsappLogService {
     if (!result.affected) {
       this.logger.warn(`[WA-LOG] No log found for evolutionMessageId: ${evolutionMessageId}`);
     }
+  }
+
+  async findPatientInfoByAppointmentId(
+    appointmentId: string,
+  ): Promise<{ patientId?: string; patientName?: string; phoneNumber?: string } | null> {
+    const log = await this.logRepo.findOne({
+      where: { appointmentId },
+      order: { createdAt: 'DESC' },
+    });
+    return log
+      ? { patientId: log.patientId, patientName: log.patientName, phoneNumber: log.phoneNumber }
+      : null;
+  }
+
+  async cancelByAppointmentId(appointmentId: string): Promise<boolean> {
+    const log = await this.logRepo.findOne({
+      where: {
+        appointmentId,
+        status: In([WhatsappMessageStatus.DISPATCHED, WhatsappMessageStatus.PENDING]),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!log) return false;
+
+    await this.logRepo.update(log.id, { status: WhatsappMessageStatus.CANCELLED });
+    this.logger.log(`[WA-LOG] Cancelled log ${log.id} for appointmentId=${appointmentId}`);
+    return true;
   }
 
   async findByFilters(

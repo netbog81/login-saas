@@ -2,8 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WhatsappWebhookEvent } from '../entities/whatsapp-webhook-event.entity';
-import { WhatsappLogService } from '../../log/services/whatsapp-log.service';
+import { WhatsappLogService, UpdateLogExtras } from '../../log/services/whatsapp-log.service';
 import { WhatsappMessageStatus, WhatsappMessageType } from '../../enums/whatsapp-enums';
+
+interface GatewayMetadata {
+  messageType?: string;
+  correlationId?: string;
+  tenantId?: string;
+  patientId?: string;
+  appointmentIds?: string[];
+  status?: string;
+  timestamp?: string;
+}
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -87,7 +97,272 @@ export class WhatsappWebhookService {
     }
   }
 
+  // ── Gateway metadata extraction ──
+
+  private extractGatewayMetadata(payload: any): GatewayMetadata | null {
+    const gm = payload?.gateway_metadata;
+    if (!gm) return null;
+    return {
+      messageType: gm.message_type,
+      correlationId: gm.correlation_id,
+      tenantId: gm.tenant_id,
+      patientId: gm.patient_id,
+      appointmentIds: gm.appointment_ids,
+      status: gm.status,
+      timestamp: gm.timestamp,
+    };
+  }
+
+  private mapGatewayStatus(gwStatus: string | undefined): WhatsappMessageStatus | undefined {
+    switch (gwStatus) {
+      case 'PENDING': return WhatsappMessageStatus.PENDING;
+      case 'SENT': return WhatsappMessageStatus.SENT;
+      case 'DELIVERED': return WhatsappMessageStatus.DELIVERED;
+      case 'READ': return WhatsappMessageStatus.READ;
+      case 'FAILED': return WhatsappMessageStatus.FAILED;
+      case 'CANCELLED': return WhatsappMessageStatus.CANCELLED;
+      default: return undefined;
+    }
+  }
+
+  // ── Main dispatcher ──
+
   private async updateLogFromEvent(
+    correlationId: string | undefined,
+    payload: any,
+  ): Promise<void> {
+    const gm = this.extractGatewayMetadata(payload);
+
+    if (gm) {
+      await this.handleGatewayMetadataEvent(gm, payload);
+      return;
+    }
+
+    // Legacy fallback for Evolution events without gateway_metadata
+    await this.handleLegacyEvent(correlationId, payload);
+  }
+
+  // ── New gateway_metadata-based handling ──
+
+  private async handleGatewayMetadataEvent(
+    gm: GatewayMetadata,
+    payload: any,
+  ): Promise<void> {
+    const gatewayMessageType = this.mapGatewayMessageType(payload);
+    const newStatus = this.mapGatewayStatus(gm.status);
+    const evolutionMessageId = this.extractEvolutionMessageId(payload);
+    const messageBody = payload?.data?.message?.conversation
+      || payload?.data?.message?.extendedTextMessage?.text;
+    const phone = this.extractPhone(payload);
+
+    this.logger.log(
+      `[WA-WEBHOOK] gateway_metadata: type=${gm.messageType} status=${gm.status} ` +
+      `correlationId=${gm.correlationId} appointmentIds=${JSON.stringify(gm.appointmentIds)}`,
+    );
+
+    if (!newStatus) {
+      this.logger.warn(`[WA-WEBHOOK] Unknown gateway status: ${gm.status}`);
+      return;
+    }
+
+    switch (gm.messageType) {
+      case 'reminder': {
+        // correlationId is the ORIGINAL one from main-app → update existing record
+        const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+        if (newStatus === WhatsappMessageStatus.SENT) extras.sentAt = new Date();
+        if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+        if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+        extras.messageType = WhatsappMessageType.REMINDER_24H;
+
+        let updated = false;
+        if (gm.correlationId) {
+          const existing = await this.logService.findByCorrelationId(gm.correlationId);
+          if (existing) {
+            await this.logService.updateStatus(gm.correlationId, newStatus, extras);
+            updated = true;
+          }
+        }
+
+        // Fallback: find DISPATCHED/PENDING log by appointmentId
+        if (!updated && gm.appointmentIds?.length) {
+          for (const aptId of gm.appointmentIds) {
+            const logs = await this.logService.findByAppointmentId(aptId);
+            const dispatchLog = logs.find(
+              l => (l.status === WhatsappMessageStatus.DISPATCHED || l.status === WhatsappMessageStatus.PENDING)
+                && l.messageType !== WhatsappMessageType.CANCELLATION,
+            );
+            if (dispatchLog) {
+              await this.logService.updateStatus(dispatchLog.correlationId, newStatus, extras);
+              this.logger.log(
+                `[WA-WEBHOOK] reminder: matched by appointmentId=${aptId} → log=${dispatchLog.id}`,
+              );
+              updated = true;
+              break;
+            }
+          }
+        }
+
+        if (!updated) {
+          this.logger.warn(
+            `[WA-WEBHOOK] reminder: no matching log found. correlationId=${gm.correlationId} appointmentIds=${JSON.stringify(gm.appointmentIds)}`,
+          );
+        }
+        break;
+      }
+
+      case 'single_recap':
+      case 'multiple_recap': {
+        // correlationId is NEW (gateway-generated)
+        if (!gm.correlationId) break;
+
+        const existingLog = await this.logService.findByCorrelationId(gm.correlationId);
+
+        if (existingLog) {
+          // Update existing recap record (SENT → DELIVERED → READ)
+          const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+          if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+          if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+          await this.logService.updateStatus(gm.correlationId, newStatus, extras);
+        } else {
+          // Create new recap record
+          let patientName: string | undefined;
+          let patientId: string | undefined = gm.patientId;
+          if (gm.appointmentIds?.length) {
+            const info = await this.logService.findPatientInfoByAppointmentId(gm.appointmentIds[0]);
+            if (info) {
+              patientName = info.patientName;
+              if (!patientId) patientId = info.patientId;
+            }
+          }
+
+          await this.logService.createLog({
+            correlationId: gm.correlationId,
+            appointmentIds: gm.appointmentIds,
+            appointmentId: gm.appointmentIds?.[0],
+            patientId,
+            patientName,
+            phoneNumber: phone || '',
+            messageType: gatewayMessageType || WhatsappMessageType.RECAP_SINGLE,
+            messageBody,
+            status: newStatus,
+          });
+        }
+        break;
+      }
+
+      case 'cancel_notification': {
+        if (newStatus === WhatsappMessageStatus.CANCELLED) {
+          // sendCancelNotification=false → gateway cancelled the reminder
+          // Update DISPATCHED/PENDING records to CANCELLED
+          if (gm.appointmentIds?.length) {
+            for (const aptId of gm.appointmentIds) {
+              await this.logService.cancelByAppointmentId(aptId);
+            }
+          }
+        } else {
+          // sendCancelNotification=true → cancellation message was sent
+          const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+          if (newStatus === WhatsappMessageStatus.SENT) extras.sentAt = new Date();
+          if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+          if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+
+          // Try by correlationId first, then fallback to appointmentId
+          let updated = false;
+          if (gm.correlationId) {
+            const existing = await this.logService.findByCorrelationId(gm.correlationId);
+            if (existing) {
+              await this.logService.updateStatus(gm.correlationId, newStatus, extras);
+              updated = true;
+            }
+          }
+
+          // Fallback: find CANCELLATION log by appointmentId
+          if (!updated && gm.appointmentIds?.length) {
+            for (const aptId of gm.appointmentIds) {
+              const logs = await this.logService.findByAppointmentId(aptId);
+              const cancelLog = logs.find(
+                l => l.messageType === WhatsappMessageType.CANCELLATION
+                  && l.status === WhatsappMessageStatus.DISPATCHED,
+              );
+              if (cancelLog) {
+                await this.logService.updateStatus(cancelLog.correlationId, newStatus, extras);
+                this.logger.log(
+                  `[WA-WEBHOOK] cancel_notification: matched by appointmentId=${aptId} → log=${cancelLog.id}`,
+                );
+                updated = true;
+                break;
+              }
+            }
+          }
+
+          if (!updated) {
+            this.logger.warn(
+              `[WA-WEBHOOK] cancel_notification: no matching log found. correlationId=${gm.correlationId} appointmentIds=${JSON.stringify(gm.appointmentIds)}`,
+            );
+          }
+        }
+        break;
+      }
+
+      default: {
+        // gateway_metadata present but message_type is null/unknown
+        // Try generic matching by correlationId or appointmentIds
+        this.logger.log(
+          `[WA-WEBHOOK] No specific message_type (${gm.messageType}), attempting generic match`,
+        );
+
+        let updated = false;
+
+        // Try by correlationId
+        if (gm.correlationId) {
+          const existing = await this.logService.findByCorrelationId(gm.correlationId);
+          if (existing) {
+            const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+            if (newStatus === WhatsappMessageStatus.SENT) extras.sentAt = new Date();
+            if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+            if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+            await this.logService.updateStatus(gm.correlationId, newStatus, extras);
+            this.logger.log(
+              `[WA-WEBHOOK] Generic match by correlationId=${gm.correlationId} → status=${newStatus}`,
+            );
+            updated = true;
+          }
+        }
+
+        // Fallback by appointmentId
+        if (!updated && gm.appointmentIds?.length) {
+          for (const aptId of gm.appointmentIds) {
+            const logs = await this.logService.findByAppointmentId(aptId);
+            const matchLog = logs.find(
+              l => l.status === WhatsappMessageStatus.DISPATCHED || l.status === WhatsappMessageStatus.PENDING,
+            );
+            if (matchLog) {
+              const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+              if (newStatus === WhatsappMessageStatus.SENT) extras.sentAt = new Date();
+              if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+              if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+              await this.logService.updateStatus(matchLog.correlationId, newStatus, extras);
+              this.logger.log(
+                `[WA-WEBHOOK] Generic match by appointmentId=${aptId} → log=${matchLog.id} status=${newStatus}`,
+              );
+              updated = true;
+              break;
+            }
+          }
+        }
+
+        if (!updated) {
+          this.logger.warn(
+            `[WA-WEBHOOK] Unknown gateway message_type: ${gm.messageType}, no matching log found`,
+          );
+        }
+      }
+    }
+  }
+
+  // ── Legacy Evolution event handling (fallback) ──
+
+  private async handleLegacyEvent(
     correlationId: string | undefined,
     payload: any,
   ): Promise<void> {
@@ -96,33 +371,22 @@ export class WhatsappWebhookService {
     const phone = this.extractPhone(payload);
 
     this.logger.log(
-      `[WA-WEBHOOK] updateLogFromEvent: eventType=${eventType} correlationId=${correlationId} ` +
+      `[WA-WEBHOOK] Legacy event: eventType=${eventType} correlationId=${correlationId} ` +
       `evolutionMessageId=${evolutionMessageId} phone=${phone}`,
     );
 
     switch (eventType) {
       case 'send.message': {
-        // Evolution API confirms message was sent.
-        // Gateway does NOT propagate correlationId, so we match by phone number
-        // to find the most recent PENDING log and link it to the evolutionMessageId.
-        // Also capture the actual message text sent by WhatsApp.
-        const gatewayMessageType = this.mapGatewayMessageType(payload);
-        if (gatewayMessageType) {
-          this.logger.log(`[WA-WEBHOOK] gateway_metadata.message_type=${gatewayMessageType}`);
-        }
-
         const messageBody = payload?.data?.message?.conversation
           || payload?.data?.message?.extendedTextMessage?.text;
 
         if (correlationId) {
-          this.logger.log(`[WA-WEBHOOK] Updating to SENT via correlationId=${correlationId}`);
           await this.logService.updateStatus(
             correlationId,
             WhatsappMessageStatus.SENT,
             { sentAt: new Date(), evolutionMessageId, messageBody },
           );
         } else if (phone) {
-          this.logger.log(`[WA-WEBHOOK] No correlationId, matching PENDING log by phone=${phone}`);
           const updated = await this.logService.updatePendingByPhone(
             phone,
             WhatsappMessageStatus.SENT,
@@ -136,7 +400,6 @@ export class WhatsappWebhookService {
       }
 
       case 'messages.upsert':
-        // Message confirmed on WhatsApp (fromMe = true)
         if (payload?.data?.key?.fromMe) {
           if (correlationId) {
             await this.logService.updateStatus(
@@ -145,7 +408,6 @@ export class WhatsappWebhookService {
               { sentAt: new Date(), evolutionMessageId },
             );
           } else if (evolutionMessageId) {
-            // Try to update by evolutionMessageId (already linked from send.message)
             await this.logService.updateStatusByEvolutionId(
               evolutionMessageId,
               WhatsappMessageStatus.SENT,
@@ -156,8 +418,6 @@ export class WhatsappWebhookService {
         break;
 
       case 'messages.update': {
-        // Delivery/read receipt from Evolution API.
-        // Status can be string ("SERVER_ACK","DELIVERY_ACK","READ") or number (2,3,4)
         const status = payload?.data?.update?.status || payload?.data?.status;
         this.logger.log(`[WA-WEBHOOK] messages.update status="${status}" evolutionMessageId=${evolutionMessageId}`);
 
@@ -166,8 +426,6 @@ export class WhatsappWebhookService {
         const isRead = status === 'READ' || status === 4;
 
         if (isServerAck && evolutionMessageId) {
-          // SERVER_ACK = message reached WhatsApp server → mark as SENT
-          this.logger.log(`[WA-WEBHOOK] SERVER_ACK → SENT via evolutionMessageId=${evolutionMessageId}`);
           await this.logService.updateStatusByEvolutionId(
             evolutionMessageId,
             WhatsappMessageStatus.SENT,

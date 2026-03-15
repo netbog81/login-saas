@@ -2774,6 +2774,7 @@ type WhatsappLogManagementResult {
 type WhatsappMessageLog {
   anonymizedAt: DateTime
   appointmentId: ID
+  appointmentIds: [String!]
   correlationId: String!
   createdAt: DateTime!
   deliveredAt: DateTime
@@ -2799,7 +2800,9 @@ type WhatsappMessageLogPage {
 
 """Status del messaggio WhatsApp"""
 enum WhatsappMessageStatus {
+  CANCELLED
   DELIVERED
+  DISPATCHED
   FAILED
   PENDING
   READ

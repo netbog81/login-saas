@@ -39,12 +39,13 @@ export interface WhatsappTemplateInput {
   isActive?: boolean;
 }
 
-export type WhatsappMessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+export type WhatsappMessageStatus = 'dispatched' | 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'cancelled';
 export type WhatsappMessageType = 'recap_single' | 'recap_multi' | 'reminder_24h' | 'cancellation';
 
 export interface WhatsappMessageLog {
   id: string;
   appointmentId?: string;
+  appointmentIds?: string[];
   patientId?: string;
   patientName?: string;
   phoneNumber: string;
@@ -93,19 +94,23 @@ export interface WhatsappMessageLogPage {
 }
 
 export const MESSAGE_STATUS_LABELS: Record<WhatsappMessageStatus, string> = {
+  dispatched: 'Inviato al gateway',
   pending: 'In attesa',
   sent: 'Inviato',
   delivered: 'Consegnato',
   read: 'Letto',
   failed: 'Errore',
+  cancelled: 'Cancellato',
 };
 
 export const MESSAGE_STATUS_ICONS: Record<WhatsappMessageStatus, string> = {
+  dispatched: 'cloud_upload',
   pending: 'schedule',
   sent: 'send',
   delivered: 'done',
   read: 'done_all',
   failed: 'error',
+  cancelled: 'cancel',
 };
 
 export const MESSAGE_TYPE_LABELS: Record<WhatsappMessageType, string> = {

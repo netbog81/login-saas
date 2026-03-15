@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { WhatsappConfigService } from '../config/services/whatsapp-config.service';
 import { WhatsappLogService } from '../log/services/whatsapp-log.service';
 import { WhatsappTemplateService } from '../template/services/whatsapp-template.service';
-import { WhatsappMessageType, WhatsappTemplateType } from '../enums/whatsapp-enums';
+import { WhatsappMessageStatus, WhatsappMessageType, WhatsappTemplateType } from '../enums/whatsapp-enums';
 import { DispatchBookingPayload } from './dto/dispatch-booking.dto';
 import { AvailabilityAppointment } from '../../availability/entities/availability-appointment.entity';
 import { Patient } from '../../../entities/patient.entity';
@@ -78,7 +78,7 @@ export class WhatsappGatewayService {
         this.logger.warn(`[WA-DISPATCH] Template render failed: ${e?.message}`);
       }
 
-      // Create log entry before calling gateway
+      // Create log entry before calling gateway (status DISPATCHED)
       await this.logService.createLog({
         appointmentId: appointment.id,
         patientId: patient.id,
@@ -87,6 +87,7 @@ export class WhatsappGatewayService {
         messageType: WhatsappMessageType.RECAP_SINGLE,
         correlationId,
         messageBody,
+        status: WhatsappMessageStatus.DISPATCHED,
       });
 
       const payload: DispatchBookingPayload = {
@@ -205,6 +206,7 @@ export class WhatsappGatewayService {
 
       const payload = {
         appointmentId: appointment.id,
+        pazienteId: patient.id,
         phone: phoneNumber,
         sendCancelNotification: sendNotification,
         cancelNotificationMessage,

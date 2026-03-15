@@ -1,11 +1,13 @@
 import { registerEnumType } from '@nestjs/graphql';
 
 export enum WhatsappMessageStatus {
+  DISPATCHED = 'dispatched',
   PENDING = 'pending',
   SENT = 'sent',
   DELIVERED = 'delivered',
   READ = 'read',
   FAILED = 'failed',
+  CANCELLED = 'cancelled',
 }
 
 export enum WhatsappMessageType {

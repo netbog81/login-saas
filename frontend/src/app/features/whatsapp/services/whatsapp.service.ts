@@ -67,6 +67,7 @@ const GET_WHATSAPP_MESSAGE_LOGS = gql`
       items {
         id
         appointmentId
+        appointmentIds
         patientId
         patientName
         phoneNumber
@@ -94,6 +95,7 @@ const GET_WHATSAPP_MESSAGE_LOG = gql`
     whatsappMessageLog(id: $id) {
       id
       appointmentId
+      appointmentIds
       patientId
       patientName
       phoneNumber
@@ -134,6 +136,7 @@ const GET_EXPIRED_LOGS = gql`
       items {
         id
         appointmentId
+        appointmentIds
         patientId
         patientName
         phoneNumber
