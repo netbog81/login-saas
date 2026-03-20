@@ -7,6 +7,9 @@ import {
   Logger,
   RawBodyRequest,
   Req,
+  Optional,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { randomUUID } from 'crypto';
@@ -15,6 +18,7 @@ import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappConfigService } from '../config/services/whatsapp-config.service';
 import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
 import { TenantOpenbaoResolverService } from '../../../database/tenant-openbao-resolver.service';
+import { TaskMessageWebhookService } from '../../task-message/webhook/task-message-webhook.service';
 
 @Controller('api/webhooks')
 export class WhatsappWebhookController {
@@ -25,6 +29,8 @@ export class WhatsappWebhookController {
     private readonly configService: WhatsappConfigService,
     private readonly tenantSchemaContext: TenantSchemaContextService,
     private readonly tenantResolver: TenantOpenbaoResolverService,
+    @Optional() @Inject(forwardRef(() => TaskMessageWebhookService))
+    private readonly taskMessageWebhookService?: TaskMessageWebhookService,
   ) {}
 
   @Post('whatsapp')
@@ -56,16 +62,18 @@ export class WhatsappWebhookController {
       const tenantAlias = tenantId || 'unknown';
       const tenantInfo = await this.tenantResolver.resolveTenant(tenantAlias);
 
+      // Determine which service should process this webhook
+      const isTaskMessage = body?.gateway_metadata?.source === 'task-message-service';
+      if (isTaskMessage) {
+        this.logger.log(`[WA-WEBHOOK] Routing to TaskMessage webhook service`);
+      }
+
       if (!tenantInfo || !tenantInfo.schemaName || tenantInfo.schemaName === 'pending') {
         this.logger.warn(
           `[WA-WEBHOOK] Cannot resolve schema for tenant "${tenantAlias}". Processing on public schema.`,
         );
         // Fire-and-forget without tenant schema (will query public)
-        this.webhookService
-          .processEvent(tenantAlias, body)
-          .catch((err) => {
-            this.logger.error(`[WA-WEBHOOK] Processing error: ${err?.message}`);
-          });
+        this.routeWebhook(isTaskMessage, tenantAlias, body);
       } else {
         this.logger.log(
           `[WA-WEBHOOK] Resolved tenant "${tenantAlias}" → schema="${tenantInfo.schemaName}"`,
@@ -80,11 +88,7 @@ export class WhatsappWebhookController {
             requestId: randomUUID(),
           },
           () => {
-            this.webhookService
-              .processEvent(tenantAlias, body)
-              .catch((err) => {
-                this.logger.error(`[WA-WEBHOOK] Processing error: ${err?.message}`);
-              });
+            this.routeWebhook(isTaskMessage, tenantAlias, body);
           },
         );
       }
@@ -94,6 +98,25 @@ export class WhatsappWebhookController {
 
     // Always respond 200 to prevent gateway retries
     return { received: true };
+  }
+
+  /**
+   * Routes webhook to the correct service based on source.
+   */
+  private routeWebhook(isTaskMessage: boolean, tenantAlias: string, body: any): void {
+    if (isTaskMessage && this.taskMessageWebhookService) {
+      this.taskMessageWebhookService
+        .processEvent(tenantAlias, body)
+        .catch((err) => {
+          this.logger.error(`[WA-WEBHOOK] TaskMessage processing error: ${err?.message}`);
+        });
+    } else {
+      this.webhookService
+        .processEvent(tenantAlias, body)
+        .catch((err) => {
+          this.logger.error(`[WA-WEBHOOK] Processing error: ${err?.message}`);
+        });
+    }
   }
 
   private async validateSignature(

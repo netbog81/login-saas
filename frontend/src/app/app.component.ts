@@ -5,8 +5,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatBadgeModule } from '@angular/material/badge';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ContextPreservationService } from './core/services/context-preservation.service';
 import { OidcAuthService } from './core/auth/oidc-auth.service';
+import { TaskMessageNotificationService } from './features/task-messages/services/task-message-notification.service';
+import { TaskMessageDialogComponent } from './features/task-messages/containers/task-message-dialog.component';
 
 @Component({
   selector: 'app-root',
@@ -21,6 +25,8 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
     MatButtonModule,
     MatMenuModule,
     MatDividerModule,
+    MatBadgeModule,
+    MatDialogModule,
   ],
   template: `
     <div class="app-container">
@@ -62,6 +68,17 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
                 WhatsApp
               </a>
             }
+          </div>
+          <div class="nav-actions">
+            <button class="nav-item message-btn" (click)="openTaskMessages()"
+              [matBadge]="taskMessageUnreadCount"
+              [matBadgeHidden]="taskMessageUnreadCount === 0"
+              matBadgeColor="warn"
+              matBadgeSize="small"
+              matBadgeOverlap="true">
+              <mat-icon class="msg-icon">mail</mat-icon>
+              <span class="msg-label">Messaggi</span>
+            </button>
           </div>
           <div class="nav-user">
             <button mat-button [matMenuTriggerFor]="userMenu" class="user-button">
@@ -159,6 +176,19 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
       background: #3498db;
     }
 
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    .message-btn {
+      display: flex !important;
+      align-items: center;
+      gap: 4px;
+    }
+    .msg-icon { font-size: 20px; width: 20px; height: 20px; }
+
     .nav-user {
       flex-shrink: 0;
     }
@@ -215,20 +245,51 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
       .nav-brand h1 { font-size: 18px; }
       .nav-item { padding: 16px 12px; font-size: 13px; }
       .user-name { display: none; }
+      .msg-label { display: none; }
     }
   `],
 })
 export class AppComponent implements OnInit, OnDestroy {
   readonly authService = inject(OidcAuthService);
   private readonly contextService = inject(ContextPreservationService);
+  private readonly notificationService = inject(TaskMessageNotificationService);
+  private readonly dialog = inject(MatDialog);
   private cleanupContext: (() => void) | null = null;
+
+  taskMessageUnreadCount = 0;
 
   ngOnInit(): void {
     this.cleanupContext = this.contextService.preserveContext('AppComponent');
+
+    // Start polling for task message notifications when authenticated
+    if (this.authService.isAuthenticated()) {
+      this.notificationService.startPolling();
+    }
+
+    this.notificationService.unreadCount$.subscribe((count) => {
+      this.taskMessageUnreadCount = count;
+    });
   }
 
   ngOnDestroy(): void {
     this.cleanupContext?.();
+  }
+
+  private taskMessageDialogRef: import('@angular/material/dialog').MatDialogRef<any> | null = null;
+
+  openTaskMessages(): void {
+    if (this.taskMessageDialogRef) {
+      return;
+    }
+    this.taskMessageDialogRef = this.dialog.open(TaskMessageDialogComponent, {
+      width: '700px',
+      height: '600px',
+      hasBackdrop: false,
+      panelClass: 'task-message-dialog-panel',
+    });
+    this.taskMessageDialogRef.afterClosed().subscribe(() => {
+      this.taskMessageDialogRef = null;
+    });
   }
 
   onLogout(): void {

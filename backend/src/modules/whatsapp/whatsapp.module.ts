@@ -27,6 +27,8 @@ import { WhatsappWebhookController } from './webhook/webhook.controller';
 
 // Availability module for circular dependency
 import { AvailabilityModule } from '../availability/availability.module';
+// Task Message module for webhook routing
+import { TaskMessageModule } from '../task-message/task-message.module';
 
 @Module({
   imports: [
@@ -38,6 +40,7 @@ import { AvailabilityModule } from '../availability/availability.module';
       WhatsappWebhookEvent,
     ]),
     forwardRef(() => AvailabilityModule),
+    forwardRef(() => TaskMessageModule),
   ],
   controllers: [WhatsappWebhookController],
   providers: [

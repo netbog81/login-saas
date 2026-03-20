@@ -633,6 +633,12 @@ input CreateSecretaryInput {
   surname: String
 }
 
+input CreateTaskMessageInput {
+  availableFrom: DateTime
+  content: String!
+  recipientUserId: String!
+}
+
 input CreateTemplatePatternInput {
   dayInPattern: Int!
   description: String
@@ -1075,6 +1081,7 @@ type Mutation {
   cancelAppointmentWithNotice(cancelledBy: ID!, id: ID!, reason: String!): AvailabilityAppointment!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
+  completeTaskMessage(messageId: String!): Boolean!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
   confirmAvailabilityAppointment(id: ID!): AvailabilityAppointment!
   createAppUser(input: CreateAppUserInput!): AppUser!
@@ -1110,6 +1117,7 @@ type Mutation {
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, subcategoryId: ID): Service!
   createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
+  createTaskMessage(input: CreateTaskMessageInput!): TaskMessageResult!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   createTherapeuticPath(input: CreateTherapeuticPathInput!): TherapeuticPath!
   createTreatment(appointmentId: ID!, scontoFE: Boolean = false, therapeuticPathId: ID!): Treatment!
@@ -1154,6 +1162,7 @@ type Mutation {
   deleteSecretary(id: ID!): Boolean!
   deleteService(id: ID!): Boolean!
   deleteServiceSubcategory(id: ID!): Boolean!
+  deleteTaskMessage(messageId: String!): Boolean!
   deleteTemplateAssignment(id: ID!): Boolean!
   deleteTemplatePattern(id: ID!): Boolean!
   deleteTestEvaluationEntry(evaluationHistoryId: ID!): Boolean!
@@ -1181,6 +1190,7 @@ type Mutation {
   markAppointmentAttended(id: ID!): AvailabilityAppointment!
   markAppointmentNoShow(id: ID!): AvailabilityAppointment!
   markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): EvaluationObjective!
+  markTaskMessageAsRead(messageId: String!): Boolean!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
   provisionTenantSchema: TenantSchemaStatus!
@@ -1241,6 +1251,7 @@ type Mutation {
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, subcategoryId: ID): Service!
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
+  updateTaskMessage(input: UpdateTaskMessageInput!, messageId: String!): Boolean!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
   updateTestResult(input: UpdateTestResultInput!, testId: ID!): EvaluationTest!
@@ -1862,6 +1873,12 @@ type Query {
   serviceSubcategories(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [ServiceSubcategory!]!
   serviceSubcategory(id: ID!): ServiceSubcategory
   services(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Service!]!
+  taskMessage(id: String!): TaskMessage
+  taskMessageCompleted(limit: Int! = 20, page: Int! = 1): TaskMessagePage!
+  taskMessageInbox(limit: Int! = 20, page: Int! = 1): TaskMessagePage!
+  taskMessageMyAppUserId: String
+  taskMessageSent(limit: Int! = 20, page: Int! = 1): TaskMessagePage!
+  taskMessageUnreadCount: Int!
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
@@ -2155,6 +2172,44 @@ enum StatoPrivacy {
 
   """Non acquisita - Nessun documento firmato"""
   NON_ACQUISITA
+}
+
+type TaskMessage {
+  availableFrom: DateTime
+  completedAt: DateTime
+  content: String!
+  correlationId: String
+  createdAt: DateTime!
+  deletedAt: DateTime
+  gatewayMessageId: String!
+  id: ID!
+  readAt: DateTime
+  recipientUser: AppUser
+  recipientUserId: String!
+  senderUser: AppUser
+  senderUserId: String!
+  status: TaskMessageStatus!
+  tenantId: String!
+  updatedAt: DateTime!
+}
+
+type TaskMessagePage {
+  items: [TaskMessage!]!
+  total: Int!
+}
+
+type TaskMessageResult {
+  messageId: String!
+  status: TaskMessageStatus!
+}
+
+"""Stato del task message"""
+enum TaskMessageStatus {
+  AVAILABLE
+  COMPLETED
+  DELETED
+  READ
+  SCHEDULED
 }
 
 type TemplateAssignment {
@@ -2644,6 +2699,11 @@ input UpdatePatternGroupInput {
   name: String
   patternDuration: Float
   patterns: [PatternInput!]
+}
+
+input UpdateTaskMessageInput {
+  availableFrom: DateTime
+  content: String
 }
 
 input UpdateTestResultInput {

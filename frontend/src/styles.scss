@@ -141,6 +141,30 @@ body {
   border: none !important;
 }
 
+/* Task Message Dialog - draggable & resizable */
+.task-message-dialog-panel {
+  resize: both;
+  overflow: auto;
+  min-width: 400px;
+  min-height: 350px;
+  max-width: 90vw;
+  max-height: 90vh;
+
+  .mat-mdc-dialog-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .mdc-dialog__surface {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+  }
+}
+
 /* Waiting List Dialog - draggable & resizable */
 .waiting-list-dialog-panel {
   resize: both;

@@ -98,6 +98,10 @@ import { WhatsappMessageTemplate } from './modules/whatsapp/template/entities/wh
 import { WhatsappMessageLog } from './modules/whatsapp/log/entities/whatsapp-message-log.entity';
 import { WhatsappWebhookEvent } from './modules/whatsapp/webhook/entities/whatsapp-webhook-event.entity';
 import { WaitingListEntry } from './modules/availability/entities/waiting-list-entry.entity';
+// Task Message integration module
+import { TaskMessageModule } from './modules/task-message/task-message.module';
+import { TaskMessage } from './modules/task-message/entities/task-message.entity';
+import { TaskMessageWebhookEvent } from './modules/task-message/entities/task-message-webhook-event.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -160,6 +164,9 @@ const ALL_ENTITIES = [
   WhatsappMessageTemplate,
   WhatsappMessageLog,
   WhatsappWebhookEvent,
+  // Task Message system
+  TaskMessage,
+  TaskMessageWebhookEvent,
 ];
 
 interface AppModuleOptions {
@@ -218,6 +225,7 @@ export class AppModule implements NestModule {
         EventsModule,
         AppUsersModule,
         WhatsappModule,
+        TaskMessageModule,
       ],
       controllers: [MeController],
       providers: [
