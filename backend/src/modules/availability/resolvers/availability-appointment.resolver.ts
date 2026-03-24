@@ -248,4 +248,29 @@ export class AvailabilityAppointmentResolver {
   ): Promise<AvailabilityAppointment> {
     return this.appointmentService.createGymAppointment(input);
   }
+
+  // ==========================================
+  // QUERY E MUTATION PER APPUNTAMENTI PAZIENTE
+  // ==========================================
+
+  /**
+   * Query: Ottiene appuntamenti futuri di un paziente a partire da una data
+   */
+  @Query(() => [AvailabilityAppointment], { name: 'availabilityAppointmentsByPatient' })
+  async getAppointmentsByPatient(
+    @Args('patientId', { type: () => ID }) patientId: string,
+    @Args('startDate') startDate: string,
+  ): Promise<AvailabilityAppointment[]> {
+    return this.appointmentService.findByPatientFromDate(patientId, startDate);
+  }
+
+  /**
+   * Mutation: Re-invia il messaggio WhatsApp di recap per un appuntamento
+   */
+  @Mutation(() => Boolean, { name: 'sendAppointmentRecap' })
+  async sendAppointmentRecap(
+    @Args('appointmentId', { type: () => ID }) appointmentId: string,
+  ): Promise<boolean> {
+    return this.appointmentService.sendRecap(appointmentId);
+  }
 }

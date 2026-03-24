@@ -125,6 +125,18 @@ export const GET_AVAILABILITY_APPOINTMENTS = gql`
 `;
 
 /**
+ * Query: Ottiene appuntamenti futuri di un paziente
+ */
+export const GET_AVAILABILITY_APPOINTMENTS_BY_PATIENT = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  query GetAvailabilityAppointmentsByPatient($patientId: ID!, $startDate: String!) {
+    availabilityAppointmentsByPatient(patientId: $patientId, startDate: $startDate) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;
+
+/**
  * Query: Verifica disponibilità strumento
  */
 export const IS_INSTRUMENT_AVAILABLE = gql`

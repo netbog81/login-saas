@@ -5,6 +5,7 @@ import {
   GET_AVAILABILITY_APPOINTMENT,
   GET_AVAILABILITY_APPOINTMENTS,
   GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR,
+  GET_AVAILABILITY_APPOINTMENTS_BY_PATIENT,
   IS_INSTRUMENT_AVAILABLE,
 } from '../graphql/operations/availability-appointment.queries';
 import {
@@ -17,6 +18,7 @@ import {
   CANCEL_APPOINTMENT_WITH_NOTICE,
   MARK_APPOINTMENT_ATTENDED,
   REVERT_APPOINTMENT_ATTENDED,
+  SEND_APPOINTMENT_RECAP,
 } from '../graphql/operations/availability-appointment.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
@@ -260,5 +262,28 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
         excludeAppointmentId,
       }
     ).pipe(map((result) => result.isInstrumentAvailable ?? false));
+  }
+
+  /**
+   * Ottiene appuntamenti futuri di un paziente a partire da una data
+   */
+  getAppointmentsByPatient(
+    patientId: string,
+    startDate: string
+  ): Observable<AvailabilityAppointment[]> {
+    return this.query<{ availabilityAppointmentsByPatient: AvailabilityAppointment[] }>(
+      GET_AVAILABILITY_APPOINTMENTS_BY_PATIENT,
+      { patientId, startDate }
+    ).pipe(map((result) => result.availabilityAppointmentsByPatient || []));
+  }
+
+  /**
+   * Re-invia il messaggio WhatsApp di recap per un appuntamento
+   */
+  sendRecap(appointmentId: string): Observable<boolean> {
+    return this.mutate<{ sendAppointmentRecap: boolean }>(
+      SEND_APPOINTMENT_RECAP,
+      { appointmentId }
+    ).pipe(map((result) => result.sendAppointmentRecap));
   }
 }

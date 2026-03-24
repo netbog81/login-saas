@@ -105,6 +105,12 @@ import { Patient, getPatientPhone, getPatientInitials } from '../../../../../mod
                   <mat-icon>visibility</mat-icon>
                 </button>
                 <button mat-icon-button
+                        color="primary"
+                        matTooltip="Elenco appuntamenti"
+                        (click)="onViewAppointments(patient, $event)">
+                  <mat-icon>event_note</mat-icon>
+                </button>
+                <button mat-icon-button
                         color="accent"
                         matTooltip="Nuovo appuntamento"
                         (click)="onNewAppointment(patient, $event)">
@@ -264,6 +270,7 @@ export class PatientTableComponent implements AfterViewInit {
 
   @Output() patientSelect = new EventEmitter<Patient>();
   @Output() patientView = new EventEmitter<Patient>();
+  @Output() viewAppointments = new EventEmitter<Patient>();
   @Output() newAppointment = new EventEmitter<Patient>();
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
@@ -292,6 +299,11 @@ export class PatientTableComponent implements AfterViewInit {
   onViewPatient(patient: Patient, event: Event): void {
     event.stopPropagation();
     this.patientView.emit(patient);
+  }
+
+  onViewAppointments(patient: Patient, event: Event): void {
+    event.stopPropagation();
+    this.viewAppointments.emit(patient);
   }
 
   onNewAppointment(patient: Patient, event: Event): void {

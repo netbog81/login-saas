@@ -1,16 +1,18 @@
 import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Subject, takeUntil, firstValueFrom } from 'rxjs';
 import { Patient, getPatientDisplayName, getPatientPhone } from '../../../models/patient.model';
 import { PatientService } from '../../../services/patient.service';
+import { PatientAppointmentsDialogComponent } from '../../../features/operators-new/containers/patient-appointments-dialog.component';
 
 type StatoAnagrafica = 'BOZZA' | 'PARZIALE' | 'COMPLETA' | 'DA_VERIFICARE';  // GraphQL enum key names
 
 @Component({
   selector: 'app-patient-management',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatDialogModule],
   templateUrl: './patient-management.component.html',
   styleUrls: ['./patient-management.component.scss']
 })
@@ -60,7 +62,8 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
 
   constructor(
     private patientService: PatientService,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    private dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
@@ -166,6 +169,15 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
       this.editingPatient = this.getEmptyPatient();
       this.formError = null;
       this.showPatientForm = true;
+    });
+  }
+
+  openAppointments(patient: Patient): void {
+    this.dialog.open(PatientAppointmentsDialogComponent, {
+      data: { patient },
+      width: '700px',
+      height: '500px',
+      panelClass: 'resizable-dialog-panel',
     });
   }
 

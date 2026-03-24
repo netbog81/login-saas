@@ -1211,6 +1211,7 @@ type Mutation {
   revokeKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   revokePermissionFromRole(permissionId: ID!, roleId: ID!): Boolean!
   revokeRole(input: AssignRoleInput!): Boolean!
+  sendAppointmentRecap(appointmentId: ID!): Boolean!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
   testWhatsappConnection: Boolean!
@@ -1758,6 +1759,7 @@ type Query {
   availabilityAppointment(id: ID!): AvailabilityAppointment
   availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
   availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
+  availabilityAppointmentsByPatient(patientId: ID!, startDate: String!): [AvailabilityAppointment!]!
   availabilityException(id: ID!): AvailabilityException
   availabilityExceptions(endDate: String, exceptionType: ExceptionType, operatorId: ID, startDate: String): [AvailabilityException!]!
   availabilityTemplates(onlyCurrent: Boolean! = true, operatorId: ID!): [AvailabilityTemplate!]!

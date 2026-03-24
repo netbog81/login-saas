@@ -30,6 +30,7 @@ import { Operator } from '../../../graphql/generated/types';
 import { PatientSearchComponent } from '../components/patients-list/patient-search/patient-search.component';
 import { PatientTableComponent } from '../components/patients-list/patient-table/patient-table.component';
 import { PatientFolderDialogComponent } from '../components/patient-folder-dialog/patient-folder-dialog.component';
+import { PatientAppointmentsDialogComponent } from './patient-appointments-dialog.component';
 import { OperatorWorkspaceStateService } from '../services/operator-workspace-state.service';
 
 import {
@@ -88,6 +89,7 @@ import {
           [emptyMessage]="getEmptyMessage()"
           (patientSelect)="onPatientSelect($event)"
           (patientView)="onPatientView($event)"
+          (viewAppointments)="onViewAppointments($event)"
           (newAppointment)="onNewAppointment($event)">
         </app-patient-table>
       </section>
@@ -296,6 +298,15 @@ export class OperatorsPatientsContainer implements OnInit, OnDestroy {
       maxWidth: '1400px',
       height: '90vh',
       panelClass: 'patient-folder-dialog-panel'
+    });
+  }
+
+  onViewAppointments(patient: Patient): void {
+    this.dialog.open(PatientAppointmentsDialogComponent, {
+      data: { patient },
+      width: '700px',
+      height: '500px',
+      panelClass: 'resizable-dialog-panel',
     });
   }
 

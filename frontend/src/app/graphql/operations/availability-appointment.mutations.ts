@@ -108,3 +108,12 @@ export const REVERT_APPOINTMENT_ATTENDED = gql`
     }
   }
 `;
+
+/**
+ * Mutation: Re-invia il messaggio WhatsApp di recap per un appuntamento
+ */
+export const SEND_APPOINTMENT_RECAP = gql`
+  mutation SendAppointmentRecap($appointmentId: ID!) {
+    sendAppointmentRecap(appointmentId: $appointmentId)
+  }
+`;

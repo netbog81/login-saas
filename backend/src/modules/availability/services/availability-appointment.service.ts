@@ -1455,4 +1455,51 @@ export class AvailabilityAppointmentService {
         this.logger.warn(`WhatsApp cancel failed: ${err?.message}`);
       });
   }
+
+  /**
+   * Trova appuntamenti futuri di un paziente a partire da una data,
+   * escludendo quelli cancellati.
+   */
+  async findByPatientFromDate(patientId: string, startDate: string): Promise<AvailabilityAppointment[]> {
+    return this.appointmentRepo.find({
+      where: {
+        patientId,
+        appointmentDate: MoreThanOrEqual(new Date(startDate)),
+        bookingStatus: Not(In([
+          BookingStatus.CANCELLED,
+          BookingStatus.CANCELLED_EARLY,
+          BookingStatus.CANCELLED_LATE,
+        ])),
+      },
+      relations: [
+        'operator',
+        'service',
+        'instruments',
+        'instruments.instrument',
+        'instruments.instrument.category',
+      ],
+      order: { appointmentDate: 'ASC', startTime: 'ASC' },
+    });
+  }
+
+  /**
+   * Re-invia il messaggio WhatsApp di recap per un appuntamento esistente.
+   */
+  async sendRecap(appointmentId: string): Promise<boolean> {
+    const appointment = await this.findById(appointmentId);
+    if (!appointment.patientId) {
+      throw new BadRequestException('L\'appuntamento non ha un paziente associato');
+    }
+    if (!this.whatsappGateway) {
+      throw new BadRequestException('Gateway WhatsApp non configurato');
+    }
+
+    const patient = await this.patientRepo.findOne({ where: { id: appointment.patientId } });
+    if (!patient) {
+      throw new NotFoundException(`Paziente con ID ${appointment.patientId} non trovato`);
+    }
+
+    await this.whatsappGateway.dispatchBooking(appointment, patient);
+    return true;
+  }
 }
