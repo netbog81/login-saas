@@ -50,7 +50,9 @@ export class TenantAdminResolver {
       message = `Stato tenant: ${tenantStatus}`;
     }
 
-    return { schemaName: schemaName || '', existsInMainDb, tenantStatus, isAligned, message };
+    const connInfo = this.tenantSchemaService.getConnectionInfo();
+
+    return { schemaName: schemaName || '', existsInMainDb, tenantStatus, isAligned, message, ...connInfo };
   }
 
   /**

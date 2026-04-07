@@ -2244,6 +2244,8 @@ type TemplatePattern {
 }
 
 type TenantSchemaStatus {
+  databaseHost: String
+  databaseName: String
   existsInMainDb: Boolean!
   isAligned: Boolean!
   message: String

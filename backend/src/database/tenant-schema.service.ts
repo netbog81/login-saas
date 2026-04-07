@@ -148,6 +148,19 @@ export class TenantSchemaService {
   }
 
   /**
+   * Restituisce nome del database e host della connessione corrente.
+   */
+  getConnectionInfo(): { databaseName: string; databaseHost: string } {
+    const pgOptions = this.dataSource.options as PostgresConnectionOptions;
+    const host = pgOptions.host || 'localhost';
+    const port = pgOptions.port || 5432;
+    return {
+      databaseName: pgOptions.database || '',
+      databaseHost: `${host}:${port}`,
+    };
+  }
+
+  /**
    * Imposta il search_path per la connessione corrente.
    */
   async setSearchPath(schemaName: string): Promise<void> {

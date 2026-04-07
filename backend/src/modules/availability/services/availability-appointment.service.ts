@@ -696,7 +696,7 @@ export class AvailabilityAppointmentService {
         appointmentDate: Between(new Date(startDate), new Date(endDate)),
         bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
       },
-      relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
+      relations: ['operator', 'service', 'gymRoom', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
     });
   }
@@ -720,7 +720,7 @@ export class AvailabilityAppointmentService {
 
     return this.appointmentRepo.find({
       where: whereCondition,
-      relations: ['operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
+      relations: ['operator', 'service', 'gymRoom', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
     });
   }

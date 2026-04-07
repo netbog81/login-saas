@@ -18,4 +18,10 @@ export class TenantSchemaStatus {
 
   @Field({ nullable: true })
   message?: string;
+
+  @Field({ nullable: true })
+  databaseName?: string;
+
+  @Field({ nullable: true })
+  databaseHost?: string;
 }

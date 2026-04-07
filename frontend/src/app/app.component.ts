@@ -47,6 +47,11 @@ import { TaskMessageDialogComponent } from './features/task-messages/containers/
                 Operatori
               </a>
             }
+            @if (authService.hasRole(['operatore', 'admin', 'amministratore', 'superadmin', 'it_manager'])) {
+              <a class="nav-item" routerLink="/istruttori" routerLinkActive="active">
+                Istruttori
+              </a>
+            }
             <a class="nav-item" routerLink="/availability" routerLinkActive="active">
               Configurazioni
             </a>

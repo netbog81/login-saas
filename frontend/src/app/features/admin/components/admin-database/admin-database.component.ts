@@ -60,6 +60,18 @@ import { ConfirmSchemaDialogComponent } from './confirm-schema-dialog.component'
         <mat-card class="db-status-card" [class.aligned]="status()!.isAligned" [class.warning]="!status()!.isAligned">
           <mat-card-content>
             <div class="status-row">
+              <span class="status-label">Server PostgreSQL</span>
+              <code class="status-value">{{ status()!.databaseHost || '—' }}</code>
+            </div>
+            <mat-divider></mat-divider>
+
+            <div class="status-row">
+              <span class="status-label">Nome Database</span>
+              <code class="status-value">{{ status()!.databaseName || '—' }}</code>
+            </div>
+            <mat-divider></mat-divider>
+
+            <div class="status-row">
               <span class="status-label">Schema Nome</span>
               <code class="status-value">{{ status()!.schemaName }}</code>
             </div>

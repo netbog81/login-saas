@@ -8,6 +8,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { HttpModule } from '@nestjs/axios';
 import { join } from 'path';
 import { OpenbaoBaseModule, OpenbaoBaseService } from '@curandis/openbao-core';
+import { CredentialSourceTracker } from './health/credential-source-tracker.service';
+import { HealthController } from './health/health.controller';
 import { MainDbCredentialManager } from './database/main-db-credential-manager.service';
 import { TenantSchemaService } from './database/tenant-schema.service';
 import { TenantSchemaContextService } from './database/tenant-schema-context.service';
@@ -227,8 +229,9 @@ export class AppModule implements NestModule {
         WhatsappModule,
         TaskMessageModule,
       ],
-      controllers: [MeController],
+      controllers: [MeController, HealthController],
       providers: [
+        CredentialSourceTracker,
         MainDbCredentialManager,
         TenantSchemaService,
         TenantSchemaContextService,
@@ -251,7 +254,7 @@ export class AppModule implements NestModule {
     // Escludi: health check, graphql playground, rotte SSE
     consumer
       .apply(TenantContextMiddleware)
-      .exclude('health', 'events/(.*)', 'api/webhooks/(.*)')
+      .exclude('health/status', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
   }
 }

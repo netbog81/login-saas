@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createOpenbaoService, OpenbaoBaseService } from '@curandis/openbao-core';
 import { AppModule } from './app.module';
+import { CredentialSourceTracker } from './health/credential-source-tracker.service';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -34,6 +35,7 @@ async function bootstrap() {
 
   let openbaoService: OpenbaoBaseService | null = null;
   let mainDbCreds: { username: string; password: string };
+  let credentialSource: 'openbao' | 'env-fallback' = 'openbao';
 
   try {
     const result = await createOpenbaoService({
@@ -67,6 +69,7 @@ async function bootstrap() {
       if (fbUser && fbPass) {
         console.warn('[Bootstrap] OpenBao non disponibile, uso credenziali fallback dal .env');
         mainDbCreds = { username: fbUser, password: fbPass };
+        credentialSource = 'env-fallback';
       } else {
         console.error('[Bootstrap] OpenBao non disponibile e nessuna credenziale fallback nel .env');
         throw error;
@@ -92,7 +95,27 @@ async function bootstrap() {
     AppModule.forRootAsync({ mainDbCredentials: mainDbCreds, openbaoService }),
   );
 
-  // 3. Attach EventEmitter per eventi di rotazione credenziali
+  // 3. Registra la fonte delle credenziali nel tracker
+  const tracker = app.get(CredentialSourceTracker);
+  tracker.setSource(credentialSource, mainDbCreds.username);
+
+  // 3b. Verifica il database effettivo all'avvio
+  const expectedDb = process.env.DB_DATABASE || 'calendar_db';
+  try {
+    const { DataSource } = await import('typeorm');
+    const ds = app.get(DataSource);
+    const [row] = await ds.query('SELECT current_database() AS db');
+    const actualDb = row?.db;
+    if (actualDb !== expectedDb) {
+      console.error(`[Bootstrap] ATTENZIONE: database effettivo="${actualDb}", atteso="${expectedDb}"!`);
+    } else {
+      console.log(`[Bootstrap] Database effettivo verificato: ${actualDb}`);
+    }
+  } catch (err: any) {
+    console.warn(`[Bootstrap] Impossibile verificare database effettivo: ${err?.message}`);
+  }
+
+  // 4. Attach EventEmitter per eventi di rotazione credenziali
   const eventEmitter = app.get(EventEmitter2);
   openbaoService.setEventEmitter(eventEmitter);
 
@@ -133,10 +156,13 @@ async function bootstrap() {
   console.log(`   Localhost:  http://localhost:${port}`);
   console.log(`   LAN:        http://${localIp}:${port}`);
   console.log('');
+  console.log('Database:');
+  console.log(`   DB atteso:  ${expectedDb}`);
+  console.log(`   DB user:    ${mainDbCreds.username}`);
+  console.log('');
   console.log('OpenBao:');
   console.log(`   Modalita':  ${isAgentMode ? 'Agent proxy' : 'AppRole diretto'}`);
   console.log(`   Endpoint:   ${process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200'}`);
-  console.log(`   DB user:    ${mainDbCreds.username}`);
   console.log('');
   console.log('CORS configurato per:');
   console.log('   http://localhost:4200 (sviluppo locale)');

@@ -19,6 +19,9 @@ import { WhatsappLayoutComponent } from './features/whatsapp/whatsapp-layout.com
 import { WhatsappMonitorContainer } from './features/whatsapp/containers/whatsapp-monitor.container';
 import { WhatsappSettingsContainer } from './features/whatsapp/containers/whatsapp-settings.container';
 import { WhatsappLogManagementContainer } from './features/whatsapp/containers/whatsapp-log-management.container';
+import { InstructorsLayoutComponent } from './features/instructors/layout/instructors-layout.component';
+import { InstructorAppointmentsContainer } from './features/instructors/containers/instructor-appointments.container';
+import { InstructorInProgressContainer } from './features/instructors/containers/instructor-in-progress.container';
 
 export const routes: Routes = [
   // --- Callback OIDC Keycloak (nessun guard: la libreria processa il code qui) ---
@@ -95,6 +98,30 @@ export const routes: Routes = [
         path: 'appuntamenti',
         component: OperatorWorkspaceContainer,
         title: 'Appuntamenti',
+      },
+    ],
+  },
+  {
+    path: 'istruttori',
+    component: InstructorsLayoutComponent,
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['operatore', 'admin', 'amministratore', 'superadmin', 'it_manager'] },
+    title: 'Workspace Istruttore',
+    children: [
+      {
+        path: '',
+        redirectTo: 'appuntamenti',
+        pathMatch: 'full',
+      },
+      {
+        path: 'appuntamenti',
+        component: InstructorAppointmentsContainer,
+        title: 'Appuntamenti Istruttore',
+      },
+      {
+        path: 'in-corso',
+        component: InstructorInProgressContainer,
+        title: 'In Corso',
       },
     ],
   },

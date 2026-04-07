@@ -9,6 +9,8 @@ export interface TenantSchemaStatus {
   tenantStatus: string;
   isAligned: boolean;
   message?: string;
+  databaseName?: string;
+  databaseHost?: string;
 }
 
 const TENANT_SCHEMA_STATUS = gql`
@@ -19,6 +21,8 @@ const TENANT_SCHEMA_STATUS = gql`
       tenantStatus
       isAligned
       message
+      databaseName
+      databaseHost
     }
   }
 `;
@@ -31,6 +35,8 @@ const PROVISION_TENANT_SCHEMA = gql`
       tenantStatus
       isAligned
       message
+      databaseName
+      databaseHost
     }
   }
 `;

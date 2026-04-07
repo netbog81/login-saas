@@ -59,7 +59,7 @@ type TabName = typeof TAB_NAMES[number];
             <mat-icon class="tab-icon">people</mat-icon>
             Utenti
           </ng-template>
-          <div class="tab-content">
+          <div class="tab-content-wide">
             <app-admin-users></app-admin-users>
           </div>
         </mat-tab>
@@ -110,6 +110,12 @@ type TabName = typeof TAB_NAMES[number];
     .tab-content {
       padding: 24px;
       max-width: 960px;
+      margin: 0 auto;
+    }
+    .tab-content-wide {
+      padding: 24px;
+      padding-bottom: 80px;
+      max-width: 1400px;
       margin: 0 auto;
     }
   `],
