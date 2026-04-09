@@ -41,6 +41,7 @@ export interface PanelSaveResult {
   treatmentId: string;
   therapeuticPathId?: string;
   clinicalNotes?: string;
+  secretaryNotes?: string;
   patientNotes?: string;
   price?: number;
   scontoFE?: boolean;
@@ -145,6 +146,12 @@ export interface PanelCompleteResult {
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Note Paziente</mat-label>
                 <textarea matInput formControlName="patientNotes" rows="2"></textarea>
+              </mat-form-field>
+
+              <!-- Note Segreteria -->
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Note Segreteria</mat-label>
+                <textarea matInput formControlName="secretaryNotes" rows="2"></textarea>
               </mat-form-field>
 
               <!-- Prezzo e Sconto -->
@@ -373,6 +380,7 @@ export class MultiTreatmentPanelComponent implements OnInit {
       painBefore: [t?.painBefore ?? 0],
       painAfter: [t?.painAfter ?? 0],
       clinicalNotes: [t?.clinicalNotes || ''],
+      secretaryNotes: [t?.secretaryNotes || ''],
       patientNotes: [t?.patientNotes || ''],
       price: [t?.price ?? 0],
       scontoFE: [t?.scontoFE ?? false],
@@ -386,6 +394,7 @@ export class MultiTreatmentPanelComponent implements OnInit {
       treatmentId: this.columnState.treatment!.id,
       therapeuticPathId: formVal.therapeuticPathId,
       clinicalNotes: formVal.clinicalNotes,
+      secretaryNotes: formVal.secretaryNotes,
       patientNotes: formVal.patientNotes,
       price: formVal.price,
       scontoFE: formVal.scontoFE,
@@ -401,6 +410,7 @@ export class MultiTreatmentPanelComponent implements OnInit {
       treatmentId: this.columnState.treatment!.id,
       therapeuticPathId: formVal.therapeuticPathId,
       clinicalNotes: formVal.clinicalNotes,
+      secretaryNotes: formVal.secretaryNotes,
       patientNotes: formVal.patientNotes,
       price: formVal.price,
       scontoFE: formVal.scontoFE,

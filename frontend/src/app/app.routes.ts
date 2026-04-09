@@ -22,6 +22,7 @@ import { WhatsappLogManagementContainer } from './features/whatsapp/containers/w
 import { InstructorsLayoutComponent } from './features/instructors/layout/instructors-layout.component';
 import { InstructorAppointmentsContainer } from './features/instructors/containers/instructor-appointments.container';
 import { InstructorInProgressContainer } from './features/instructors/containers/instructor-in-progress.container';
+import { InstructorExecutedContainer } from './features/instructors/containers/instructor-executed.container';
 
 export const routes: Routes = [
   // --- Callback OIDC Keycloak (nessun guard: la libreria processa il code qui) ---
@@ -122,6 +123,11 @@ export const routes: Routes = [
         path: 'in-corso',
         component: InstructorInProgressContainer,
         title: 'In Corso',
+      },
+      {
+        path: 'eseguiti',
+        component: InstructorExecutedContainer,
+        title: 'Trattamenti Eseguiti',
       },
     ],
   },

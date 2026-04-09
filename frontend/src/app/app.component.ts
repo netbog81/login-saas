@@ -9,6 +9,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ContextPreservationService } from './core/services/context-preservation.service';
 import { OidcAuthService } from './core/auth/oidc-auth.service';
+import { TenantResolverService } from './core/auth/tenant-resolver.service';
 import { TaskMessageNotificationService } from './features/task-messages/services/task-message-notification.service';
 import { TaskMessageDialogComponent } from './features/task-messages/containers/task-message-dialog.component';
 
@@ -39,6 +40,11 @@ import { TaskMessageDialogComponent } from './features/task-messages/containers/
             <a class="nav-item" routerLink="/calendar" routerLinkActive="active">
               Calendario
             </a>
+            @if (accountingUrl && authService.hasRole(['admin', 'amministratore', 'superadmin', 'segreteria'])) {
+              <a class="nav-item" [href]="accountingUrl" target="_blank" rel="noopener noreferrer">
+                Contabilità
+              </a>
+            }
             <a class="nav-item" routerLink="/patients" routerLinkActive="active">
               Pazienti
             </a>
@@ -242,7 +248,7 @@ import { TaskMessageDialogComponent } from './features/task-messages/containers/
     .app-content {
       flex: 1;
       background: #f5f5f5;
-      overflow: hidden;
+      overflow-y: auto;
       min-height: 0;
     }
 
@@ -257,11 +263,22 @@ import { TaskMessageDialogComponent } from './features/task-messages/containers/
 export class AppComponent implements OnInit, OnDestroy {
   readonly authService = inject(OidcAuthService);
   private readonly contextService = inject(ContextPreservationService);
+  private readonly tenantResolver = inject(TenantResolverService);
   private readonly notificationService = inject(TaskMessageNotificationService);
   private readonly dialog = inject(MatDialog);
   private cleanupContext: (() => void) | null = null;
 
   taskMessageUnreadCount = 0;
+
+  /**
+   * URL del modulo Contabilità per il tenant corrente.
+   * Es: tenant "demo4" -> https://accounting.demo4.curandis.cloud
+   * Null se non siamo su un sottodominio tenant valido (es: api., www., ...).
+   */
+  readonly accountingUrl: string | null = (() => {
+    const alias = this.tenantResolver.getTenantAlias();
+    return alias ? `https://accounting.${alias}.curandis.cloud` : null;
+  })();
 
   ngOnInit(): void {
     this.cleanupContext = this.contextService.preserveContext('AppComponent');

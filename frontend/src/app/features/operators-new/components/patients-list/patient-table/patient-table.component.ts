@@ -116,6 +116,12 @@ import { Patient, getPatientPhone, getPatientInitials } from '../../../../../mod
                         (click)="onNewAppointment(patient, $event)">
                   <mat-icon>event</mat-icon>
                 </button>
+                <button mat-icon-button
+                        matTooltip="Modifica anagrafica"
+                        (click)="onEditPatient(patient, $event)"
+                        *ngIf="patientEdit.observed">
+                  <mat-icon>edit</mat-icon>
+                </button>
               </td>
             </ng-container>
 
@@ -272,6 +278,7 @@ export class PatientTableComponent implements AfterViewInit {
   @Output() patientView = new EventEmitter<Patient>();
   @Output() viewAppointments = new EventEmitter<Patient>();
   @Output() newAppointment = new EventEmitter<Patient>();
+  @Output() patientEdit = new EventEmitter<Patient>();
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
@@ -309,5 +316,10 @@ export class PatientTableComponent implements AfterViewInit {
   onNewAppointment(patient: Patient, event: Event): void {
     event.stopPropagation();
     this.newAppointment.emit(patient);
+  }
+
+  onEditPatient(patient: Patient, event: Event): void {
+    event.stopPropagation();
+    this.patientEdit.emit(patient);
   }
 }

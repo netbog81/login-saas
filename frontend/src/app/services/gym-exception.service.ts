@@ -16,9 +16,9 @@ import {
  * Tipi di eccezione per la palestra
  */
 export enum GymExceptionType {
-  CLOSED = 'closed',
-  OPERATOR_ABSENT = 'operator_absent',
-  MODIFIED_HOURS = 'modified_hours',
+  CLOSED = 'CLOSED',
+  OPERATOR_ABSENT = 'OPERATOR_ABSENT',
+  MODIFIED_HOURS = 'MODIFIED_HOURS',
 }
 
 /**

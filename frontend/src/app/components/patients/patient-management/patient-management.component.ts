@@ -1,18 +1,24 @@
 import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subject, takeUntil, firstValueFrom } from 'rxjs';
 import { Patient, getPatientDisplayName, getPatientPhone } from '../../../models/patient.model';
 import { PatientService } from '../../../services/patient.service';
 import { PatientAppointmentsDialogComponent } from '../../../features/operators-new/containers/patient-appointments-dialog.component';
+import { PatientTableComponent } from '../../../features/operators-new/components/patients-list/patient-table/patient-table.component';
+import { PatientFolderDialogComponent } from '../../../features/operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
 
 type StatoAnagrafica = 'BOZZA' | 'PARZIALE' | 'COMPLETA' | 'DA_VERIFICARE';  // GraphQL enum key names
 
 @Component({
   selector: 'app-patient-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatDialogModule],
+  imports: [CommonModule, FormsModule, MatDialogModule, MatIconModule, MatButtonModule, MatTooltipModule, PatientTableComponent],
   templateUrl: './patient-management.component.html',
   styleUrls: ['./patient-management.component.scss']
 })
@@ -27,6 +33,7 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   // UI State
   loading = false;
   error: string | null = null;
+  viewMode: 'grid' | 'list' = 'grid';
 
   // Form State
   showPatientForm = false;
@@ -63,7 +70,8 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   constructor(
     private patientService: PatientService,
     private ngZone: NgZone,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -256,6 +264,26 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   selectPatient(patient: Patient): void {
     this.ngZone.run(() => {
       this.selectedPatient = this.selectedPatient?.id === patient.id ? null : patient;
+    });
+  }
+
+  toggleViewMode(): void {
+    this.viewMode = this.viewMode === 'grid' ? 'list' : 'grid';
+  }
+
+  onPatientView(patient: Patient): void {
+    this.dialog.open(PatientFolderDialogComponent, {
+      data: { patient },
+      width: '95vw',
+      maxWidth: '1400px',
+      height: '90vh',
+      panelClass: 'patient-folder-dialog-panel'
+    });
+  }
+
+  onNewAppointment(patient: Patient): void {
+    this.router.navigate(['/calendar'], {
+      queryParams: { patientId: patient.id }
     });
   }
 

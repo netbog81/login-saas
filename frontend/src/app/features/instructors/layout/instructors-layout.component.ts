@@ -247,6 +247,7 @@ export class InstructorsLayoutComponent implements OnInit {
   readonly navLinks: NavLink[] = [
     { path: 'appuntamenti', label: 'Appuntamenti', icon: 'event' },
     { path: 'in-corso', label: 'In Corso', icon: 'play_circle' },
+    { path: 'eseguiti', label: 'Eseguiti', icon: 'task_alt' },
   ];
 
   readonly today = new Date();

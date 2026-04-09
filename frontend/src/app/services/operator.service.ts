@@ -111,7 +111,18 @@ export class OperatorService extends BaseGraphQLService {
     return this.query<{ operatorAvailability: DailyAvailability[] }>(
       GET_OPERATOR_AVAILABILITY,
       { operatorId, startDate, endDate }
-    ).pipe(map((result) => result.operatorAvailability || []));
+    ).pipe(
+      map((result) => {
+        // ApolloZoneService.query emette `data` anche quando `result.error` è valorizzato
+        // (vedi commento in apollo-zone.service.ts:74). In quel caso `result` è null/undefined
+        // e accedere a .operatorAvailability provocherebbe TypeError. Propaghiamo invece
+        // un errore esplicito così il chiamante può gestirlo nel suo catch.
+        if (result == null) {
+          throw new Error('operatorAvailability query failed');
+        }
+        return result.operatorAvailability ?? [];
+      })
+    );
   }
 
   /**

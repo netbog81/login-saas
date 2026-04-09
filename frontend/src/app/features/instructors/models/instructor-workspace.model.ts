@@ -73,6 +73,34 @@ export interface TreatmentColumnState {
   isCompleted: boolean;
 }
 
+// ==================== EXECUTED (PAST) SLOTS ====================
+
+/**
+ * Stato di un singolo paziente in uno slot eseguito (passato).
+ * Combina appuntamento + eventuale trattamento associato.
+ */
+export interface ExecutedPatientEntry {
+  appointment: AvailabilityAppointment;
+  patientId: string;
+  patientName: string;
+  treatment: Treatment | null;
+  isAttended: boolean;
+}
+
+/**
+ * Slot eseguito (orario passato) con i pazienti e i loro trattamenti.
+ * Estensione di SlotGroup arricchita con dati di trattamento.
+ */
+export interface ExecutedSlotGroup {
+  key: string;
+  startTime: string;
+  endTime: string;
+  gymRoom: SlotGroup['gymRoom'];
+  date: string;
+  appointments: AvailabilityAppointment[];
+  patients: ExecutedPatientEntry[];
+}
+
 // ==================== UI STATE ====================
 
 export type ViewMode = 'day' | 'week';
@@ -115,6 +143,42 @@ export function groupAppointmentsBySlot(
   return Array.from(map.values()).sort(
     (a, b) => a.startTime.localeCompare(b.startTime) || a.gymRoom.name.localeCompare(b.gymRoom.name),
   );
+}
+
+/**
+ * Filtra gli slot mantenendo solo quelli passati rispetto al momento di valutazione.
+ * Regole:
+ * - Se la data selezionata è nel futuro -> nessuno slot.
+ * - Se la data selezionata è nel passato -> tutti gli slot.
+ * - Se la data selezionata è oggi -> solo gli slot con endTime <= oraCorrente (HH:MM).
+ */
+export function filterPastSlots(
+  slots: SlotGroup[],
+  selectedDate: Date,
+  now: Date = new Date(),
+): SlotGroup[] {
+  const selectedStr = formatDateLocal(selectedDate);
+  const todayStr = formatDateLocal(now);
+
+  if (selectedStr > todayStr) {
+    return [];
+  }
+  if (selectedStr < todayStr) {
+    return [...slots];
+  }
+  // Stessa giornata: confronta endTime <= oraCorrente
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  return slots.filter((s) => s.endTime <= currentTime);
+}
+
+/**
+ * Format Date -> YYYY-MM-DD usando il fuso locale (evita lo shift UTC di toISOString).
+ */
+export function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /**

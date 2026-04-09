@@ -50,10 +50,14 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
     private exceptionService: GymExceptionService,
     private operatorService: OperatorService,
     private ngZone: NgZone
-  ) {}
+  ) {
+    // Inizializzato qui (non in ngOnInit) perché ngOnChanges può scattare
+    // prima di ngOnInit al primo binding di @Input gymRoom, e loadExceptions
+    // ha bisogno di startDate/endDate già popolati.
+    this.initDateRange();
+  }
 
   ngOnInit() {
-    this.initDateRange();
     this.loadOperators();
   }
 
@@ -92,6 +96,7 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
 
   loadExceptions() {
     if (!this.gymRoom) return;
+    if (!this.startDate || !this.endDate) return;
 
     this.loading = true;
     this.error = null;

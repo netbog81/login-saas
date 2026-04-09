@@ -132,6 +132,14 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   // Loading state
   isLoading: boolean = false;
 
+  // Concurrency guard for loadAppointmentsForCurrentView.
+  // Prevents overlapping invocations (e.g. SSE events arriving during initial load)
+  // from racing each other and from triggering concurrent rebuildCache calls server-side.
+  // If a load is requested while one is already in flight, we mark a "pending" reload
+  // that will be executed once the current one completes.
+  private loadInFlight: Promise<void> | null = null;
+  private loadPending: boolean = false;
+
   // Category filter
   selectedMacroCategory: OperatorMacroCategory | null = null;
 
@@ -492,7 +500,40 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
     await this.loadOperators();
   }
 
+  /**
+   * Public entrypoint for loading appointments. Serializes concurrent calls:
+   * if a load is already in progress, marks a pending reload that will run
+   * once the current one completes (collapsing multiple pending requests into one).
+   *
+   * This prevents the race where, during initial calendar load, an SSE event
+   * triggers a second loadAppointmentsForCurrentView while the first is still
+   * fetching availability — which used to fire concurrent operatorAvailability
+   * GraphQL queries that violated the availability_cache UNIQUE constraint.
+   */
   private async loadAppointmentsForCurrentView(): Promise<void> {
+    if (this.loadInFlight) {
+      this.loadPending = true;
+      return this.loadInFlight;
+    }
+
+    this.loadInFlight = (async () => {
+      try {
+        await this.doLoadAppointmentsForCurrentView();
+        // Drain any reload requested while we were running. Loop because another
+        // request may arrive during the drain itself.
+        while (this.loadPending) {
+          this.loadPending = false;
+          await this.doLoadAppointmentsForCurrentView();
+        }
+      } finally {
+        this.loadInFlight = null;
+      }
+    })();
+
+    return this.loadInFlight;
+  }
+
+  private async doLoadAppointmentsForCurrentView(): Promise<void> {
     // Salva il viewMode corrente per verificare che non sia cambiato durante il caricamento
     const currentViewMode = this.config?.viewMode;
 

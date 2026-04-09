@@ -5,13 +5,20 @@
       <h1>Gestione Pazienti</h1>
       <p class="subtitle">Gestisci l'anagrafica dei pazienti</p>
     </div>
-    <button class="btn btn-primary" (click)="openNewPatientForm()">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-      </svg>
-      Nuovo Paziente
-    </button>
+    <div class="header-actions">
+      <button mat-icon-button
+              [matTooltip]="viewMode === 'grid' ? 'Vista elenco' : 'Vista card'"
+              (click)="toggleViewMode()">
+        <mat-icon>{{ viewMode === 'grid' ? 'view_list' : 'grid_view' }}</mat-icon>
+      </button>
+      <button class="btn btn-primary" (click)="openNewPatientForm()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Nuovo Paziente
+      </button>
+    </div>
   </div>
 
   <!-- Stats -->
@@ -111,8 +118,8 @@
     </button>
   </div>
 
-  <!-- Patient Grid -->
-  <div *ngIf="!loading && filteredPatients.length > 0" class="patients-grid">
+  <!-- Patient Grid (Card View) -->
+  <div *ngIf="!loading && filteredPatients.length > 0 && viewMode === 'grid'" class="patients-grid">
     <div
       *ngFor="let patient of filteredPatients"
       class="patient-card"
@@ -176,6 +183,21 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <!-- Patient Table (List View) -->
+  <div *ngIf="!loading && filteredPatients.length > 0 && viewMode === 'list'" class="table-section">
+    <app-patient-table
+      [patients]="filteredPatients"
+      [loading]="loading"
+      [selectedPatientId]="selectedPatient?.id ?? null"
+      emptyMessage="Nessun paziente trovato"
+      (patientSelect)="selectPatient($event)"
+      (patientView)="onPatientView($event)"
+      (viewAppointments)="openAppointments($event)"
+      (newAppointment)="onNewAppointment($event)"
+      (patientEdit)="openEditPatientForm($event)">
+    </app-patient-table>
   </div>
 
   <!-- Patient Form Modal -->

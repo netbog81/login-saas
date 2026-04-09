@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not, In } from 'typeorm';
+import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not, In, DataSource } from 'typeorm';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
 import { PatternGroup } from '../entities/pattern-group.entity';
@@ -36,6 +36,7 @@ export class AvailabilityService {
     private appointmentRepo: Repository<AvailabilityAppointment>,
     @InjectRepository(GroupException)
     private groupExceptionRepo: Repository<GroupException>,
+    private dataSource: DataSource,
   ) {}
 
   async getTemplates(operatorId: string, onlyCurrent: boolean = true): Promise<AvailabilityTemplate[]> {
@@ -416,104 +417,150 @@ export class AvailabilityService {
   }
 
   async rebuildCache(operatorId: string, startDate: string, endDate: string): Promise<void> {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Serialize concurrent rebuilds for the same operator via a transaction-scoped
+    // advisory lock. This prevents the race where two parallel GraphQL calls to
+    // `operatorAvailability` both execute delete+insert and violate
+    // UQ (operatorId, availableDate, startTime).
+    await this.dataSource.transaction(async (manager) => {
+      // Derive a stable 64-bit signed int key from the operator UUID for pg_advisory_xact_lock.
+      // hashtext() already returns int4; combining two hashes gives us a bigint-safe lock key.
+      await manager.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1)::bigint * 2147483647 + hashtext($1 || ':cache')::bigint)`,
+        [operatorId],
+      );
 
-    // Clear existing cache for date range
-    await this.cacheRepo.delete({
-      operatorId,
-      availableDate: Between(start, end)
-    });
+      const cacheRepo = manager.getRepository(AvailabilityCache);
+      const assignmentRepo = manager.getRepository(TemplateAssignment);
+      const exceptionRepo = manager.getRepository(AvailabilityException);
+      const operatorRepo = manager.getRepository(Operator);
+      const appointmentRepo = manager.getRepository(AvailabilityAppointment);
 
-    // Get current template assignments for this operator
-    const assignments = await this.assignmentRepo.find({
-      where: {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Clear existing cache for date range
+      await cacheRepo.delete({
         operatorId,
-        isCurrent: true,
-      },
-      relations: ['patternGroup', 'patternGroup.patterns']
-    });
+        availableDate: Between(start, end),
+      });
 
-    // Get exceptions for the period
-    const exceptions = await this.exceptionRepo.find({
-      where: {
-        operatorId,
-        exceptionDate: Between(start, end)
-      }
-    });
+      // Get current template assignments for this operator
+      const assignments = await assignmentRepo.find({
+        where: {
+          operatorId,
+          isCurrent: true,
+        },
+        relations: ['patternGroup', 'patternGroup.patterns'],
+      });
 
-    // Build exception map for quick lookup
-    const exceptionMap = new Map<string, AvailabilityException>();
-    exceptions.forEach(ex => {
-      const dateStr = ex.exceptionDate.toISOString().split('T')[0];
-      exceptionMap.set(dateStr, ex);
-    });
+      // Get exceptions for the period
+      const exceptions = await exceptionRepo.find({
+        where: {
+          operatorId,
+          exceptionDate: Between(start, end),
+        },
+      });
 
-    // Get operator for capacity info
-    const operator = await this.operatorRepo.findOne({ where: { id: operatorId } });
-    if (!operator) return;
+      // Build exception map for quick lookup
+      const exceptionMap = new Map<string, AvailabilityException>();
+      exceptions.forEach((ex) => {
+        const dateStr = ex.exceptionDate.toISOString().split('T')[0];
+        exceptionMap.set(dateStr, ex);
+      });
 
-    // Process each date
-    const current = new Date(start);
-    while (current <= end) {
-      const dateStr = current.toISOString().split('T')[0];
-      const exception = exceptionMap.get(dateStr);
+      // Get operator for capacity info
+      const operator = await operatorRepo.findOne({ where: { id: operatorId } });
+      if (!operator) return;
 
-      if (exception) {
-        // Handle exception
-        if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
-          await this.cacheRepo.save({
-            operatorId,
-            availableDate: new Date(current),
-            startTime: exception.startTime,
-            endTime: exception.endTime,
-            totalCapacity: operator.maxConcurrentAppointments,
-            bookedCapacity: 0,
-            source: 'exception',
-            sourceId: exception.id
-          });
-        }
-        // If unavailable, don't create cache entry
-      } else {
-        // Apply template assignments
-        for (const assignment of assignments) {
-          if (current >= assignment.validFrom &&
-              (!assignment.validUntil || current <= assignment.validUntil)) {
+      // Collect all rows to insert, de-duplicating on the unique key
+      // (operatorId, availableDate, startTime) so overlapping patterns/exceptions
+      // don't trigger UQ_941caae8b5de3e258c8b625eb8b within a single rebuild.
+      const rowsByKey = new Map<string, Partial<AvailabilityCache>>();
+      const addRow = (row: Partial<AvailabilityCache>) => {
+        const dateKey = (row.availableDate as Date).toISOString().split('T')[0];
+        const key = `${dateKey}|${row.startTime}`;
+        rowsByKey.set(key, row);
+      };
 
-            const patternGroup = assignment.patternGroup;
-            if (!patternGroup || !patternGroup.patterns) continue;
+      // Process each date
+      const current = new Date(start);
+      while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0];
+        const exception = exceptionMap.get(dateStr);
 
-            // Calculate pattern day using assignment's patternStartDate
-            const patternDay = this.getPatternDay(
-              current,
-              assignment.patternStartDate,
-              patternGroup.patternDuration
-            );
+        if (exception) {
+          // Handle exception
+          if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
+            addRow({
+              operatorId,
+              availableDate: new Date(current),
+              startTime: exception.startTime,
+              endTime: exception.endTime,
+              totalCapacity: operator.maxConcurrentAppointments,
+              bookedCapacity: 0,
+              source: 'exception',
+              sourceId: exception.id,
+            });
+          }
+          // If unavailable, don't create cache entry
+        } else {
+          // Apply template assignments
+          for (const assignment of assignments) {
+            if (
+              current >= assignment.validFrom &&
+              (!assignment.validUntil || current <= assignment.validUntil)
+            ) {
+              const patternGroup = assignment.patternGroup;
+              if (!patternGroup || !patternGroup.patterns) continue;
 
-            // Find patterns matching this day
-            for (const pattern of patternGroup.patterns) {
-              if (pattern.dayInPattern === patternDay) {
-                await this.cacheRepo.save({
-                  operatorId,
-                  availableDate: new Date(current),
-                  startTime: pattern.startTime,
-                  endTime: pattern.endTime,
-                  totalCapacity: operator.maxConcurrentAppointments,
-                  bookedCapacity: 0,
-                  source: 'pattern',
-                  sourceId: pattern.id
-                });
+              // Calculate pattern day using assignment's patternStartDate
+              const patternDay = this.getPatternDay(
+                current,
+                assignment.patternStartDate,
+                patternGroup.patternDuration,
+              );
+
+              // Find patterns matching this day
+              for (const pattern of patternGroup.patterns) {
+                if (pattern.dayInPattern === patternDay) {
+                  addRow({
+                    operatorId,
+                    availableDate: new Date(current),
+                    startTime: pattern.startTime,
+                    endTime: pattern.endTime,
+                    totalCapacity: operator.maxConcurrentAppointments,
+                    bookedCapacity: 0,
+                    source: 'pattern',
+                    sourceId: pattern.id,
+                  });
+                }
               }
             }
           }
         }
+
+        current.setDate(current.getDate() + 1);
       }
 
-      current.setDate(current.getDate() + 1);
-    }
+      // Bulk upsert: idempotent even if a concurrent request inserted the same row
+      // before we acquired the advisory lock above.
+      const rows = Array.from(rowsByKey.values());
+      if (rows.length > 0) {
+        await cacheRepo.upsert(rows as AvailabilityCache[], {
+          conflictPaths: ['operatorId', 'availableDate', 'startTime'],
+          skipUpdateIfNoValuesChanged: true,
+        });
+      }
 
-    // Update booked capacity
-    await this.updateBookedCapacity(operatorId, start, end);
+      // Update booked capacity (within the same transaction)
+      await this.updateBookedCapacityWithManager(
+        appointmentRepo,
+        cacheRepo,
+        operatorId,
+        start,
+        end,
+      );
+    });
   }
 
   private getPatternDay(date: Date, patternStart: Date, patternDuration: number): number {
@@ -562,8 +609,24 @@ export class AvailabilityService {
   }
 
   private async updateBookedCapacity(operatorId: string, startDate: Date, endDate: Date): Promise<void> {
+    await this.updateBookedCapacityWithManager(
+      this.appointmentRepo,
+      this.cacheRepo,
+      operatorId,
+      startDate,
+      endDate,
+    );
+  }
+
+  private async updateBookedCapacityWithManager(
+    appointmentRepo: Repository<AvailabilityAppointment>,
+    cacheRepo: Repository<AvailabilityCache>,
+    operatorId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
     // Query all appointments for this operator in the date range
-    const appointments = await this.appointmentRepo.find({
+    const appointments = await appointmentRepo.find({
       where: {
         operatorId,
         appointmentDate: Between(startDate, endDate),
@@ -584,7 +647,7 @@ export class AvailabilityService {
     // Update cache for each date
     for (const [dateStr, dateAppointments] of appointmentsByDate) {
       // Get all cache slots for this date
-      const cacheSlots = await this.cacheRepo.find({
+      const cacheSlots = await cacheRepo.find({
         where: {
           operatorId,
           availableDate: new Date(dateStr)
@@ -603,7 +666,7 @@ export class AvailabilityService {
         }).reduce((sum, apt) => sum + (apt.participantCount || 1), 0);
 
         // Update the cache slot
-        await this.cacheRepo.update(slot.id, {
+        await cacheRepo.update(slot.id, {
           bookedCapacity: overlappingCount
         });
       }

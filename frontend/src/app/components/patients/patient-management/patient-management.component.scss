@@ -238,6 +238,22 @@
   }
 }
 
+// Header actions
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+// Table section (list view)
+.table-section {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  min-height: 400px;
+}
+
 // Patient Grid
 .patients-grid {
   display: grid;

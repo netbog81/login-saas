@@ -51,7 +51,12 @@ export class JwksService implements OnModuleInit {
     }
 
     try {
-      const { payload } = await jwtVerify(token, this.jwks);
+      // clockTolerance assorbe piccoli sfasamenti d'orologio tra il server NestJS
+      // e il Keycloak IdP (NTP drift). Senza questa opzione, jose rifiuta il token
+      // anche per pochi secondi di disallineamento causando falsi "exp expired".
+      const { payload } = await jwtVerify(token, this.jwks, {
+        clockTolerance: '30s',
+      });
       return payload;
     } catch (error: any) {
       const cause = error?.cause?.message || '';
