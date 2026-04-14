@@ -1,76 +1,10 @@
 import { gql } from 'apollo-angular';
+import { PATIENT_EVALUATION_FRAGMENT } from './patient-evaluation.queries';
+
+// Re-export per retrocompatibilità (usato da therapeutic-path.mutations.ts)
+export { PATIENT_EVALUATION_FRAGMENT };
 
 // ==================== FRAGMENTS ====================
-
-/**
- * PatientEvaluation fragment - Valutazione del percorso terapeutico
- * (ex Anamnesi del percorso)
- *
- * NOTA: Questa è la valutazione legata al percorso terapeutico,
- * NON la nuova anamnesi paziente (che usa SimplePatientAnamnesisService)
- */
-export const PATIENT_EVALUATION_FRAGMENT = gql`
-  fragment PatientEvaluationFields on PatientEvaluation {
-    id
-    therapeuticPathId
-    operatorId
-
-    # Sezione 1: Informazioni generali
-    professione
-    sportPraticati
-    bmi
-
-    # Sezione 2: Immagine corporea
-    bodyMapMarkers
-
-    # Sezione 3: Anamnesi patologica remota (storico, editing in PatientAnamnesis)
-    patologiePregresse
-    interventiChirurgici
-    traumi
-    terapiaFarmacologica
-
-    # Sezione 4: Anamnesi patologica prossima
-    motivoConsulto
-    esordioSintomi
-    statoAttualeSintomi
-    fattoriAllevianti
-    fattoriAggravanti
-    andamentoDolore
-
-    # Sezione 5: Esame obiettivo
-    osservazione
-    palpazione
-    movimentoPassivo
-    movimentoAttivo
-    forzaMuscolare
-    equilibrio
-    esameNeurologico
-    limitazioniAttivita
-    fattoriPrognosticiPositivi
-    fattoriPrognosticiNegativi
-    strategieCoping
-    diagnosiFisioterapica
-
-    # Sezione 7: Pianificazione trattamento
-    interventiProposti
-    frequenzaSedute
-
-    # Sezione 8: Monitoraggio
-    outcome
-    criticita
-
-    # Audit
-    createdAt
-    updatedAt
-
-    # Relations
-    operator {
-      id
-      name
-      surname
-    }
-  }
-`;
 
 export const PATH_DOCUMENT_FRAGMENT = gql`
   fragment PathDocumentFields on PathDocument {
@@ -173,6 +107,18 @@ export const GET_ACTIVE_THERAPEUTIC_PATHS_BY_PATIENT = gql`
 export const GET_THERAPEUTIC_PATHS_BY_OPERATOR = gql`
   query GetTherapeuticPathsByOperator($operatorId: ID!) {
     therapeuticPathsByOperator(operatorId: $operatorId) {
+      ...TherapeuticPathWithRelationsFields
+    }
+  }
+  ${THERAPEUTIC_PATH_WITH_RELATIONS_FRAGMENT}
+`;
+
+/**
+ * Query batch: percorsi terapeutici per più pazienti in una sola chiamata.
+ */
+export const GET_THERAPEUTIC_PATHS_BY_PATIENTS = gql`
+  query GetTherapeuticPathsByPatients($patientIds: [ID!]!) {
+    therapeuticPathsByPatients(patientIds: $patientIds) {
       ...TherapeuticPathWithRelationsFields
     }
   }

@@ -12,6 +12,8 @@ import { RecurringType, RecurringEndType, ServiceInputItem } from '../dto/create
 import { GymRoom } from '../entities/gym-room.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymPatternGroupService } from './gym-pattern-group.service';
+import { GymExceptionService } from './gym-exception.service';
+import { ConflictReason } from '../entities/availability-appointment.entity';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { Patient } from '../../../entities/patient.entity';
 import { WhatsappGatewayService } from '../../whatsapp/gateway/whatsapp-gateway.service';
@@ -95,9 +97,52 @@ export class AvailabilityAppointmentService {
     private dataSource: DataSource,
     @Inject(forwardRef(() => GymPatternGroupService))
     private gymPatternGroupService: GymPatternGroupService,
+    @Inject(forwardRef(() => GymExceptionService))
+    private gymExceptionService: GymExceptionService,
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
   ) {}
+
+  /**
+   * Verifica se un appointment GYM ricade in uno slot scoperto di un'eccezione
+   * attiva (OPERATOR_ABSENT senza sostituto o con "palestra chiusa"). Se sì,
+   * setta hasConflict=true e conflictReason. Chiamato dopo create/update.
+   *
+   * Fire-and-forget: non blocca il flusso, logga solo errori.
+   */
+  private async checkAndMarkConflictForGymAppointment(
+    appointmentId: string,
+    gymRoomId: string | undefined | null,
+    operatorId: string | undefined | null,
+    appointmentDate: Date,
+    startTime: string,
+  ): Promise<void> {
+    if (!gymRoomId || !operatorId) return;
+
+    try {
+      const result = await this.gymExceptionService.getEffectiveOperator(
+        gymRoomId,
+        operatorId,
+        appointmentDate,
+        startTime,
+      );
+
+      if (result.isUncovered) {
+        await this.appointmentRepo.update(appointmentId, {
+          hasConflict: true,
+          conflictReason: ConflictReason.OPERATOR_UNAVAILABLE,
+          conflictDetectedAt: new Date(),
+        });
+        this.logger.warn(
+          `Appuntamento ${appointmentId} creato/aggiornato in slot scoperto → hasConflict=true`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Errore check conflitto per appointment ${appointmentId}: ${err?.message}`,
+      );
+    }
+  }
 
   /**
    * Crea un nuovo appuntamento con eventuali strumenti
@@ -118,6 +163,19 @@ export class AvailabilityAppointmentService {
       savedAppointment = await this.createSingleAppointment(appointmentData, instruments);
       // Fire-and-forget WhatsApp dispatch solo per singolo
       this.dispatchWhatsappBooking(savedAppointment);
+    }
+
+    // Check proattivo conflitti per appointment GYM: se ricade in uno slot
+    // scoperto di un'eccezione attiva, setta hasConflict=true.
+    if (savedAppointment.appointmentType === AppointmentType.GYM) {
+      // Fire-and-forget: non blocca il return
+      this.checkAndMarkConflictForGymAppointment(
+        savedAppointment.id,
+        savedAppointment.gymRoomId,
+        savedAppointment.operatorId,
+        savedAppointment.appointmentDate,
+        savedAppointment.startTime,
+      ).catch(() => {});
     }
 
     return savedAppointment;
@@ -736,9 +794,22 @@ export class AvailabilityAppointmentService {
       throw new Error(`Appuntamento con ID ${id} non trovato`);
     }
 
+    // Se cambiano data o ora, resetta il flag conflitto:
+    // verrà ricalcolato subito dopo il save.
+    const positionChanged =
+      (input.appointmentDate && String(input.appointmentDate) !== String(appointment.appointmentDate)) ||
+      (input.startTime && input.startTime !== appointment.startTime) ||
+      (input.endTime && input.endTime !== appointment.endTime);
+
     const { instruments, services, ...updateData } = input;
 
     // Aggiorna i campi dell'appuntamento
+    if (positionChanged && appointment.hasConflict) {
+      // Azzera il flag: verrà rimarcato sotto se il nuovo slot è scoperto
+      (updateData as any).hasConflict = false;
+      (updateData as any).conflictReason = null;
+      (updateData as any).conflictDetectedAt = null;
+    }
     Object.assign(appointment, updateData);
     await this.appointmentRepo.save(appointment);
 
@@ -794,6 +865,17 @@ export class AvailabilityAppointmentService {
 
     if (!result) {
       throw new Error(`Appuntamento con ID ${id} non trovato dopo update`);
+    }
+
+    // Check proattivo conflitti per appointment GYM dopo update di posizione
+    if (positionChanged && result.appointmentType === AppointmentType.GYM) {
+      this.checkAndMarkConflictForGymAppointment(
+        result.id,
+        result.gymRoomId,
+        result.operatorId,
+        result.appointmentDate,
+        result.startTime,
+      ).catch(() => {});
     }
 
     return result;
@@ -1219,6 +1301,16 @@ export class AvailabilityAppointmentService {
       gymRoom,
     );
     this.dispatchWhatsappBooking(savedGymAppointment);
+
+    // Check proattivo conflitti: se lo slot è scoperto da un'eccezione attiva
+    this.checkAndMarkConflictForGymAppointment(
+      savedGymAppointment.id,
+      savedGymAppointment.gymRoomId,
+      savedGymAppointment.operatorId,
+      savedGymAppointment.appointmentDate,
+      savedGymAppointment.startTime,
+    ).catch(() => {});
+
     return savedGymAppointment;
   }
 

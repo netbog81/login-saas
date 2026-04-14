@@ -21,6 +21,7 @@ export interface GymSlot {
   remainingCapacity: number;
   operatorId?: string;
   operatorName?: string;
+  operatorColor?: string;
   isSubstitute?: boolean;
   originalOperatorId?: string;
   originalOperatorName?: string;
@@ -43,6 +44,7 @@ export interface GymAvailabilityResult {
   remainingCapacity: number;
   operatorId?: string;
   operatorName?: string;
+  operatorColor?: string;
   isSubstitute?: boolean;
   originalOperatorId?: string;
   originalOperatorName?: string;
@@ -103,6 +105,7 @@ export class GymAvailabilityService {
     // Se non c'è un operatore nel nuovo sistema, prova il vecchio sistema (GymSchedule)
     let operatorId: string | undefined;
     let operatorName: string | undefined;
+    let operatorColor: string | undefined;
     let isSubstitute = false;
     let originalOperatorId: string | undefined;
     let originalOperatorName: string | undefined;
@@ -116,8 +119,11 @@ export class GymAvailabilityService {
         startTime
       );
 
-      operatorId = effectiveOperator.operator.id;
-      operatorName = `${effectiveOperator.operator.name}${effectiveOperator.operator.surname ? ' ' + effectiveOperator.operator.surname : ''}`;
+      operatorId = effectiveOperator.operator?.id;
+      operatorName = effectiveOperator.operator
+        ? `${effectiveOperator.operator.name}${effectiveOperator.operator.surname ? ' ' + effectiveOperator.operator.surname : ''}`
+        : undefined;
+      operatorColor = effectiveOperator.operator?.color;
       isSubstitute = effectiveOperator.isSubstitute;
 
       if (isSubstitute && effectiveOperator.originalOperatorId) {
@@ -140,6 +146,7 @@ export class GymAvailabilityService {
 
       operatorId = schedule.operatorId;
       operatorName = schedule.operator?.name;
+      operatorColor = schedule.operator?.color;
 
       // Controlla eccezioni vecchio sistema
       const operatorException = await this.exceptionRepo.findOne({
@@ -161,6 +168,7 @@ export class GymAvailabilityService {
               remainingCapacity: 0,
               operatorId,
               operatorName,
+              operatorColor,
             };
           }
         } else {
@@ -172,6 +180,7 @@ export class GymAvailabilityService {
             remainingCapacity: 0,
             operatorId,
             operatorName,
+            operatorColor,
           };
         }
       }
@@ -193,6 +202,7 @@ export class GymAvailabilityService {
         remainingCapacity: 0,
         operatorId,
         operatorName,
+        operatorColor,
         isSubstitute,
         originalOperatorId,
         originalOperatorName,
@@ -206,6 +216,7 @@ export class GymAvailabilityService {
       remainingCapacity,
       operatorId,
       operatorName,
+      operatorColor,
       isSubstitute,
       originalOperatorId,
       originalOperatorName,
@@ -334,6 +345,7 @@ export class GymAvailabilityService {
           remainingCapacity: result.remainingCapacity,
           operatorId: result.operatorId,
           operatorName: result.operatorName,
+          operatorColor: result.operatorColor,
           isSubstitute: result.isSubstitute,
           originalOperatorId: result.originalOperatorId,
           originalOperatorName: result.originalOperatorName,
@@ -398,6 +410,7 @@ export class GymAvailabilityService {
           remainingCapacity: result.remainingCapacity,
           operatorId: result.operatorId,
           operatorName: result.operatorName,
+          operatorColor: result.operatorColor,
           reason: result.reason,
           isClosed: result.isClosed,
         });
@@ -483,7 +496,7 @@ export class GymAvailabilityService {
   async getAvailableSlotsWithCapacity(gymRoomId: string, dateStr: string): Promise<{
     startTime: string;
     endTime: string;
-    operator?: { id: string; name: string; surname?: string };
+    operator?: { id: string; name: string; surname?: string; color?: string };
     currentCount: number;
     maxCapacity: number;
     isAvailable: boolean;
@@ -499,6 +512,7 @@ export class GymAvailabilityService {
         id: slot.operatorId,
         name: slot.operatorName?.split(' ')[0] || '',
         surname: slot.operatorName?.split(' ').slice(1).join(' ') || undefined,
+        color: slot.operatorColor,
       } : undefined,
       currentCount: slot.currentBookings,
       maxCapacity: slot.maxCapacity,

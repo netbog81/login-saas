@@ -57,6 +57,8 @@ import { GymSchedule } from './modules/availability/entities/gym-schedule.entity
 import { GymPatternGroup } from './modules/availability/entities/gym-pattern-group.entity';
 import { GymTemplatePattern } from './modules/availability/entities/gym-template-pattern.entity';
 import { GymException } from './modules/availability/entities/gym-exception.entity';
+import { GymExceptionSubstitute } from './modules/availability/entities/gym-exception-substitute.entity';
+import { OperatorAbsenceType } from './modules/availability/entities/operator-absence-type.entity';
 import { Room } from './modules/availability/entities/room.entity';
 import { ServiceInstrument } from './modules/availability/entities/service-instrument.entity';
 import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
@@ -130,6 +132,8 @@ const ALL_ENTITIES = [
   GymPatternGroup,
   GymTemplatePattern,
   GymException,
+  GymExceptionSubstitute,
+  OperatorAbsenceType,
   Room,
   ServiceInstrument,
   AppointmentInstrument,

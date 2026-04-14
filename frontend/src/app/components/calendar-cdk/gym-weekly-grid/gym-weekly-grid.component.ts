@@ -260,6 +260,60 @@ export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit,
   }
 
   /**
+   * Colore dell'operatore assegnato allo slot (per sfondo cella).
+   */
+  getOperatorColor(date: string, gymRoomId: string, time: string): string | undefined {
+    const slotInfo = this.getSlotInfo(date, gymRoomId, time);
+    return slotInfo?.operator?.color || undefined;
+  }
+
+  /**
+   * Nome completo dell'operatore assegnato allo slot (per tooltip).
+   */
+  getOperatorName(date: string, gymRoomId: string, time: string): string {
+    const slotInfo = this.getSlotInfo(date, gymRoomId, time);
+    if (!slotInfo?.operator) return '';
+    const op = slotInfo.operator;
+    return op.surname ? `${op.name} ${op.surname}` : op.name;
+  }
+
+  /**
+   * Calcola colore testo (bianco/nero) in base alla luminosità dello sfondo.
+   */
+  getTextColorForBg(bgColor: string | undefined): string {
+    if (!bgColor) return '#374151';
+    const hex = bgColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.55 ? '#1f2937' : '#ffffff';
+  }
+
+  /**
+   * Legenda operatori-colore per la settimana corrente.
+   */
+  getOperatorLegend(): Array<{ id: string; name: string; color: string }> {
+    const seen = new Map<string, { id: string; name: string; color: string }>();
+    for (const [, dateMap] of this.slotsInfo.entries()) {
+      for (const [, slots] of dateMap.entries()) {
+        for (const slot of slots) {
+          if (slot.operator?.color && !seen.has(slot.operator.id)) {
+            seen.set(slot.operator.id, {
+              id: slot.operator.id,
+              name: slot.operator.surname
+                ? `${slot.operator.name} ${slot.operator.surname}`
+                : slot.operator.name,
+              color: slot.operator.color,
+            });
+          }
+        }
+      }
+    }
+    return Array.from(seen.values());
+  }
+
+  /**
    * Controlla se il giorno è oggi
    */
   isToday(date: string): boolean {

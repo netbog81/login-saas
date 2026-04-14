@@ -21,6 +21,7 @@ import {
   GET_TREATMENTS_BY_PATIENT,
   GET_TREATMENTS_NOT_INVOICED_TO_PATIENT,
   GET_TREATMENTS_NOT_INVOICED_BY_OPERATOR,
+  GET_TREATMENTS_BY_APPOINTMENTS,
 } from '../graphql/operations/treatment.queries';
 
 // Mutations
@@ -73,6 +74,18 @@ export class TreatmentService extends BaseGraphQLService {
       GET_TREATMENT_BY_APPOINTMENT,
       { appointmentId }
     ).pipe(map((result) => result.treatmentByAppointment));
+  }
+
+  /**
+   * Ottiene i trattamenti per più appuntamenti in una singola query.
+   */
+  getTreatmentsByAppointments(appointmentIds: string[]): Observable<Treatment[]> {
+    if (appointmentIds.length === 0) return new Observable(s => { s.next([]); s.complete(); });
+    return this.query<{ treatmentsByAppointments: Treatment[] }>(
+      GET_TREATMENTS_BY_APPOINTMENTS,
+      { appointmentIds },
+      'no-cache'
+    ).pipe(map((result) => result.treatmentsByAppointments || []));
   }
 
   /**

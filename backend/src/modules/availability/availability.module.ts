@@ -23,6 +23,8 @@ import { GymSchedule } from './entities/gym-schedule.entity';
 import { GymPatternGroup } from './entities/gym-pattern-group.entity';
 import { GymTemplatePattern } from './entities/gym-template-pattern.entity';
 import { GymException } from './entities/gym-exception.entity';
+import { GymExceptionSubstitute } from './entities/gym-exception-substitute.entity';
+import { OperatorAbsenceType } from './entities/operator-absence-type.entity';
 import { Room } from './entities/room.entity';
 import { ServiceInstrument } from './entities/service-instrument.entity';
 import { AppointmentInstrument } from './entities/appointment-instrument.entity';
@@ -63,7 +65,9 @@ import { PhysiotherapistAvailabilityService } from './services/physiotherapist-a
 import { GymAvailabilityService } from './services/gym-availability.service';
 import { GymPatternGroupService } from './services/gym-pattern-group.service';
 import { GymExceptionService } from './services/gym-exception.service';
+import { OperatorAbsenceTypeService } from './services/operator-absence-type.service';
 import { AppointmentConflictService } from './services/appointment-conflict.service';
+import { ConflictRevalidationService } from './services/conflict-revalidation.service';
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 import { TreatmentService } from './services/treatment.service';
 import { TherapeuticPathService } from './services/therapeutic-path.service';
@@ -89,6 +93,7 @@ import { AppointmentConflictResolver } from './resolvers/appointment-conflict.re
 import { AvailabilityAppointmentResolver } from './resolvers/availability-appointment.resolver';
 import { GymPatternGroupResolver } from './resolvers/gym-pattern-group.resolver';
 import { GymExceptionResolver } from './resolvers/gym-exception.resolver';
+import { OperatorAbsenceTypeResolver } from './resolvers/operator-absence-type.resolver';
 import { TreatmentResolver } from './resolvers/treatment.resolver';
 import { TherapeuticPathResolver } from './resolvers/therapeutic-path.resolver';
 import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.resolver';
@@ -120,6 +125,8 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
       GymPatternGroup,
       GymTemplatePattern,
       GymException,
+      GymExceptionSubstitute,
+      OperatorAbsenceType,
       Room,
       ServiceInstrument,
       AppointmentInstrument,
@@ -163,7 +170,9 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
     GymAvailabilityService,
     GymPatternGroupService,
     GymExceptionService,
+    OperatorAbsenceTypeService,
     AppointmentConflictService,
+    ConflictRevalidationService,
     AvailabilityAppointmentService,
     TreatmentService,
     TherapeuticPathService,
@@ -188,6 +197,7 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
     AvailabilityAppointmentResolver,
     GymPatternGroupResolver,
     GymExceptionResolver,
+    OperatorAbsenceTypeResolver,
     TreatmentResolver,
     TherapeuticPathResolver,
     ServiceSubcategoryResolver,
@@ -213,7 +223,9 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
     GymAvailabilityService,
     GymPatternGroupService,
     GymExceptionService,
+    OperatorAbsenceTypeService,
     AppointmentConflictService,
+    ConflictRevalidationService,
     AvailabilityAppointmentService,
     TreatmentService,
     TherapeuticPathService,

@@ -81,6 +81,19 @@ export interface CreateKeycloakUserInput {
   realmRole?: string;
 }
 
+export interface UpdateKeycloakUserInput {
+  keycloakUserId: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export interface ResetKeycloakPasswordInput {
+  keycloakUserId: string;
+  newPassword: string;
+  temporary: boolean;
+}
+
 // ─── GraphQL Documents ──────────────────────────────────────────
 
 const APP_USER_FIELDS = gql`
@@ -253,6 +266,24 @@ const DELETE_KEYCLOAK_USER = gql`
   }
 `;
 
+const UPDATE_KEYCLOAK_USER = gql`
+  mutation UpdateKeycloakUser($input: UpdateKeycloakUserInput!) {
+    updateKeycloakUser(input: $input)
+  }
+`;
+
+const RESET_KEYCLOAK_PASSWORD = gql`
+  mutation ResetKeycloakPassword($input: ResetKeycloakPasswordInput!) {
+    resetKeycloakPassword(input: $input)
+  }
+`;
+
+const VERIFY_KEYCLOAK_EMAIL = gql`
+  mutation VerifyKeycloakEmail($keycloakUserId: ID!) {
+    verifyKeycloakEmail(keycloakUserId: $keycloakUserId)
+  }
+`;
+
 // ─── Service ────────────────────────────────────────────────────
 
 @Injectable({ providedIn: 'root' })
@@ -361,6 +392,31 @@ export class AppUserService extends BaseGraphQLService {
       { keycloakUserId, roleName },
       [{ query: GET_KEYCLOAK_ORG_MEMBERS }],
     ).pipe(map((r) => r.revokeKeycloakRealmRole));
+  }
+
+  // ─── Update & Reset Password KC ────────────────────────────────
+
+  updateKeycloakUser(input: UpdateKeycloakUserInput): Observable<boolean> {
+    return this.mutate<{ updateKeycloakUser: boolean }>(
+      UPDATE_KEYCLOAK_USER,
+      { input },
+      [{ query: GET_KEYCLOAK_ORG_MEMBERS }],
+    ).pipe(map((r) => r.updateKeycloakUser));
+  }
+
+  resetKeycloakPassword(input: ResetKeycloakPasswordInput): Observable<boolean> {
+    return this.mutate<{ resetKeycloakPassword: boolean }>(
+      RESET_KEYCLOAK_PASSWORD,
+      { input },
+    ).pipe(map((r) => r.resetKeycloakPassword));
+  }
+
+  verifyKeycloakEmail(keycloakUserId: string): Observable<boolean> {
+    return this.mutate<{ verifyKeycloakEmail: boolean }>(
+      VERIFY_KEYCLOAK_EMAIL,
+      { keycloakUserId },
+      [{ query: GET_KEYCLOAK_ORG_MEMBERS }],
+    ).pipe(map((r) => r.verifyKeycloakEmail));
   }
 
   // ─── Delete & Unlink ──────────────────────────────────────────

@@ -58,24 +58,37 @@ import { Treatment } from '../../../../models/treatment.model';
         @if (isAttended) {
           <!-- Selezione percorso terapeutico -->
           @if (!existingTreatment) {
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Percorso Terapeutico</mat-label>
-              <mat-select [(ngModel)]="selectedPathId">
-                @for (path of activePaths; track path.id) {
-                  <mat-option [value]="path.id">
-                    {{ path.name }}
-                  </mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
+            @if (activePaths.length > 0) {
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Percorso Terapeutico</mat-label>
+                <mat-select [(ngModel)]="selectedPathId">
+                  @for (path of activePaths; track path.id) {
+                    <mat-option [value]="path.id">
+                      {{ path.name }}
+                    </mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
 
-            <!-- Bottone Inizia Trattamento -->
-            <button mat-raised-button color="primary" class="full-width"
-                    [disabled]="!selectedPathId"
-                    (click)="onStartTreatment()">
-              <mat-icon>play_arrow</mat-icon>
-              Inizia Trattamento
-            </button>
+              <!-- Bottone Inizia Trattamento -->
+              <button mat-raised-button color="primary" class="full-width"
+                      [disabled]="!selectedPathId"
+                      (click)="onStartTreatment()">
+                <mat-icon>play_arrow</mat-icon>
+                Inizia Trattamento
+              </button>
+            } @else {
+              <!-- Nessun percorso terapeutico attivo -->
+              <div class="no-path-warning">
+                <mat-icon>warning</mat-icon>
+                <span>Nessun percorso terapeutico attivo</span>
+                <button mat-stroked-button color="primary" class="full-width"
+                        (click)="onOpenPatientFolder()">
+                  <mat-icon>folder_shared</mat-icon>
+                  Apri Scheda Paziente
+                </button>
+              </div>
+            }
           } @else {
             <!-- Trattamento esistente -->
             <div class="treatment-info">
@@ -196,6 +209,32 @@ import { Treatment } from '../../../../models/treatment.model';
       margin-top: 4px;
     }
 
+    .no-path-warning {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      text-align: center;
+      color: #92400e;
+      font-size: 0.8rem;
+      font-weight: 500;
+
+      mat-icon {
+        color: #f59e0b;
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      button {
+        margin-top: 4px;
+      }
+    }
+
     .no-show-message {
       text-align: center;
       padding: 16px;
@@ -232,6 +271,7 @@ export class InProgressColumnComponent implements OnInit {
   @Output() openTreatment = new EventEmitter<Treatment>();
   @Output() markNoShow = new EventEmitter<string>();
   @Output() markAttended = new EventEmitter<string>();
+  @Output() openPatientFolder = new EventEmitter<string>();
 
   selectedPathId: string | null = null;
 
@@ -263,6 +303,13 @@ export class InProgressColumnComponent implements OnInit {
 
   onMarkAttended(): void {
     this.markAttended.emit(this.appointment.id);
+  }
+
+  onOpenPatientFolder(): void {
+    const patientId = (this.appointment as any).patientId?.toString();
+    if (patientId) {
+      this.openPatientFolder.emit(patientId);
+    }
   }
 
   getTreatmentStatusLabel(): string {

@@ -24,6 +24,7 @@ import {
   AppUserType,
   Role,
   CreateAppUserInput,
+  UpdateAppUserInput,
   KeycloakOrgMember,
   KeycloakRealmRole,
   CreateKeycloakUserInput,
@@ -72,6 +73,7 @@ import { CreateKcUserFormComponent } from './components/create-kc-user-form.comp
             [loading]="loadingUsers()"
             (toggleActive)="onToggleActive($event)"
             (manageRoles)="openAssignRole($event)"
+            (edit)="onEditUser($event)"
             (delete)="onDeleteUser($event)"
             (unlink)="onUnlinkUser($event)">
           </app-users-table>
@@ -105,7 +107,10 @@ import { CreateKcUserFormComponent } from './components/create-kc-user-form.comp
             (assignKcRole)="onAssignKcRole($event)"
             (revokeKcRole)="onRevokeKcRole($event)"
             (deleteKcUser)="onDeleteKcUser($event)"
-            (unlinkKcUser)="onUnlinkKcUser($event)">
+            (unlinkKcUser)="onUnlinkKcUser($event)"
+            (updateKcUser)="onUpdateKcUser($event)"
+            (resetPassword)="onResetKcPassword($event)"
+            (verifyEmail)="onVerifyKcEmail($event)">
           </app-kc-members-table>
         </div>
       </mat-expansion-panel>
@@ -358,6 +363,16 @@ export class AdminUsersComponent implements OnInit {
     }
   }
 
+  async onEditUser(event: { id: string; input: UpdateAppUserInput }): Promise<void> {
+    try {
+      await firstValueFrom(this.userService.updateUser(event.id, event.input));
+      this.snackBar.open('Utente aggiornato con successo.', 'OK', { duration: 3000 });
+      await this.loadUsers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore aggiornamento: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
   async onToggleActive(user: AppUser): Promise<void> {
     try {
       await firstValueFrom(this.userService.updateUser(user.id, { isActive: !user.isActive }));
@@ -419,6 +434,37 @@ export class AdminUsersComponent implements OnInit {
       await this.loadKcMembers();
     } catch (err: any) {
       this.snackBar.open(`Errore: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  // ─── Update & Reset Password KC ────────────────────────────────
+
+  async onUpdateKcUser(event: { keycloakUserId: string; email: string; firstName: string; lastName: string }): Promise<void> {
+    try {
+      await firstValueFrom(this.userService.updateKeycloakUser(event));
+      this.snackBar.open('Utente Keycloak aggiornato.', 'OK', { duration: 3000 });
+      await this.loadKcMembers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore aggiornamento: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onResetKcPassword(event: { keycloakUserId: string; newPassword: string; temporary: boolean }): Promise<void> {
+    try {
+      await firstValueFrom(this.userService.resetKeycloakPassword(event));
+      this.snackBar.open('Password reimpostata con successo.', 'OK', { duration: 3000 });
+    } catch (err: any) {
+      this.snackBar.open(`Errore reset password: ${err?.message}`, 'Chiudi', { duration: 5000 });
+    }
+  }
+
+  async onVerifyKcEmail(keycloakUserId: string): Promise<void> {
+    try {
+      await firstValueFrom(this.userService.verifyKeycloakEmail(keycloakUserId));
+      this.snackBar.open('Email verificata con successo.', 'OK', { duration: 3000 });
+      await this.loadKcMembers();
+    } catch (err: any) {
+      this.snackBar.open(`Errore verifica email: ${err?.message}`, 'Chiudi', { duration: 5000 });
     }
   }
 

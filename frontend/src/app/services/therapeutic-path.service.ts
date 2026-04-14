@@ -12,6 +12,7 @@ import { BaseGraphQLService } from '../core/services/base-graphql.service';
 import {
   GET_THERAPEUTIC_PATH,
   GET_THERAPEUTIC_PATHS_BY_PATIENT,
+  GET_THERAPEUTIC_PATHS_BY_PATIENTS,
   GET_ACTIVE_THERAPEUTIC_PATHS_BY_PATIENT,
   GET_THERAPEUTIC_PATHS_BY_OPERATOR,
   GET_PATIENT_EVALUATION,
@@ -272,15 +273,34 @@ export class TherapeuticPathService extends BaseGraphQLService {
   // ==================== PATH QUERIES ====================
 
   /**
-   * Ottiene tutti i percorsi terapeutici di un paziente
+   * Ottiene tutti i percorsi terapeutici di un paziente.
+   * Usa no-cache per evitare che query parallele per pazienti diversi
+   * si sovrascrivano nella cache normalizzata Apollo.
    */
   getPathsByPatient(patientId: string): Observable<TherapeuticPath[]> {
     return this.query<{ therapeuticPathsByPatient: BackendTherapeuticPath[] }>(
       GET_THERAPEUTIC_PATHS_BY_PATIENT,
-      { patientId }
+      { patientId },
+      'no-cache'
     ).pipe(
       map((result) =>
         (result.therapeuticPathsByPatient ?? []).map((p) => this.mapBackendToFrontend(p))
+      )
+    );
+  }
+
+  /**
+   * Ottiene tutti i percorsi terapeutici per più pazienti in una singola query.
+   */
+  getPathsByPatients(patientIds: string[]): Observable<TherapeuticPath[]> {
+    if (patientIds.length === 0) return new Observable(s => { s.next([]); s.complete(); });
+    return this.query<{ therapeuticPathsByPatients: BackendTherapeuticPath[] }>(
+      GET_THERAPEUTIC_PATHS_BY_PATIENTS,
+      { patientIds },
+      'no-cache'
+    ).pipe(
+      map((result) =>
+        (result.therapeuticPathsByPatients ?? []).map((p) => this.mapBackendToFrontend(p))
       )
     );
   }

@@ -124,3 +124,17 @@ export const RESOLVE_MULTIPLE_CONFLICTS = gql`
     }
   }
 `;
+
+/**
+ * Query: revalidazione pigra dei conflitti.
+ * Da chiamare al caricamento dell'app (fire-and-forget).
+ * Se il cooldown (2h) non è scaduto, ritorna subito skipped=true.
+ */
+export const REVALIDATE_CONFLICTS_IF_NEEDED = gql`
+  query RevalidateConflictsIfNeeded {
+    revalidateConflictsIfNeeded {
+      skipped
+      resolved
+    }
+  }
+`;

@@ -72,6 +72,11 @@
         Palestre
       </button>
       <button class="tab"
+              [class.active]="activeTab === 'absence-types'"
+              (click)="setActiveTab('absence-types')">
+        Tipi di Assenza
+      </button>
+      <button class="tab"
               [class.active]="activeTab === 'calendar'"
               (click)="setActiveTab('calendar')">
         Calendario
@@ -89,6 +94,7 @@
     <app-operator-template-assignment *ngIf="activeTab === 'assignments'"></app-operator-template-assignment>
     <app-instrumentation-management *ngIf="activeTab === 'instrumentation'"></app-instrumentation-management>
     <app-gym-management *ngIf="activeTab === 'gyms'"></app-gym-management>
+    <app-operator-absence-types-container *ngIf="activeTab === 'absence-types'"></app-operator-absence-types-container>
 
     <div *ngIf="activeTab === 'calendar'" class="coming-soon">
       <h3>Integrazione Calendario</h3>

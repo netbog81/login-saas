@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Repository,
+  DataSource,
   Like,
   In,
   MoreThan,
@@ -47,6 +48,8 @@ export class PazientiService {
 
     @InjectRepository(PazientePersonaRelazione)
     private readonly relazioniRepository: Repository<PazientePersonaRelazione>,
+
+    private readonly dataSource: DataSource,
   ) {}
 
   // ==================== CRUD BASE ====================
@@ -490,7 +493,20 @@ export class PazientiService {
         : TipoPaziente.ADULTO_AUTONOMO;
     }
 
-    return await this.pazientiRepository.save(paziente);
+    const saved = await this.pazientiRepository.save(paziente);
+
+    // Se nome o cognome sono cambiati, aggiorna clientName su tutti gli appuntamenti collegati
+    if (updateDto.nome !== undefined || updateDto.cognome !== undefined) {
+      const newClientName = `${saved.nome} ${saved.cognome}`.trim();
+      await this.dataSource
+        .createQueryBuilder()
+        .update('availability_appointments')
+        .set({ clientName: newClientName })
+        .where('"patientId" = :patientId', { patientId: id })
+        .execute();
+    }
+
+    return saved;
   }
 
   async remove(id: string): Promise<void> {

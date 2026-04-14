@@ -13,6 +13,7 @@ import {
   GET_CONFLICTED_APPOINTMENTS_COUNT,
   RESOLVE_APPOINTMENT_CONFLICT,
   RESOLVE_MULTIPLE_CONFLICTS,
+  REVALIDATE_CONFLICTS_IF_NEEDED,
 } from '../graphql/operations/conflict.queries';
 
 export interface ConflictFilters {
@@ -145,6 +146,19 @@ export class ConflictService extends BaseGraphQLService {
         }
         return result.resolveMultipleConflicts;
       })
+    );
+  }
+
+  /**
+   * Revalidazione pigra dei conflitti. Esegue il check solo se sono passate
+   * ≥ 2 ore dall'ultima esecuzione. Fire-and-forget — da chiamare al
+   * caricamento dell'app.
+   */
+  revalidateIfNeeded(): Observable<{ skipped: boolean; resolved: number }> {
+    return this.query<{
+      revalidateConflictsIfNeeded: { skipped: boolean; resolved: number };
+    }>(REVALIDATE_CONFLICTS_IF_NEEDED).pipe(
+      map((result) => result.revalidateConflictsIfNeeded)
     );
   }
 }

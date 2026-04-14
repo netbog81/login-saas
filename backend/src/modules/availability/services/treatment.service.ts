@@ -254,6 +254,17 @@ export class TreatmentService {
     });
   }
 
+  /**
+   * Ottiene i trattamenti per più appuntamenti in una singola query.
+   */
+  async findByAppointmentIds(appointmentIds: string[]): Promise<Treatment[]> {
+    if (appointmentIds.length === 0) return [];
+    return this.treatmentRepo.find({
+      where: { appointmentId: In(appointmentIds) },
+      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+    });
+  }
+
   // ==================== UPDATE ====================
 
   /**

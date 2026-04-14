@@ -104,6 +104,19 @@ export interface PanelCompleteResult {
         </div>
       }
 
+      <!-- Avviso percorso terapeutico mancante -->
+      @if (columnState.isAttended && columnState.activePaths.length === 0 && columnState.patientId) {
+        <div class="no-path-warning">
+          <mat-icon>warning</mat-icon>
+          <span>Nessun percorso terapeutico attivo</span>
+          <button mat-stroked-button color="primary" class="full-width"
+                  (click)="openPatientFolder.emit(columnState.patientId)">
+            <mat-icon>folder_shared</mat-icon>
+            Apri Scheda Paziente
+          </button>
+        </div>
+      }
+
       <!-- Contenuto per paziente presentato con trattamento -->
       @if (columnState.isAttended && columnState.treatment) {
         <div class="panel-body">
@@ -154,15 +167,6 @@ export interface PanelCompleteResult {
                 <textarea matInput formControlName="secretaryNotes" rows="2"></textarea>
               </mat-form-field>
 
-              <!-- Prezzo e Sconto -->
-              <div class="price-row">
-                <mat-form-field appearance="outline" class="price-field">
-                  <mat-label>Prezzo</mat-label>
-                  <input matInput type="number" formControlName="price" min="0" step="0.01">
-                  <span matPrefix>€&nbsp;</span>
-                </mat-form-field>
-                <mat-checkbox formControlName="scontoFE">Sconto FE</mat-checkbox>
-              </div>
             </form>
 
             <mat-divider></mat-divider>
@@ -189,13 +193,45 @@ export interface PanelCompleteResult {
         </div>
       }
 
-      <!-- Paziente presentato MA senza trattamento -->
+      <!-- Paziente presentato MA senza trattamento - permetti creazione retroattiva -->
       @if (columnState.isAttended && !columnState.treatment) {
         <div class="panel-body">
           <div class="no-treatment-message">
             <mat-icon>info</mat-icon>
             <p>Trattamento non ancora creato</p>
           </div>
+
+          @if (columnState.activePaths.length > 0) {
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Percorso Terapeutico</mat-label>
+              <mat-select [(value)]="selectedPathIdForCreate">
+                @for (path of columnState.activePaths; track path.id) {
+                  <mat-option [value]="path.id">{{ path.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <button mat-raised-button color="primary" class="full-width"
+                    [disabled]="!selectedPathIdForCreate || isSaving"
+                    (click)="onCreateTreatment()">
+              @if (isSaving) {
+                <mat-spinner diameter="20"></mat-spinner>
+              } @else {
+                <mat-icon>play_arrow</mat-icon>
+              }
+              Crea Trattamento
+            </button>
+          } @else if (columnState.patientId) {
+            <div class="no-path-warning">
+              <mat-icon>warning</mat-icon>
+              <span>Nessun percorso terapeutico attivo</span>
+              <button mat-stroked-button color="primary" class="full-width"
+                      (click)="openPatientFolder.emit(columnState.patientId)">
+                <mat-icon>folder_shared</mat-icon>
+                Apri Scheda Paziente
+              </button>
+            </div>
+          }
         </div>
       }
     </div>
@@ -279,6 +315,32 @@ export interface PanelCompleteResult {
       padding: 24px 14px;
     }
 
+    .no-path-warning {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #fffbeb;
+      border-bottom: 1px solid #fde68a;
+      text-align: center;
+      color: #92400e;
+      font-size: 0.8rem;
+      font-weight: 500;
+
+      mat-icon {
+        color: #f59e0b;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      button {
+        margin-top: 4px;
+        font-size: 0.75rem;
+      }
+    }
+
     .no-show-message, .no-treatment-message {
       text-align: center;
       color: #94a3b8;
@@ -331,16 +393,6 @@ export interface PanelCompleteResult {
       margin-bottom: 8px;
     }
 
-    .price-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .price-field {
-      flex: 1;
-    }
-
     .panel-actions {
       display: flex;
       flex-direction: column;
@@ -365,8 +417,11 @@ export class MultiTreatmentPanelComponent implements OnInit {
   @Output() completeTreatment = new EventEmitter<PanelCompleteResult>();
   @Output() markAttended = new EventEmitter<string>();
   @Output() markNoShow = new EventEmitter<string>();
+  @Output() openPatientFolder = new EventEmitter<string>();
+  @Output() createTreatment = new EventEmitter<{ appointmentId: string; pathId: string }>();
 
   form!: FormGroup;
+  selectedPathIdForCreate: string | null = null;
 
   constructor(
     private fb: FormBuilder,
@@ -374,6 +429,11 @@ export class MultiTreatmentPanelComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    // Auto-seleziona percorso se uno solo (per creazione retroattiva)
+    if (!this.columnState.treatment && this.columnState.activePaths.length === 1) {
+      this.selectedPathIdForCreate = this.columnState.activePaths[0].id;
+    }
+
     const t = this.columnState.treatment;
     this.form = this.fb.group({
       therapeuticPathId: [t?.therapeuticPathId || ''],
@@ -389,6 +449,10 @@ export class MultiTreatmentPanelComponent implements OnInit {
 
   onSave(): void {
     const formVal = this.form.value;
+    if (!formVal.therapeuticPathId) {
+      alert('Selezionare un percorso terapeutico prima di salvare');
+      return;
+    }
     this.save.emit({
       appointmentId: this.columnState.appointment.id,
       treatmentId: this.columnState.treatment!.id,
@@ -405,6 +469,10 @@ export class MultiTreatmentPanelComponent implements OnInit {
 
   onComplete(): void {
     const formVal = this.form.value;
+    if (!formVal.therapeuticPathId) {
+      alert('Selezionare un percorso terapeutico prima di completare il trattamento');
+      return;
+    }
     const formData: PanelSaveResult = {
       appointmentId: this.columnState.appointment.id,
       treatmentId: this.columnState.treatment!.id,
@@ -421,5 +489,14 @@ export class MultiTreatmentPanelComponent implements OnInit {
       treatmentId: this.columnState.treatment!.id,
       formData,
     });
+  }
+
+  onCreateTreatment(): void {
+    if (this.selectedPathIdForCreate) {
+      this.createTreatment.emit({
+        appointmentId: this.columnState.appointment.id,
+        pathId: this.selectedPathIdForCreate,
+      });
+    }
   }
 }

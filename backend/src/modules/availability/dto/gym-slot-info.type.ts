@@ -10,6 +10,9 @@ export class GymSlotOperatorInfo {
 
   @Field({ nullable: true })
   surname?: string;
+
+  @Field({ nullable: true })
+  color?: string;
 }
 
 @ObjectType()

@@ -35,6 +35,16 @@ export class TherapeuticPathResolver {
   }
 
   /**
+   * Query batch: Ottiene tutti i percorsi per più pazienti in una sola query.
+   */
+  @Query(() => [TherapeuticPath], { name: 'therapeuticPathsByPatients' })
+  async getTherapeuticPathsByPatients(
+    @Args('patientIds', { type: () => [ID] }) patientIds: string[],
+  ): Promise<TherapeuticPath[]> {
+    return this.pathService.findByPatients(patientIds);
+  }
+
+  /**
    * Query: Ottiene i percorsi attivi di un paziente
    */
   @Query(() => [TherapeuticPath], { name: 'activeTherapeuticPathsByPatient' })

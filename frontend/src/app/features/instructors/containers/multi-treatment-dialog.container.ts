@@ -23,7 +23,7 @@ import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { Subject, forkJoin, of } from 'rxjs';
 import { takeUntil, switchMap, catchError } from 'rxjs/operators';
@@ -34,8 +34,8 @@ import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.mod
 import { TreatmentService } from '../../../services/treatment.service';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
-import { ServiceService } from '../../../services/service.service';
-import { InstrumentService } from '../../../services/instrument.service';
+import { PatientService } from '../../../services/patient.service';
+import { PatientFolderDialogComponent } from '../../operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
 
 import {
   MultiTreatmentDialogData,
@@ -92,7 +92,9 @@ import {
                 (save)="onSave($event)"
                 (completeTreatment)="onComplete($event)"
                 (markAttended)="onMarkAttended($event)"
-                (markNoShow)="onMarkNoShow($event)">
+                (markNoShow)="onMarkNoShow($event)"
+                (openPatientFolder)="onOpenPatientFolder($event)"
+                (createTreatment)="onCreateTreatment($event)">
               </app-multi-treatment-panel>
             }
           </div>
@@ -200,9 +202,11 @@ export class MultiTreatmentDialogContainer implements OnInit, OnDestroy {
   constructor(
     @Inject(MAT_DIALOG_DATA) public data: MultiTreatmentDialogData,
     private dialogRef: MatDialogRef<MultiTreatmentDialogContainer>,
+    private dialog: MatDialog,
     private treatmentService: TreatmentService,
     private pathService: TherapeuticPathService,
     private appointmentService: AvailabilityAppointmentService,
+    private patientService: PatientService,
     private cdr: ChangeDetectorRef,
   ) {}
 
@@ -328,6 +332,55 @@ export class MultiTreatmentDialogContainer implements OnInit, OnDestroy {
       });
   }
 
+  onOpenPatientFolder(patientId: string): void {
+    this.patientService.getPatient(patientId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (patient) => {
+          if (!patient) return;
+          const folderRef = this.dialog.open(PatientFolderDialogComponent, {
+            data: {
+              patient,
+              operatorId: this.data.appointments[0]?.operatorId
+            },
+            width: '95vw',
+            maxWidth: '1400px',
+            height: '90vh',
+            panelClass: 'patient-folder-dialog-panel'
+          });
+          // Dopo chiusura scheda paziente, ricarica i percorsi per questa colonna
+          folderRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(() => {
+            this.refreshColumnPaths(patientId);
+          });
+        },
+      });
+  }
+
+  onCreateTreatment(event: { appointmentId: string; pathId: string }): void {
+    const col = this.findColumn(event.appointmentId);
+    if (!col) return;
+
+    col.isSaving = true;
+    this.cdr.markForCheck();
+
+    this.treatmentService
+      .createTreatment(event.appointmentId, event.pathId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (treatment) => {
+          col.treatment = treatment;
+          col.isSaving = false;
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          col.isSaving = false;
+          const msg = err?.graphQLErrors?.[0]?.message || 'Errore nella creazione del trattamento';
+          alert(msg);
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
   onClose(): void {
     this.dialogRef.close();
   }
@@ -336,36 +389,63 @@ export class MultiTreatmentDialogContainer implements OnInit, OnDestroy {
     return this.columns.find((c) => c.appointment.id === appointmentId);
   }
 
+  private refreshColumnPaths(patientId: string): void {
+    this.pathService.getPathsByPatient(patientId)
+      .pipe(
+        catchError(() => of([] as TherapeuticPath[])),
+        takeUntil(this.destroy$),
+      )
+      .subscribe((paths) => {
+        const activePaths = paths.filter((p) => p.status?.toLowerCase() === 'active');
+        // Aggiorna tutte le colonne di questo paziente
+        for (const col of this.columns) {
+          if (col.patientId === patientId) {
+            col.activePaths = activePaths;
+          }
+        }
+        this.cdr.markForCheck();
+      });
+  }
+
   private loadColumnsData(): void {
     const appointments = this.data.appointments;
 
-    // Per ogni paziente carica percorsi e trattamento esistente
-    const loads$ = appointments.map((apt) => {
-      const patientId = apt.patientId?.toString();
-      return forkJoin({
-        paths: patientId
-          ? this.pathService.getPathsByPatient(patientId).pipe(catchError(() => of([] as TherapeuticPath[])))
-          : of([] as TherapeuticPath[]),
-        treatment: this.treatmentService.getTreatmentByAppointment(apt.id).pipe(
-          catchError(() => of(null as Treatment | null)),
-        ),
-      });
-    });
+    // 2 query batch parallele invece di N*2 query singole
+    const patientIds = [...new Set(
+      appointments.map((a) => a.patientId?.toString()).filter((id): id is string => !!id)
+    )];
+    const appointmentIds = appointments.map((a) => a.id);
 
-    forkJoin(loads$)
+    forkJoin({
+      paths: this.pathService.getPathsByPatients(patientIds).pipe(catchError(() => of([] as TherapeuticPath[]))),
+      treatments: this.treatmentService.getTreatmentsByAppointments(appointmentIds).pipe(catchError(() => of([] as Treatment[]))),
+    })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (results) => {
-          this.columns = appointments.map((apt, i) => {
-            const activePaths = (results[i].paths || []).filter(
+        next: ({ paths, treatments }) => {
+          // Indicizza per lookup rapido
+          const pathsByPatient = new Map<string, TherapeuticPath[]>();
+          for (const p of paths) {
+            const pid = (p as any).patientId?.toString() || '';
+            if (!pathsByPatient.has(pid)) pathsByPatient.set(pid, []);
+            pathsByPatient.get(pid)!.push(p);
+          }
+          const treatmentByApt = new Map<string, Treatment>();
+          for (const t of treatments) {
+            treatmentByApt.set(t.appointmentId, t);
+          }
+
+          this.columns = appointments.map((apt) => {
+            const pid = apt.patientId?.toString() || '';
+            const activePaths = (pathsByPatient.get(pid) || []).filter(
               (p) => p.status?.toLowerCase() === 'active',
             );
-            const treatment = results[i].treatment || null;
+            const treatment = treatmentByApt.get(apt.id) || null;
             const isAttended = apt.bookingStatus === BookingStatus.Attended;
 
             return {
               appointment: apt,
-              patientId: apt.patientId?.toString() || '',
+              patientId: pid,
               patientName: apt.clientName,
               treatment,
               activePaths,

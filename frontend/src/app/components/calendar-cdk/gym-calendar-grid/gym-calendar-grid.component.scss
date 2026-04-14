@@ -194,24 +194,66 @@
   }
 }
 
-// Capacità nello slot
-.slot-capacity {
+// Legenda operatori-colore
+.operator-legend {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding-right: 4px;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+
+  .legend-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .legend-item {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
 }
 
-.capacity-text {
-  font-size: 12px;
+// Header riga cella: nome operatore a sinistra + capacità a destra
+.slot-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+  gap: 4px;
+}
+
+.slot-operator-name {
+  font-size: 10px;
   font-weight: 600;
-  color: #374151;
-  background-color: rgba(255, 255, 255, 0.8);
-  padding: 2px 6px;
-  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
-// Nome operatore
+// Badge capacità (es. "3/5")
+.capacity-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background-color: rgba(255, 255, 255, 0.85);
+  color: #374151;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+// Vecchio nome operatore (se usato altrove, compat)
 .slot-operator {
   font-size: 10px;
   color: #6b7280;

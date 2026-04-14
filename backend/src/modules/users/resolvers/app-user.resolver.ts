@@ -8,6 +8,8 @@ import { CreateAppUserInput } from '../dto/create-app-user.input';
 import { UpdateAppUserInput } from '../dto/update-app-user.input';
 import { LinkKeycloakUserInput } from '../dto/link-keycloak-user.input';
 import { CreateKeycloakUserInput } from '../dto/create-keycloak-user.input';
+import { UpdateKeycloakUserInput } from '../dto/update-keycloak-user.input';
+import { ResetKeycloakPasswordInput } from '../dto/reset-keycloak-password.input';
 import { KeycloakOrgMember, KeycloakRealmRoleType } from '../dto/keycloak-types';
 
 @Resolver(() => AppUser)
@@ -184,6 +186,48 @@ export class AppUserResolver {
     @Args('roleName') roleName: string,
   ): Promise<boolean> {
     await this.keycloakAdminService.revokeRealmRoles(keycloakUserId, [roleName]);
+    return true;
+  }
+
+  // ─── Update Keycloak User ───────────────────────────────────────
+
+  @Mutation(() => Boolean)
+  async updateKeycloakUser(
+    @Args('input') input: UpdateKeycloakUserInput,
+  ): Promise<boolean> {
+    const { keycloakUserId, ...data } = input;
+    // Rimuovi campi undefined per non sovrascrivere con null
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([, v]) => v !== undefined && v !== null),
+    );
+    if (Object.keys(cleanData).length === 0) {
+      throw new Error('Nessun campo da aggiornare');
+    }
+    await this.keycloakAdminService.updateUser(keycloakUserId, cleanData);
+    return true;
+  }
+
+  // ─── Reset Keycloak Password ──────────────────────────────────
+
+  @Mutation(() => Boolean)
+  async resetKeycloakPassword(
+    @Args('input') input: ResetKeycloakPasswordInput,
+  ): Promise<boolean> {
+    await this.keycloakAdminService.resetPassword(
+      input.keycloakUserId,
+      input.newPassword,
+      input.temporary,
+    );
+    return true;
+  }
+
+  // ─── Verify Email ──────────────────────────────────────────────
+
+  @Mutation(() => Boolean)
+  async verifyKeycloakEmail(
+    @Args('keycloakUserId', { type: () => ID }) keycloakUserId: string,
+  ): Promise<boolean> {
+    await this.keycloakAdminService.updateUser(keycloakUserId, { emailVerified: true });
     return true;
   }
 

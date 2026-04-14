@@ -155,7 +155,7 @@ export class KeycloakAdminService implements OnModuleInit {
   // ─── Organization Members ──────────────────────────────────────
 
   async getOrganizationMembers(orgId: string): Promise<KeycloakUser[]> {
-    const response = await this.adminFetch(`/organizations/${orgId}/members`);
+    const response = await this.adminFetch(`/organizations/${orgId}/members?first=0&max=1000`);
     if (!response.ok) {
       const error = await response.text();
       this.logger.error(`getOrganizationMembers failed: HTTP ${response.status} - ${error}`);
@@ -322,6 +322,50 @@ export class KeycloakAdminService implements OnModuleInit {
     }
 
     this.logger.log(`Ruoli ${roleNames.join(', ')} rimossi da utente ${userId}`);
+  }
+
+  // ─── Update User ──────────────────────────────────────────────
+
+  async updateUser(userId: string, data: {
+    username?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    emailVerified?: boolean;
+  }): Promise<void> {
+    const response = await this.adminFetch(`/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(`updateUser failed: HTTP ${response.status} - ${error}`);
+      throw new Error(`Failed to update Keycloak user: ${response.status} - ${error}`);
+    }
+
+    this.logger.log(`Utente Keycloak ${userId} aggiornato`);
+  }
+
+  // ─── Reset Password ─────────────────────────────────────────
+
+  async resetPassword(userId: string, newPassword: string, temporary: boolean): Promise<void> {
+    const response = await this.adminFetch(`/users/${userId}/reset-password`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        type: 'password',
+        value: newPassword,
+        temporary,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(`resetPassword failed: HTTP ${response.status} - ${error}`);
+      throw new Error(`Failed to reset password: ${response.status} - ${error}`);
+    }
+
+    this.logger.log(`Password reset per utente ${userId} (temporary: ${temporary})`);
   }
 
   // ─── Delete User ──────────────────────────────────────────────

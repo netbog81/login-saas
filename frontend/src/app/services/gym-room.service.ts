@@ -72,6 +72,7 @@ export interface GymSlotInfo {
     id: string;
     name: string;
     surname?: string;
+    color?: string;
   };
   currentCount: number;
   maxCapacity: number;

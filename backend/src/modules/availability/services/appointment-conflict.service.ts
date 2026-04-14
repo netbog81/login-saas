@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, MoreThanOrEqual } from 'typeorm';
 import { AvailabilityAppointment, BookingStatus, ConflictReason } from '../entities/availability-appointment.entity';
+import { AppointmentType } from '../entities/appointment-type.enum';
 import { AppointmentLog, AppointmentLogEventType } from '../entities/appointment-log.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { AvailabilityCache } from '../entities/availability-cache.entity';
@@ -144,6 +145,111 @@ export class AppointmentConflictService {
       conflicts,
       totalCount: conflicts.length
     };
+  }
+
+  /**
+   * Verifica conflitti per uno slot scoperto di una GymException.
+   *
+   * A differenza di `checkConflictsOnException` (che lavora su
+   * AvailabilityException generica), questo metodo filtra per:
+   *   - operatorId dell'assente
+   *   - gymRoomId dello slot originale
+   *   - appointmentType = GYM
+   *   - sovrapposizione con la fascia [startTime, endTime]
+   *
+   * Usato da GymExceptionService.create/update quando uno slot operator-wide
+   * o scoped non ha un sostituto assegnato.
+   */
+  async checkConflictsOnGymException(params: {
+    operatorId: string;
+    gymRoomId: string;
+    exceptionDate: Date;
+    startTime: string;
+    endTime: string;
+    exceptionId: string;
+    reasonText: string;
+  }): Promise<ConflictCheckResult> {
+    const { operatorId, gymRoomId, exceptionDate, startTime, endTime, exceptionId, reasonText } = params;
+
+    const appointments = await this.appointmentRepo
+      .createQueryBuilder('apt')
+      .leftJoinAndSelect('apt.operator', 'operator')
+      .leftJoinAndSelect('apt.service', 'service')
+      .where('apt.operatorId = :operatorId', { operatorId })
+      .andWhere('apt.gymRoomId = :gymRoomId', { gymRoomId })
+      .andWhere('apt.appointmentDate = :date', { date: exceptionDate })
+      .andWhere('apt.appointmentType = :type', { type: AppointmentType.GYM })
+      .andWhere('apt.bookingStatus IN (:...statuses)', {
+        statuses: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED],
+      })
+      .andWhere('(apt.startTime < :endTime AND apt.endTime > :startTime)', {
+        startTime,
+        endTime,
+      })
+      .getMany();
+
+    const conflicts: ConflictedAppointment[] = appointments.map((apt) => ({
+      appointment: apt,
+      reason: reasonText,
+      sourceType: 'exception' as const,
+      sourceId: exceptionId,
+    }));
+
+    return {
+      hasConflicts: conflicts.length > 0,
+      conflicts,
+      totalCount: conflicts.length,
+    };
+  }
+
+  /**
+   * Azzera il flag hasConflict sugli appuntamenti collegati a una specifica
+   * GymException tramite AppointmentLog. Best-effort: se non trova log,
+   * ritorna senza fare nulla e lascia il ricalcolo al chiamante.
+   */
+  async clearConflictsByGymExceptionId(exceptionId: string): Promise<void> {
+    // Cerchiamo i log dei conflitti creati per questa eccezione.
+    // Gli AppointmentLog non hanno una FK diretta all'eccezione, quindi
+    // usiamo sourceId nel metadata del reason — al momento non è persistito
+    // in modo affidabile. Strategia alternativa pragmatica: il chiamante
+    // (GymExceptionService.update) farà ricalcolo completo per [operatorId, date].
+    //
+    // Lascio questa come no-op esplicita per rendere il contratto chiaro.
+    // Future: aggiungere colonna sourceExceptionId in availability_appointments
+    // oppure aggiungere metadata JSONB in AppointmentLog.
+    void exceptionId;
+  }
+
+  /**
+   * Strategia fallback: azzera hasConflict per tutti gli appointment di
+   * (operatorId, date) che hanno conflictReason relativo a un'assenza
+   * operatore. Usato da GymExceptionService.update come pre-step prima di
+   * ricalcolare i conflitti. Non tocca appuntamenti con altri conflictReason
+   * (es. TEMPLATE_CHANGE).
+   */
+  async clearOperatorAbsenceConflicts(
+    operatorId: string,
+    date: Date,
+  ): Promise<void> {
+    await this.appointmentRepo
+      .createQueryBuilder()
+      .update(AvailabilityAppointment)
+      .set({
+        hasConflict: false,
+        conflictReason: undefined,
+        conflictDetectedAt: undefined,
+      })
+      .where('operatorId = :operatorId', { operatorId })
+      .andWhere('appointmentDate = :date', { date })
+      .andWhere('hasConflict = :hasConflict', { hasConflict: true })
+      .andWhere('conflictReason IN (:...reasons)', {
+        reasons: [
+          ConflictReason.OPERATOR_SICK,
+          ConflictReason.OPERATOR_VACATION,
+          ConflictReason.OPERATOR_UNAVAILABLE,
+        ],
+      })
+      .execute();
   }
 
   // ==================== CONFLICT MARKING ====================

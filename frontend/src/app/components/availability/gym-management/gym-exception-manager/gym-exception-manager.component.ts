@@ -1,16 +1,23 @@
-import { Component, OnInit, OnDestroy, Input, OnChanges, SimpleChanges, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, OnChanges, SimpleChanges, NgZone, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject, takeUntil } from 'rxjs';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { Subject, takeUntil, filter } from 'rxjs';
 
-import { GymExceptionService, GymException, GymExceptionType, CreateGymExceptionInput, UpdateGymExceptionInput } from '../../../../services/gym-exception.service';
-import { OperatorService } from '../../../../services/operator.service';
-import { Operator, OperatorMacroCategory } from '../../../../graphql/generated/types';
+import {
+  GymExceptionService,
+  GymException,
+  GymExceptionType,
+} from '../../../../services/gym-exception.service';
+import {
+  GymExceptionDialogContainerComponent,
+  GymExceptionDialogData,
+} from '../../../../features/availability/gym-exceptions/containers/gym-exception-dialog.container';
 
 @Component({
   selector: 'app-gym-exception-manager',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatDialogModule],
   templateUrl: './gym-exception-manager.component.html',
   styleUrls: ['./gym-exception-manager.component.scss'],
 })
@@ -21,7 +28,6 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
 
   // Data
   exceptions: GymException[] = [];
-  operators: Operator[] = [];
   loading = false;
   error: string | null = null;
 
@@ -29,27 +35,14 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
   startDate: string = '';
   endDate: string = '';
 
-  // Form state
-  showForm = false;
-  isEditMode = false;
-  editingException: Partial<CreateGymExceptionInput> & { id?: string } = {};
-
   // Enum for template
   GymExceptionType = GymExceptionType;
 
-  exceptionTypeOptions = [
-    { value: GymExceptionType.CLOSED, label: 'Chiusura' },
-    { value: GymExceptionType.OPERATOR_ABSENT, label: 'Operatore assente' },
-    { value: GymExceptionType.MODIFIED_HOURS, label: 'Orari modificati' },
-  ];
-
-  // Overlay click tracking (per evitare chiusura durante click-and-drag)
-  overlayMouseDownTarget: EventTarget | null = null;
+  private dialog = inject(MatDialog);
 
   constructor(
     private exceptionService: GymExceptionService,
-    private operatorService: OperatorService,
-    private ngZone: NgZone
+    private ngZone: NgZone,
   ) {
     // Inizializzato qui (non in ngOnInit) perché ngOnChanges può scattare
     // prima di ngOnInit al primo binding di @Input gymRoom, e loadExceptions
@@ -57,11 +50,9 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
     this.initDateRange();
   }
 
-  ngOnInit() {
-    this.loadOperators();
-  }
+  ngOnInit(): void {}
 
-  ngOnDestroy() {
+  ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -81,19 +72,6 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
     this.endDate = endOfMonth.toISOString().split('T')[0];
   }
 
-  loadOperators() {
-    this.operatorService.getOperators(OperatorMacroCategory.GymInstructor, undefined, true)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (operators) => {
-          this.operators = operators;
-        },
-        error: (error) => {
-          console.error('Error loading operators:', error);
-        },
-      });
-  }
-
   loadExceptions() {
     if (!this.gymRoom) return;
     if (!this.startDate || !this.endDate) return;
@@ -101,17 +79,20 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
     this.loading = true;
     this.error = null;
 
-    this.exceptionService.getByDateRange(this.gymRoom.id, this.startDate, this.endDate)
+    this.exceptionService
+      .getByDateRange(this.gymRoom.id, this.startDate, this.endDate)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (exceptions) => {
-          this.exceptions = exceptions.sort((a, b) =>
-            new Date(a.exceptionDate).getTime() - new Date(b.exceptionDate).getTime()
+          this.exceptions = exceptions.sort(
+            (a, b) =>
+              new Date(a.exceptionDate).getTime() -
+              new Date(b.exceptionDate).getTime(),
           );
           this.loading = false;
         },
-        error: (error) => {
-          console.error('Error loading exceptions:', error);
+        error: (err) => {
+          console.error('Error loading exceptions:', err);
           this.error = 'Errore nel caricamento delle eccezioni';
           this.loading = false;
         },
@@ -124,110 +105,41 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
     });
   }
 
-  openForm(exception?: GymException) {
+  openForm(exception?: GymException): void {
     this.ngZone.run(() => {
-      if (exception) {
-        this.isEditMode = true;
-        this.editingException = {
-          id: exception.id,
-          gymRoomId: exception.gymRoomId,
-          operatorId: exception.operatorId,
-          exceptionDate: exception.exceptionDate,
-          startTime: exception.startTime,
-          endTime: exception.endTime,
-          exceptionType: exception.exceptionType,
-          substituteOperatorId: exception.substituteOperatorId,
-          reason: exception.reason,
-        };
-      } else {
-        this.isEditMode = false;
-        const today = new Date().toISOString().split('T')[0];
-        this.editingException = {
-          gymRoomId: this.gymRoom?.id || '',
-          exceptionDate: today,
-          exceptionType: GymExceptionType.CLOSED,
-        };
-      }
-      this.showForm = true;
-      this.error = null;
-    });
-  }
+      const ref = this.dialog.open<
+        GymExceptionDialogContainerComponent,
+        GymExceptionDialogData,
+        boolean
+      >(GymExceptionDialogContainerComponent, {
+        data: {
+          gymRoom: this.gymRoom,
+          exception,
+        },
+        autoFocus: true,
+        // Dimensioni iniziali ampie: dialog leggibile di default
+        width: '960px',
+        maxWidth: '95vw',
+        minWidth: '720px',
+        height: '85vh',
+        maxHeight: '95vh',
+        // panelClass abilita resize nativo via CSS globale (vedi styles.scss)
+        panelClass: 'gym-exception-dialog-panel',
+        // Posizione iniziale leggermente spostata così il drag si nota
+        position: { top: '40px' },
+        hasBackdrop: true,
+      });
 
-  closeForm() {
-    this.ngZone.run(() => {
-      this.showForm = false;
-      this.isEditMode = false;
-      this.editingException = {};
-      this.error = null;
-    });
-  }
-
-  saveException() {
-    if (this.loading || !this.gymRoom) return;
-
-    if (!this.editingException.exceptionDate) {
-      this.error = 'La data è obbligatoria';
-      return;
-    }
-
-    if (!this.editingException.exceptionType) {
-      this.error = 'Il tipo di eccezione è obbligatorio';
-      return;
-    }
-
-    this.loading = true;
-    this.error = null;
-
-    if (this.isEditMode && this.editingException.id) {
-      const input: UpdateGymExceptionInput = {
-        operatorId: this.editingException.operatorId,
-        exceptionDate: this.editingException.exceptionDate,
-        startTime: this.editingException.startTime,
-        endTime: this.editingException.endTime,
-        exceptionType: this.editingException.exceptionType,
-        substituteOperatorId: this.editingException.substituteOperatorId,
-        reason: this.editingException.reason,
-      };
-
-      this.exceptionService.update(this.editingException.id, input)
-        .pipe(takeUntil(this.destroy$))
-        .subscribe({
-          next: () => {
-            this.loadExceptions();
-            this.closeForm();
-          },
-          error: (error) => {
-            console.error('Error updating exception:', error);
-            this.error = 'Errore nell\'aggiornamento dell\'eccezione';
-            this.loading = false;
-          },
+      ref
+        .afterClosed()
+        .pipe(
+          filter((changed): changed is boolean => changed === true),
+          takeUntil(this.destroy$),
+        )
+        .subscribe(() => {
+          this.loadExceptions();
         });
-    } else {
-      const input: CreateGymExceptionInput = {
-        gymRoomId: this.gymRoom.id,
-        operatorId: this.editingException.operatorId,
-        exceptionDate: this.editingException.exceptionDate!,
-        startTime: this.editingException.startTime,
-        endTime: this.editingException.endTime,
-        exceptionType: this.editingException.exceptionType!,
-        substituteOperatorId: this.editingException.substituteOperatorId,
-        reason: this.editingException.reason,
-      };
-
-      this.exceptionService.create(input)
-        .pipe(takeUntil(this.destroy$))
-        .subscribe({
-          next: () => {
-            this.loadExceptions();
-            this.closeForm();
-          },
-          error: (error) => {
-            console.error('Error creating exception:', error);
-            this.error = 'Errore nella creazione dell\'eccezione';
-            this.loading = false;
-          },
-        });
-    }
+    });
   }
 
   deleteException(exception: GymException) {
@@ -236,15 +148,16 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
       if (!confirm('Sei sicuro di voler eliminare questa eccezione?')) return;
 
       this.loading = true;
-      this.exceptionService.delete(exception.id, this.gymRoom.id, exception.exceptionDate)
+      this.exceptionService
+        .delete(exception.id, this.gymRoom.id, exception.exceptionDate)
         .pipe(takeUntil(this.destroy$))
         .subscribe({
           next: () => {
             this.loadExceptions();
           },
-          error: (error) => {
-            console.error('Error deleting exception:', error);
-            this.error = 'Errore nell\'eliminazione dell\'eccezione';
+          error: (err) => {
+            console.error('Error deleting exception:', err);
+            this.error = "Errore nell'eliminazione dell'eccezione";
             this.loading = false;
           },
         });
@@ -278,29 +191,39 @@ export class GymExceptionManagerComponent implements OnInit, OnDestroy, OnChange
     }
   }
 
-  showSubstituteField(): boolean {
-    return this.editingException.exceptionType === GymExceptionType.OPERATOR_ABSENT;
+  /**
+   * True se l'eccezione è operator-wide (gymRoomId NULL).
+   */
+  isOperatorWide(exception: GymException): boolean {
+    return !exception.gymRoomId;
   }
 
-  showOperatorField(): boolean {
-    return this.editingException.exceptionType === GymExceptionType.OPERATOR_ABSENT;
+  /**
+   * Conta gli slot coperti di un'eccezione (substitutes con sostituto valorizzato).
+   */
+  countCoveredSlots(exception: GymException): number {
+    return (exception.substitutes || []).filter((s) => !!s.substituteOperatorId).length;
   }
 
-  showTimeFields(): boolean {
-    return this.editingException.exceptionType !== GymExceptionType.CLOSED ||
-           (this.editingException.startTime !== undefined || this.editingException.endTime !== undefined);
+  /**
+   * Conta gli slot scoperti di un'eccezione (substitutes con sostituto NULL).
+   */
+  countUncoveredSlots(exception: GymException): number {
+    return (exception.substitutes || []).filter((s) => !s.substituteOperatorId).length;
   }
 
-  // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)
-  onOverlayMouseDown(event: MouseEvent): void {
-    this.overlayMouseDownTarget = event.target;
+  /**
+   * Totale degli slot tracciati da un'eccezione.
+   */
+  totalSlots(exception: GymException): number {
+    return exception.substitutes?.length || 0;
   }
 
-  onOverlayClick(event: MouseEvent): void {
-    if (this.overlayMouseDownTarget === event.currentTarget &&
-        event.target === event.currentTarget) {
-      this.closeForm();
-    }
-    this.overlayMouseDownTarget = null;
+  /**
+   * Etichetta del tipo di assenza (snapshot persistito o fallback).
+   */
+  getAbsenceTypeLabel(exception: GymException): string | null {
+    if (exception.absenceTypeSnapshot?.name) return exception.absenceTypeSnapshot.name;
+    return null;
   }
 }

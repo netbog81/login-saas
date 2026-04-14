@@ -58,6 +58,16 @@ export class TreatmentResolver {
   }
 
   /**
+   * Query batch: Trattamenti per più appuntamenti in una sola query.
+   */
+  @Query(() => [Treatment], { name: 'treatmentsByAppointments' })
+  async getTreatmentsByAppointments(
+    @Args('appointmentIds', { type: () => [ID] }) appointmentIds: string[],
+  ): Promise<Treatment[]> {
+    return this.treatmentService.findByAppointmentIds(appointmentIds);
+  }
+
+  /**
    * Query: Trattamenti in corso/completati per un operatore
    */
   @Query(() => [Treatment], { name: 'treatmentsByOperator' })

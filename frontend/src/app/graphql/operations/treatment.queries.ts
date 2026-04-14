@@ -129,6 +129,18 @@ export const GET_TREATMENT_BY_APPOINTMENT = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+/**
+ * Query batch: trattamenti per più appuntamenti in una sola chiamata.
+ */
+export const GET_TREATMENTS_BY_APPOINTMENTS = gql`
+  query GetTreatmentsByAppointments($appointmentIds: [ID!]!) {
+    treatmentsByAppointments(appointmentIds: $appointmentIds) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
 export const GET_TREATMENTS_BY_OPERATOR = gql`
   query GetTreatmentsByOperator($operatorId: ID!, $date: String) {
     treatmentsByOperator(operatorId: $operatorId, date: $date) {

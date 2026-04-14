@@ -50,6 +50,7 @@
         <div class="exception-header">
           <span class="exception-date">{{ formatDate(exception.exceptionDate) }}</span>
           <span class="exception-type">{{ formatExceptionType(exception.exceptionType) }}</span>
+          <span *ngIf="isOperatorWide(exception)" class="badge badge-wide">Tutte le palestre</span>
         </div>
 
         <div class="exception-body">
@@ -68,8 +69,25 @@
             <span class="value">{{ exception.operator.name }} {{ exception.operator.surname }}</span>
           </div>
 
-          <!-- Substitute if specified -->
-          <div class="info-row" *ngIf="exception.substituteOperator">
+          <!-- Absence type snapshot -->
+          <div class="info-row" *ngIf="getAbsenceTypeLabel(exception) as typeLabel">
+            <span class="label">Tipo assenza:</span>
+            <span class="value">{{ typeLabel }}</span>
+          </div>
+
+          <!-- Slots summary (substitutes) -->
+          <div class="info-row" *ngIf="totalSlots(exception) > 0">
+            <span class="label">Slot:</span>
+            <span class="value slot-summary">
+              <span class="slot-covered">{{ countCoveredSlots(exception) }} coperti</span>
+              <span *ngIf="countUncoveredSlots(exception) > 0" class="slot-uncovered">
+                · {{ countUncoveredSlots(exception) }} scoperti
+              </span>
+            </span>
+          </div>
+
+          <!-- Fallback: vecchio substituteOperator (record storici) -->
+          <div class="info-row" *ngIf="exception.substituteOperator && totalSlots(exception) === 0">
             <span class="label">Sostituto:</span>
             <span class="value">{{ exception.substituteOperator.name }} {{ exception.substituteOperator.surname }}</span>
           </div>
@@ -92,80 +110,4 @@
       </div>
     </div>
   </ng-container>
-
-  <!-- Exception Form Modal -->
-  <div *ngIf="showForm" class="modal-overlay"
-       (mousedown)="onOverlayMouseDown($event)"
-       (click)="onOverlayClick($event)">
-    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
-      <div class="modal-header">
-        <h3>{{ isEditMode ? 'Modifica' : 'Nuova' }} Eccezione</h3>
-        <button class="close-btn" (click)="closeForm()">&times;</button>
-      </div>
-
-      <div class="modal-body">
-        <div *ngIf="error" class="error-message">{{ error }}</div>
-
-        <div class="form-group">
-          <label>Tipo Eccezione *</label>
-          <select [(ngModel)]="editingException.exceptionType" class="form-control">
-            <option *ngFor="let opt of exceptionTypeOptions" [value]="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Data *</label>
-          <input type="date" [(ngModel)]="editingException.exceptionDate" class="form-control">
-        </div>
-
-        <div class="form-row" *ngIf="showTimeFields()">
-          <div class="form-group">
-            <label>Ora Inizio (opzionale)</label>
-            <input type="time" [(ngModel)]="editingException.startTime" class="form-control">
-          </div>
-          <div class="form-group">
-            <label>Ora Fine (opzionale)</label>
-            <input type="time" [(ngModel)]="editingException.endTime" class="form-control">
-          </div>
-        </div>
-
-        <div class="form-group" *ngIf="showOperatorField()">
-          <label>Operatore Assente</label>
-          <select [(ngModel)]="editingException.operatorId" class="form-control">
-            <option value="">-- Tutti gli operatori --</option>
-            <option *ngFor="let op of operators" [value]="op.id">
-              {{ op.name }} {{ op.surname }}
-            </option>
-          </select>
-        </div>
-
-        <div class="form-group" *ngIf="showSubstituteField()">
-          <label>Operatore Sostituto</label>
-          <select [(ngModel)]="editingException.substituteOperatorId" class="form-control">
-            <option value="">-- Nessun sostituto --</option>
-            <option *ngFor="let op of operators" [value]="op.id">
-              {{ op.name }} {{ op.surname }}
-            </option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Motivo (opzionale)</label>
-          <textarea [(ngModel)]="editingException.reason"
-                    class="form-control"
-                    rows="3"
-                    placeholder="es. Ferie, Manutenzione, Festività..."></textarea>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-secondary" (click)="closeForm()">Annulla</button>
-        <button class="btn btn-primary" (click)="saveException()" [disabled]="loading">
-          {{ loading ? 'Salvataggio...' : 'Salva' }}
-        </button>
-      </div>
-    </div>
-  </div>
 </div>

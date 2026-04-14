@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { TherapeuticPath, TherapeuticPathStatus } from '../entities/therapeutic-path.entity';
 import { PathDocument, DocumentType, DocumentCategory } from '../entities/path-document.entity';
 import { Patient } from '../../../entities/patient.entity';
@@ -100,6 +100,18 @@ export class TherapeuticPathService {
   async findByPatient(patientId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { patientId },
+      relations: ['patient', 'primaryOperator', 'documents'],
+      order: { createdAt: 'DESC' }
+    });
+  }
+
+  /**
+   * Ottiene tutti i percorsi per più pazienti in una singola query.
+   */
+  async findByPatients(patientIds: string[]): Promise<TherapeuticPath[]> {
+    if (patientIds.length === 0) return [];
+    return this.pathRepo.find({
+      where: { patientId: In(patientIds) },
       relations: ['patient', 'primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });

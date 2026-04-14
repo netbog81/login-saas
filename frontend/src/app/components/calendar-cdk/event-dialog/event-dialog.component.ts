@@ -268,6 +268,16 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
         this.operatorServices = services;
         this.loadingServices = false;
 
+        // Auto-seleziona se c'è un solo servizio disponibile e non siamo in edit mode
+        if (!this.isEditMode && services.length === 1 && this.selectedServices.length === 0) {
+          const s = services[0];
+          this.selectedServices = [{
+            serviceId: s.id,
+            service: { id: s.id, name: s.name, defaultPrice: s.defaultPrice, discountFE: s.discountFE ?? undefined, defaultDuration: s.defaultDuration },
+            orderPosition: 0
+          }];
+        }
+
         // Popola i dati service nei selectedServices se mancanti (fallback da serviceId)
         if (services.length > 0 && this.selectedServices.length > 0) {
           this.selectedServices = this.selectedServices.map(ss => {

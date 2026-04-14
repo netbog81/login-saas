@@ -383,6 +383,52 @@ export class GymPatternGroupService {
   }
 
   /**
+   * Dato un operatore e una data, restituisce tutti gli slot (GymTemplatePattern)
+   * in cui quell'operatore era schedulato quel giorno, attraverso TUTTE le
+   * palestre che hanno un GymPatternGroup corrente.
+   *
+   * Usato per derivare le palestre impattate da un'eccezione "operator-wide"
+   * e per costruire la lista di slot nel modal di creazione eccezione
+   * (sostituzione per slot).
+   */
+  async getOperatorPatternsOnDate(
+    operatorId: string,
+    date: Date,
+  ): Promise<Array<{ gymRoom: GymRoom; pattern: GymTemplatePattern }>> {
+    // Recupera tutti i GymPatternGroup correnti (uno per palestra)
+    const currentGroups = await this.patternGroupRepo.find({
+      where: { isCurrent: true, isActive: true },
+      relations: ['patterns', 'patterns.operator', 'gymRoom'],
+    });
+
+    const result: Array<{ gymRoom: GymRoom; pattern: GymTemplatePattern }> = [];
+
+    for (const group of currentGroups) {
+      if (!group.patterns || group.patterns.length === 0) continue;
+
+      // Verifica che il gruppo sia valido per la data richiesta (validFrom/validUntil)
+      if (group.validFrom && new Date(group.validFrom) > date) continue;
+      if (group.validUntil && new Date(group.validUntil) < date) continue;
+
+      const patternStartDate =
+        group.patternStartDate instanceof Date
+          ? group.patternStartDate
+          : new Date(group.patternStartDate);
+      const dayInPattern = this.getPatternDay(date, patternStartDate, group.patternDuration);
+
+      for (const pattern of group.patterns) {
+        if (pattern.dayInPattern !== dayInPattern) continue;
+        if (pattern.operatorId !== operatorId) continue;
+        result.push({ gymRoom: group.gymRoom, pattern });
+      }
+    }
+
+    // Ordina per startTime crescente per dare una presentazione deterministica
+    result.sort((a, b) => a.pattern.startTime.localeCompare(b.pattern.startTime));
+    return result;
+  }
+
+  /**
    * Verifica se un orario è all'interno di un range
    * Normalizza gli orari a HH:MM per evitare problemi di confronto con secondi
    */

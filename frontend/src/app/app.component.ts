@@ -12,6 +12,7 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
 import { TenantResolverService } from './core/auth/tenant-resolver.service';
 import { TaskMessageNotificationService } from './features/task-messages/services/task-message-notification.service';
 import { TaskMessageDialogComponent } from './features/task-messages/containers/task-message-dialog.component';
+import { ConflictService } from './services/conflict.service';
 
 @Component({
   selector: 'app-root',
@@ -266,6 +267,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly tenantResolver = inject(TenantResolverService);
   private readonly notificationService = inject(TaskMessageNotificationService);
   private readonly dialog = inject(MatDialog);
+  private readonly conflictService = inject(ConflictService);
   private cleanupContext: (() => void) | null = null;
 
   taskMessageUnreadCount = 0;
@@ -286,6 +288,20 @@ export class AppComponent implements OnInit, OnDestroy {
     // Start polling for task message notifications when authenticated
     if (this.authService.isAuthenticated()) {
       this.notificationService.startPolling();
+
+      // Check pigro revalidazione conflitti: fire-and-forget, esegue solo
+      // se sono passate ≥ 2h dall'ultimo check. Gira nel contesto HTTP del
+      // tenant corrente (search_path corretto).
+      this.conflictService
+        .revalidateIfNeeded()
+        .subscribe({
+          next: (r) => {
+            if (!r.skipped && r.resolved > 0) {
+              console.log(`[Conflicts] Revalidazione: ${r.resolved} conflitti risolti automaticamente`);
+            }
+          },
+          error: () => {}, // Silenzioso — non blocca il caricamento
+        });
     }
 
     this.notificationService.unreadCount$.subscribe((count) => {

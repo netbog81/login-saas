@@ -69,6 +69,7 @@ export const GYM_SLOT_INFO_FIELDS = gql`
       id
       name
       surname
+      color
     }
     currentCount
     maxCapacity

@@ -373,6 +373,17 @@ export class GymAppointmentMatDialogComponent implements OnInit {
           .filter((s): s is Service => !!s && s.isActive !== false);
         this.operatorServices = services;
         this.loadingServices = false;
+
+        // Auto-seleziona se c'è un solo servizio disponibile
+        if (services.length === 1 && this.selectedServices.length === 0) {
+          const s = services[0];
+          this.selectedServices = [{
+            serviceId: s.id,
+            service: { id: s.id, name: s.name, defaultPrice: s.defaultPrice, discountFE: s.discountFE ?? undefined, defaultDuration: s.defaultDuration },
+            orderPosition: 0
+          }];
+        }
+
         this.cdr.markForCheck();
       },
       error: (error) => {

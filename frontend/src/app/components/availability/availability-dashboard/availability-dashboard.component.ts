@@ -11,10 +11,11 @@ import { OperatorCategoryManagementComponent } from '../operator-category-manage
 import { InstrumentationManagementComponent } from '../instrumentation-management/instrumentation-management.component';
 import { GymManagementComponent } from '../gym-management/gym-management.component';
 import { ServiceSubcategoryManagementComponent } from '../service-subcategory-management/service-subcategory-management.component';
+import { OperatorAbsenceTypesContainerComponent } from '../../../features/availability/operator-absence-types/containers/operator-absence-types.container';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 import { Subject, takeUntil } from 'rxjs';
 
-type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'templates' | 'assignments' | 'instrumentation' | 'gyms' | 'calendar';
+type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'templates' | 'assignments' | 'instrumentation' | 'gyms' | 'absence-types' | 'calendar';
 
 @Component({
   selector: 'app-availability-dashboard',
@@ -30,7 +31,8 @@ type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'temp
     OperatorTemplateAssignment,
     InstrumentationManagementComponent,
     GymManagementComponent,
-    ServiceSubcategoryManagementComponent
+    ServiceSubcategoryManagementComponent,
+    OperatorAbsenceTypesContainerComponent
   ],
   templateUrl: './availability-dashboard.component.html',
   styleUrls: ['./availability-dashboard.component.scss']

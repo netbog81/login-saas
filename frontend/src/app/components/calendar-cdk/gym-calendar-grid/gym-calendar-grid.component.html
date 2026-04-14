@@ -1,4 +1,15 @@
 <div class="gym-calendar-grid">
+  <!-- Legenda operatori-colore -->
+  <div class="operator-legend" *ngIf="getOperatorLegend().length > 0">
+    <span class="legend-label">Istruttori:</span>
+    <span class="legend-item"
+          *ngFor="let op of getOperatorLegend()"
+          [style.background-color]="op.color"
+          [style.color]="getTextColorForBg(op.color)">
+      {{ op.name }}
+    </span>
+  </div>
+
   <!-- Header con nomi delle GymRoom -->
   <div class="grid-header" [style.padding-right.px]="scrollbarWidth">
     <div class="time-column-header">Ora</div>
@@ -41,19 +52,19 @@
            [class]="getSlotClass(gymRoom.id, slot.time)"
            [class.has-template]="hasTemplate(gymRoom.id, slot.time)"
            [style.height.px]="slotHeight"
+           [style.background-color]="getOperatorColor(gymRoom.id, slot.time)"
+           [style.color]="getTextColorForBg(getOperatorColor(gymRoom.id, slot.time))"
            (click)="onSlotClick(gymRoom, slot.time, $event)"
            (dblclick)="onSlotDblClick(gymRoom, slot.time, $event)">
 
         <!-- Contenuto slot -->
         <ng-container *ngIf="hasTemplate(gymRoom.id, slot.time)">
-          <!-- Indicatore capacità -->
-          <div class="slot-capacity">
-            <span class="capacity-text">{{ getCapacityText(gymRoom.id, slot.time) }}</span>
-          </div>
-
-          <!-- Nome operatore (piccolo) -->
-          <div class="slot-operator" *ngIf="getOperatorName(gymRoom.id, slot.time)">
-            {{ getOperatorName(gymRoom.id, slot.time) }}
+          <!-- Header cella: capacità + nome operatore -->
+          <div class="slot-header-row">
+            <span class="slot-operator-name" *ngIf="getOperatorName(gymRoom.id, slot.time)">
+              {{ getOperatorName(gymRoom.id, slot.time) }}
+            </span>
+            <span class="capacity-badge">{{ getCapacityText(gymRoom.id, slot.time) }}</span>
           </div>
 
           <!-- Appuntamenti nello slot -->

@@ -28,7 +28,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 import { Subject, combineLatest, forkJoin, of, interval } from 'rxjs';
-import { takeUntil, filter, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
+import { takeUntil, filter, distinctUntilChanged, switchMap, catchError, map } from 'rxjs/operators';
 
 import { AvailabilityAppointment, BookingStatus } from '../../../graphql/generated/types';
 import { Treatment } from '../../../models/treatment.model';
@@ -279,34 +279,31 @@ export class InstructorExecutedContainer implements OnInit, OnDestroy {
 
   /**
    * Carica i trattamenti per i pazienti di uno specifico slot.
+   * Usa query batch per caricare tutti i trattamenti in una sola chiamata.
    */
   private loadSlotPatients(slot: SlotGroup) {
-    const treatments$ = slot.appointments.map((apt) =>
-      this.treatmentService.getTreatmentByAppointment(apt.id).pipe(
-        catchError(() => of(null as Treatment | null)),
-      ),
-    );
-
-    if (treatments$.length === 0) {
-      return of<ExecutedSlotGroup>({
-        ...slot,
-        patients: [],
-      });
+    if (slot.appointments.length === 0) {
+      return of<ExecutedSlotGroup>({ ...slot, patients: [] });
     }
 
-    return forkJoin(treatments$).pipe(
-      switchMap((treatments) => {
-        const patients: ExecutedPatientEntry[] = slot.appointments.map((apt, i) => ({
+    const appointmentIds = slot.appointments.map((a) => a.id);
+
+    return this.treatmentService.getTreatmentsByAppointments(appointmentIds).pipe(
+      catchError(() => of([] as Treatment[])),
+      map((treatments) => {
+        const treatmentByApt = new Map<string, Treatment>();
+        for (const t of treatments) {
+          treatmentByApt.set(t.appointmentId, t);
+        }
+
+        const patients: ExecutedPatientEntry[] = slot.appointments.map((apt) => ({
           appointment: apt,
           patientId: apt.patientId?.toString() || '',
           patientName: apt.clientName,
-          treatment: treatments[i] || null,
+          treatment: treatmentByApt.get(apt.id) || null,
           isAttended: apt.bookingStatus === BookingStatus.Attended,
         }));
-        return of<ExecutedSlotGroup>({
-          ...slot,
-          patients,
-        });
+        return { ...slot, patients } as ExecutedSlotGroup;
       }),
     );
   }

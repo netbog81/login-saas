@@ -228,6 +228,53 @@ export class GymCalendarGridComponent implements OnInit, OnChanges, AfterViewIni
     return gymRoom.color || '#10b981';
   }
 
+  /**
+   * Ritorna il colore dell'operatore assegnato allo slot (per sfondo cella).
+   * Ritorna undefined se non c'è operatore o non ha colore.
+   */
+  getOperatorColor(gymRoomId: string, time: string): string | undefined {
+    const slotInfo = this.getSlotInfo(gymRoomId, time);
+    return slotInfo?.operator?.color || undefined;
+  }
+
+  /**
+   * Calcola il colore del testo (bianco o nero) in base alla luminosità
+   * del colore di sfondo, per garantire leggibilità.
+   */
+  getTextColorForBg(bgColor: string | undefined): string {
+    if (!bgColor) return '#374151';
+    // Rimuovi il # e parsa i componenti RGB
+    const hex = bgColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    // Luminanza relativa (formula WCAG)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.55 ? '#1f2937' : '#ffffff';
+  }
+
+  /**
+   * Costruisce la legenda operatori-colore per le palestre visibili oggi.
+   * Ritorna un array unico di {name, color} deduplicate per id.
+   */
+  getOperatorLegend(): Array<{ id: string; name: string; color: string }> {
+    const seen = new Map<string, { id: string; name: string; color: string }>();
+    for (const [, slots] of this.slotsInfo.entries()) {
+      for (const slot of slots) {
+        if (slot.operator?.color && !seen.has(slot.operator.id)) {
+          seen.set(slot.operator.id, {
+            id: slot.operator.id,
+            name: slot.operator.surname
+              ? `${slot.operator.name} ${slot.operator.surname}`
+              : slot.operator.name,
+            color: slot.operator.color,
+          });
+        }
+      }
+    }
+    return Array.from(seen.values());
+  }
+
   // ==================== CURRENT TIME INDICATOR ====================
 
   /**

@@ -1,4 +1,15 @@
 <div class="gym-weekly-grid">
+  <!-- Legenda operatori-colore -->
+  <div class="operator-legend" *ngIf="getOperatorLegend().length > 0">
+    <span class="legend-label">Istruttori:</span>
+    <span class="legend-item"
+          *ngFor="let op of getOperatorLegend()"
+          [style.background-color]="op.color"
+          [style.color]="getTextColorForBg(op.color)">
+      {{ op.name }}
+    </span>
+  </div>
+
   <!-- Header con giorni e palestre -->
   <div class="grid-header" [style.padding-right.px]="scrollbarWidth">
     <div class="time-column-header">Ora</div>
@@ -54,6 +65,9 @@
              [class]="getSlotClass(day.date, gymRoom.id, slot.time)"
              [class.has-template]="hasTemplate(day.date, gymRoom.id, slot.time)"
              [style.height.px]="slotHeight"
+             [style.background-color]="getOperatorColor(day.date, gymRoom.id, slot.time)"
+             [style.color]="getTextColorForBg(getOperatorColor(day.date, gymRoom.id, slot.time))"
+             [title]="getOperatorName(day.date, gymRoom.id, slot.time)"
              (click)="onSlotClick(gymRoom, day.date, slot.time, $event)"
              (dblclick)="onSlotDblClick(gymRoom, day.date, slot.time, $event)">
 

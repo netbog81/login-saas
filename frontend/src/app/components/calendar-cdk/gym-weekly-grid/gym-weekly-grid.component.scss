@@ -237,10 +237,10 @@
 // Capacity badge (compact)
 .capacity-badge {
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 700;
   color: #374151;
-  background-color: rgba(255, 255, 255, 0.8);
-  padding: 1px 3px;
+  background-color: rgba(255, 255, 255, 0.85);
+  padding: 1px 4px;
   border-radius: 3px;
 
   &.full {
@@ -300,5 +300,34 @@
   .capacity-badge {
     font-size: 8px;
     padding: 0 2px;
+  }
+}
+
+// Legenda operatori-colore
+.operator-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+
+  .legend-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .legend-item {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
   }
 }

@@ -212,3 +212,30 @@ body {
     }
   }
 }
+
+/* Gym Exception Dialog - draggable & resizable
+   Stessa struttura di task-message-dialog-panel per fare in modo che il
+   resize nativo del browser si propaghi correttamente al contenuto interno
+   (header+body+footer in flex). */
+.gym-exception-dialog-panel {
+  resize: both;
+  overflow: auto;
+  min-width: 720px;
+  min-height: 480px;
+  max-width: 95vw;
+  max-height: 95vh;
+
+  .mat-mdc-dialog-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .mdc-dialog__surface {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+  }
+}

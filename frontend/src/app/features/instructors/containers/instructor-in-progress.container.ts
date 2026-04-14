@@ -21,8 +21,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
-import { Subject, combineLatest, forkJoin, of } from 'rxjs';
-import { takeUntil, filter, distinctUntilChanged, switchMap } from 'rxjs/operators';
+import { Observable, Subject, combineLatest, forkJoin, of } from 'rxjs';
+import { takeUntil, filter, distinctUntilChanged, switchMap, catchError, map } from 'rxjs/operators';
 
 import {
   AvailabilityAppointment,
@@ -33,6 +33,8 @@ import { Treatment } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { PatientService } from '../../../services/patient.service';
+import { PatientFolderDialogComponent } from '../../operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
 
 import { InstructorWorkspaceStateService } from '../services/instructor-workspace-state.service';
 import { InstructorWorkspaceService } from '../services/instructor-workspace.service';
@@ -97,7 +99,8 @@ import { MultiTreatmentDialogData } from '../models/instructor-workspace.model';
               (startTreatment)="onStartTreatment($event)"
               (openTreatment)="onOpenTreatment($event)"
               (markNoShow)="onMarkNoShow($event)"
-              (markAttended)="onMarkAttended($event)">
+              (markAttended)="onMarkAttended($event)"
+              (openPatientFolder)="onOpenPatientFolder($event)">
             </app-in-progress-column>
           }
         </div>
@@ -201,6 +204,7 @@ import { MultiTreatmentDialogData } from '../models/instructor-workspace.model';
 })
 export class InstructorInProgressContainer implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
+  private loadColumns$ = new Subject<AvailabilityAppointment[]>();
 
   loading = false;
   currentSlot: SlotGroup | null = null;
@@ -217,6 +221,7 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
     private treatmentService: TreatmentService,
     private pathService: TherapeuticPathService,
     private appointmentService: AvailabilityAppointmentService,
+    private patientService: PatientService,
     private dialog: MatDialog,
     private cdr: ChangeDetectorRef,
   ) {}
@@ -260,11 +265,27 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
     this.slotDetector.currentSlot$.pipe(takeUntil(this.destroy$)).subscribe((slot) => {
       this.currentSlot = slot;
       if (slot) {
-        this.loadColumnsData(slot.appointments);
+        this.loadColumns$.next(slot.appointments);
       } else {
         this.columns = [];
       }
       this.cdr.markForCheck();
+    });
+
+    // switchMap: cancella richieste precedenti se loadColumnsData viene richiamato prima che finisca
+    this.loadColumns$.pipe(
+      takeUntil(this.destroy$),
+      switchMap((appointments: AvailabilityAppointment[]) => this.loadColumnsDataObs(appointments)),
+    ).subscribe({
+      next: (columns: PatientTreatmentColumn[]) => {
+        this.columns = columns;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('[InProgressContainer] Error loading columns data:', err);
+        this.columns = [];
+        this.cdr.markForCheck();
+      },
     });
   }
 
@@ -346,6 +367,30 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
       });
   }
 
+  onOpenPatientFolder(patientId: string): void {
+    this.patientService.getPatient(patientId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (patient) => {
+          if (!patient) return;
+          const dialogRef = this.dialog.open(PatientFolderDialogComponent, {
+            data: {
+              patient,
+              operatorId: this.stateService.selectedOperatorId
+            },
+            width: '95vw',
+            maxWidth: '1400px',
+            height: '90vh',
+            panelClass: 'patient-folder-dialog-panel'
+          });
+          // Dopo chiusura scheda paziente, ricarica percorsi terapeutici
+          dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(() => {
+            this.refreshColumns();
+          });
+        },
+      });
+  }
+
   private openMultiTreatmentDialog(): void {
     // Singleton: non aprire se già aperto
     if (this.dialog.getDialogById('multi-treatment-dialog')) {
@@ -391,62 +436,63 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
     }
   }
 
-  private loadColumnsData(appointments: AvailabilityAppointment[]): void {
+  private loadColumnsDataObs(appointments: AvailabilityAppointment[]): Observable<PatientTreatmentColumn[]> {
     if (appointments.length === 0) {
-      this.columns = [];
-      return;
+      return of([]);
     }
 
-    // Per ogni appuntamento, carica percorsi terapeutici e trattamento esistente
-    const loads$ = appointments.map((apt) => {
-      const patientId = apt.patientId?.toString();
-      return forkJoin({
-        paths: patientId
-          ? this.pathService.getPathsByPatient(patientId)
-          : of([] as TherapeuticPath[]),
-        treatment: this.treatmentService.getTreatmentByAppointment(apt.id).pipe(
-          // Il servizio potrebbe restituire null se non esiste
-          switchMap((t) => of(t)),
-        ),
-      });
-    });
+    // 2 query batch parallele invece di N*2 query singole
+    const patientIds = [...new Set(
+      appointments.map((a) => a.patientId?.toString()).filter((id): id is string => !!id)
+    )];
+    const appointmentIds = appointments.map((a) => a.id);
 
-    forkJoin(loads$)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (results) => {
-          this.columns = appointments.map((apt, i) => {
-            const activePaths = (results[i].paths || []).filter(
-              (p) => p.status?.toLowerCase() === 'active',
-            );
-            const isAttended = apt.bookingStatus === BookingStatus.Attended;
+    return forkJoin({
+      paths: this.pathService.getPathsByPatients(patientIds).pipe(catchError(() => of([] as TherapeuticPath[]))),
+      treatments: this.treatmentService.getTreatmentsByAppointments(appointmentIds).pipe(catchError(() => of([] as Treatment[]))),
+    }).pipe(
+      map(({ paths, treatments }) => {
+        // Indicizza per lookup rapido
+        const pathsByPatient = new Map<string, TherapeuticPath[]>();
+        for (const p of paths) {
+          const pid = (p as any).patientId?.toString() || '';
+          if (!pathsByPatient.has(pid)) pathsByPatient.set(pid, []);
+          pathsByPatient.get(pid)!.push(p);
+        }
+        const treatmentByApt = new Map<string, Treatment>();
+        for (const t of treatments) {
+          treatmentByApt.set(t.appointmentId, t);
+        }
 
-            return {
-              appointment: apt,
-              patientId: apt.patientId?.toString() || '',
-              patientName: apt.clientName,
-              activePaths,
-              existingTreatment: results[i].treatment || null,
-              isAttended,
-              selectedPathId: activePaths.length === 1 ? activePaths[0].id : null,
-            };
-          });
-          this.cdr.markForCheck();
-        },
-        error: (err) => {
-          console.error('[InProgressContainer] Error loading columns data:', err);
-          // Fallback: costruisci colonne senza dati extra
-          this.columns = appointments.map((apt) => ({
+        return appointments.map((apt) => {
+          const pid = apt.patientId?.toString() || '';
+          const allPaths = pathsByPatient.get(pid) || [];
+          const activePaths = allPaths.filter((p) => p.status?.toLowerCase() === 'active');
+          const isAttended = apt.bookingStatus === BookingStatus.Attended;
+
+          return {
             appointment: apt,
-            patientId: apt.patientId?.toString() || '',
+            patientId: pid,
             patientName: apt.clientName,
-            activePaths: [],
-            existingTreatment: null,
-            isAttended: apt.bookingStatus === BookingStatus.Attended,
-            selectedPathId: null,
-          }));
-          this.cdr.markForCheck();
-        },
-      });
+            activePaths,
+            existingTreatment: treatmentByApt.get(apt.id) || null,
+            isAttended,
+            selectedPathId: activePaths.length === 1 ? activePaths[0].id : null,
+          };
+        });
+      }),
+      catchError((err) => {
+        console.error('[InProgressContainer] Error loading columns data:', err);
+        return of(appointments.map((apt) => ({
+          appointment: apt,
+          patientId: apt.patientId?.toString() || '',
+          patientName: apt.clientName,
+          activePaths: [] as TherapeuticPath[],
+          existingTreatment: null,
+          isAttended: apt.bookingStatus === BookingStatus.Attended,
+          selectedPathId: null,
+        })));
+      }),
+    );
   }
 }

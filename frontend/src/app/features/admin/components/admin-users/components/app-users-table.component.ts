@@ -1,12 +1,16 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { AppUser, AppUserType } from '../../../../../services/app-user.service';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatDividerModule } from '@angular/material/divider';
+import { AppUser, AppUserType, UpdateAppUserInput } from '../../../../../services/app-user.service';
 
 const USER_TYPE_LABELS: Record<AppUserType, string> = {
   OPERATOR: 'Operatore',
@@ -21,12 +25,16 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
+    FormsModule,
     MatTableModule,
     MatChipsModule,
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatDividerModule,
   ],
   template: `
     @if (loading) {
@@ -79,24 +87,64 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>Azioni</th>
             <td mat-cell *matCellDef="let u">
-              <button mat-icon-button matTooltip="Gestione Ruoli" (click)="manageRoles.emit(u)">
-                <mat-icon>manage_accounts</mat-icon>
-              </button>
-              <button mat-icon-button
-                [matTooltip]="u.isActive ? 'Disattiva' : 'Attiva'"
-                (click)="toggleActive.emit(u)">
-                <mat-icon>{{ u.isActive ? 'person_off' : 'person' }}</mat-icon>
-              </button>
-              @if (u.keycloakId) {
-                <button mat-icon-button matTooltip="Scollega da Keycloak"
-                  (click)="unlink.emit(u)">
-                  <mat-icon>link_off</mat-icon>
+              <div class="actions-row">
+                <button mat-icon-button matTooltip="Modifica" (click)="onStartEdit(u)">
+                  <mat-icon>edit</mat-icon>
                 </button>
+                <button mat-icon-button matTooltip="Gestione Ruoli" (click)="manageRoles.emit(u)">
+                  <mat-icon>manage_accounts</mat-icon>
+                </button>
+                <button mat-icon-button
+                  [matTooltip]="u.isActive ? 'Disattiva' : 'Attiva'"
+                  (click)="toggleActive.emit(u)">
+                  <mat-icon>{{ u.isActive ? 'person_off' : 'person' }}</mat-icon>
+                </button>
+                @if (u.keycloakId) {
+                  <button mat-icon-button matTooltip="Scollega da Keycloak"
+                    (click)="unlink.emit(u)">
+                    <mat-icon>link_off</mat-icon>
+                  </button>
+                }
+                <button mat-icon-button matTooltip="Elimina utente" color="warn"
+                  (click)="delete.emit(u)">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+
+              <!-- Pannello inline modifica utente -->
+              @if (editingUserId === u.id && editForm) {
+                <div class="inline-edit-panel">
+                  <mat-divider></mat-divider>
+                  <p class="edit-title">Modifica Utente</p>
+                  <div class="edit-form-grid">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Nome</mat-label>
+                      <input matInput [(ngModel)]="editForm.name">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Cognome</mat-label>
+                      <input matInput [(ngModel)]="editForm.surname">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Email</mat-label>
+                      <input matInput [(ngModel)]="editForm.email">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Telefono</mat-label>
+                      <input matInput [(ngModel)]="editForm.phone">
+                    </mat-form-field>
+                  </div>
+                  <div class="edit-actions-row">
+                    <button mat-raised-button color="primary" (click)="onSaveEdit(u.id)">
+                      <mat-icon>save</mat-icon>
+                      Salva
+                    </button>
+                    <button mat-stroked-button (click)="editingUserId = null; editForm = null">
+                      Annulla
+                    </button>
+                  </div>
+                </div>
               }
-              <button mat-icon-button matTooltip="Elimina utente" color="warn"
-                (click)="delete.emit(u)">
-                <mat-icon>delete</mat-icon>
-              </button>
             </td>
           </ng-container>
 
@@ -141,8 +189,24 @@ const USER_TYPE_LABELS: Record<AppUserType, string> = {
     .empty-state { text-align: center; color: rgba(0,0,0,0.4); padding: 24px; }
     @media (max-width: 599px) {
       .hide-mobile { display: none !important; }
+      .edit-form-grid { grid-template-columns: 1fr; }
     }
     .delete-btn { color: #c62828; }
+    .actions-row { display: flex; align-items: center; flex-wrap: wrap; }
+    .inline-edit-panel { padding: 12px 0; }
+    .edit-title { font-weight: 500; font-size: 0.9rem; margin: 8px 0; }
+    .edit-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      margin: 8px 0;
+    }
+    .edit-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
   `],
 })
 export class AppUsersTableComponent {
@@ -153,10 +217,32 @@ export class AppUsersTableComponent {
   @Output() manageRoles = new EventEmitter<AppUser>();
   @Output() delete = new EventEmitter<AppUser>();
   @Output() unlink = new EventEmitter<AppUser>();
+  @Output() edit = new EventEmitter<{ id: string; input: UpdateAppUserInput }>();
+
+  // Edit state
+  editingUserId: string | null = null;
+  editForm: { name: string; surname: string; email: string; phone: string } | null = null;
 
   displayedColumns = ['name', 'email', 'type', 'status', 'roles', 'actions'];
 
   userTypeLabel(type: AppUserType): string {
     return USER_TYPE_LABELS[type] ?? type;
+  }
+
+  onStartEdit(user: AppUser): void {
+    this.editingUserId = user.id;
+    this.editForm = {
+      name: user.name || '',
+      surname: user.surname || '',
+      email: user.email || '',
+      phone: user.phone || '',
+    };
+  }
+
+  onSaveEdit(userId: string): void {
+    if (!this.editForm) return;
+    this.edit.emit({ id: userId, input: this.editForm });
+    this.editingUserId = null;
+    this.editForm = null;
   }
 }

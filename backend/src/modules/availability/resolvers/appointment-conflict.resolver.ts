@@ -1,5 +1,6 @@
 import { Resolver, Query, Mutation, Args, ID, ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
 import { AppointmentConflictService, ConflictStats } from '../services/appointment-conflict.service';
+import { ConflictRevalidationService } from '../services/conflict-revalidation.service';
 import { AvailabilityAppointment, ConflictReason } from '../entities/availability-appointment.entity';
 import { GraphQLJSONObject } from 'graphql-type-json';
 
@@ -44,10 +45,23 @@ export class ConflictStatsOutput {
   byOperator: OperatorConflictCount[];
 }
 
+/**
+ * Output per la revalidazione conflitti
+ */
+@ObjectType()
+export class ConflictRevalidationResult {
+  @Field()
+  skipped: boolean;
+
+  @Field(() => Int)
+  resolved: number;
+}
+
 @Resolver()
 export class AppointmentConflictResolver {
   constructor(
-    private readonly conflictService: AppointmentConflictService
+    private readonly conflictService: AppointmentConflictService,
+    private readonly revalidationService: ConflictRevalidationService,
   ) {}
 
   // ==================== QUERIES ====================
@@ -62,6 +76,11 @@ export class AppointmentConflictResolver {
     @Args('dateTo', { nullable: true }) dateTo?: string,
     @Args('conflictReason', { type: () => ConflictReason, nullable: true }) conflictReason?: ConflictReason
   ): Promise<AvailabilityAppointment[]> {
+    // On-read revalidation: prima di ritornare la lista, verifica che ogni
+    // conflitto sia ancora reale. Rimuove i flag stale (senza cooldown:
+    // l'utente sta guardando la pagina /conflicts e vuole dati freschi).
+    await this.revalidationService.revalidateAll();
+
     return this.conflictService.getConflictedAppointments({
       operatorId,
       dateFrom: dateFrom ? new Date(dateFrom) : undefined,
@@ -90,6 +109,19 @@ export class AppointmentConflictResolver {
   async getConflictedAppointmentsCount(): Promise<number> {
     const stats = await this.conflictService.getConflictStats();
     return stats.totalConflicts;
+  }
+
+  /**
+   * Check pigro di revalidazione conflitti. Da chiamare al caricamento della
+   * pagina principale del frontend (fire-and-forget). Esegue la revalidazione
+   * solo se sono passate ≥ 2 ore dall'ultima esecuzione.
+   *
+   * Ritorna skipped=true se il cooldown non è ancora scaduto (nessuna azione).
+   * Ritorna resolved=N se ha rimosso N flag hasConflict stale.
+   */
+  @Query(() => ConflictRevalidationResult, { name: 'revalidateConflictsIfNeeded' })
+  async revalidateConflictsIfNeeded(): Promise<ConflictRevalidationResult> {
+    return this.revalidationService.revalidateIfNeeded();
   }
 
   // ==================== MUTATIONS ====================
