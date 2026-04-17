@@ -38,3 +38,12 @@ export class GymSlotInfo {
   @Field()
   isClosed: boolean;
 }
+
+@ObjectType()
+export class GymSlotInfoWithContext extends GymSlotInfo {
+  @Field(() => ID)
+  gymRoomId: string;
+
+  @Field()
+  date: string;
+}

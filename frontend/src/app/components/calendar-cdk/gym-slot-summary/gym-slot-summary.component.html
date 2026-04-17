@@ -65,7 +65,10 @@
       <div class="appointments-list">
         <div class="appointment-item" *ngFor="let apt of appointments; trackBy: trackByAppointment">
           <div class="patient-info">
-            <div class="patient-name">{{ getPatientName(apt) }}</div>
+            <div class="patient-name">
+              {{ getPatientName(apt) }}
+              <span class="recurring-badge" *ngIf="apt.isRecurring" title="Appuntamento ricorrente">&#x1F501; Ricorrente</span>
+            </div>
             <div class="patient-contact" *ngIf="apt.clientPhone || apt.clientEmail">
               <span *ngIf="apt.clientPhone" class="contact-item">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

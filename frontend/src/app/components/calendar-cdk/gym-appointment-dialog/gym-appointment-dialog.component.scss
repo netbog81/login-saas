@@ -720,3 +720,51 @@ textarea.form-control {
   color: #856404;
   font-size: 13px;
 }
+
+.recurring-series-section {
+  margin: 16px;
+  padding: 12px 16px;
+  background: #fff3e0;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+
+  .series-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    .series-icon { font-size: 18px; }
+    .series-badge { font-weight: 600; color: #e65100; font-size: 0.9rem; }
+    .series-info { color: #bf360c; font-size: 0.8rem; }
+  }
+
+  .series-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    button {
+      flex: 1;
+      min-width: 180px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      border: 1px solid;
+    }
+
+    .btn-warning {
+      background: #fff8e1;
+      border-color: #ffb74d;
+      color: #e65100;
+      &:hover { background: #fff3e0; }
+    }
+
+    .btn-danger-outline {
+      background: transparent;
+      border-color: #ef5350;
+      color: #c62828;
+      &:hover { background: #ffebee; }
+    }
+  }
+}

@@ -226,13 +226,14 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         next: (event: AppointmentEvent) => {
           // Eventi appuntamenti (auto-attendance)
           if (event.type === 'appointment_status_changed') {
+            // In modalità palestra, non ricaricare su SSE generici
+            // (la vista gym si ricarica solo su azioni esplicite)
+            if (this.config.viewMode === 'gyms') return;
+
             console.log('[Calendar] SSE: Appointment status changed, reloading...');
-            // Esegui tutto dentro NgZone per garantire change detection
-            // I componenti figli usano OnPush, quindi serve forzare l'aggiornamento
             this.ngZone.run(async () => {
               this.invalidateOperatorCache();
               await this.loadAppointmentsForCurrentView();
-              // Forza change detection dopo il caricamento async
               this.cdr.detectChanges();
             });
           }
@@ -295,7 +296,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       this.stateService.selectedOperators$
     ])
       .pipe(
-        debounceTime(50), // Small debounce to group rapid changes
+        debounceTime(300), // Debounce to group rapid changes at startup
         takeUntil(this.destroy$)
       )
       .subscribe(([config, date, operators]) => {
@@ -849,26 +850,22 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
    */
   private async loadGymDailyData(): Promise<void> {
     const date = this.formatDate(this.currentDate);
+    const gymRoomIds = this.gymRooms.map(r => r.id);
+
+    // 2 query parallele batch invece di 2*N query singole
+    const [allSlots, allAppointments] = await Promise.all([
+      firstValueFrom(this.gymRoomService.getAvailableSlotsForRooms(gymRoomIds, date, date)).catch(() => []),
+      firstValueFrom(this.gymRoomService.getAppointmentsForRooms(gymRoomIds, date, date)).catch(() => [] as GymAppointment[]),
+    ]);
+
+    // Raggruppa per gymRoomId
     const slotsMap = new Map<string, GymSlotInfo[]>();
     const appointmentsMap = new Map<string, GymAppointment[]>();
 
-    await Promise.all(this.gymRooms.map(async (gymRoom) => {
-      try {
-        const slots = await firstValueFrom(
-          this.gymRoomService.getAvailableSlots(gymRoom.id, date)
-        );
-        slotsMap.set(gymRoom.id, slots);
-
-        const appointments = await firstValueFrom(
-          this.gymRoomService.getAppointments(gymRoom.id, date)
-        );
-        appointmentsMap.set(gymRoom.id, appointments);
-      } catch (error) {
-        console.error(`Error loading gym data for room ${gymRoom.id}:`, error);
-        slotsMap.set(gymRoom.id, []);
-        appointmentsMap.set(gymRoom.id, []);
-      }
-    }));
+    for (const roomId of gymRoomIds) {
+      slotsMap.set(roomId, (allSlots as any[]).filter(s => s.gymRoomId === roomId));
+      appointmentsMap.set(roomId, (allAppointments as GymAppointment[]).filter(a => a.gymRoomId === roomId));
+    }
 
     this.gymSlotsInfo = slotsMap;
     this.gymAppointments = appointmentsMap;
@@ -878,36 +875,32 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
    * Carica i dati delle palestre per vista settimanale
    */
   private async loadGymWeeklyData(): Promise<void> {
+    const gymRoomIds = this.gymRooms.map(r => r.id);
+    const startDate = this.visibleDates[0];
+    const endDate = this.visibleDates[this.visibleDates.length - 1];
+
+    // 2 query parallele batch invece di 2*D*N query singole
+    const [allSlots, allAppointments] = await Promise.all([
+      firstValueFrom(this.gymRoomService.getAvailableSlotsForRooms(gymRoomIds, startDate, endDate)).catch(() => []),
+      firstValueFrom(this.gymRoomService.getAppointmentsForRooms(gymRoomIds, startDate, endDate)).catch(() => [] as GymAppointment[]),
+    ]);
+
+    // Raggruppa per date -> gymRoomId
     const weeklySlotsMap = new Map<string, Map<string, GymSlotInfo[]>>();
     const weeklyAppointmentsMap = new Map<string, Map<string, GymAppointment[]>>();
 
-    // Per ogni data visibile
-    await Promise.all(this.visibleDates.map(async (date) => {
+    for (const date of this.visibleDates) {
       const dateSlotsMap = new Map<string, GymSlotInfo[]>();
       const dateAppointmentsMap = new Map<string, GymAppointment[]>();
 
-      // Per ogni palestra
-      await Promise.all(this.gymRooms.map(async (gymRoom) => {
-        try {
-          const slots = await firstValueFrom(
-            this.gymRoomService.getAvailableSlots(gymRoom.id, date)
-          );
-          dateSlotsMap.set(gymRoom.id, slots);
-
-          const appointments = await firstValueFrom(
-            this.gymRoomService.getAppointments(gymRoom.id, date)
-          );
-          dateAppointmentsMap.set(gymRoom.id, appointments);
-        } catch (error) {
-          console.error(`Error loading gym data for room ${gymRoom.id} on ${date}:`, error);
-          dateSlotsMap.set(gymRoom.id, []);
-          dateAppointmentsMap.set(gymRoom.id, []);
-        }
-      }));
+      for (const roomId of gymRoomIds) {
+        dateSlotsMap.set(roomId, (allSlots as any[]).filter(s => s.gymRoomId === roomId && s.date === date));
+        dateAppointmentsMap.set(roomId, (allAppointments as GymAppointment[]).filter(a => a.gymRoomId === roomId && a.appointmentDate === date));
+      }
 
       weeklySlotsMap.set(date, dateSlotsMap);
       weeklyAppointmentsMap.set(date, dateAppointmentsMap);
-    }));
+    }
 
     this.gymWeeklySlotsInfo = weeklySlotsMap;
     this.gymWeeklyAppointments = weeklyAppointmentsMap;
@@ -1299,7 +1292,11 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   async onGymAppointmentDialogResult(result: GymAppointmentDialogResult): Promise<void> {
     this.showGymAppointmentDialog = false;
 
-    if (result.action === 'status-changed') {
+    if (result.action === 'cancel') {
+      return;
+    } else if (result.action === 'series-deleted') {
+      await this.loadGymDataForCurrentView();
+    } else if (result.action === 'status-changed') {
       // Stato appuntamento cambiato (presente, non presentato, disdetto, annullato)
       // Ricaricare i dati per aggiornare la UI
       await this.loadGymDataForCurrentView();
@@ -1560,13 +1557,21 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
       }
     });
 
-    dialogRef.afterClosed().subscribe((result: EventMatDialogResult | undefined) => {
-      if (!result || result.action === 'cancel') {
+    dialogRef.afterClosed().subscribe(async (result: EventMatDialogResult | undefined) => {
+      if (!result) return;
+
+      if (result.action === 'cancel') {
+        return;
+      }
+
+      if (result.action === 'series-deleted') {
+        await this.loadAppointmentsForCurrentView();
+        this.cdr.markForCheck();
         return;
       }
 
       if (result.action === 'delete' && result.appointment) {
-        this.deleteAppointment(result.appointment);
+        await this.deleteAppointment(result.appointment);
       }
 
       if (result.action === 'save' && result.appointment) {
@@ -1591,6 +1596,13 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
 
     if (result.action === 'delete' && result.appointment) {
       await this.deleteAppointment(result.appointment);
+    }
+
+    if (result.action === 'series-deleted') {
+      // Eliminazione serie avvenuta nel dialog - ricarica
+      await this.loadAppointmentsForCurrentView();
+      this.cdr.markForCheck();
+      return;
     }
 
     if (result.action === 'save' && result.appointment) {

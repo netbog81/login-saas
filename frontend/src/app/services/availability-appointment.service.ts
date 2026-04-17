@@ -6,6 +6,7 @@ import {
   GET_AVAILABILITY_APPOINTMENTS,
   GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR,
   GET_AVAILABILITY_APPOINTMENTS_BY_PATIENT,
+  GET_RECURRING_SERIES,
   IS_INSTRUMENT_AVAILABLE,
 } from '../graphql/operations/availability-appointment.queries';
 import {
@@ -19,6 +20,8 @@ import {
   MARK_APPOINTMENT_ATTENDED,
   REVERT_APPOINTMENT_ATTENDED,
   SEND_APPOINTMENT_RECAP,
+  CANCEL_RECURRING_SERIES,
+  DELETE_RECURRING_SERIES,
 } from '../graphql/operations/availability-appointment.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
@@ -285,5 +288,48 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
       SEND_APPOINTMENT_RECAP,
       { appointmentId }
     ).pipe(map((result) => result.sendAppointmentRecap));
+  }
+
+  // ==================== RECURRING SERIES ====================
+
+  /**
+   * Ottiene tutti gli appuntamenti di una serie ricorrente
+   */
+  getRecurringSeries(recurringGroupId: string): Observable<AvailabilityAppointment[]> {
+    return this.query<{ recurringSeries: AvailabilityAppointment[] }>(
+      GET_RECURRING_SERIES,
+      { recurringGroupId },
+      'no-cache'
+    ).pipe(map((result) => result.recurringSeries || []));
+  }
+
+  /**
+   * Cancella (soft) appuntamenti di una serie ricorrente
+   */
+  cancelRecurringSeries(
+    appointmentId: string,
+    fromDate: string,
+    scope: 'THIS_AND_FOLLOWING' | 'ALL',
+    reason: string,
+    cancelledBy: string,
+  ): Observable<number> {
+    return this.mutate<{ cancelRecurringSeries: number }>(
+      CANCEL_RECURRING_SERIES,
+      { appointmentId, fromDate, scope, reason, cancelledBy }
+    ).pipe(map((result) => result.cancelRecurringSeries));
+  }
+
+  /**
+   * Elimina (hard delete) appuntamenti di una serie ricorrente
+   */
+  deleteRecurringSeries(
+    appointmentId: string,
+    fromDate: string,
+    scope: 'THIS_AND_FOLLOWING' | 'ALL',
+  ): Observable<number> {
+    return this.mutate<{ deleteRecurringSeries: number }>(
+      DELETE_RECURRING_SERIES,
+      { appointmentId, fromDate, scope }
+    ).pipe(map((result) => result.deleteRecurringSeries));
   }
 }

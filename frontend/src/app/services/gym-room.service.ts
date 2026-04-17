@@ -9,6 +9,7 @@ import {
   GET_GYM_ROOM_APPOINTMENTS,
   GET_GYM_ROOMS_APPOINTMENTS,
   GET_GYM_ROOM_AVAILABLE_SLOTS,
+  GET_GYM_ROOMS_AVAILABLE_SLOTS,
   CREATE_GYM_APPOINTMENT,
 } from '../graphql/operations/gym-appointment.queries';
 import {
@@ -303,6 +304,21 @@ export class GymRoomService extends BaseGraphQLService {
       GET_GYM_ROOM_AVAILABLE_SLOTS,
       { gymRoomId, date }
     ).pipe(map((result) => result.gymRoomAvailableSlots || []));
+  }
+
+  /**
+   * Ottiene gli slot disponibili per più GymRoom in un range di date (batch)
+   */
+  getAvailableSlotsForRooms(
+    gymRoomIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Observable<(GymSlotInfo & { gymRoomId: string; date: string })[]> {
+    return this.query<{ gymRoomsAvailableSlots: (GymSlotInfo & { gymRoomId: string; date: string })[] }>(
+      GET_GYM_ROOMS_AVAILABLE_SLOTS,
+      { gymRoomIds, startDate, endDate },
+      'no-cache'
+    ).pipe(map((result) => result.gymRoomsAvailableSlots || []));
   }
 
   /**

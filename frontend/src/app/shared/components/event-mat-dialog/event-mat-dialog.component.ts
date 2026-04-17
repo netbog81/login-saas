@@ -15,7 +15,8 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatRadioModule } from '@angular/material/radio';
-import { Observable, startWith, map } from 'rxjs';
+import { Observable, startWith, map, firstValueFrom } from 'rxjs';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
@@ -63,7 +64,7 @@ export interface AppointmentInstrumentData {
  * Risultato restituito dal dialog alla chiusura.
  */
 export interface EventMatDialogResult {
-  action: 'save' | 'delete' | 'cancel';
+  action: 'save' | 'delete' | 'cancel' | 'series-deleted';
   appointment?: Appointment;
   services?: { serviceId: string; customPrice?: number; customDuration?: number }[];
   instruments?: AppointmentInstrumentData[];
@@ -143,6 +144,11 @@ export class EventMatDialogComponent implements OnInit {
   isEditMode = false;
   bookingStatus: BookingStatus = 'scheduled';
 
+  // Recurring series management
+  futureSeriesCount = 0;
+  loadingSeriesInfo = false;
+  private recurringAppointmentService = inject(AvailabilityAppointmentService);
+
   constructor(
     public dialogRef: MatDialogRef<EventMatDialogComponent, EventMatDialogResult>,
     @Inject(MAT_DIALOG_DATA) public data: EventMatDialogData
@@ -203,6 +209,11 @@ export class EventMatDialogComponent implements OnInit {
     // Set booking status in edit mode
     if (this.isEditMode && this.data.appointment) {
       this.bookingStatus = (this.data.appointment.bookingStatus as BookingStatus) || 'scheduled';
+
+      // Carica info serie ricorrente
+      if (this.data.appointment.isRecurring && this.data.appointment.recurringGroupId) {
+        this.loadSeriesInfo(this.data.appointment.recurringGroupId);
+      }
     }
   }
 
@@ -859,5 +870,46 @@ export class EventMatDialogComponent implements OnInit {
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+  }
+
+  // ==================== RECURRING SERIES MANAGEMENT ====================
+
+  private loadSeriesInfo(recurringGroupId: string): void {
+    this.loadingSeriesInfo = true;
+    this.recurringAppointmentService.getRecurringSeries(recurringGroupId).subscribe({
+      next: (series) => {
+        // Conta solo appuntamenti DOPO quello corrente (non incluso)
+        const currentDate = this.data.appointment!.date;
+        this.futureSeriesCount = series.filter(a =>
+          a.appointmentDate > currentDate &&
+          !['cancelled', 'cancelled_early', 'cancelled_late'].includes((a.bookingStatus || '').toLowerCase())
+        ).length;
+        this.loadingSeriesInfo = false;
+        this.cdr.markForCheck();
+      },
+      error: () => { this.loadingSeriesInfo = false; this.cdr.markForCheck(); },
+    });
+  }
+
+  async onDeleteThisAndFollowing(): Promise<void> {
+    if (!confirm(`Eliminare definitivamente questo appuntamento e i ${this.futureSeriesCount} seguenti? L'operazione non è reversibile.`)) return;
+    try {
+      const count = await firstValueFrom(this.recurringAppointmentService.deleteRecurringSeries(
+        String(this.data.appointment!.id), this.data.appointment!.date, 'THIS_AND_FOLLOWING'
+      ));
+      alert(`${count} appuntamenti eliminati`);
+      this.dialogRef.close({ action: 'series-deleted' });
+    } catch { alert('Errore nell\'eliminazione della serie'); }
+  }
+
+  async onDeleteAllSeries(): Promise<void> {
+    if (!confirm(`Eliminare definitivamente TUTTI gli appuntamenti della serie?`)) return;
+    try {
+      const count = await firstValueFrom(this.recurringAppointmentService.deleteRecurringSeries(
+        String(this.data.appointment!.id), '2000-01-01', 'ALL'
+      ));
+      alert(`${count} appuntamenti eliminati`);
+      this.dialogRef.close({ action: 'series-deleted' });
+    } catch { alert('Errore nell\'eliminazione della serie'); }
   }
 }

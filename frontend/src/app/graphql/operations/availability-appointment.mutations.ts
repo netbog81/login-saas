@@ -117,3 +117,43 @@ export const SEND_APPOINTMENT_RECAP = gql`
     sendAppointmentRecap(appointmentId: $appointmentId)
   }
 `;
+
+// ==================== RECURRING SERIES ====================
+
+/**
+ * Mutation: Cancella (soft) appuntamenti di una serie ricorrente
+ */
+export const CANCEL_RECURRING_SERIES = gql`
+  mutation CancelRecurringSeries(
+    $appointmentId: ID!
+    $fromDate: String!
+    $scope: RecurringSeriesScope!
+    $reason: String!
+    $cancelledBy: ID!
+  ) {
+    cancelRecurringSeries(
+      appointmentId: $appointmentId
+      fromDate: $fromDate
+      scope: $scope
+      reason: $reason
+      cancelledBy: $cancelledBy
+    )
+  }
+`;
+
+/**
+ * Mutation: Elimina (hard delete) appuntamenti di una serie ricorrente
+ */
+export const DELETE_RECURRING_SERIES = gql`
+  mutation DeleteRecurringSeries(
+    $appointmentId: ID!
+    $fromDate: String!
+    $scope: RecurringSeriesScope!
+  ) {
+    deleteRecurringSeries(
+      appointmentId: $appointmentId
+      fromDate: $fromDate
+      scope: $scope
+    )
+  }
+`;

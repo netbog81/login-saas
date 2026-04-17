@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { GymRoom } from '../entities/gym-room.entity';
 import { GymSchedule } from '../entities/gym-schedule.entity';
 import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
@@ -519,5 +519,267 @@ export class GymAvailabilityService {
       isAvailable: slot.available,
       isClosed: slot.isClosed || false,
     }));
+  }
+
+  /**
+   * Batch ottimizzato: Ottiene gli slot disponibili per più gym room in un range di date.
+   * Pre-carica tutti i dati necessari con poche query aggregate, poi genera gli slot in memoria.
+   * ~5 query DB totali invece di ~900 per una vista settimanale.
+   */
+  async getAvailableSlotsForRooms(
+    gymRoomIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<{
+    gymRoomId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    operator?: { id: string; name: string; surname?: string; color?: string };
+    currentCount: number;
+    maxCapacity: number;
+    isAvailable: boolean;
+    isClosed: boolean;
+  }[]> {
+    if (gymRoomIds.length === 0) return [];
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Genera tutte le date nel range
+    const dates: string[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+
+    // ========== PRE-CARICAMENTO BULK (poche query) ==========
+
+    // 1. Rooms
+    const rooms = await this.roomRepo.find({ where: { id: In(gymRoomIds), isActive: true } });
+    const roomMap = new Map(rooms.map(r => [r.id, r]));
+
+    // 2. Eccezioni per tutte le room+date
+    const allExceptions = await this.gymExceptionService.findExceptionsForRoomsInRange(gymRoomIds, start, end);
+
+    // 3. Pattern group correnti per tutte le room
+    const allPatternGroups = await this.gymPatternGroupService.findCurrentByGymRooms(gymRoomIds);
+    const patternGroupMap = new Map(allPatternGroups.map(g => [g.gymRoomId, g]));
+
+    // 4. Conteggi prenotazioni per tutti gli slot (query aggregata)
+    const bookingCounts = await this.appointmentRepo
+      .createQueryBuilder('apt')
+      .select([
+        'apt."gymRoomId" as "gymRoomId"',
+        'apt."appointmentDate" as "appointmentDate"',
+        'apt."startTime" as "startTime"',
+        'apt."endTime" as "endTime"',
+        'COUNT(*)::int as count',
+      ])
+      .where('apt."gymRoomId" IN (:...roomIds)', { roomIds: gymRoomIds })
+      .andWhere('apt."appointmentDate" BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .andWhere('apt."appointmentType" = :type', { type: AppointmentType.GYM })
+      .andWhere('apt."bookingStatus" NOT IN (:...excluded)', {
+        excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
+      })
+      .groupBy('apt."gymRoomId", apt."appointmentDate", apt."startTime", apt."endTime"')
+      .getRawMany();
+
+    // Indicizza conteggi: "roomId|date|startTime" → count
+    const bookingCountMap = new Map<string, number>();
+    for (const row of bookingCounts) {
+      const dateStr = row.appointmentDate instanceof Date
+        ? row.appointmentDate.toISOString().split('T')[0]
+        : String(row.appointmentDate).split('T')[0];
+      const key = `${row.gymRoomId}|${dateStr}|${this.normalizeTime(row.startTime)}`;
+      bookingCountMap.set(key, row.count);
+    }
+
+    // Indicizza eccezioni: "roomId|date" → exceptions[] (include operator-wide con roomId=null)
+    const exceptionMap = new Map<string, typeof allExceptions>();
+    for (const exc of allExceptions) {
+      const dateStr = exc.exceptionDate instanceof Date
+        ? exc.exceptionDate.toISOString().split('T')[0]
+        : String(exc.exceptionDate).split('T')[0];
+      // Per le eccezioni scoped, indicizza con roomId
+      if (exc.gymRoomId) {
+        const key = `${exc.gymRoomId}|${dateStr}`;
+        if (!exceptionMap.has(key)) exceptionMap.set(key, []);
+        exceptionMap.get(key)!.push(exc);
+      }
+      // Per le eccezioni operator-wide (gymRoomId null), indicizza per tutte le room
+      if (!exc.gymRoomId) {
+        for (const roomId of gymRoomIds) {
+          const key = `${roomId}|${dateStr}`;
+          if (!exceptionMap.has(key)) exceptionMap.set(key, []);
+          exceptionMap.get(key)!.push(exc);
+        }
+      }
+    }
+
+    // Raccogli tutti gli operatorId dai pattern per pre-caricarli
+    const operatorIds = new Set<string>();
+    for (const group of allPatternGroups) {
+      for (const p of group.patterns || []) {
+        if (p.operatorId) operatorIds.add(p.operatorId);
+        if (p.operator?.id) operatorIds.add(p.operator.id);
+      }
+    }
+    // Aggiungi operatori dai substitutes
+    for (const exc of allExceptions) {
+      if (exc.substituteOperator?.id) operatorIds.add(exc.substituteOperator.id);
+      for (const sub of exc.substitutes || []) {
+        if (sub.substituteOperator?.id) operatorIds.add(sub.substituteOperator.id);
+      }
+    }
+
+    // ========== GENERAZIONE SLOT IN MEMORIA ==========
+
+    const results: {
+      gymRoomId: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      operator?: { id: string; name: string; surname?: string; color?: string };
+      currentCount: number;
+      maxCapacity: number;
+      isAvailable: boolean;
+      isClosed: boolean;
+    }[] = [];
+
+    for (const dateStr of dates) {
+      const date = new Date(dateStr + 'T00:00:00');
+
+      for (const roomId of gymRoomIds) {
+        const room = roomMap.get(roomId);
+        if (!room) continue;
+
+        const exKey = `${roomId}|${dateStr}`;
+        const exceptions = exceptionMap.get(exKey) || [];
+
+        // Controlla chiusura giornata intera
+        const dayClosedException = exceptions.find(
+          e => e.exceptionType === 'closed' && !e.startTime && (e.gymRoomId === roomId),
+        );
+        if (dayClosedException) continue;
+
+        // Trova pattern per questo giorno
+        const group = patternGroupMap.get(roomId);
+        if (!group || !group.patterns?.length) continue;
+
+        const patternStartDate = group.patternStartDate instanceof Date
+          ? group.patternStartDate
+          : new Date(group.patternStartDate);
+        const dayInPattern = this.gymPatternGroupService.getPatternDay(date, patternStartDate, group.patternDuration);
+        const dayPatterns = group.patterns.filter(p => p.dayInPattern === dayInPattern);
+
+        if (dayPatterns.length === 0) continue;
+
+        // Genera slot per ogni pattern
+        for (const pattern of dayPatterns.sort((a, b) => a.startTime.localeCompare(b.startTime))) {
+          let slotStart = this.normalizeTime(pattern.startTime);
+          const patternEnd = this.normalizeTime(pattern.endTime);
+
+          while (this.timeToMinutes(slotStart) + room.slotDuration <= this.timeToMinutes(patternEnd)) {
+            const slotEnd = this.addMinutesToTime(slotStart, room.slotDuration);
+
+            // Controlla eccezione di chiusura per questo slot
+            let isClosed = false;
+            let isAvailable = true;
+            let operatorInfo: { id: string; name: string; surname?: string; color?: string } | undefined;
+
+            // Check eccezioni scoped per questo slot
+            const slotException = exceptions.find(e =>
+              e.exceptionType === 'closed' &&
+              e.gymRoomId === roomId &&
+              e.startTime && e.endTime &&
+              this.normalizeTime(e.startTime) <= slotStart &&
+              this.normalizeTime(e.endTime) >= slotEnd,
+            );
+            if (slotException) {
+              isClosed = true;
+              isAvailable = false;
+            }
+
+            if (!isClosed) {
+              // Trova operatore dal template
+              const templateOperator = pattern.operator;
+              if (templateOperator) {
+                // Controlla eccezioni operatore (assenza)
+                const operatorException = exceptions.find(e =>
+                  e.exceptionType === 'operator_absent' &&
+                  e.operatorId === templateOperator.id &&
+                  (!e.startTime || (this.normalizeTime(e.startTime) <= slotStart && this.normalizeTime(e.endTime!) >= slotEnd)),
+                );
+
+                if (operatorException) {
+                  // Cerca sostituto nei substitutes dell'eccezione
+                  const substitute = (operatorException.substitutes || []).find(s =>
+                    s.gymRoom?.id === roomId &&
+                    s.substituteOperator &&
+                    !s.isClosed &&
+                    this.normalizeTime(s.startTime) <= slotStart &&
+                    this.normalizeTime(s.endTime) >= slotEnd,
+                  );
+                  if (substitute?.substituteOperator) {
+                    operatorInfo = {
+                      id: substitute.substituteOperator.id,
+                      name: substitute.substituteOperator.name || '',
+                      surname: substitute.substituteOperator.surname,
+                      color: substitute.substituteOperator.color,
+                    };
+                  } else {
+                    // Slot scoperto o chiuso esplicitamente
+                    const closedSub = (operatorException.substitutes || []).find(s =>
+                      s.gymRoom?.id === roomId && s.isClosed &&
+                      this.normalizeTime(s.startTime) <= slotStart &&
+                      this.normalizeTime(s.endTime) >= slotEnd,
+                    );
+                    if (closedSub) {
+                      isClosed = true;
+                      isAvailable = false;
+                    }
+                    // Se non c'è sostituto e non è chiuso esplicitamente, operatore = null
+                  }
+                } else {
+                  // Nessuna eccezione, usa operatore template
+                  operatorInfo = {
+                    id: templateOperator.id,
+                    name: templateOperator.name || '',
+                    surname: templateOperator.surname,
+                    color: templateOperator.color,
+                  };
+                }
+              }
+            }
+
+            // Conteggio prenotazioni da mappa pre-caricata
+            const countKey = `${roomId}|${dateStr}|${slotStart}`;
+            const currentCount = bookingCountMap.get(countKey) || 0;
+
+            if (!isClosed && currentCount >= room.maxCapacity) {
+              isAvailable = false;
+            }
+
+            results.push({
+              gymRoomId: roomId,
+              date: dateStr,
+              startTime: slotStart,
+              endTime: slotEnd,
+              operator: operatorInfo,
+              currentCount,
+              maxCapacity: room.maxCapacity,
+              isAvailable: isAvailable && !isClosed,
+              isClosed,
+            });
+
+            slotStart = this.addMinutesToTime(slotStart, room.slotDuration);
+          }
+        }
+      }
+    }
+
+    return results;
   }
 }

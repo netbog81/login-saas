@@ -265,6 +265,29 @@ export class AvailabilityAppointment {
     untilDate?: string;
   };
 
+  /**
+   * Flag che indica se questo è l'appuntamento master (primo) della serie ricorrente.
+   */
+  @Field()
+  @Column({ default: false })
+  isMaster: boolean;
+
+  /**
+   * ID dell'appuntamento master della serie ricorrente (per i child).
+   * Null sul master stesso e sui non-ricorrenti.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  @Index('IDX_availability_appointments_masterAppointmentId')
+  masterAppointmentId?: string;
+
+  /**
+   * Relazione self-referential verso il master della serie ricorrente.
+   */
+  @ManyToOne(() => AvailabilityAppointment, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'masterAppointmentId' })
+  masterAppointment?: AvailabilityAppointment;
+
   // ==================== NOTES ====================
 
   /**

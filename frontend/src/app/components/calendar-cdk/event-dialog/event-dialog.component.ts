@@ -50,7 +50,7 @@ export interface ServiceInputForResult {
 }
 
 export interface EventDialogResult {
-  action: 'save' | 'delete' | 'cancel';
+  action: 'save' | 'delete' | 'cancel' | 'series-deleted';
   appointment?: Appointment;
   services?: ServiceInputForResult[];
   instruments?: AppointmentInstrumentData[];
@@ -127,6 +127,10 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   isEditMode: boolean = false;
   errors: { [key: string]: string } = {};
 
+  // Recurring series management
+  futureSeriesCount: number = 0;
+  loadingSeriesInfo: boolean = false;
+
   // Booking status for edit mode
   bookingStatus: BookingStatus = 'scheduled';
 
@@ -177,6 +181,11 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
           this.selectedInstrumentCategoryId = this.configuredInstruments[0].instrumentCategoryId;
           this.selectedInstrument2CategoryId = this.configuredInstruments[1].instrumentCategoryId;
         }
+      }
+
+      // Carica info serie ricorrente
+      if (apt.isRecurring && apt.recurringGroupId) {
+        this.loadSeriesInfo(apt.recurringGroupId, apt.date);
       }
     } else {
       // Create mode
@@ -1050,5 +1059,60 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+  }
+
+  // ==================== RECURRING SERIES MANAGEMENT ====================
+
+  private loadSeriesInfo(recurringGroupId: string, currentDate: string): void {
+    this.loadingSeriesInfo = true;
+    this.appointmentService.getRecurringSeries(recurringGroupId).subscribe({
+      next: (series) => {
+        // Conta solo appuntamenti DOPO quello corrente (non incluso)
+        this.futureSeriesCount = series.filter(a =>
+          a.appointmentDate > currentDate &&
+          !['cancelled', 'cancelled_early', 'cancelled_late'].includes((a.bookingStatus || '').toLowerCase())
+        ).length;
+        this.loadingSeriesInfo = false;
+        this.detectChanges();
+      },
+      error: () => {
+        this.loadingSeriesInfo = false;
+        this.detectChanges();
+      },
+    });
+  }
+
+  async onDeleteThisAndFollowing(): Promise<void> {
+    if (!confirm(`Eliminare definitivamente questo appuntamento e i ${this.futureSeriesCount} seguenti? L'operazione non è reversibile.`)) return;
+    try {
+      const count = await firstValueFrom(
+        this.appointmentService.deleteRecurringSeries(
+          String(this.data.appointment!.id),
+          this.data.appointment!.date,
+          'THIS_AND_FOLLOWING'
+        )
+      );
+      alert(`${count} appuntamenti eliminati`);
+      this.emit(this.result, { action: 'series-deleted' });
+    } catch (error) {
+      alert('Errore nell\'eliminazione della serie');
+    }
+  }
+
+  async onDeleteAllSeries(): Promise<void> {
+    if (!confirm(`Eliminare definitivamente TUTTI gli appuntamenti della serie? L'operazione non è reversibile.`)) return;
+    try {
+      const count = await firstValueFrom(
+        this.appointmentService.deleteRecurringSeries(
+          String(this.data.appointment!.id),
+          '2000-01-01',
+          'ALL'
+        )
+      );
+      alert(`${count} appuntamenti eliminati`);
+      this.emit(this.result, { action: 'series-deleted' });
+    } catch (error) {
+      alert('Errore nell\'eliminazione della serie');
+    }
   }
 }

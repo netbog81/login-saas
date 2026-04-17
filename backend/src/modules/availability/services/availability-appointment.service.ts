@@ -191,6 +191,8 @@ export class AvailabilityAppointmentService {
     isRecurring: boolean = false,
     recurringGroupId?: string,
     repeatConfig?: RepeatConfigInput,
+    isMaster: boolean = false,
+    masterAppointmentId?: string,
   ): Promise<AvailabilityAppointment> {
     // Usa una transazione per garantire che l'appuntamento e gli strumenti
     // vengano creati insieme o nessuno dei due (atomicità)
@@ -203,11 +205,14 @@ export class AvailabilityAppointmentService {
         hasConflict: false,
         isRecurring,
         recurringGroupId,
+        isMaster,
+        masterAppointmentId,
+        // Normalizza case di type/endType (operator dialog manda UPPERCASE, gym lowercase)
         repeatConfig: repeatConfig ? {
-          type: repeatConfig.type,
+          type: repeatConfig.type.toLowerCase() as any,
           interval: repeatConfig.interval,
           selectedDays: repeatConfig.selectedDays,
-          endType: repeatConfig.endType,
+          endType: repeatConfig.endType.toLowerCase() as any,
           occurrences: repeatConfig.occurrences,
           untilDate: repeatConfig.untilDate,
         } : undefined,
@@ -303,18 +308,21 @@ export class AvailabilityAppointmentService {
     for (let i = 0; i < dates.length; i++) {
       const date = dates[i];
       try {
+        const isFirst = firstAppointment === null;
         const appointment = await this.createSingleAppointment(
           { ...baseData, appointmentDate: date },
           instruments,
           true,
           recurringGroupId,
-          i === 0 ? repeatConfig : undefined, // Solo il primo appuntamento ha la config
+          isFirst ? repeatConfig : undefined, // Solo il master ha la config
+          isFirst, // isMaster
+          isFirst ? undefined : firstAppointment!.id, // masterAppointmentId
         );
 
         // WhatsApp dispatch per OGNI appuntamento della serie
         this.dispatchWhatsappBooking(appointment);
 
-        if (i === 0) {
+        if (isFirst) {
           firstAppointment = appointment;
         }
       } catch (error) {
@@ -1323,6 +1331,8 @@ export class AvailabilityAppointmentService {
     isRecurring: boolean = false,
     recurringGroupId?: string,
     repeatConfig?: RepeatConfigInput,
+    isMaster: boolean = false,
+    masterAppointmentId?: string,
   ): Promise<AvailabilityAppointment> {
     const appointment = this.appointmentRepo.create({
       operatorId: data.operatorId,
@@ -1343,11 +1353,13 @@ export class AvailabilityAppointmentService {
       maxParticipants: gymRoom.maxCapacity,
       isRecurring,
       recurringGroupId,
+      isMaster,
+      masterAppointmentId,
       repeatConfig: repeatConfig ? {
-        type: repeatConfig.type,
+        type: repeatConfig.type.toLowerCase() as any,
         interval: repeatConfig.interval,
         selectedDays: repeatConfig.selectedDays,
-        endType: repeatConfig.endType,
+        endType: repeatConfig.endType.toLowerCase() as any,
         occurrences: repeatConfig.occurrences,
         untilDate: repeatConfig.untilDate,
       } : undefined,
@@ -1433,18 +1445,21 @@ export class AvailabilityAppointmentService {
           continue; // Salta se non c'è operatore
         }
 
+        const isFirst = firstAppointment === null;
         const appointment = await this.createSingleGymAppointment(
           { ...baseData, appointmentDate: date, operatorId: operator.id },
           gymRoom,
           true,
           recurringGroupId,
-          i === 0 ? repeatConfig : undefined,
+          isFirst ? repeatConfig : undefined,
+          isFirst, // isMaster
+          isFirst ? undefined : firstAppointment!.id, // masterAppointmentId
         );
 
         // WhatsApp dispatch per OGNI appuntamento della serie
         this.dispatchWhatsappBooking(appointment);
 
-        if (i === 0) {
+        if (isFirst) {
           firstAppointment = appointment;
         }
       } catch (error) {
@@ -1593,5 +1608,82 @@ export class AvailabilityAppointmentService {
 
     await this.whatsappGateway.dispatchBooking(appointment, patient);
     return true;
+  }
+
+  // ==================== RECURRING SERIES MANAGEMENT ====================
+
+  /**
+   * Ottiene tutti gli appuntamenti di una serie ricorrente
+   */
+  async getRecurringSeries(recurringGroupId: string): Promise<AvailabilityAppointment[]> {
+    return this.appointmentRepo.find({
+      where: { recurringGroupId },
+      relations: ['operator', 'gymRoom', 'service'],
+      order: { appointmentDate: 'ASC', startTime: 'ASC' },
+    });
+  }
+
+  /**
+   * Cancella (soft) appuntamenti di una serie ricorrente
+   */
+  async cancelRecurringSeries(
+    appointmentId: string,
+    fromDate: string,
+    reason: string,
+    cancelledBy: string,
+    scope: 'this_and_following' | 'all',
+  ): Promise<number> {
+    const appointment = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
+    if (!appointment || !appointment.recurringGroupId) {
+      throw new BadRequestException('Appuntamento non trovato o non ricorrente');
+    }
+
+    const qb = this.appointmentRepo
+      .createQueryBuilder()
+      .update(AvailabilityAppointment)
+      .set({
+        bookingStatus: BookingStatus.CANCELLED_EARLY,
+        cancellationReason: reason,
+        cancelledAt: new Date(),
+        cancelledBy,
+      })
+      .where('"recurringGroupId" = :groupId', { groupId: appointment.recurringGroupId })
+      .andWhere('"bookingStatus" NOT IN (:...cancelled)', {
+        cancelled: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE],
+      });
+
+    if (scope === 'this_and_following') {
+      qb.andWhere('"appointmentDate" >= :fromDate', { fromDate });
+    }
+
+    const result = await qb.execute();
+    return result.affected || 0;
+  }
+
+  /**
+   * Elimina (hard delete) appuntamenti di una serie ricorrente
+   */
+  async deleteRecurringSeries(
+    appointmentId: string,
+    fromDate: string,
+    scope: 'this_and_following' | 'all',
+  ): Promise<number> {
+    const appointment = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
+    if (!appointment || !appointment.recurringGroupId) {
+      throw new BadRequestException('Appuntamento non trovato o non ricorrente');
+    }
+
+    const qb = this.appointmentRepo
+      .createQueryBuilder()
+      .delete()
+      .from(AvailabilityAppointment)
+      .where('"recurringGroupId" = :groupId', { groupId: appointment.recurringGroupId });
+
+    if (scope === 'this_and_following') {
+      qb.andWhere('"appointmentDate" >= :fromDate', { fromDate });
+    }
+
+    const result = await qb.execute();
+    return result.affected || 0;
   }
 }

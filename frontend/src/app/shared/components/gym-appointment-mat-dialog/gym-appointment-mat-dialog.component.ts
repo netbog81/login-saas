@@ -1,6 +1,6 @@
 import { Component, Inject, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
+import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
 import { MatDialogRef, MAT_DIALOG_DATA, MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -10,7 +10,11 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatSelectModule } from '@angular/material/select';
+import { MatRadioModule } from '@angular/material/radio';
 import { firstValueFrom, Observable, startWith, map } from 'rxjs';
+import { RepeatConfig } from '../../../models/appointment.model';
 
 import { GymRoom, GymSlotInfo, GymRoomService, CreateGymAppointmentInput, GymAppointment } from '../../../services/gym-room.service';
 import { Patient } from '../../../models/patient.model';
@@ -71,6 +75,10 @@ export interface GymAppointmentMatDialogResult {
     MatAutocompleteModule,
     MatTooltipModule,
     MatDividerModule,
+    MatSlideToggleModule,
+    MatSelectModule,
+    MatRadioModule,
+    FormsModule,
     ServiceMultiSelectComponent
   ],
   template: `
@@ -156,6 +164,76 @@ export interface GymAppointmentMatDialogResult {
                     placeholder="Note opzionali per l'appuntamento..."></textarea>
         </mat-form-field>
       </form>
+
+      <!-- Ricorrenza -->
+      <div class="recurring-section">
+        <mat-slide-toggle [(ngModel)]="repeatEnabled" (change)="onRepeatToggle()">
+          <mat-icon>repeat</mat-icon>
+          Appuntamento ricorrente
+        </mat-slide-toggle>
+
+        <div class="recurring-config" *ngIf="repeatEnabled">
+          <div class="form-row">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Ripeti</mat-label>
+              <mat-select [(ngModel)]="repeatConfig.type">
+                <mat-option value="daily">Ogni giorno</mat-option>
+                <mat-option value="weekly">Ogni settimana</mat-option>
+                <mat-option value="monthly">Ogni mese</mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" subscriptSizing="dynamic" class="interval-field">
+              <mat-label>Intervallo</mat-label>
+              <input matInput type="number" [(ngModel)]="repeatConfig.interval" min="1" max="12">
+              <span matTextSuffix>{{ getIntervalLabel() }}</span>
+            </mat-form-field>
+          </div>
+
+          <!-- Giorni della settimana (solo per weekly) -->
+          <div class="weekday-selector" *ngIf="repeatConfig.type === 'weekly'">
+            <label>Giorni della settimana</label>
+            <div class="weekday-buttons">
+              <button mat-mini-fab
+                      *ngFor="let day of weekdays; let i = index"
+                      [color]="isDaySelected(i) ? 'primary' : ''"
+                      (click)="toggleDay(i)"
+                      type="button">
+                {{ day }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Fine ricorrenza -->
+          <div class="end-config">
+            <label>Termina</label>
+            <div class="end-options">
+              <mat-radio-group [(ngModel)]="repeatConfig.endType">
+                <div class="end-option">
+                  <mat-radio-button value="after">Dopo</mat-radio-button>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="occurrences-field">
+                    <input matInput type="number" [(ngModel)]="repeatConfig.occurrences"
+                           [disabled]="repeatConfig.endType !== 'after'" min="1" max="52">
+                  </mat-form-field>
+                  <span>volte</span>
+                </div>
+                <div class="end-option">
+                  <mat-radio-button value="until">Fino al</mat-radio-button>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="until-field">
+                    <input matInput type="date" [(ngModel)]="repeatConfig.untilDate"
+                           [disabled]="repeatConfig.endType !== 'until'">
+                  </mat-form-field>
+                </div>
+              </mat-radio-group>
+            </div>
+          </div>
+
+          <div class="recurring-preview" *ngIf="getOccurrencesPreview()">
+            <mat-icon>info</mat-icon>
+            <span>{{ getOccurrencesPreview() }}</span>
+          </div>
+        </div>
+      </div>
 
       <!-- Errore server -->
       <div class="server-error" *ngIf="serverError">
@@ -281,6 +359,99 @@ export interface GymAppointmentMatDialogResult {
     mat-spinner {
       display: inline-block;
     }
+
+    .recurring-section {
+      margin-top: 16px;
+      padding: 12px;
+      background-color: #fff8e1;
+      border-radius: 8px;
+      border: 1px solid #ffecb3;
+
+      mat-slide-toggle mat-icon {
+        margin-right: 8px;
+      }
+    }
+
+    .recurring-config {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #ffecb3;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .interval-field {
+      max-width: 150px;
+    }
+
+    .weekday-selector {
+      margin-bottom: 16px;
+
+      label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+    }
+
+    .weekday-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .weekday-buttons button {
+      width: 40px;
+      height: 40px;
+      font-size: 0.7rem;
+    }
+
+    .end-config {
+      margin-bottom: 16px;
+
+      > label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 12px;
+      }
+    }
+
+    .end-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .occurrences-field {
+      max-width: 80px;
+    }
+
+    .until-field {
+      max-width: 180px;
+    }
+
+    .recurring-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background-color: #fff3e0;
+      border-radius: 4px;
+      color: #e65100;
+      font-size: 0.875rem;
+
+      mat-icon {
+        color: #f57c00;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+    }
   `]
 })
 export class GymAppointmentMatDialogComponent implements OnInit {
@@ -302,6 +473,18 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   loadingServices = false;
   saving = false;
   serverError = '';
+
+  // Recurring
+  repeatEnabled = false;
+  repeatConfig = {
+    type: 'weekly' as 'daily' | 'weekly' | 'monthly',
+    interval: 1,
+    selectedDays: [] as number[],
+    endType: 'after' as 'after' | 'until',
+    occurrences: 4,
+    untilDate: ''
+  };
+  weekdays = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 
   constructor(
     public dialogRef: MatDialogRef<GymAppointmentMatDialogComponent, GymAppointmentMatDialogResult>,
@@ -483,6 +666,69 @@ export class GymAppointmentMatDialogComponent implements OnInit {
     this.cdr.markForCheck();
   }
 
+  // ==================== RECURRING METHODS ====================
+
+  onRepeatToggle(): void {
+    if (!this.repeatEnabled) {
+      this.repeatConfig = {
+        type: 'weekly',
+        interval: 1,
+        selectedDays: [],
+        endType: 'after',
+        occurrences: 4,
+        untilDate: ''
+      };
+    } else {
+      const selectedDate = this.data.date ? new Date(this.data.date) : new Date();
+      const dayOfWeek = selectedDate.getDay();
+      this.repeatConfig.selectedDays = [dayOfWeek];
+    }
+    this.cdr.markForCheck();
+  }
+
+  isDaySelected(dayIndex: number): boolean {
+    return this.repeatConfig.selectedDays?.includes(dayIndex) || false;
+  }
+
+  toggleDay(dayIndex: number): void {
+    if (!this.repeatConfig.selectedDays) {
+      this.repeatConfig.selectedDays = [];
+    }
+    const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
+    if (index === -1) {
+      this.repeatConfig.selectedDays.push(dayIndex);
+      this.repeatConfig.selectedDays.sort();
+    } else {
+      this.repeatConfig.selectedDays.splice(index, 1);
+    }
+    this.cdr.markForCheck();
+  }
+
+  getIntervalLabel(): string {
+    switch (this.repeatConfig.type) {
+      case 'daily': return this.repeatConfig.interval === 1 ? 'giorno' : 'giorni';
+      case 'weekly': return this.repeatConfig.interval === 1 ? 'settimana' : 'settimane';
+      case 'monthly': return this.repeatConfig.interval === 1 ? 'mese' : 'mesi';
+      default: return '';
+    }
+  }
+
+  getOccurrencesPreview(): string {
+    if (!this.repeatEnabled) return '';
+    let count = 0;
+    if (this.repeatConfig.endType === 'after') {
+      count = this.repeatConfig.occurrences || 1;
+    } else if (this.repeatConfig.endType === 'until' && this.repeatConfig.untilDate && this.data.date) {
+      const start = new Date(this.data.date);
+      const end = new Date(this.repeatConfig.untilDate);
+      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (this.repeatConfig.type === 'daily') count = Math.ceil(days / this.repeatConfig.interval);
+      else if (this.repeatConfig.type === 'weekly') count = Math.ceil(days / 7 / this.repeatConfig.interval) * (this.repeatConfig.selectedDays?.length || 1);
+      else if (this.repeatConfig.type === 'monthly') count = Math.ceil(days / 30 / this.repeatConfig.interval);
+    }
+    return count > 0 ? `(circa ${count} appuntamenti)` : '';
+  }
+
   /**
    * Annulla e chiude il dialog.
    */
@@ -520,6 +766,16 @@ export class GymAppointmentMatDialogComponent implements OnInit {
         ? `${selectedPatient.cognome} ${selectedPatient.nome}`
         : '';
 
+      // Costruisci config ricorrenza se abilitata
+      const repeatConfigData = this.repeatEnabled ? {
+        type: this.repeatConfig.type,
+        interval: this.repeatConfig.interval,
+        selectedDays: this.repeatConfig.type === 'weekly' ? this.repeatConfig.selectedDays : undefined,
+        endType: this.repeatConfig.endType,
+        occurrences: this.repeatConfig.endType === 'after' ? this.repeatConfig.occurrences : undefined,
+        untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
+      } : undefined;
+
       const input: CreateGymAppointmentInput = {
         gymRoomId: this.data.gymRoom.id,
         patientId: this.form.value.patientId || undefined,
@@ -531,7 +787,9 @@ export class GymAppointmentMatDialogComponent implements OnInit {
         endTime: this.data.endTime,
         notes: this.form.value.notes || '',
         // MULTISERVIZIO: array invece di singolo serviceId
-        services: services.length > 0 ? services : undefined
+        services: services.length > 0 ? services : undefined,
+        isRecurring: this.repeatEnabled || undefined,
+        repeatConfig: repeatConfigData
       };
 
       const result: GymAppointment = await firstValueFrom(this.gymRoomService.createAppointment(input));

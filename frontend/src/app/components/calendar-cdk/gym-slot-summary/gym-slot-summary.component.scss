@@ -184,6 +184,22 @@
   font-weight: 500;
   color: #1f2937;
   margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.recurring-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #e65100;
+  background: #fff3e0;
+  border: 1px solid #ffe0b2;
+  border-radius: 10px;
+  padding: 1px 6px;
+  white-space: nowrap;
 }
 
 .patient-contact {

@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
@@ -7,8 +7,9 @@ import { AvailabilityAppointmentService } from '../services/availability-appoint
 import { CreateAvailabilityAppointmentInput } from '../dto/create-availability-appointment.input';
 import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-appointment.input';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
-import { GymSlotInfo } from '../dto/gym-slot-info.type';
+import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
 import { GymAvailabilityService } from '../services/gym-availability.service';
+import { RecurringSeriesScope } from '../dto/recurring-series.input';
 
 @Resolver(() => AvailabilityAppointment)
 export class AvailabilityAppointmentResolver {
@@ -240,6 +241,18 @@ export class AvailabilityAppointmentResolver {
   }
 
   /**
+   * Query batch: Ottiene gli slot disponibili per più gym room in un range di date.
+   */
+  @Query(() => [GymSlotInfoWithContext], { name: 'gymRoomsAvailableSlots' })
+  async getGymRoomsAvailableSlots(
+    @Args('gymRoomIds', { type: () => [ID] }) gymRoomIds: string[],
+    @Args('startDate') startDate: string,
+    @Args('endDate') endDate: string,
+  ): Promise<GymSlotInfoWithContext[]> {
+    return this.gymAvailabilityService.getAvailableSlotsForRooms(gymRoomIds, startDate, endDate) as any;
+  }
+
+  /**
    * Mutation: Crea un appuntamento palestra con validazione capacità
    */
   @Mutation(() => AvailabilityAppointment, { name: 'createGymAppointment' })
@@ -272,5 +285,45 @@ export class AvailabilityAppointmentResolver {
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
   ): Promise<boolean> {
     return this.appointmentService.sendRecap(appointmentId);
+  }
+
+  // ==================== RECURRING SERIES ====================
+
+  /**
+   * Query: Ottiene tutti gli appuntamenti di una serie ricorrente
+   */
+  @Query(() => [AvailabilityAppointment], { name: 'recurringSeries' })
+  async getRecurringSeries(
+    @Args('recurringGroupId', { type: () => ID }) recurringGroupId: string,
+  ): Promise<AvailabilityAppointment[]> {
+    return this.appointmentService.getRecurringSeries(recurringGroupId);
+  }
+
+  /**
+   * Mutation: Cancella (soft) appuntamenti di una serie ricorrente
+   */
+  @Mutation(() => Int, { name: 'cancelRecurringSeries' })
+  async cancelRecurringSeries(
+    @Args('appointmentId', { type: () => ID }) appointmentId: string,
+    @Args('fromDate') fromDate: string,
+    @Args('scope', { type: () => RecurringSeriesScope }) scope: RecurringSeriesScope,
+    @Args('reason') reason: string,
+    @Args('cancelledBy', { type: () => ID }) cancelledBy: string,
+  ): Promise<number> {
+    return this.appointmentService.cancelRecurringSeries(
+      appointmentId, fromDate, reason, cancelledBy, scope,
+    );
+  }
+
+  /**
+   * Mutation: Elimina (hard delete) appuntamenti di una serie ricorrente
+   */
+  @Mutation(() => Int, { name: 'deleteRecurringSeries' })
+  async deleteRecurringSeries(
+    @Args('appointmentId', { type: () => ID }) appointmentId: string,
+    @Args('fromDate') fromDate: string,
+    @Args('scope', { type: () => RecurringSeriesScope }) scope: RecurringSeriesScope,
+  ): Promise<number> {
+    return this.appointmentService.deleteRecurringSeries(appointmentId, fromDate, scope);
   }
 }

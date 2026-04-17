@@ -126,8 +126,10 @@ type AvailabilityAppointment {
   id: ID!
   instrumentOrderMatters: Boolean!
   instruments: [AppointmentInstrument!]
+  isMaster: Boolean!
   isRecurring: Boolean!
   isSubstitution: Boolean!
+  masterAppointmentId: ID
   maxParticipants: Int
   nonRetribuito: Boolean!
   notes: String
@@ -976,6 +978,18 @@ type GymSlotInfo {
   startTime: String!
 }
 
+type GymSlotInfoWithContext {
+  currentCount: Int!
+  date: String!
+  endTime: String!
+  gymRoomId: ID!
+  isAvailable: Boolean!
+  isClosed: Boolean!
+  maxCapacity: Int!
+  operator: GymSlotOperatorInfo
+  startTime: String!
+}
+
 type GymSlotOperatorInfo {
   color: String
   id: ID!
@@ -1123,6 +1137,7 @@ type Mutation {
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
   cancelAppointmentWithNotice(cancelledBy: ID!, id: ID!, reason: String!): AvailabilityAppointment!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
+  cancelRecurringSeries(appointmentId: ID!, cancelledBy: ID!, fromDate: String!, reason: String!, scope: RecurringSeriesScope!): Int!
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTaskMessage(messageId: String!): Boolean!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
@@ -1202,6 +1217,7 @@ type Mutation {
   deletePatientAnamnesis(id: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
   deletePrivacyOfficer(id: ID!): Boolean!
+  deleteRecurringSeries(appointmentId: ID!, fromDate: String!, scope: RecurringSeriesScope!): Int!
   deleteRole(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
   deleteSecretary(id: ID!): Boolean!
@@ -1859,6 +1875,7 @@ type Query {
   gymRoomAvailableSlots(date: String!, gymRoomId: ID!): [GymSlotInfo!]!
   gymRooms(onlyActive: Boolean = false): [GymRoom!]!
   gymRoomsAppointments(endDate: String!, gymRoomIds: [ID!]!, startDate: String!): [AvailabilityAppointment!]!
+  gymRoomsAvailableSlots(endDate: String!, gymRoomIds: [ID!]!, startDate: String!): [GymSlotInfoWithContext!]!
   gymSchedule(id: ID!): GymSchedule
   gymSchedules(gymRoomId: ID, operatorId: ID): [GymSchedule!]!
   gymSchedulesByRoomAndDay(dayOfWeek: Int!, gymRoomId: ID!): [GymSchedule!]!
@@ -1929,6 +1946,7 @@ type Query {
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
+  recurringSeries(recurringGroupId: ID!): [AvailabilityAppointment!]!
   revalidateConflictsIfNeeded: ConflictRevalidationResult!
   role(id: ID!): Role
   roles: [Role!]!
@@ -1996,6 +2014,12 @@ enum RecurringEndType {
   AFTER
   NEVER
   UNTIL
+}
+
+"""Scope delle operazioni bulk su serie ricorrenti"""
+enum RecurringSeriesScope {
+  ALL
+  THIS_AND_FOLLOWING
 }
 
 """Tipo di ricorrenza per appuntamenti"""

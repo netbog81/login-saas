@@ -52,10 +52,10 @@ export class GymCalendarGridComponent implements OnInit, OnChanges, AfterViewIni
   private currentTimeInterval: any;
 
   ngOnInit(): void {
-    console.log('[GymCalendarGrid] ngOnInit - gymRooms:', this.gymRooms?.length, 'timeSlots:', this.timeSlots?.length);
     this.calculateGridHeight();
     this.updateCurrentTimeIndicator();
     this.startCurrentTimeUpdates();
+    this.cdr.markForCheck();
   }
 
   ngOnDestroy(): void {
@@ -69,9 +69,11 @@ export class GymCalendarGridComponent implements OnInit, OnChanges, AfterViewIni
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    console.log('[GymCalendarGrid] ngOnChanges - changes:', Object.keys(changes));
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
+    }
+    if (changes['timeSlots'] || changes['date'] || changes['startHour']) {
+      this.updateCurrentTimeIndicator();
     }
     setTimeout(() => this.adjustHeaderForScrollbar(), 0);
   }

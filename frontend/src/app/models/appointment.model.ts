@@ -117,10 +117,13 @@ export interface Appointment {
   // Non retribuito (pausa pranzo, rappresentante, etc.)
   nonRetribuito?: boolean;
 
-  // Ricorrenza (legacy - da migrare)
+  // Ricorrenza
   repeat?: RepeatConfig;
   recurringGroupId?: string;
   isRecurring?: boolean;
+  isMaster?: boolean;
+  masterAppointmentId?: string;
+  repeatConfig?: RepeatConfig;
 
   // Timestamps
   createdAt?: Date;

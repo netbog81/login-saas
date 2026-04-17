@@ -23,6 +23,9 @@ export const GYM_APPOINTMENT_FIELDS = gql`
     maxParticipants
     isRecurring
     recurringGroupId
+    isMaster
+    masterAppointmentId
+    repeatConfig
     createdAt
     updatedAt
     operator {
@@ -118,6 +121,30 @@ export const GET_GYM_ROOM_AVAILABLE_SLOTS = gql`
   query GetGymRoomAvailableSlots($gymRoomId: ID!, $date: String!) {
     gymRoomAvailableSlots(gymRoomId: $gymRoomId, date: $date) {
       ...GymSlotInfoFields
+    }
+  }
+`;
+
+/**
+ * Query batch: Ottiene gli slot disponibili per più GymRoom in un range di date
+ */
+export const GET_GYM_ROOMS_AVAILABLE_SLOTS = gql`
+  query GetGymRoomsAvailableSlots($gymRoomIds: [ID!]!, $startDate: String!, $endDate: String!) {
+    gymRoomsAvailableSlots(gymRoomIds: $gymRoomIds, startDate: $startDate, endDate: $endDate) {
+      gymRoomId
+      date
+      startTime
+      endTime
+      operator {
+        id
+        name
+        surname
+        color
+      }
+      currentCount
+      maxCapacity
+      isAvailable
+      isClosed
     }
   }
 `;

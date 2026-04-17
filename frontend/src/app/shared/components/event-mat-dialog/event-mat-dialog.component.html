@@ -296,6 +296,20 @@
   </form>
 </mat-dialog-content>
 
+<!-- Gestione serie ricorrenti -->
+<div class="recurring-series-section" *ngIf="isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId">
+  <div class="series-header">
+    <mat-icon>repeat</mat-icon>
+    <span class="series-badge">Appuntamento ricorrente</span>
+    <span class="series-info" *ngIf="!loadingSeriesInfo">({{ futureSeriesCount }} appuntamenti seguenti)</span>
+    <mat-spinner *ngIf="loadingSeriesInfo" diameter="16"></mat-spinner>
+  </div>
+  <div class="series-actions">
+    <button mat-stroked-button color="warn" (click)="onDeleteThisAndFollowing()" [disabled]="futureSeriesCount === 0">Elimina questo e i seguenti</button>
+    <button mat-stroked-button color="warn" (click)="onDeleteAllSeries()">Elimina intera serie</button>
+  </div>
+</div>
+
 <mat-dialog-actions align="end">
   <button mat-stroked-button color="warn" *ngIf="isEditMode" (click)="onDelete()" type="button">
     <mat-icon>delete</mat-icon>

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { GymPatternGroup } from '../entities/gym-pattern-group.entity';
 import { GymTemplatePattern } from '../entities/gym-template-pattern.entity';
 import { GymRoom } from '../entities/gym-room.entity';
@@ -83,6 +83,17 @@ export class GymPatternGroupService {
   async findCurrentByGymRoom(gymRoomId: string): Promise<GymPatternGroup | null> {
     return this.patternGroupRepo.findOne({
       where: { gymRoomId, isCurrent: true, isActive: true },
+      relations: ['patterns', 'patterns.operator', 'gymRoom'],
+    });
+  }
+
+  /**
+   * Bulk: Carica i pattern group correnti per più gym room in una sola query.
+   */
+  async findCurrentByGymRooms(gymRoomIds: string[]): Promise<GymPatternGroup[]> {
+    if (gymRoomIds.length === 0) return [];
+    return this.patternGroupRepo.find({
+      where: { gymRoomId: In(gymRoomIds), isCurrent: true, isActive: true },
       relations: ['patterns', 'patterns.operator', 'gymRoom'],
     });
   }

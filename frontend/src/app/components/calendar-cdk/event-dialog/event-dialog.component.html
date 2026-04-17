@@ -441,6 +441,24 @@
     </div>
   </div>
 
+  <!-- Gestione serie ricorrenti (solo in edit mode per appuntamenti ricorrenti) -->
+  <div class="recurring-series-section" *ngIf="isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId">
+    <div class="series-header">
+      <span class="series-icon">&#x1F501;</span>
+      <span class="series-badge">Appuntamento ricorrente</span>
+      <span class="series-info" *ngIf="!loadingSeriesInfo">({{ futureSeriesCount }} appuntamenti seguenti)</span>
+      <span class="series-info" *ngIf="loadingSeriesInfo">caricamento...</span>
+    </div>
+    <div class="series-actions">
+      <button class="btn-danger-outline" (click)="onDeleteThisAndFollowing()" [disabled]="futureSeriesCount === 0">
+        Elimina questo e i seguenti
+      </button>
+      <button class="btn-danger-outline" (click)="onDeleteAllSeries()">
+        Elimina intera serie
+      </button>
+    </div>
+  </div>
+
   <!-- Dialog footer -->
   <div class="dialog-footer">
     <div class="footer-left">

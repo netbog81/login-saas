@@ -189,6 +189,33 @@ export class GymExceptionService {
   }
 
   /**
+   * Bulk: Carica tutte le eccezioni per più gym room in un range di date.
+   * Ritorna un array flat. Usato dal caricamento bulk della vista calendario.
+   */
+  async findExceptionsForRoomsInRange(
+    gymRoomIds: string[],
+    startDate: Date,
+    endDate: Date,
+  ): Promise<GymException[]> {
+    if (gymRoomIds.length === 0) return [];
+    return this.exceptionRepo.find({
+      where: [
+        { gymRoomId: In(gymRoomIds), exceptionDate: Between(startDate, endDate) },
+        { gymRoomId: IsNull(), exceptionDate: Between(startDate, endDate) },
+      ],
+      relations: [
+        'gymRoom',
+        'operator',
+        'substituteOperator',
+        'substitutes',
+        'substitutes.gymRoom',
+        'substitutes.substituteOperator',
+      ],
+      order: { exceptionDate: 'ASC', startTime: 'ASC' },
+    });
+  }
+
+  /**
    * Trova un'eccezione per ID con tutte le relazioni necessarie.
    */
   async findOne(id: string): Promise<GymException> {

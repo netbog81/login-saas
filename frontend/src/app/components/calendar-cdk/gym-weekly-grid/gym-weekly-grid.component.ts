@@ -61,6 +61,7 @@ export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit,
     this.calculateGridHeight();
     this.updateCurrentTimeIndicator();
     this.startCurrentTimeUpdates();
+    this.cdr.markForCheck();
   }
 
   ngOnDestroy(): void {
@@ -104,6 +105,9 @@ export class GymWeeklyGridComponent implements OnInit, OnChanges, AfterViewInit,
     }
     if (changes['timeSlots'] || changes['slotHeight']) {
       this.calculateGridHeight();
+    }
+    if (changes['timeSlots'] || changes['dates'] || changes['startHour']) {
+      this.updateCurrentTimeIndicator();
     }
     setTimeout(() => this.adjustHeaderForScrollbar(), 0);
   }

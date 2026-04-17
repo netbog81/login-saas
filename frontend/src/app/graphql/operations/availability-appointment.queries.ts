@@ -27,6 +27,11 @@ export const AVAILABILITY_APPOINTMENT_FIELDS = gql`
     operatorNotes
     instrumentOrderMatters
     nonRetribuito
+    isRecurring
+    recurringGroupId
+    isMaster
+    masterAppointmentId
+    repeatConfig
     createdAt
     updatedAt
     operator {
@@ -131,6 +136,18 @@ export const GET_AVAILABILITY_APPOINTMENTS_BY_PATIENT = gql`
   ${AVAILABILITY_APPOINTMENT_FIELDS}
   query GetAvailabilityAppointmentsByPatient($patientId: ID!, $startDate: String!) {
     availabilityAppointmentsByPatient(patientId: $patientId, startDate: $startDate) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;
+
+/**
+ * Query: Ottiene tutti gli appuntamenti di una serie ricorrente
+ */
+export const GET_RECURRING_SERIES = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  query GetRecurringSeries($recurringGroupId: ID!) {
+    recurringSeries(recurringGroupId: $recurringGroupId) {
       ...AvailabilityAppointmentFields
     }
   }
