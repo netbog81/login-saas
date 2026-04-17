@@ -68,6 +68,12 @@ export const routes: Routes = [
     title: 'Calendario',
   },
   {
+    path: 'calendar2',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    loadChildren: () => import('./features/calendar-v2/calendar-v2.routes').then(m => m.CALENDAR_V2_ROUTES),
+    title: 'Calendario V2',
+  },
+  {
     path: 'patients',
     component: PatientManagementComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
