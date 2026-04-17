@@ -17,6 +17,7 @@ export interface CalendarV2Config {
   zoom: number;                // 0.5, 1, 1.5, 2
   showWeekend: boolean;
   showWorkingHoursOnly: boolean;
+  compactMode: boolean;        // true = colonne adattive, false = colonne fisse con scroll
   startHour: number;           // 0-23
   endHour: number;             // 1-24
   workingHoursStart: number;   // 8
@@ -30,6 +31,7 @@ export const DEFAULT_CALENDAR_V2_CONFIG: CalendarV2Config = {
   zoom: 1,
   showWeekend: true,
   showWorkingHoursOnly: false,
+  compactMode: true,
   startHour: 0,
   endHour: 24,
   workingHoursStart: 8,

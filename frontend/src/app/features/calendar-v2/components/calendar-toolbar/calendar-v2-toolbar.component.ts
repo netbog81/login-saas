@@ -78,6 +78,20 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../models/calendar-v2
           Weekend
         </mat-slide-toggle>
       }
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Toggle vista compatta/espansa -->
+      <mat-button-toggle-group [value]="compactMode ? 'compact' : 'expanded'"
+                               (change)="compactModeChange.emit($event.value === 'compact')"
+                               hideSingleSelectionIndicator>
+        <mat-button-toggle value="compact" matTooltip="Vista compatta: colonne adattive allo schermo">
+          <mat-icon>view_compact</mat-icon>
+        </mat-button-toggle>
+        <mat-button-toggle value="expanded" matTooltip="Vista espansa: colonne fisse con scorrimento">
+          <mat-icon>view_array</mat-icon>
+        </mat-button-toggle>
+      </mat-button-toggle-group>
     </div>
   `,
   styles: [`
@@ -130,12 +144,14 @@ export class CalendarV2ToolbarComponent {
   @Input() zoom = 1;
   @Input() showWorkingHoursOnly = false;
   @Input() showWeekend = true;
+  @Input() compactMode = true;
 
   @Output() viewModeChange = new EventEmitter<CalendarV2ViewMode>();
   @Output() slotDurationChange = new EventEmitter<number>();
   @Output() zoomChange = new EventEmitter<number>();
   @Output() showWorkingHoursOnlyChange = new EventEmitter<boolean>();
   @Output() showWeekendChange = new EventEmitter<boolean>();
+  @Output() compactModeChange = new EventEmitter<boolean>();
 
   slotDurations = [15, 30, 45, 60];
 

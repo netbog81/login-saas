@@ -30,14 +30,18 @@ import { MatButtonModule } from '@angular/material/button';
 // Components (Layer 1 - Dumb)
 import { CalendarV2HeaderComponent } from '../components/calendar-header/calendar-v2-header.component';
 import { CalendarV2ToolbarComponent } from '../components/calendar-toolbar/calendar-v2-toolbar.component';
+import { CalendarV2SidebarComponent } from '../components/calendar-sidebar/calendar-v2-sidebar.component';
+import { OperatorGridComponent } from '../components/operator-grid/operator-grid.component';
 
 // Services
 import { CalendarV2StateService } from '../services/calendar-v2-state.service';
 import { CalendarV2DataService, OperatorLoadResult } from '../services/calendar-v2-data.service';
+import { CalendarV2GridService } from '../services/calendar-v2-grid.service';
 import { OperatorService } from '../../../services/operator.service';
+import { SettingsService } from '../../../services/settings.service';
 
 // Models
-import { CalendarV2Config, CalendarOperator } from '../models/calendar-v2.model';
+import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, EventClickEvent, DragMoveEvent } from '../models/calendar-v2.model';
 import { Appointment } from '../../../models/appointment.model';
 import { Treatment } from '../../../models/treatment.model';
 
@@ -53,6 +57,8 @@ import { Treatment } from '../../../models/treatment.model';
     MatButtonModule,
     CalendarV2HeaderComponent,
     CalendarV2ToolbarComponent,
+    CalendarV2SidebarComponent,
+    OperatorGridComponent,
   ],
   template: `
     <div class="calendar-v2">
@@ -74,11 +80,13 @@ import { Treatment } from '../../../models/treatment.model';
         [zoom]="config.zoom"
         [showWorkingHoursOnly]="config.showWorkingHoursOnly"
         [showWeekend]="config.showWeekend"
+        [compactMode]="config.compactMode"
         (viewModeChange)="onViewModeChange($event)"
         (slotDurationChange)="onSlotDurationChange($event)"
         (zoomChange)="onZoomChange($event)"
         (showWorkingHoursOnlyChange)="onShowWorkingHoursOnlyChange($event)"
-        (showWeekendChange)="onShowWeekendChange($event)">
+        (showWeekendChange)="onShowWeekendChange($event)"
+        (compactModeChange)="onCompactModeChange($event)">
       </app-calendar-v2-toolbar>
 
       <!-- Content -->
@@ -90,17 +98,40 @@ import { Treatment } from '../../../models/treatment.model';
           </div>
         }
 
-        <!-- TODO: sidebar + grid -->
+        <!-- Sidebar operatori -->
+        @if (config.viewMode === 'operators') {
+          <app-calendar-v2-sidebar
+            [operators]="stateService.operators"
+            [collapsed]="sidebarCollapsed"
+            (toggleOperator)="stateService.toggleOperator($event)"
+            (selectAll)="stateService.selectAllOperators()"
+            (deselectAll)="stateService.deselectAllOperators()"
+            (toggleCollapsed)="sidebarCollapsed = !sidebarCollapsed">
+          </app-calendar-v2-sidebar>
+        }
+
+        <!-- Main grid area -->
         <div class="calendar-v2-main">
-          <!-- Debug info (temporaneo) -->
-          <div class="debug-info">
-            <p><strong>Calendario V2 - Debug</strong></p>
-            <p>Operatori: {{ stateService.selectedOperators.length }} / {{ stateService.operators.length }}</p>
-            <p>Date: {{ visibleDates.join(', ') }}</p>
-            <p>Appuntamenti: {{ appointmentCount }}</p>
-            <p>Trattamenti: {{ treatments.length }}</p>
-            <p>Vista: {{ config.viewMode }} / {{ config.viewType }} | Slot: {{ config.slotDuration }}' | Zoom: {{ config.zoom * 100 }}%</p>
-          </div>
+          @if (config.viewMode === 'operators' && operatorGridData) {
+            <app-operator-grid
+              [gridData]="operatorGridData"
+              [columnWidth]="config.compactMode ? 0 : (config.viewType === 'weekly' ? 120 : 180)"
+              [showDateInHeader]="config.viewType === 'weekly'"
+              [currentTimeTop]="currentTimeTop"
+              [compactMode]="config.compactMode"
+              (cellDblClick)="onCellDblClick($event)"
+              (eventClick)="onEventClick($event)"
+              (eventDblClick)="onEventDblClick($event)"
+              (dragMove)="onDragMove($event)">
+            </app-operator-grid>
+          }
+
+          @if (config.viewMode === 'gyms') {
+            <div class="placeholder">
+              <mat-icon>fitness_center</mat-icon>
+              <p>Vista palestra - da implementare</p>
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -138,15 +169,16 @@ import { Treatment } from '../../../models/treatment.model';
       color: #64748b;
     }
 
-    .debug-info {
-      padding: 20px;
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 8px;
-      font-family: monospace;
-      font-size: 0.85rem;
+    .placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #94a3b8;
+      gap: 12px;
 
-      p { margin: 4px 0; }
+      mat-icon { font-size: 48px; width: 48px; height: 48px; }
     }
   `],
 })
@@ -156,7 +188,9 @@ export class CalendarV2Container implements OnInit, OnDestroy {
 
   stateService = inject(CalendarV2StateService);
   private dataService = inject(CalendarV2DataService);
+  private gridService = inject(CalendarV2GridService);
   private operatorService = inject(OperatorService);
+  private settingsService = inject(SettingsService);
 
   // State
   loading = false;
@@ -165,15 +199,21 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   appointmentCount = 0;
   treatments: Treatment[] = [];
   currentDateLabel = '';
+  sidebarCollapsed = false;
+  operatorGridData: OperatorGridData | null = null;
+  currentTimeTop = -1;
+  private currentTimeInterval: any;
 
   ngOnInit(): void {
     this.loadInitialData();
     this.subscribeToState();
+    this.startCurrentTimeUpdates();
   }
 
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    if (this.currentTimeInterval) clearInterval(this.currentTimeInterval);
   }
 
   // ==================== INITIALIZATION ====================
@@ -183,6 +223,20 @@ export class CalendarV2Container implements OnInit, OnDestroy {
     this.cdr.markForCheck();
 
     try {
+      // Carica impostazioni calendario dal backend
+      try {
+        const settings = await this.settingsService.getCalendarSettings().toPromise();
+        if (settings) {
+          this.stateService.updateConfig({
+            workingHoursStart: settings.startHour,
+            workingHoursEnd: settings.endHour,
+            slotDuration: settings.slotDuration,
+            showWorkingHoursOnly: settings.showWorkingHoursOnly,
+            showWeekend: settings.showWeekend,
+          });
+        }
+      } catch { /* usa defaults */ }
+
       // Carica operatori
       const operators = await this.operatorService.getOperators(undefined, undefined, true)
         .toPromise() || [];
@@ -250,6 +304,13 @@ export class CalendarV2Container implements OnInit, OnDestroy {
           next: (result) => {
             this.appointmentCount = this.countAppointments(result.appointments);
             this.treatments = result.treatments;
+
+            // Pre-calcola griglia in una passata
+            this.operatorGridData = this.gridService.computeOperatorGrid(
+              config, dates, operators, result.appointments, result.availabilities,
+            );
+            this.updateCurrentTimeTop();
+
             this.loading = false;
             this.cdr.markForCheck();
           },
@@ -295,6 +356,10 @@ export class CalendarV2Container implements OnInit, OnDestroy {
     this.stateService.updateConfig({ showWeekend });
   }
 
+  onCompactModeChange(compactMode: boolean): void {
+    this.stateService.updateConfig({ compactMode });
+  }
+
   // ==================== UTILITIES ====================
 
   private updateDateLabel(): void {
@@ -318,5 +383,73 @@ export class CalendarV2Container implements OnInit, OnDestroy {
       }
     }
     return count;
+  }
+
+  // ==================== GRID INTERACTIONS ====================
+
+  onCellDblClick(event: CellClickEvent): void {
+    console.log('[CalendarV2] Cell dblclick:', event);
+    // TODO: aprire dialog creazione appuntamento
+  }
+
+  onEventClick(event: EventClickEvent): void {
+    console.log('[CalendarV2] Event click:', event.appointment.id);
+    // TODO: aprire summary popup
+  }
+
+  onEventDblClick(event: EventClickEvent): void {
+    console.log('[CalendarV2] Event dblclick:', event.appointment.id);
+    // TODO: aprire dialog modifica appuntamento
+  }
+
+  onDragMove(event: DragMoveEvent): void {
+    console.log('[CalendarV2] Drag move:', event);
+    // TODO: chiamare mutation per spostare appuntamento
+  }
+
+  // ==================== CURRENT TIME INDICATOR ====================
+
+  private startCurrentTimeUpdates(): void {
+    this.updateCurrentTimeTop();
+    this.currentTimeInterval = setInterval(() => {
+      this.updateCurrentTimeTop();
+      this.cdr.markForCheck();
+    }, 60000);
+  }
+
+  private updateCurrentTimeTop(): void {
+    if (!this.operatorGridData?.timeSlots?.length) {
+      this.currentTimeTop = -1;
+      return;
+    }
+
+    const today = this.stateService.formatDate(new Date());
+    if (!this.visibleDates.includes(today)) {
+      this.currentTimeTop = -1;
+      return;
+    }
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const firstSlotMinutes = this.timeToMinutes(this.operatorGridData.timeSlots[0].time);
+    const lastSlot = this.operatorGridData.timeSlots[this.operatorGridData.timeSlots.length - 1];
+    const slotDuration = this.operatorGridData.timeSlots.length > 1
+      ? this.timeToMinutes(this.operatorGridData.timeSlots[1].time) - firstSlotMinutes
+      : 45;
+    const lastSlotEndMinutes = this.timeToMinutes(lastSlot.time) + slotDuration;
+
+    if (currentMinutes < firstSlotMinutes || currentMinutes > lastSlotEndMinutes) {
+      this.currentTimeTop = -1;
+      return;
+    }
+
+    const pxPerMinute = this.operatorGridData.slotHeightPx / slotDuration;
+    // +44px per l'header della griglia (approssimazione)
+    this.currentTimeTop = (currentMinutes - firstSlotMinutes) * pxPerMinute + 44;
+  }
+
+  private timeToMinutes(time: string): number {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
   }
 }
