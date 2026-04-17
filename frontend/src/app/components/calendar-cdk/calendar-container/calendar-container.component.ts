@@ -535,6 +535,14 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   private async doLoadAppointmentsForCurrentView(): Promise<void> {
+    // Usa il metodo bulk ottimizzato (3 query invece di N*2+N)
+    return this.doLoadAppointmentsForCurrentViewBulk();
+  }
+
+  /**
+   * @deprecated Metodo originale per-operatore. Mantenuto per rollback.
+   */
+  private async doLoadAppointmentsForCurrentViewLegacy(): Promise<void> {
     // Salva il viewMode corrente per verificare che non sia cambiato durante il caricamento
     const currentViewMode = this.config?.viewMode;
 
@@ -674,12 +682,153 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
   }
 
   // ==========================================
+  // BULK LOAD - Caricamento ottimizzato operatori (3 query invece di N*2+N)
+  // ==========================================
+
+  /**
+   * Caricamento bulk per vista operatori: 3 query parallele
+   * invece di N query per appuntamenti + N per disponibilità + N per trattamenti.
+   */
+  private async doLoadAppointmentsForCurrentViewBulk(): Promise<void> {
+    const currentViewMode = this.config?.viewMode;
+    if (currentViewMode === 'gyms') {
+      await this.loadGymDataForCurrentView();
+      return;
+    }
+
+    const operatorsWithId = this.selectedOperators.filter(u => u.operatorId);
+    if (operatorsWithId.length === 0) {
+      this.isLoading = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    try {
+      const startDate = this.config.viewType === 'daily'
+        ? this.formatDate(this.currentDate)
+        : this.visibleDates[0];
+      const endDate = this.config.viewType === 'daily'
+        ? this.formatDate(this.currentDate)
+        : this.visibleDates[this.visibleDates.length - 1];
+
+      const operatorIds = operatorsWithId.map(u => u.operatorId!);
+      const operatorsWithTemplate = operatorsWithId.filter(u => u.hasTemplate).map(u => u.operatorId!);
+
+      // 3 query parallele (invece di N*2 + N)
+      const [allAppointments, availabilityResults] = await Promise.all([
+        // 1. Appuntamenti per tutti gli operatori selezionati (1 query)
+        firstValueFrom(this.availabilityAppointmentService.getAppointments(startDate, endDate, operatorIds)),
+        // 2. Disponibilità per operatori con template (1 query)
+        operatorsWithTemplate.length > 0
+          ? firstValueFrom(this.operatorService.getOperatorsAvailability(operatorsWithTemplate, startDate, endDate))
+          : Promise.resolve([]),
+      ]);
+
+      if (this.config?.viewMode !== currentViewMode) return;
+
+      // Mappa appuntamenti per operatorId → date → appointments
+      const appointmentsMap = new Map<string, Map<string, Appointment[]>>();
+      const appointments = allAppointments.map(mapAvailabilityAppointmentToAppointment);
+
+      for (const apt of appointments) {
+        if (!appointmentsMap.has(apt.operatorId)) {
+          appointmentsMap.set(apt.operatorId, new Map());
+        }
+        const dateMap = appointmentsMap.get(apt.operatorId)!;
+        if (!dateMap.has(apt.date)) dateMap.set(apt.date, []);
+        dateMap.get(apt.date)!.push(apt);
+      }
+
+      // Mappa disponibilità per operatorId → date → availabilities
+      const availabilitiesMap = new Map<string, Map<string, Availability[]>>();
+      let slotCounter = 0;
+      for (const opResult of (availabilityResults as { operatorId: string; availability: any[] }[])) {
+        if (!availabilitiesMap.has(opResult.operatorId)) {
+          availabilitiesMap.set(opResult.operatorId, new Map());
+        }
+        const opDateMap = availabilitiesMap.get(opResult.operatorId)!;
+        const user = operatorsWithId.find(u => u.operatorId === opResult.operatorId);
+
+        for (const daily of opResult.availability) {
+          if (daily.hasAvailability && daily.slots) {
+            const avails: Availability[] = daily.slots
+              .filter((slot: any) => slot.isAvailable)
+              .map((slot: any) => ({
+                id: `${user?.id || opResult.operatorId}-slot-${++slotCounter}`,
+                operatorId: opResult.operatorId,
+                date: daily.date,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                available: true,
+              }));
+            opDateMap.set(daily.date, avails);
+          }
+        }
+      }
+
+      this.stateService.setAppointments(appointmentsMap);
+      this.stateService.setAvailabilities(availabilitiesMap);
+      this.isLoading = false;
+      this.cdr.markForCheck();
+
+      // 3. Trattamenti in corso (1 query bulk)
+      this.loadOngoingTreatmentsBulk();
+    } catch (error) {
+      console.error('Error loading appointments (bulk):', error);
+      this.isLoading = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  // ==========================================
   // TREATMENTS IN PROGRESS - Per sidebar calendario
   // ==========================================
 
   /**
+   * Carica i trattamenti in corso per tutti gli operatori (bulk - 1 query).
+   */
+  private loadOngoingTreatmentsBulk(): void {
+    if (this.config?.viewMode !== 'operators') {
+      this.ongoingTreatments = [];
+      return;
+    }
+
+    const operatorsWithId = this.allUsers.filter(u => u.operatorId);
+    if (operatorsWithId.length === 0) {
+      this.ongoingTreatments = [];
+      this.loadingTreatments = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.loadingTreatments = true;
+    this.cdr.markForCheck();
+
+    const date = this.formatDate(this.currentDate);
+    const operatorIds = operatorsWithId.map(op => op.operatorId!);
+
+    this.treatmentService.getTreatmentsByOperators(operatorIds, date)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (treatments) => {
+          this.ngZone.run(() => {
+            this.ongoingTreatments = [...treatments];
+            this.loadingTreatments = false;
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('Errore caricamento trattamenti in corso:', err);
+          this.loadingTreatments = false;
+          this.ongoingTreatments = [];
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  /**
    * Carica i trattamenti in corso per tutti gli operatori.
-   * Filtra per data corrente e stato 'in_progress'.
+   * @deprecated Usare loadOngoingTreatmentsBulk per performance migliori
    */
   private loadOngoingTreatments(): void {
     // Solo per vista operatori

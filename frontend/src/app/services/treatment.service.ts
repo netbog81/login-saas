@@ -22,6 +22,7 @@ import {
   GET_TREATMENTS_NOT_INVOICED_TO_PATIENT,
   GET_TREATMENTS_NOT_INVOICED_BY_OPERATOR,
   GET_TREATMENTS_BY_APPOINTMENTS,
+  GET_TREATMENTS_BY_OPERATORS,
 } from '../graphql/operations/treatment.queries';
 
 // Mutations
@@ -96,6 +97,18 @@ export class TreatmentService extends BaseGraphQLService {
       GET_TREATMENTS_BY_OPERATOR,
       { operatorId, date }
     ).pipe(map((result) => result.treatmentsByOperator));
+  }
+
+  /**
+   * Bulk: Trattamenti attivi per più operatori in una data.
+   */
+  getTreatmentsByOperators(operatorIds: string[], date?: string): Observable<Treatment[]> {
+    if (operatorIds.length === 0) return new Observable(s => { s.next([]); s.complete(); });
+    return this.query<{ treatmentsByOperators: Treatment[] }>(
+      GET_TREATMENTS_BY_OPERATORS,
+      { operatorIds, date },
+      'no-cache'
+    ).pipe(map((result) => result.treatmentsByOperators || []));
   }
 
   /**

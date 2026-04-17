@@ -110,6 +110,215 @@ export class AvailabilityService {
     return result;
   }
 
+  /**
+   * Bulk: Ottiene la disponibilità per più operatori in un range di date.
+   * Ritorna un array flat di DailyAvailability con operatorId aggiunto.
+   */
+  async getOperatorsAvailability(
+    operatorIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<{ operatorId: string; availability: DailyAvailability[] }[]> {
+    if (operatorIds.length === 0) return [];
+
+    // Aggiorna cache per tutti gli operatori in parallelo
+    await Promise.all(operatorIds.map(id => this.ensureCacheUpdated(id, startDate, endDate)));
+
+    // Singola query per tutti gli operatori
+    const slots = await this.cacheRepo.find({
+      where: {
+        operatorId: In(operatorIds),
+        availableDate: Between(new Date(startDate), new Date(endDate)),
+      },
+      order: { operatorId: 'ASC', availableDate: 'ASC', startTime: 'ASC' },
+    });
+
+    // Raggruppa per operatorId → date → slots
+    const byOperator = new Map<string, Map<string, AvailabilitySlot[]>>();
+    for (const slot of slots) {
+      const dateStr = slot.availableDate instanceof Date
+        ? slot.availableDate.toISOString().split('T')[0]
+        : String(slot.availableDate).split('T')[0];
+
+      if (!byOperator.has(slot.operatorId)) byOperator.set(slot.operatorId, new Map());
+      const dateMap = byOperator.get(slot.operatorId)!;
+      if (!dateMap.has(dateStr)) dateMap.set(dateStr, []);
+      dateMap.get(dateStr)!.push({
+        operatorId: slot.operatorId,
+        date: dateStr,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        totalCapacity: slot.totalCapacity,
+        bookedCapacity: slot.bookedCapacity,
+        availableCapacity: slot.availableCapacity,
+        isAvailable: slot.isAvailable,
+        source: slot.source,
+        sourceId: slot.sourceId,
+      });
+    }
+
+    return operatorIds.map(opId => ({
+      operatorId: opId,
+      availability: Array.from(byOperator.get(opId)?.entries() || []).map(([date, daySlots]) => ({
+        date,
+        slots: daySlots,
+        hasAvailability: daySlots.some(s => s.isAvailable),
+      })),
+    }));
+  }
+
+  /**
+   * Bulk diretto: calcola la disponibilità per più operatori senza usare la cache.
+   * Usa ~5 query aggregate per tutti gli operatori, calcolando tutto in memoria.
+   */
+  async getOperatorsAvailabilityDirect(
+    operatorIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<{ operatorId: string; availability: DailyAvailability[] }[]> {
+    if (operatorIds.length === 0) return [];
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // 1. Template assignments per tutti gli operatori (1 query)
+    const allAssignments = await this.assignmentRepo.find({
+      where: { operatorId: In(operatorIds), isCurrent: true },
+      relations: ['patternGroup', 'patternGroup.patterns'],
+    });
+
+    // 2. Exceptions per tutti gli operatori nel range (1 query)
+    const allExceptions = await this.exceptionRepo.find({
+      where: { operatorId: In(operatorIds), exceptionDate: Between(start, end) },
+    });
+
+    // 3. Operatori per capacity info (1 query)
+    const operators = await this.operatorRepo.find({ where: { id: In(operatorIds) } });
+    const operatorMap = new Map(operators.map(o => [o.id, o]));
+
+    // 4. Conteggi prenotazioni per tutti gli operatori nel range (1 query aggregata)
+    const bookingCounts = await this.appointmentRepo
+      .createQueryBuilder('apt')
+      .select([
+        'apt."operatorId" as "operatorId"',
+        'apt."appointmentDate" as "appointmentDate"',
+        'apt."startTime" as "startTime"',
+        'apt."endTime" as "endTime"',
+        'COUNT(*)::int as count',
+      ])
+      .where('apt."operatorId" IN (:...operatorIds)', { operatorIds })
+      .andWhere('apt."appointmentDate" BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .andWhere('apt."bookingStatus" NOT IN (:...excluded)', {
+        excluded: ['cancelled', 'cancelled_early', 'cancelled_late', 'no_show'],
+      })
+      .groupBy('apt."operatorId", apt."appointmentDate", apt."startTime", apt."endTime"')
+      .getRawMany();
+
+    // Indicizza: "operatorId|date|startTime" → count
+    const bookingMap = new Map<string, number>();
+    for (const row of bookingCounts) {
+      const dateStr = row.appointmentDate instanceof Date
+        ? row.appointmentDate.toISOString().split('T')[0]
+        : String(row.appointmentDate).split('T')[0];
+      bookingMap.set(`${row.operatorId}|${dateStr}|${row.startTime}`, row.count);
+    }
+
+    // Indicizza assignments per operatorId
+    const assignmentsByOp = new Map<string, typeof allAssignments>();
+    for (const a of allAssignments) {
+      if (!assignmentsByOp.has(a.operatorId)) assignmentsByOp.set(a.operatorId, []);
+      assignmentsByOp.get(a.operatorId)!.push(a);
+    }
+
+    // Indicizza exceptions per "operatorId|date"
+    const exceptionsByOpDate = new Map<string, AvailabilityException>();
+    for (const ex of allExceptions) {
+      const dateStr = ex.exceptionDate instanceof Date
+        ? ex.exceptionDate.toISOString().split('T')[0]
+        : String(ex.exceptionDate).split('T')[0];
+      exceptionsByOpDate.set(`${ex.operatorId}|${dateStr}`, ex);
+    }
+
+    // Genera date nel range
+    const dates: Date[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Calcola disponibilità per ogni operatore in memoria
+    return operatorIds.map(opId => {
+      const operator = operatorMap.get(opId);
+      const maxCapacity = operator?.maxConcurrentAppointments || 1;
+      const assignments = assignmentsByOp.get(opId) || [];
+      const dailyResults: DailyAvailability[] = [];
+
+      for (const date of dates) {
+        const dateStr = date.toISOString().split('T')[0];
+        const exception = exceptionsByOpDate.get(`${opId}|${dateStr}`);
+        const slots: AvailabilitySlot[] = [];
+
+        if (exception) {
+          // Eccezione: orario modificato o non disponibile
+          if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
+            const booked = bookingMap.get(`${opId}|${dateStr}|${exception.startTime}`) || 0;
+            slots.push({
+              operatorId: opId,
+              date: dateStr,
+              startTime: exception.startTime,
+              endTime: exception.endTime,
+              totalCapacity: maxCapacity,
+              bookedCapacity: booked,
+              availableCapacity: Math.max(0, maxCapacity - booked),
+              isAvailable: booked < maxCapacity,
+              source: 'exception',
+              sourceId: exception.id,
+            });
+          }
+          // Se unavailable, nessuno slot → giorno vuoto
+        } else {
+          // Applica template assignments
+          for (const assignment of assignments) {
+            if (date >= assignment.validFrom && (!assignment.validUntil || date <= assignment.validUntil)) {
+              const pg = assignment.patternGroup;
+              if (!pg?.patterns) continue;
+
+              const patternDay = this.getPatternDay(date, assignment.patternStartDate, pg.patternDuration);
+              for (const pattern of pg.patterns) {
+                if (pattern.dayInPattern === patternDay) {
+                  const booked = bookingMap.get(`${opId}|${dateStr}|${pattern.startTime}`) || 0;
+                  slots.push({
+                    operatorId: opId,
+                    date: dateStr,
+                    startTime: pattern.startTime,
+                    endTime: pattern.endTime,
+                    totalCapacity: maxCapacity,
+                    bookedCapacity: booked,
+                    availableCapacity: Math.max(0, maxCapacity - booked),
+                    isAvailable: booked < maxCapacity,
+                    source: 'pattern',
+                    sourceId: pattern.id,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        if (slots.length > 0) {
+          dailyResults.push({
+            date: dateStr,
+            slots,
+            hasAvailability: slots.some(s => s.isAvailable),
+          });
+        }
+      }
+
+      return { operatorId: opId, availability: dailyResults };
+    });
+  }
+
   async getAvailableSlots(
     date: string,
     operatorId?: string,
@@ -602,9 +811,21 @@ export class AvailabilityService {
   }
 
   private async ensureCacheUpdated(operatorId: string, startDate: string, endDate: string): Promise<void> {
-    // Always rebuild cache for the requested range
-    // rebuildCache already clears existing entries for the range before rebuilding
-    // This ensures we always have fresh, complete data
+    // Controlla se la cache esiste già per questo range
+    const existingCount = await this.cacheRepo.count({
+      where: {
+        operatorId,
+        availableDate: Between(new Date(startDate), new Date(endDate)),
+      },
+    });
+
+    if (existingCount > 0) {
+      // Cache presente: aggiorna solo i bookedCapacity (veloce)
+      await this.updateBookedCapacity(operatorId, new Date(startDate), new Date(endDate));
+      return;
+    }
+
+    // Cache assente: rebuild completo
     await this.rebuildCache(operatorId, startDate, endDate);
   }
 

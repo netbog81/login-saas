@@ -44,3 +44,12 @@ export class DailyAvailability {
   @Field()
   hasAvailability: boolean;
 }
+
+@ObjectType()
+export class OperatorAvailabilityResult {
+  @Field(() => ID)
+  operatorId: string;
+
+  @Field(() => [DailyAvailability])
+  availability: DailyAvailability[];
+}

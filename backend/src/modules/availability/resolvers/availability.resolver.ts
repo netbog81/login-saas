@@ -11,7 +11,7 @@ import { GroupException } from '../entities/group-exception.entity';
 import { CreateAvailabilityTemplateInput } from '../dto/create-availability-template.input';
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
-import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
+import { DailyAvailability, AvailabilitySlot, OperatorAvailabilityResult } from '../dto/availability-slot.output';
 import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherapist-availability.input';
 import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
 import { GymSlotOutput } from '../dto/gym-slot.output';
@@ -52,6 +52,19 @@ export class AvailabilityResolver {
     @Args('endDate') endDate: string
   ): Promise<DailyAvailability[]> {
     return this.availabilityService.getOperatorAvailability(operatorId, startDate, endDate);
+  }
+
+  /**
+   * Bulk: Ottiene la disponibilità per più operatori in un range di date.
+   */
+  @Query(() => [OperatorAvailabilityResult], { name: 'operatorsAvailability' })
+  async getOperatorsAvailability(
+    @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
+    @Args('startDate') startDate: string,
+    @Args('endDate') endDate: string,
+  ): Promise<OperatorAvailabilityResult[]> {
+    // Usa il metodo diretto (~4 query totali) invece di quello con cache (~34 query × N operatori)
+    return this.availabilityService.getOperatorsAvailabilityDirect(operatorIds, startDate, endDate);
   }
 
   @Query(() => [AvailabilitySlot], { name: 'availableSlots' })

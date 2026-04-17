@@ -159,3 +159,30 @@ export const GET_OPERATOR_AVAILABILITY = gql`
     }
   }
 `;
+
+/**
+ * Query bulk: Disponibilità per più operatori in un range di date.
+ */
+export const GET_OPERATORS_AVAILABILITY = gql`
+  query GetOperatorsAvailability($operatorIds: [ID!]!, $startDate: String!, $endDate: String!) {
+    operatorsAvailability(operatorIds: $operatorIds, startDate: $startDate, endDate: $endDate) {
+      operatorId
+      availability {
+        date
+        hasAvailability
+        slots {
+          operatorId
+          date
+          startTime
+          endTime
+          totalCapacity
+          bookedCapacity
+          availableCapacity
+          isAvailable
+          source
+          sourceId
+        }
+      }
+    }
+  }
+`;

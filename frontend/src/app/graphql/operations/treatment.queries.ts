@@ -150,6 +150,18 @@ export const GET_TREATMENTS_BY_OPERATOR = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+/**
+ * Query bulk: Trattamenti attivi per più operatori in una data.
+ */
+export const GET_TREATMENTS_BY_OPERATORS = gql`
+  query GetTreatmentsByOperators($operatorIds: [ID!]!, $date: String) {
+    treatmentsByOperators(operatorIds: $operatorIds, date: $date) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
 export const GET_TREATMENTS_PENDING_CLOSURE = gql`
   query GetTreatmentsPendingClosure {
     treatmentsPendingClosure {

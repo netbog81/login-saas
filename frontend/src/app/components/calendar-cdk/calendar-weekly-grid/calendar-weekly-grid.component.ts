@@ -88,6 +88,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
   private cellAvailabilityCache: Map<string, boolean> = new Map();
   private cellOccupiedCache: Map<string, boolean> = new Map();
   private userColorCache: Map<string, string> = new Map();
+  private unavailablePercentsCache: Map<string, { top: number; bottom: number }> = new Map();
 
   ngOnInit(): void {
     this.buildDayColumns();
@@ -118,6 +119,7 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
     // Invalida cache quando cambiano i dati rilevanti
     if (changes['availabilities'] || changes['dates'] || changes['users']) {
       this.cellAvailabilityCache.clear();
+      this.unavailablePercentsCache.clear();
     }
     if (changes['appointments'] || changes['dates']) {
       this.cellOccupiedCache.clear();
@@ -492,6 +494,16 @@ export class CalendarWeeklyGridComponent implements OnInit, OnChanges, AfterView
    * Usato quando la disponibilità dell'operatore non coincide con i bordi della cella.
    */
   getUnavailablePercents(operatorId: string, date: string, slotTime: string): { top: number; bottom: number } {
+    const cacheKey = `${operatorId}-${date}-${slotTime}`;
+    const cached = this.unavailablePercentsCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const result = this.computeUnavailablePercents(operatorId, date, slotTime);
+    this.unavailablePercentsCache.set(cacheKey, result);
+    return result;
+  }
+
+  private computeUnavailablePercents(operatorId: string, date: string, slotTime: string): { top: number; bottom: number } {
     // Trova l'utente per verificare se ha template
     const user = this.users.find(u => u.operatorId === operatorId);
 

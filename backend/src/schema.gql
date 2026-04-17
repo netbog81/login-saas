@@ -1404,6 +1404,11 @@ type OperatorAbsenceType {
   updatedAt: DateTime!
 }
 
+type OperatorAvailabilityResult {
+  availability: [DailyAvailability!]!
+  operatorId: ID!
+}
+
 type OperatorCategory {
   createdAt: DateTime!
   description: String
@@ -1908,6 +1913,7 @@ type Query {
   operatorPatternsOnDate(date: String!, operatorId: ID!): [OperatorSlotOnDate!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
   operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
+  operatorsAvailability(endDate: String!, operatorIds: [ID!]!, startDate: String!): [OperatorAvailabilityResult!]!
   pathDocument(id: ID!): PathDocument
 
   """Get a single patient by ID"""
@@ -1984,6 +1990,7 @@ type Query {
   treatmentByAppointment(appointmentId: ID!): Treatment
   treatmentsByAppointments(appointmentIds: [ID!]!): [Treatment!]!
   treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
+  treatmentsByOperators(date: String, operatorIds: [ID!]!): [Treatment!]!
   treatmentsByPatient(limit: Int, offset: Int, patientId: ID!): [Treatment!]!
   treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!

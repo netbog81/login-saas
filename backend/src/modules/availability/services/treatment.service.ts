@@ -735,6 +735,31 @@ export class TreatmentService {
   }
 
   /**
+   * Bulk: Trattamenti attivi per più operatori in una data (singola query).
+   */
+  async getActiveByOperators(operatorIds: string[], date?: string): Promise<Treatment[]> {
+    if (operatorIds.length === 0) return [];
+    const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
+      .leftJoinAndSelect('treatment.appointment', 'appointment')
+      .leftJoinAndSelect('treatment.operator', 'operator')
+      .leftJoinAndSelect('treatment.patient', 'patient')
+      .leftJoinAndSelect('treatment.service', 'service')
+      .leftJoinAndSelect('treatment.instruments', 'instruments')
+      .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
+      .leftJoinAndSelect('treatment.treatmentServices', 'treatmentServices')
+      .leftJoinAndSelect('treatmentServices.service', 'treatmentServiceService')
+      .where('treatment.operatorId IN (:...operatorIds)', { operatorIds });
+
+    if (date) {
+      queryBuilder.andWhere('DATE(treatment.startedAt) = :date', { date });
+    }
+
+    return queryBuilder
+      .orderBy('treatment.startedAt', 'DESC')
+      .getMany();
+  }
+
+  /**
    * Trattamenti in attesa di chiusura da parte della segreteria
    */
   async getPendingForSecretary(): Promise<Treatment[]> {

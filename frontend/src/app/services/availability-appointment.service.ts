@@ -134,7 +134,8 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
   ): Observable<AvailabilityAppointment[]> {
     return this.query<{ availabilityAppointments: AvailabilityAppointment[] }>(
       GET_AVAILABILITY_APPOINTMENTS,
-      { startDate, endDate, operatorIds }
+      { startDate, endDate, operatorIds },
+      'no-cache'
     ).pipe(map((result) => result.availabilityAppointments || []));
   }
 

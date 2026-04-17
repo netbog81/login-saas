@@ -79,6 +79,17 @@ export class TreatmentResolver {
   }
 
   /**
+   * Query bulk: Trattamenti attivi per più operatori in una data.
+   */
+  @Query(() => [Treatment], { name: 'treatmentsByOperators' })
+  async getTreatmentsByOperators(
+    @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
+    @Args('date', { nullable: true }) date?: string,
+  ): Promise<Treatment[]> {
+    return this.treatmentService.getActiveByOperators(operatorIds, date);
+  }
+
+  /**
    * Query: Trattamenti in attesa di chiusura da parte della segreteria
    */
   @Query(() => [Treatment], { name: 'treatmentsPendingClosure' })

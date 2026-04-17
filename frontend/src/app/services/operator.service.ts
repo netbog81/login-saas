@@ -13,6 +13,7 @@ import {
   GET_OPERATORS,
   GET_OPERATOR,
   GET_OPERATOR_AVAILABILITY,
+  GET_OPERATORS_AVAILABILITY,
   CHECK_DUPLICATE_OPERATOR,
   MY_OPERATOR,
 } from '../graphql/operations/operator.queries';
@@ -122,6 +123,24 @@ export class OperatorService extends BaseGraphQLService {
         }
         return result.operatorAvailability ?? [];
       })
+    );
+  }
+
+  /**
+   * Bulk: Ottiene la disponibilità per più operatori in un range di date.
+   */
+  getOperatorsAvailability(
+    operatorIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Observable<{ operatorId: string; availability: DailyAvailability[] }[]> {
+    if (operatorIds.length === 0) return new Observable(s => { s.next([]); s.complete(); });
+    return this.query<{ operatorsAvailability: { operatorId: string; availability: DailyAvailability[] }[] }>(
+      GET_OPERATORS_AVAILABILITY,
+      { operatorIds, startDate, endDate },
+      'no-cache'
+    ).pipe(
+      map((result) => result?.operatorsAvailability ?? [])
     );
   }
 
