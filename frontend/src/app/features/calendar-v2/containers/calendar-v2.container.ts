@@ -32,6 +32,16 @@ import { CalendarV2HeaderComponent } from '../components/calendar-header/calenda
 import { CalendarV2ToolbarComponent } from '../components/calendar-toolbar/calendar-v2-toolbar.component';
 import { CalendarV2SidebarComponent } from '../components/calendar-sidebar/calendar-v2-sidebar.component';
 import { OperatorGridComponent } from '../components/operator-grid/operator-grid.component';
+import { GymGridComponent, GymRoom } from '../components/gym-grid/gym-grid.component';
+
+// Dialog Material esistenti (riuso dal v1)
+import { MatDialog } from '@angular/material/dialog';
+import { EventMatDialogComponent, EventMatDialogData, EventMatDialogResult } from '../../../shared/components/event-mat-dialog';
+import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogData, GymAppointmentMatDialogResult } from '../../../shared/components/gym-appointment-mat-dialog';
+import { Patient } from '../../../models/patient.model';
+import { User } from '../../../models/user.model';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { SseService } from '../../../services/sse.service';
 
 // Services
 import { CalendarV2StateService } from '../services/calendar-v2-state.service';
@@ -41,7 +51,7 @@ import { OperatorService } from '../../../services/operator.service';
 import { SettingsService } from '../../../services/settings.service';
 
 // Models
-import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, EventClickEvent, DragMoveEvent } from '../models/calendar-v2.model';
+import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, EventClickEvent, DragMoveEvent, AvailableSlotPosition, SearchFilters } from '../models/calendar-v2.model';
 import { Appointment } from '../../../models/appointment.model';
 import { Treatment } from '../../../models/treatment.model';
 
@@ -59,6 +69,7 @@ import { Treatment } from '../../../models/treatment.model';
     CalendarV2ToolbarComponent,
     CalendarV2SidebarComponent,
     OperatorGridComponent,
+    GymGridComponent,
   ],
   template: `
     <div class="calendar-v2">
@@ -102,11 +113,15 @@ import { Treatment } from '../../../models/treatment.model';
         @if (config.viewMode === 'operators') {
           <app-calendar-v2-sidebar
             [operators]="stateService.operators"
+            [treatments]="treatments"
+            [instrumentCategories]="instrumentCategories"
             [collapsed]="sidebarCollapsed"
             (toggleOperator)="stateService.toggleOperator($event)"
             (selectAll)="stateService.selectAllOperators()"
             (deselectAll)="stateService.deselectAllOperators()"
-            (toggleCollapsed)="sidebarCollapsed = !sidebarCollapsed">
+            (toggleCollapsed)="sidebarCollapsed = !sidebarCollapsed"
+            (slotSearchToggle)="onSlotSearchToggle($event)"
+            (searchFiltersChange)="onSearchFiltersChange($event)">
           </app-calendar-v2-sidebar>
         }
 
@@ -119,7 +134,9 @@ import { Treatment } from '../../../models/treatment.model';
               [showDateInHeader]="config.viewType === 'weekly'"
               [currentTimeTop]="currentTimeTop"
               [compactMode]="config.compactMode"
+              [availableSlots]="availableSlots"
               (cellDblClick)="onCellDblClick($event)"
+              (availableSlotDblClick)="onAvailableSlotDblClick($event)"
               (eventClick)="onEventClick($event)"
               (eventDblClick)="onEventDblClick($event)"
               (dragMove)="onDragMove($event)">
@@ -127,10 +144,20 @@ import { Treatment } from '../../../models/treatment.model';
           }
 
           @if (config.viewMode === 'gyms') {
-            <div class="placeholder">
-              <mat-icon>fitness_center</mat-icon>
-              <p>Vista palestra - da implementare</p>
-            </div>
+            <app-gym-grid-v2
+              [timeSlots]="gymTimeSlots"
+              [gymRooms]="gymRooms"
+              [dates]="visibleDates"
+              [allSlotsInfo]="gymSlotsData"
+              [allAppointments]="gymAppointmentsData"
+              [slotHeight]="60 * config.zoom"
+              [columnWidth]="config.compactMode ? 0 : 200"
+              [compactMode]="config.compactMode"
+              [isWeekly]="config.viewType === 'weekly'"
+              (slotClick)="onGymSlotClick($event)"
+              (slotDblClick)="onGymSlotDblClick($event)"
+              (appointmentClick)="onGymAppointmentClick($event)">
+            </app-gym-grid-v2>
           }
         </div>
       </div>
@@ -191,6 +218,9 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   private gridService = inject(CalendarV2GridService);
   private operatorService = inject(OperatorService);
   private settingsService = inject(SettingsService);
+  private dialog = inject(MatDialog);
+  private appointmentService = inject(AvailabilityAppointmentService);
+  private sseService = inject(SseService);
 
   // State
   loading = false;
@@ -204,10 +234,31 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   currentTimeTop = -1;
   private currentTimeInterval: any;
 
+  // Search slot state
+  slotSearchEnabled = false;
+  searchFilters: SearchFilters = {
+    duration: 45, withInstrument: false, instrumentCount: 1,
+    instrumentPosition: 'first', instrumentOrderMatters: false,
+    instrumentCategoryId: null, instrument2CategoryId: null,
+  };
+  availableSlots: AvailableSlotPosition[] = [];
+  instrumentCategories: any[] = [];
+
+  // Shared data for dialogs
+  patients: Patient[] = [];
+  allUsers: User[] = [];
+
+  // Gym state
+  gymRooms: GymRoom[] = [];
+  gymTimeSlots: any[] = [];
+  gymSlotsData: Map<string, Map<string, any[]>> = new Map();  // date → roomId → slots
+  gymAppointmentsData: Map<string, Map<string, any[]>> = new Map();  // date → roomId → apts
+
   ngOnInit(): void {
     this.loadInitialData();
     this.subscribeToState();
     this.startCurrentTimeUpdates();
+    this.subscribeToSse();
   }
 
   ngOnDestroy(): void {
@@ -253,6 +304,23 @@ export class CalendarV2Container implements OnInit, OnDestroy {
       }));
 
       this.stateService.setOperators(calendarOperators);
+
+      // Mappa operatori come User per i dialog
+      this.allUsers = operators.map(op => ({
+        id: op.id,
+        name: `${op.name}${op.surname ? ' ' + op.surname : ''}`,
+        type: 'operator',
+        color: op.color || '#667eea',
+        active: true,
+        operatorId: op.id,
+        hasTemplate: true,
+        macroCategory: op.macroCategory,
+      }));
+
+      // Carica pazienti (in background, non blocca il rendering)
+      this.dataService.loadPatients().pipe(takeUntil(this.destroy$)).subscribe({
+        next: (patients) => { this.patients = patients; },
+      });
     } catch (error) {
       console.error('[CalendarV2] Error loading initial data:', error);
     }
@@ -319,10 +387,8 @@ export class CalendarV2Container implements OnInit, OnDestroy {
             this.cdr.markForCheck();
           },
         });
-    } else {
-      // TODO: gym mode
-      this.loading = false;
-      this.cdr.markForCheck();
+    } else if (config.viewMode === 'gyms') {
+      this.loadGymData(dates);
     }
   }
 
@@ -385,26 +451,321 @@ export class CalendarV2Container implements OnInit, OnDestroy {
     return count;
   }
 
+  // ==================== SLOT SEARCH ====================
+
+  onSlotSearchToggle(enabled: boolean): void {
+    this.slotSearchEnabled = enabled;
+    if (enabled) {
+      this.searchAvailableSlots();
+    } else {
+      this.availableSlots = [];
+      this.cdr.markForCheck();
+    }
+  }
+
+  onSearchFiltersChange(filters: SearchFilters): void {
+    this.searchFilters = filters;
+    if (this.slotSearchEnabled) {
+      this.searchAvailableSlots();
+    }
+  }
+
+  onAvailableSlotDblClick(slot: AvailableSlotPosition): void {
+    // Pre-fill dialog con lo slot disponibile
+    const endMinutes = this.timeToMinutes(slot.startTime) + this.searchFilters.duration;
+    this.openEventDialog({
+      defaultDate: slot.date,
+      defaultStartTime: slot.startTime,
+      defaultEndTime: this.minutesToTime(endMinutes),
+      defaultOperatorId: slot.operatorId,
+      users: this.allUsers,
+      patients: this.patients,
+      searchFilters: {
+        duration: this.searchFilters.duration,
+        withInstrument: this.searchFilters.withInstrument,
+        instrumentCount: this.searchFilters.instrumentCount,
+        instrumentCategoryId: this.searchFilters.instrumentCategoryId,
+        instrument2CategoryId: this.searchFilters.instrument2CategoryId,
+        instrumentPosition: this.searchFilters.instrumentPosition,
+        instrumentOrderMatters: this.searchFilters.instrumentOrderMatters,
+        suggestedInstruments: slot.availableInstruments,
+      },
+    });
+  }
+
+  private searchAvailableSlots(): void {
+    if (!this.operatorGridData) return;
+
+    const operators = this.stateService.selectedOperators
+      .filter(o => o.hasTemplate && o.macroCategory === 'physiotherapist');
+
+    if (operators.length === 0) {
+      this.availableSlots = [];
+      this.cdr.markForCheck();
+      return;
+    }
+
+    const startDate = this.visibleDates[0];
+    const endDate = this.visibleDates[this.visibleDates.length - 1];
+
+    // Usa il service v1 per la ricerca slot
+    const searchPromises = operators.flatMap(op =>
+      this.visibleDates.map(async (date) => {
+        try {
+          const result = await this.operatorService.getPhysiotherapistAvailableSlots({
+            operatorId: op.operatorId,
+            date,
+            durationMinutes: this.searchFilters.duration,
+          }).toPromise();
+
+          return (result || [])
+            .filter((s: any) => s.available)
+            .map((s: any) => this.buildSlotPosition(op, date, s));
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    Promise.all(searchPromises).then(results => {
+      // Dedup per operatorId-date-startTime
+      const seen = new Set<string>();
+      this.availableSlots = results.flat().filter(s => {
+        const key = `${s.operatorId}-${s.date}-${s.startTime}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      this.cdr.markForCheck();
+    });
+  }
+
+  private buildSlotPosition(op: CalendarOperator, date: string, slot: any): AvailableSlotPosition {
+    const gridData = this.operatorGridData!;
+    const gridStartMinutes = gridData.timeSlots.length > 0
+      ? this.timeToMinutes(gridData.timeSlots[0].time) : 0;
+    const slotDuration = gridData.timeSlots.length > 1
+      ? this.timeToMinutes(gridData.timeSlots[1].time) - gridStartMinutes : 45;
+    const pxPerMinute = gridData.slotHeightPx / slotDuration;
+
+    const startMin = this.timeToMinutes(slot.startTime);
+    const endMin = this.timeToMinutes(slot.endTime);
+
+    return {
+      operatorId: op.operatorId,
+      date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      topPx: (startMin - gridStartMinutes) * pxPerMinute,
+      heightPx: (endMin - startMin) * pxPerMinute,
+      color: op.color,
+      availableInstruments: slot.suggestedInstruments?.map((i: any) => ({
+        id: i.instrumentId, name: i.categoryName, categoryId: i.instrumentCategoryId,
+      })),
+    };
+  }
+
+  private minutesToTime(minutes: number): string {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  // ==================== SSE ====================
+
+  private subscribeToSse(): void {
+    this.sseService.getAppointmentEvents()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (event: any) => {
+          if (event.type === 'appointment_status_changed') {
+            // Ricarica solo se in vista operatori (la palestra non reagisce a SSE)
+            if (this.config.viewMode === 'operators') {
+              this.reloadCurrentView();
+            }
+          }
+          if (['treatment_created', 'treatment_status_changed', 'treatment_deleted'].includes(event.type)) {
+            // Ricarica trattamenti
+            this.reloadCurrentView();
+          }
+        },
+      });
+  }
+
+  // ==================== GYM DATA ====================
+
+  private async loadGymData(dates: string[]): Promise<void> {
+    // Carica gym rooms se non ancora caricate
+    if (this.gymRooms.length === 0) {
+      try {
+        const rooms = await this.dataService.loadGymRooms().toPromise() || [];
+        this.gymRooms = rooms.map(r => ({
+          id: r.id,
+          name: r.name,
+          color: r.color || '#10b981',
+          maxCapacity: r.maxCapacity,
+        }));
+      } catch { this.gymRooms = []; }
+    }
+
+    if (this.gymRooms.length === 0) {
+      this.loading = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    // Calcola time slots per gym
+    this.gymTimeSlots = this.stateService.computeTimeSlotsPublic(this.config);
+
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+    const roomIds = this.gymRooms.map(r => r.id);
+
+    this.dataService.loadGymData(roomIds, startDate, endDate)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          // Raggruppa per date → roomId
+          this.gymSlotsData = new Map();
+          this.gymAppointmentsData = new Map();
+
+          for (const date of dates) {
+            const dateSlots = new Map<string, any[]>();
+            const dateApts = new Map<string, any[]>();
+
+            for (const roomId of roomIds) {
+              // Filtra slot per questa room e date
+              const allSlots = result.slotsInfo.get(date) || [];
+              dateSlots.set(roomId, allSlots.filter((s: any) => s.gymRoomId === roomId));
+
+              // Filtra appuntamenti per questa room e date
+              const allApts = result.appointments.get(date) || [];
+              dateApts.set(roomId, allApts.filter((a: any) => a.gymRoomId === roomId));
+            }
+
+            this.gymSlotsData.set(date, dateSlots);
+            this.gymAppointmentsData.set(date, dateApts);
+          }
+
+          this.loading = false;
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.loading = false;
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  getGymSlotsForDate(date: string): Map<string, any[]> {
+    return this.gymSlotsData.get(date) || new Map();
+  }
+
+  getGymAppointmentsForDate(date: string): Map<string, any[]> {
+    return this.gymAppointmentsData.get(date) || new Map();
+  }
+
+  // ==================== GYM INTERACTIONS ====================
+
+  onGymSlotClick(event: any): void {
+    // Single click: apri dialog creazione (per ora)
+    this.openGymAppointmentDialog(event);
+  }
+
+  onGymSlotDblClick(event: any): void {
+    this.openGymAppointmentDialog(event);
+  }
+
+  onGymAppointmentClick(event: any): void {
+    console.log('[CalendarV2] Gym appointment click:', event.appointment?.id);
+    // TODO: aprire dettagli/modifica appuntamento palestra
+  }
+
+  private openGymAppointmentDialog(event: any): void {
+    const dialogRef = this.dialog.open(GymAppointmentMatDialogComponent, {
+      width: '600px',
+      disableClose: false,
+      data: {
+        gymRoom: event.gymRoom,
+        date: event.date,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        slotInfo: event.slotInfo,
+        patients: this.patients,
+      } as GymAppointmentMatDialogData,
+    });
+
+    dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: GymAppointmentMatDialogResult | undefined) => {
+      if (result?.created) {
+        this.reloadCurrentView();
+      }
+    });
+  }
+
   // ==================== GRID INTERACTIONS ====================
 
   onCellDblClick(event: CellClickEvent): void {
-    console.log('[CalendarV2] Cell dblclick:', event);
-    // TODO: aprire dialog creazione appuntamento
+    this.openEventDialog({
+      defaultDate: event.date,
+      defaultStartTime: event.startTime,
+      defaultEndTime: event.endTime,
+      defaultOperatorId: event.operatorId,
+      users: this.allUsers,
+      patients: this.patients,
+    });
   }
 
   onEventClick(event: EventClickEvent): void {
-    console.log('[CalendarV2] Event click:', event.appointment.id);
-    // TODO: aprire summary popup
+    // Single click: apri dialog modifica (per ora)
+    this.openEventDialog({
+      appointment: event.appointment,
+      users: this.allUsers,
+      patients: this.patients,
+    });
   }
 
   onEventDblClick(event: EventClickEvent): void {
-    console.log('[CalendarV2] Event dblclick:', event.appointment.id);
-    // TODO: aprire dialog modifica appuntamento
+    this.openEventDialog({
+      appointment: event.appointment,
+      users: this.allUsers,
+      patients: this.patients,
+    });
   }
 
   onDragMove(event: DragMoveEvent): void {
-    console.log('[CalendarV2] Drag move:', event);
-    // TODO: chiamare mutation per spostare appuntamento
+    // Aggiorna appuntamento con nuovi orari
+    this.appointmentService.updateAppointment(event.appointmentId, {
+      startTime: event.newStartTime,
+      endTime: event.newEndTime,
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.reloadCurrentView(),
+      error: (err: any) => {
+        console.error('[CalendarV2] Error moving appointment:', err);
+        alert('Errore nello spostamento dell\'appuntamento');
+      },
+    });
+  }
+
+  // ==================== DIALOG APERTURA ====================
+
+  private openEventDialog(data: EventMatDialogData): void {
+    const dialogRef = this.dialog.open(EventMatDialogComponent, {
+      width: '700px',
+      maxWidth: '95vw',
+      disableClose: false,
+      data,
+    });
+
+    dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: EventMatDialogResult | undefined) => {
+      if (!result || result.action === 'cancel') return;
+      // Qualsiasi azione (save, delete, series-deleted) → ricarica
+      this.reloadCurrentView();
+    });
+  }
+
+  private reloadCurrentView(): void {
+    // Forza ricaricamento emettendo un cambio data (stessa data)
+    this.stateService.setCurrentDate(new Date(this.stateService.currentDate));
   }
 
   // ==================== CURRENT TIME INDICATOR ====================

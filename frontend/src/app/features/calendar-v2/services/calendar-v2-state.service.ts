@@ -112,6 +112,10 @@ export class CalendarV2StateService {
 
   // ==================== COMPUTATIONS ====================
 
+  computeTimeSlotsPublic(config: CalendarV2Config): TimeSlot[] {
+    return this.computeTimeSlots(config);
+  }
+
   private computeVisibleDates(config: CalendarV2Config, date: Date): string[] {
     if (config.viewType === 'daily') {
       return [this.formatDate(date)];

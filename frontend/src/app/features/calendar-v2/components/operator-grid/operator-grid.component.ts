@@ -35,8 +35,8 @@ import {
   CellClickEvent,
   EventClickEvent,
   DragMoveEvent,
+  AvailableSlotPosition,
 } from '../../models/calendar-v2.model';
-import { Appointment } from '../../../../models/appointment.model';
 
 @Component({
   selector: 'app-operator-grid',
@@ -138,6 +138,21 @@ import { Appointment } from '../../../../models/appointment.model';
                       }
                     </div>
                     <div class="resize-handle" (mousedown)="onResizeStart($event, event)"></div>
+                  </div>
+                }
+
+                <!-- Available slot overlays -->
+                @for (slot of getSlotsForColumn(col.operatorId, col.date); track slot.startTime) {
+                  <div class="available-slot-overlay"
+                       [style.top.px]="slot.topPx"
+                       [style.height.px]="slot.heightPx"
+                       [style.border-color]="slot.color"
+                       [class.compact-slot]="slot.heightPx < 50"
+                       (dblclick)="onAvailableSlotDblClick($event, slot)">
+                    <span class="slot-time">{{ slot.startTime }} - {{ slot.endTime }}</span>
+                    @if (slot.heightPx >= 50) {
+                      <span class="slot-label">Disponibile</span>
+                    }
                   </div>
                 }
               </div>
@@ -419,6 +434,45 @@ import { Appointment } from '../../../../models/appointment.model';
       background: #ef4444;
     }
 
+    /* ===== AVAILABLE SLOT OVERLAYS ===== */
+    .available-slot-overlay {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      z-index: 1;
+      border: 2px dashed;
+      border-radius: 4px;
+      background: rgba(34, 197, 94, 0.08);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: background 0.15s;
+
+      &:hover {
+        background: rgba(34, 197, 94, 0.18);
+      }
+    }
+
+    .available-slot-overlay .slot-time {
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: #15803d;
+    }
+
+    .available-slot-overlay .slot-label {
+      font-size: 0.55rem;
+      color: #22c55e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .available-slot-overlay.compact-slot {
+      justify-content: center;
+    }
+
     /* ===== CDK DRAG ===== */
     .cdk-drag-preview {
       opacity: 0.8;
@@ -440,12 +494,14 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
   @Input() showDateInHeader = false;
   @Input() currentTimeTop = -1;
   @Input() compactMode = false;  // true = colonne adattive, false = colonne fisse con scroll
+  @Input() availableSlots: AvailableSlotPosition[] = [];  // slot disponibili da ricerca
 
   @Output() cellClick = new EventEmitter<CellClickEvent>();
   @Output() cellDblClick = new EventEmitter<CellClickEvent>();
   @Output() eventClick = new EventEmitter<EventClickEvent>();
   @Output() eventDblClick = new EventEmitter<EventClickEvent>();
   @Output() dragMove = new EventEmitter<DragMoveEvent>();
+  @Output() availableSlotDblClick = new EventEmitter<AvailableSlotPosition>();
 
   private scrollListener?: () => void;
 
@@ -469,6 +525,15 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
 
   // Track-by per colonne: usa operatorId+date come chiave stabile
   trackColumn: TrackByFunction<OperatorColumnData> = (_, col) => `${col.operatorId}-${col.date}`;
+
+  getSlotsForColumn(operatorId: string, date: string): AvailableSlotPosition[] {
+    return this.availableSlots.filter(s => s.operatorId === operatorId && s.date === date);
+  }
+
+  onAvailableSlotDblClick(event: MouseEvent, slot: AvailableSlotPosition): void {
+    event.stopPropagation();
+    this.availableSlotDblClick.emit(slot);
+  }
 
   /** Filtra colonne per una data specifica (usato in compact mode) */
   getColumnsForDate(date: string): OperatorColumnData[] {

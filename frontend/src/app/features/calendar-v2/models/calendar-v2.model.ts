@@ -182,3 +182,26 @@ export interface EventClickEvent {
   appointment: Appointment;
   mouseEvent: MouseEvent;
 }
+
+// ==================== SEARCH ====================
+
+export interface SearchFilters {
+  duration: number;
+  withInstrument: boolean;
+  instrumentCount: 1 | 2;
+  instrumentPosition: 'first' | 'second';
+  instrumentOrderMatters: boolean;
+  instrumentCategoryId: string | null;
+  instrument2CategoryId: string | null;
+}
+
+export interface AvailableSlotPosition {
+  operatorId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  topPx: number;
+  heightPx: number;
+  color: string;
+  availableInstruments?: any[];
+}
