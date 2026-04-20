@@ -58,3 +58,27 @@ export const GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS = gql`
     }
   }
 `;
+
+/**
+ * Query batch: Slot disponibili per più fisioterapisti in più date.
+ * ~5 query DB totali.
+ */
+export const GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS_BATCH = gql`
+  query GetPhysiotherapistAvailableSlotsBatch(
+    $operatorIds: [ID!]!
+    $dates: [String!]!
+    $durationMinutes: Int!
+  ) {
+    physiotherapistAvailableSlotsBatch(
+      operatorIds: $operatorIds
+      dates: $dates
+      durationMinutes: $durationMinutes
+    ) {
+      operatorId
+      date
+      startTime
+      endTime
+      available
+    }
+  }
+`;

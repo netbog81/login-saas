@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
@@ -916,5 +916,175 @@ export class PhysiotherapistAvailabilityService {
     }
 
     return slots;
+  }
+
+  // ==================== BATCH VERSION ====================
+
+  /**
+   * Batch: Trova slot disponibili per più operatori in un range di date.
+   * ~6 query DB totali invece di ~86 per operatore per data.
+   * NON include check strumenti (per semplicità e performance).
+   */
+  async getAvailableSlotsBatch(
+    operatorIds: string[],
+    dates: string[],
+    durationMinutes: number,
+  ): Promise<{
+    operatorId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    available: boolean;
+  }[]> {
+    if (operatorIds.length === 0 || dates.length === 0) return [];
+
+    const startDate = new Date(dates[0]);
+    const endDate = new Date(dates[dates.length - 1]);
+
+    // Q1: Operatori
+    const operators = await this.operatorRepo.find({ where: { id: In(operatorIds) } });
+    const operatorMap = new Map(operators.map(o => [o.id, o]));
+
+    // Q2: Settings per step
+    const defaultDuration = await this.settingsService.getDefaultSlotDuration();
+
+    // Q3: Template assignments per tutti gli operatori
+    const allAssignments = await this.assignmentRepo
+      .createQueryBuilder('assignment')
+      .leftJoinAndSelect('assignment.patternGroup', 'group')
+      .leftJoinAndSelect('group.patterns', 'patterns')
+      .where('assignment.operatorId IN (:...operatorIds)', { operatorIds })
+      .andWhere('assignment.isCurrent = true')
+      .getMany();
+
+    // Q4: Eccezioni per tutti gli operatori nel range
+    const allExceptions = await this.exceptionRepo.find({
+      where: { operatorId: In(operatorIds), exceptionDate: Between(startDate, endDate) },
+    });
+
+    // Q5: Appuntamenti per tutti gli operatori nel range
+    const allAppointments = await this.appointmentRepo
+      .createQueryBuilder('apt')
+      .select(['apt.operatorId', 'apt.appointmentDate', 'apt.startTime', 'apt.endTime'])
+      .where('apt.operatorId IN (:...operatorIds)', { operatorIds })
+      .andWhere('apt.appointmentDate BETWEEN :start AND :end', { start: dates[0], end: dates[dates.length - 1] })
+      .andWhere('apt.bookingStatus NOT IN (:...excluded)', { excluded: ['cancelled', 'cancelled_early', 'cancelled_late', 'no_show'] })
+      .orderBy('apt.startTime', 'ASC')
+      .getMany();
+
+    // Indicizza per "operatorId|date"
+    const assignmentsByOp = new Map<string, typeof allAssignments>();
+    for (const a of allAssignments) {
+      if (!assignmentsByOp.has(a.operatorId)) assignmentsByOp.set(a.operatorId, []);
+      assignmentsByOp.get(a.operatorId)!.push(a);
+    }
+
+    const exceptionsByOpDate = new Map<string, typeof allExceptions[0]>();
+    for (const e of allExceptions) {
+      const dateStr = e.exceptionDate instanceof Date ? e.exceptionDate.toISOString().split('T')[0] : String(e.exceptionDate).split('T')[0];
+      exceptionsByOpDate.set(`${e.operatorId}|${dateStr}`, e);
+    }
+
+    const aptsByOpDate = new Map<string, { startTime: string; endTime: string }[]>();
+    for (const apt of allAppointments) {
+      const dateStr = apt.appointmentDate instanceof Date ? apt.appointmentDate.toISOString().split('T')[0] : String(apt.appointmentDate).split('T')[0];
+      const key = `${apt.operatorId}|${dateStr}`;
+      if (!aptsByOpDate.has(key)) aptsByOpDate.set(key, []);
+      aptsByOpDate.get(key)!.push({ startTime: apt.startTime, endTime: apt.endTime });
+    }
+
+    // Genera slot in memoria
+    const results: { operatorId: string; date: string; startTime: string; endTime: string; available: boolean }[] = [];
+
+    for (const opId of operatorIds) {
+      const operator = operatorMap.get(opId);
+      if (!operator) continue;
+
+      const assignments = assignmentsByOp.get(opId) || [];
+      if (assignments.length === 0) continue;
+
+      for (const dateStr of dates) {
+        const date = new Date(dateStr + 'T00:00:00');
+
+        // Check eccezione giornaliera
+        const exception = exceptionsByOpDate.get(`${opId}|${dateStr}`);
+        if (exception && exception.exceptionType === 'unavailable') continue;
+
+        // Se eccezione modificata, usa quell'orario
+        if (exception && exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
+          const appointments = aptsByOpDate.get(`${opId}|${dateStr}`) || [];
+          const freeBlocks = this.calculateFreeBlocks(
+            this.timeToMinutes(exception.startTime),
+            this.timeToMinutes(exception.endTime),
+            appointments,
+          );
+          for (const block of freeBlocks) {
+            let currentMinutes = block.startMinutes;
+            while (currentMinutes + durationMinutes <= block.endMinutes) {
+              results.push({
+                operatorId: opId, date: dateStr,
+                startTime: this.minutesToTime(currentMinutes),
+                endTime: this.minutesToTime(currentMinutes + durationMinutes),
+                available: true,
+              });
+              currentMinutes += durationMinutes;
+            }
+          }
+          continue;
+        }
+
+        // Pattern normali
+        for (const assignment of assignments) {
+          const pg = assignment.patternGroup;
+          if (!pg?.patterns) continue;
+
+          // Verifica validità assignment per questa data
+          if (date < assignment.validFrom) continue;
+          if (assignment.validUntil && date > assignment.validUntil) continue;
+
+          // Calcola dayInPattern
+          let dayInPattern: number;
+          if (pg.patternDuration === 7) {
+            const jsDow = date.getDay();
+            dayInPattern = jsDow === 0 ? 6 : jsDow - 1;
+          } else {
+            const patternStartRaw = new Date(assignment.patternStartDate);
+            const patternStart = new Date(patternStartRaw.getFullYear(), patternStartRaw.getMonth(), patternStartRaw.getDate());
+            const requestDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            const diffTime = requestDate.getTime() - patternStart.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            const startDow = patternStart.getDay();
+            const startPatternDay = startDow === 0 ? 6 : startDow - 1;
+            dayInPattern = (((diffDays + startPatternDay) % pg.patternDuration) + pg.patternDuration) % pg.patternDuration;
+          }
+
+          const todayPatterns = pg.patterns.filter(p => p.dayInPattern === dayInPattern);
+          const appointments = aptsByOpDate.get(`${opId}|${dateStr}`) || [];
+
+          for (const pattern of todayPatterns) {
+            const freeBlocks = this.calculateFreeBlocks(
+              this.timeToMinutes(pattern.startTime),
+              this.timeToMinutes(pattern.endTime),
+              appointments,
+            );
+
+            for (const block of freeBlocks) {
+              let currentMinutes = block.startMinutes;
+              while (currentMinutes + durationMinutes <= block.endMinutes) {
+                results.push({
+                  operatorId: opId, date: dateStr,
+                  startTime: this.minutesToTime(currentMinutes),
+                  endTime: this.minutesToTime(currentMinutes + durationMinutes),
+                  available: true,
+                });
+                currentMinutes += durationMinutes;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return results;
   }
 }

@@ -19,12 +19,21 @@ import {
 @Injectable({ providedIn: 'root' })
 export class CalendarV2StateService {
 
+  private static STORAGE_KEY = 'calendar-v2-state';
+
   // ==================== STATE ====================
 
   private configSubject = new BehaviorSubject<CalendarV2Config>(DEFAULT_CALENDAR_V2_CONFIG);
   private currentDateSubject = new BehaviorSubject<Date>(new Date());
   private operatorsSubject = new BehaviorSubject<CalendarOperator[]>([]);
   private loadingSubject = new BehaviorSubject<boolean>(false);
+
+  constructor() {
+    // Ripristina stato da sessionStorage
+    const saved = this.loadFromStorage();
+    this.configSubject.next(saved.config);
+    this.currentDateSubject.next(saved.date);
+  }
 
   // ==================== OBSERVABLES ====================
 
@@ -63,10 +72,12 @@ export class CalendarV2StateService {
 
   updateConfig(partial: Partial<CalendarV2Config>): void {
     this.configSubject.next({ ...this.configSubject.value, ...partial });
+    this.saveToStorage();
   }
 
   setCurrentDate(date: Date): void {
     this.currentDateSubject.next(date);
+    this.saveToStorage();
   }
 
   navigateToday(): void {
@@ -100,6 +111,14 @@ export class CalendarV2StateService {
 
   selectAllOperators(): void {
     this.operatorsSubject.next(this.operators.map(o => ({ ...o, selected: true })));
+  }
+
+  setOperatorSelection(operatorIds: string[], selected: boolean): void {
+    const idSet = new Set(operatorIds);
+    const operators = this.operators.map(o =>
+      idSet.has(o.operatorId) ? { ...o, selected } : o
+    );
+    this.operatorsSubject.next(operators);
   }
 
   deselectAllOperators(): void {
@@ -154,10 +173,49 @@ export class CalendarV2StateService {
   }
 
   formatDate(date: Date): string {
-    // Usa formato locale per evitare shift di giorno con UTC
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  // ==================== PERSISTENCE ====================
+
+  private saveToStorage(): void {
+    try {
+      const state = {
+        config: {
+          viewType: this.configSubject.value.viewType,
+          viewMode: this.configSubject.value.viewMode,
+          showWeekend: this.configSubject.value.showWeekend,
+          showWorkingHoursOnly: this.configSubject.value.showWorkingHoursOnly,
+          compactMode: this.configSubject.value.compactMode,
+          zoom: this.configSubject.value.zoom,
+          slotDuration: this.configSubject.value.slotDuration,
+        },
+        date: this.formatDate(this.currentDateSubject.value),
+        ts: Date.now(),
+      };
+      sessionStorage.setItem(CalendarV2StateService.STORAGE_KEY, JSON.stringify(state));
+    } catch { /* ignore */ }
+  }
+
+  private loadFromStorage(): { config: CalendarV2Config; date: Date } {
+    try {
+      const raw = sessionStorage.getItem(CalendarV2StateService.STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        // Scarta se più vecchio di 8 ore
+        if (saved.ts && Date.now() - saved.ts < 8 * 60 * 60 * 1000) {
+          const config: CalendarV2Config = {
+            ...DEFAULT_CALENDAR_V2_CONFIG,
+            ...saved.config,
+          };
+          const date = saved.date ? new Date(saved.date + 'T00:00:00') : new Date();
+          return { config, date };
+        }
+      }
+    } catch { /* ignore */ }
+    return { config: DEFAULT_CALENDAR_V2_CONFIG, date: new Date() };
   }
 }

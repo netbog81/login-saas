@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AvailabilityService } from '../services/availability.service';
 import { PhysiotherapistAvailabilityService } from '../services/physiotherapist-availability.service';
@@ -12,6 +12,7 @@ import { CreateAvailabilityTemplateInput } from '../dto/create-availability-temp
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot, OperatorAvailabilityResult } from '../dto/availability-slot.output';
+import { PhysiotherapistSlotBatchOutput } from '../dto/physiotherapist-slot.output';
 import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherapist-availability.input';
 import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
 import { GymSlotOutput } from '../dto/gym-slot.output';
@@ -65,6 +66,19 @@ export class AvailabilityResolver {
   ): Promise<OperatorAvailabilityResult[]> {
     // Usa il metodo diretto (~4 query totali) invece di quello con cache (~34 query × N operatori)
     return this.availabilityService.getOperatorsAvailabilityDirect(operatorIds, startDate, endDate);
+  }
+
+  /**
+   * Batch: Trova slot disponibili per fisioterapisti in un range di date.
+   * ~5 query DB totali per tutti gli operatori e date.
+   */
+  @Query(() => [PhysiotherapistSlotBatchOutput], { name: 'physiotherapistAvailableSlotsBatch' })
+  async getPhysiotherapistAvailableSlotsBatch(
+    @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
+    @Args('dates', { type: () => [String] }) dates: string[],
+    @Args('durationMinutes', { type: () => Int }) durationMinutes: number,
+  ): Promise<PhysiotherapistSlotBatchOutput[]> {
+    return this.physiotherapistAvailabilityService.getAvailableSlotsBatch(operatorIds, dates, durationMinutes);
   }
 
   @Query(() => [AvailabilitySlot], { name: 'availableSlots' })

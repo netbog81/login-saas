@@ -69,10 +69,10 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
             </mat-form-field>
 
             <div class="operator-actions">
-              <button mat-stroked-button class="action-btn" (click)="selectAll.emit()">
+              <button mat-stroked-button class="action-btn" (click)="onSelectAll()">
                 <mat-icon>select_all</mat-icon> Tutti
               </button>
-              <button mat-stroked-button class="action-btn" (click)="deselectAll.emit()">
+              <button mat-stroked-button class="action-btn" (click)="onDeselectAll()">
                 <mat-icon>deselect</mat-icon> Nessuno
               </button>
             </div>
@@ -226,9 +226,16 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
     </div>
   `,
   styles: [`
+    :host {
+      display: flex;
+      height: 100%;
+      min-height: 0;
+    }
+
     .sidebar {
       width: 260px;
       min-width: 260px;
+      height: 100%;
       background: white;
       border-right: 1px solid #e2e8f0;
       display: flex;
@@ -257,6 +264,7 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
     /* Area scrollabile */
     .sidebar-scroll {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
     }
@@ -311,8 +319,12 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
     .action-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
 
     .operator-list {
-      max-height: 250px;
       overflow-y: auto;
+      resize: vertical;
+      min-height: 60px;
+      max-height: 50vh;
+      padding-bottom: 4px;
+      border-bottom: 2px solid #e2e8f0;
     }
 
     .operator-item {
@@ -398,8 +410,7 @@ export class CalendarV2SidebarComponent {
   @Input() collapsed = false;
 
   @Output() toggleOperator = new EventEmitter<string>();
-  @Output() selectAll = new EventEmitter<void>();
-  @Output() deselectAll = new EventEmitter<void>();
+  @Output() setOperatorSelection = new EventEmitter<{ operatorIds: string[]; selected: boolean }>();
   @Output() toggleCollapsed = new EventEmitter<void>();
   @Output() slotSearchToggle = new EventEmitter<boolean>();
   @Output() searchFiltersChange = new EventEmitter<SearchFilters>();
@@ -432,13 +443,35 @@ export class CalendarV2SidebarComponent {
 
   getCategoryLabel(cat: string): string {
     const labels: Record<string, string> = {
-      'doctor': 'Medico', 'physiotherapist': 'Fisioterapista',
-      'gym_instructor': 'Istruttore Palestra', 'other': 'Altro',
+      'doctor': 'Medici', 'physiotherapist': 'Fisioterapisti',
+      'gym_instructor': 'Istruttori Palestra', 'other': 'Altro',
     };
     return labels[cat] || cat;
   }
 
-  onCategoryChange(): void { }
+  onCategoryChange(): void {
+    if (!this.selectedCategory) {
+      // "Tutte" selezionato → attiva tutti
+      const allIds = this.operators.map(o => o.operatorId);
+      this.setOperatorSelection.emit({ operatorIds: allIds, selected: true });
+    } else {
+      // Categoria specifica → attiva solo quelli della categoria, disattiva gli altri
+      const toActivate = this.operators.filter(o => o.macroCategory === this.selectedCategory).map(o => o.operatorId);
+      const toDeactivate = this.operators.filter(o => o.macroCategory !== this.selectedCategory).map(o => o.operatorId);
+      this.setOperatorSelection.emit({ operatorIds: toDeactivate, selected: false });
+      this.setOperatorSelection.emit({ operatorIds: toActivate, selected: true });
+    }
+  }
+
+  onSelectAll(): void {
+    const ids = this.filteredOperators.map(o => o.operatorId);
+    this.setOperatorSelection.emit({ operatorIds: ids, selected: true });
+  }
+
+  onDeselectAll(): void {
+    const ids = this.filteredOperators.map(o => o.operatorId);
+    this.setOperatorSelection.emit({ operatorIds: ids, selected: false });
+  }
 
   emitFilters(): void {
     this.searchFiltersChange.emit({ ...this.filters });

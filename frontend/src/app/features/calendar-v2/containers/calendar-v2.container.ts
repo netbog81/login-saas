@@ -18,7 +18,7 @@ import {
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, combineLatest } from 'rxjs';
+import { Subject, combineLatest, firstValueFrom } from 'rxjs';
 import { takeUntil, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
 // Angular Material
@@ -41,6 +41,7 @@ import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogData, GymAppoi
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { InstrumentService } from '../../../services/instrument.service';
 import { SseService } from '../../../services/sse.service';
 
 // Services
@@ -97,7 +98,8 @@ import { Treatment } from '../../../models/treatment.model';
         (zoomChange)="onZoomChange($event)"
         (showWorkingHoursOnlyChange)="onShowWorkingHoursOnlyChange($event)"
         (showWeekendChange)="onShowWeekendChange($event)"
-        (compactModeChange)="onCompactModeChange($event)">
+        (compactModeChange)="onCompactModeChange($event)"
+        (openWaitingList)="onOpenWaitingList()">
       </app-calendar-v2-toolbar>
 
       <!-- Content -->
@@ -117,8 +119,7 @@ import { Treatment } from '../../../models/treatment.model';
             [instrumentCategories]="instrumentCategories"
             [collapsed]="sidebarCollapsed"
             (toggleOperator)="stateService.toggleOperator($event)"
-            (selectAll)="stateService.selectAllOperators()"
-            (deselectAll)="stateService.deselectAllOperators()"
+            (setOperatorSelection)="stateService.setOperatorSelection($event.operatorIds, $event.selected)"
             (toggleCollapsed)="sidebarCollapsed = !sidebarCollapsed"
             (slotSearchToggle)="onSlotSearchToggle($event)"
             (searchFiltersChange)="onSearchFiltersChange($event)">
@@ -221,6 +222,7 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   private dialog = inject(MatDialog);
   private appointmentService = inject(AvailabilityAppointmentService);
   private sseService = inject(SseService);
+  private instrumentService = inject(InstrumentService);
 
   // State
   loading = false;
@@ -274,16 +276,22 @@ export class CalendarV2Container implements OnInit, OnDestroy {
     this.cdr.markForCheck();
 
     try {
-      // Carica impostazioni calendario dal backend
+      // Carica impostazioni calendario dal backend (solo working hours + defaults)
       try {
         const settings = await this.settingsService.getCalendarSettings().toPromise();
         if (settings) {
+          const hasStoredState = sessionStorage.getItem('calendar-v2-state') !== null;
           this.stateService.updateConfig({
+            // Working hours sempre dal backend
             workingHoursStart: settings.startHour,
             workingHoursEnd: settings.endHour,
-            slotDuration: settings.slotDuration,
-            showWorkingHoursOnly: settings.showWorkingHoursOnly,
-            showWeekend: settings.showWeekend,
+            // Queste solo se non c'e' stato salvato (primo caricamento)
+            ...(!hasStoredState ? {
+              slotDuration: settings.slotDuration,
+              showWorkingHoursOnly: settings.showWorkingHoursOnly,
+              showWeekend: settings.showWeekend,
+              viewType: settings.defaultView as any,
+            } : {}),
           });
         }
       } catch { /* usa defaults */ }
@@ -320,6 +328,14 @@ export class CalendarV2Container implements OnInit, OnDestroy {
       // Carica pazienti (in background, non blocca il rendering)
       this.dataService.loadPatients().pipe(takeUntil(this.destroy$)).subscribe({
         next: (patients) => { this.patients = patients; },
+      });
+
+      // Carica categorie strumenti per la ricerca slot
+      this.instrumentService.getInstrumentCategories().pipe(takeUntil(this.destroy$)).subscribe({
+        next: (cats) => {
+          this.instrumentCategories = cats.filter((c: any) => c.isActive !== false);
+          this.cdr.markForCheck();
+        },
       });
     } catch (error) {
       console.error('[CalendarV2] Error loading initial data:', error);
@@ -379,6 +395,11 @@ export class CalendarV2Container implements OnInit, OnDestroy {
             );
             this.updateCurrentTimeTop();
 
+            // Riesegui ricerca slot se attiva
+            if (this.slotSearchEnabled) {
+              this.searchAvailableSlots();
+            }
+
             this.loading = false;
             this.cdr.markForCheck();
           },
@@ -424,6 +445,24 @@ export class CalendarV2Container implements OnInit, OnDestroy {
 
   onCompactModeChange(compactMode: boolean): void {
     this.stateService.updateConfig({ compactMode });
+  }
+
+  private waitingListDialogRef: any = null;
+
+  onOpenWaitingList(): void {
+    if (this.waitingListDialogRef) return;
+    import('../../../shared/components/waiting-list/waiting-list-dialog/waiting-list-dialog.container').then(m => {
+      this.waitingListDialogRef = this.dialog.open(m.WaitingListDialogContainer, {
+        width: '650px',
+        height: '80vh',
+        hasBackdrop: false,
+        panelClass: 'waiting-list-dialog-panel',
+        disableClose: false,
+      });
+      this.waitingListDialogRef.afterClosed().subscribe(() => {
+        this.waitingListDialogRef = null;
+      });
+    });
   }
 
   // ==================== UTILITIES ====================
@@ -494,10 +533,21 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   }
 
   private searchAvailableSlots(): void {
-    if (!this.operatorGridData) return;
+    if (!this.operatorGridData) {
+      console.log('[CalendarV2] searchAvailableSlots: no gridData');
+      return;
+    }
 
-    const operators = this.stateService.selectedOperators
-      .filter(o => o.hasTemplate && o.macroCategory === 'physiotherapist');
+    // Cerca per tutti gli operatori selezionati (non solo fisioterapisti)
+    const operators = this.stateService.selectedOperators.filter(o => o.hasTemplate);
+
+    console.log('[CalendarV2] searchAvailableSlots:', {
+      selectedOperators: this.stateService.selectedOperators.length,
+      withTemplate: operators.length,
+      categories: operators.map(o => o.macroCategory),
+      dates: this.visibleDates,
+      duration: this.searchFilters.duration,
+    });
 
     if (operators.length === 0) {
       this.availableSlots = [];
@@ -505,38 +555,33 @@ export class CalendarV2Container implements OnInit, OnDestroy {
       return;
     }
 
-    const startDate = this.visibleDates[0];
-    const endDate = this.visibleDates[this.visibleDates.length - 1];
+    const operatorIds = operators.map(o => o.operatorId);
+    const operatorMap = new Map(operators.map(o => [o.operatorId, o]));
 
-    // Usa il service v1 per la ricerca slot
-    const searchPromises = operators.flatMap(op =>
-      this.visibleDates.map(async (date) => {
-        try {
-          const result = await this.operatorService.getPhysiotherapistAvailableSlots({
-            operatorId: op.operatorId,
-            date,
-            durationMinutes: this.searchFilters.duration,
-          }).toPromise();
-
-          return (result || [])
-            .filter((s: any) => s.available)
-            .map((s: any) => this.buildSlotPosition(op, date, s));
-        } catch {
-          return [];
-        }
-      })
-    );
-
-    Promise.all(searchPromises).then(results => {
-      // Dedup per operatorId-date-startTime
-      const seen = new Set<string>();
-      this.availableSlots = results.flat().filter(s => {
-        const key = `${s.operatorId}-${s.date}-${s.startTime}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      this.cdr.markForCheck();
+    // 1 query batch per tutti gli operatori e tutte le date
+    this.operatorService.getPhysiotherapistAvailableSlotsBatch(
+      operatorIds,
+      this.visibleDates,
+      this.searchFilters.duration,
+    ).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (slots) => {
+        console.log('[CalendarV2] Slots ricevuti dal backend:', slots.length, 'di cui disponibili:', slots.filter(s => s.available).length);
+        this.availableSlots = slots
+          .filter(s => s.available)
+          .map(s => {
+            const op = operatorMap.get(s.operatorId);
+            return this.buildSlotPosition(
+              op || { operatorId: s.operatorId, color: '#667eea' } as any,
+              s.date,
+              s,
+            );
+          });
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.availableSlots = [];
+        this.cdr.markForCheck();
+      },
     });
   }
 
@@ -705,6 +750,26 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   // ==================== GRID INTERACTIONS ====================
 
   onCellDblClick(event: CellClickEvent): void {
+    // Controlla se l'operatore e' un istruttore palestra (per loro sono ammessi piu' appuntamenti)
+    const operator = this.stateService.operators.find(o => o.operatorId === event.operatorId);
+    const isGymInstructor = operator?.macroCategory === 'gym_instructor';
+
+    // Per operatori non-palestra, impedisci se c'e' gia' un appuntamento in questa fascia
+    if (!isGymInstructor && this.operatorGridData) {
+      const col = this.operatorGridData.columns.find(
+        c => c.operatorId === event.operatorId && c.date === event.date
+      );
+      if (col) {
+        const hasOverlap = col.events.some(e => {
+          return e.originalStartTime < event.endTime && e.originalEndTime > event.startTime;
+        });
+        if (hasOverlap) {
+          alert('Esiste già un appuntamento in questa fascia oraria per questo operatore.');
+          return;
+        }
+      }
+    }
+
     this.openEventDialog({
       defaultDate: event.date,
       defaultStartTime: event.startTime,
@@ -749,23 +814,79 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   // ==================== DIALOG APERTURA ====================
 
   private openEventDialog(data: EventMatDialogData): void {
+    const dialogData = { ...data, instrumentCategories: this.instrumentCategories };
     const dialogRef = this.dialog.open(EventMatDialogComponent, {
       width: '700px',
       maxWidth: '95vw',
       disableClose: false,
-      data,
+      data: dialogData,
     });
 
-    dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: EventMatDialogResult | undefined) => {
+    dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(async (result: EventMatDialogResult | undefined) => {
       if (!result || result.action === 'cancel') return;
-      // Qualsiasi azione (save, delete, series-deleted) → ricarica
+
+      if (result.action === 'save' && result.appointment) {
+        await this.saveAppointment(result);
+      } else if (result.action === 'delete' && result.appointment) {
+        try {
+          await firstValueFrom(this.appointmentService.deleteAppointment(String(result.appointment.id)));
+        } catch (err: any) {
+          alert(err?.graphQLErrors?.[0]?.message || 'Errore nell\'eliminazione');
+        }
+      }
+      // Ricarica per qualsiasi azione (save, delete, series-deleted)
       this.reloadCurrentView();
     });
   }
 
+  private async saveAppointment(result: EventMatDialogResult): Promise<void> {
+    const apt = result.appointment!;
+    const servicesWithOrder = result.services?.map((s, idx) => ({ ...s, orderPosition: idx }));
+
+    try {
+      const isUpdate = apt.id && typeof apt.id === 'string' && apt.id.length > 10;
+
+      if (isUpdate) {
+        await firstValueFrom(this.appointmentService.updateAppointment(
+          apt.id as string,
+          {
+            services: servicesWithOrder,
+            clientName: apt.title,
+            patientId: apt.patientId,
+            appointmentDate: apt.date,
+            startTime: apt.startTime,
+            endTime: apt.endTime,
+            notes: apt.notes,
+            instrumentOrderMatters: result.instrumentOrderMatters,
+            instruments: result.instruments,
+            nonRetribuito: result.nonRetribuito,
+          },
+        ));
+      } else {
+        await firstValueFrom(this.appointmentService.createAppointment({
+          operatorId: apt.operatorId,
+          services: servicesWithOrder,
+          clientName: apt.title,
+          patientId: apt.patientId,
+          appointmentDate: apt.date,
+          startTime: apt.startTime,
+          endTime: apt.endTime,
+          notes: apt.notes,
+          instrumentOrderMatters: result.instrumentOrderMatters,
+          instruments: result.instruments,
+          repeatConfig: result.repeatConfig,
+          nonRetribuito: result.nonRetribuito,
+        }));
+      }
+    } catch (error: any) {
+      const msg = error?.graphQLErrors?.[0]?.message || 'Errore durante il salvataggio';
+      alert(msg);
+    }
+  }
+
   private reloadCurrentView(): void {
-    // Forza ricaricamento emettendo un cambio data (stessa data)
-    this.stateService.setCurrentDate(new Date(this.stateService.currentDate));
+    // Ricarica direttamente senza passare per il combineLatest
+    this.loadData(this.config, this.visibleDates, this.stateService.selectedOperators);
   }
 
   // ==================== CURRENT TIME INDICATOR ====================

@@ -19,6 +19,7 @@ import {
 } from '../graphql/operations/operator.queries';
 import {
   GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
+  GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS_BATCH,
 } from '../graphql/operations/availability.queries';
 import {
   CREATE_OPERATOR,
@@ -164,5 +165,20 @@ export class OperatorService extends BaseGraphQLService {
       GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
       { input }
     ).pipe(map((result) => result.physiotherapistAvailableSlots || []));
+  }
+
+  /**
+   * Batch: Slot disponibili per più fisioterapisti in più date (~5 query DB).
+   */
+  getPhysiotherapistAvailableSlotsBatch(
+    operatorIds: string[],
+    dates: string[],
+    durationMinutes: number,
+  ): Observable<{ operatorId: string; date: string; startTime: string; endTime: string; available: boolean }[]> {
+    return this.query<{ physiotherapistAvailableSlotsBatch: any[] }>(
+      GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS_BATCH,
+      { operatorIds, dates, durationMinutes },
+      'no-cache'
+    ).pipe(map((result) => result.physiotherapistAvailableSlotsBatch || []));
   }
 }

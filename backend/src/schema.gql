@@ -1814,6 +1814,14 @@ type Permission {
   rolePermissions: [RolePermission!]
 }
 
+type PhysiotherapistSlotBatchOutput {
+  available: Boolean!
+  date: String!
+  endTime: String!
+  operatorId: ID!
+  startTime: String!
+}
+
 type PhysiotherapistSlotOutput {
   available: Boolean!
   endTime: String!
@@ -1950,6 +1958,7 @@ type Query {
   patternGroups: [PatternGroup!]!
   permissions: [Permission!]!
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
+  physiotherapistAvailableSlotsBatch(dates: [String!]!, durationMinutes: Int!, operatorIds: [ID!]!): [PhysiotherapistSlotBatchOutput!]!
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
   recurringSeries(recurringGroupId: ID!): [AvailabilityAppointment!]!

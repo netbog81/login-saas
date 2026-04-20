@@ -81,6 +81,14 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../models/calendar-v2
 
       <div class="toolbar-divider"></div>
 
+      <!-- Lista d'attesa -->
+      <button mat-stroked-button (click)="openWaitingList.emit()" matTooltip="Lista d'attesa">
+        <mat-icon>list_alt</mat-icon>
+        Lista d'attesa
+      </button>
+
+      <div class="toolbar-divider"></div>
+
       <!-- Toggle vista compatta/espansa -->
       <mat-button-toggle-group [value]="compactMode ? 'compact' : 'expanded'"
                                (change)="compactModeChange.emit($event.value === 'compact')"
@@ -152,6 +160,7 @@ export class CalendarV2ToolbarComponent {
   @Output() showWorkingHoursOnlyChange = new EventEmitter<boolean>();
   @Output() showWeekendChange = new EventEmitter<boolean>();
   @Output() compactModeChange = new EventEmitter<boolean>();
+  @Output() openWaitingList = new EventEmitter<void>();
 
   slotDurations = [15, 30, 45, 60];
 
