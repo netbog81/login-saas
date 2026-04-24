@@ -213,6 +213,30 @@ body {
   }
 }
 
+/* Trattamenti Dialog - draggable & resizable (aperto dalla toolbar calendar v2) */
+.trattamenti-dialog-pane {
+  resize: both;
+  overflow: auto;
+  min-width: 700px;
+  min-height: 400px;
+  max-width: 95vw;
+  max-height: 90vh;
+
+  .mat-mdc-dialog-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .mdc-dialog__surface {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+  }
+}
+
 /* Gym Exception Dialog - draggable & resizable
    Stessa struttura di task-message-dialog-panel per fare in modo che il
    resize nativo del browser si propaghi correttamente al contenuto interno

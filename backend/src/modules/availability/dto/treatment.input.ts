@@ -310,3 +310,102 @@ export class UpdateTreatmentInput {
   @IsBoolean()
   isPaid?: boolean;
 }
+
+/**
+ * Input per la segreteria: modifica campi economici/contabili di un
+ * trattamento già OPERATOR_COMPLETED o CLOSED.
+ *
+ * La segreteria NON può toccare campi clinici (clinicalNotes, painLevel,
+ * painBefore, painAfter, operatorNotes, patientNotes) né note paziente.
+ * Se necessario può sempre riaprire il trattamento con reopenTreatment
+ * così l'operatore rimette mano ai dati clinici.
+ */
+@InputType()
+export class UpdateTreatmentBySecretaryInput {
+  @Field(() => ID)
+  @IsUUID('4', { message: 'ID trattamento non valido' })
+  id: string;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: 'Il prezzo non può essere negativo' })
+  price?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  scontoFE?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000, { message: 'Le note segreteria non possono superare 2000 caratteri' })
+  secretaryNotes?: string;
+
+  @Field(() => [TreatmentServiceInputItem], { nullable: true, description: 'Sostituisce i servizi eseguiti' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TreatmentServiceInputItem)
+  treatmentServices?: TreatmentServiceInputItem[];
+}
+
+/**
+ * Input per aggiornare la descrizione della riga fattura di un servizio.
+ * Usato sia dall'operatore (durante completeTreatment) che dalla segreteria.
+ */
+@InputType()
+export class UpdateTreatmentServiceInvoiceDescriptionInput {
+  @Field(() => ID)
+  @IsUUID('4', { message: 'ID treatment service non valido' })
+  treatmentServiceId: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000, { message: 'La descrizione non può superare 2000 caratteri' })
+  description?: string;
+}
+
+/**
+ * Input per creare una riga fattura custom (segreteria).
+ */
+@InputType()
+export class CreateTreatmentInvoiceLineInput {
+  @Field(() => ID)
+  @IsUUID('4', { message: 'ID trattamento non valido' })
+  treatmentId: string;
+
+  @Field()
+  @IsString()
+  @MaxLength(2000, { message: 'La descrizione non può superare 2000 caratteri' })
+  description: string;
+
+  @Field(() => Float)
+  @IsNumber()
+  @Min(0, { message: "L'importo non può essere negativo" })
+  amount: number;
+}
+
+/**
+ * Input per aggiornare una riga fattura custom (segreteria).
+ */
+@InputType()
+export class UpdateTreatmentInvoiceLineInput {
+  @Field(() => ID)
+  @IsUUID('4', { message: 'ID riga non valido' })
+  id: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000, { message: 'La descrizione non può superare 2000 caratteri' })
+  description?: string;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: "L'importo non può essere negativo" })
+  amount?: number;
+}

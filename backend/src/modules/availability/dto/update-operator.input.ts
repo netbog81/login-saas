@@ -79,4 +79,9 @@ export class UpdateOperatorInput {
   @IsString()
   @MaxLength(255, { message: 'Iscrizione albo non può superare 255 caratteri' })
   professionalRegistration?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  canCollectPayment?: boolean;
 }

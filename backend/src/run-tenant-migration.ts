@@ -37,7 +37,9 @@ async function main() {
     // Setta search_path per assicurarsi che enum/type vengano creati nello schema corretto
     await tenantDataSource.query(`SET search_path TO "${schemaName}"`);
 
-    const migrations = await tenantDataSource.runMigrations();
+    // transaction: 'each' per ragioni di visibilità dei DDL (vedi commento
+    // in run-all-tenant-migrations.ts).
+    const migrations = await tenantDataSource.runMigrations({ transaction: 'each' });
 
     if (migrations.length === 0) {
       console.log('\nNessuna migrazione pendente da eseguire.');

@@ -71,16 +71,20 @@ export class CalendarV2GridService {
     const startHour = config.showWorkingHoursOnly ? config.workingHoursStart : config.startHour;
     const endHour = config.showWorkingHoursOnly ? config.workingHoursEnd : config.endHour;
     const slots: TimeSlot[] = [];
+
+    const startMinutes = startHour * 60;
+    const endMinutes = endHour * 60;
+    let currentMinutes = startMinutes;
     let index = 0;
 
-    for (let h = startHour; h < endHour; h++) {
-      for (let m = 0; m < 60; m += config.slotDuration) {
-        if (h * 60 + m >= endHour * 60) break;
-        slots.push({
-          time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-          index: index++,
-        });
-      }
+    while (currentMinutes < endMinutes) {
+      const h = Math.floor(currentMinutes / 60);
+      const m = currentMinutes % 60;
+      slots.push({
+        time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+        index: index++,
+      });
+      currentMinutes += config.slotDuration;
     }
     return slots;
   }
@@ -153,10 +157,15 @@ export class CalendarV2GridService {
     if (appointments.length === 0 || timeSlots.length === 0) return [];
 
     const gridStartMinutes = this.timeToMinutes(timeSlots[0].time);
+    // pxPerMinute basato solo su slotHeight (senza border).
+    // Il piccolo errore accumulato del border (1px per cella) e' trascurabile
+    // e meno visibile dell'offset sistematico che si avrebbe con +1.
     const pxPerMinute = slotHeightPx / slotDuration;
 
-    // Ordina per startTime
-    const sorted = [...appointments].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    // Normalizza orari e ordina
+    const sorted = [...appointments].sort((a, b) =>
+      this.normalizeTime(a.startTime).localeCompare(this.normalizeTime(b.startTime))
+    );
 
     // Calcola overlap groups per larghezza
     const groups = this.computeOverlapGroups(sorted);
@@ -166,18 +175,18 @@ export class CalendarV2GridService {
     for (const group of groups) {
       const groupSize = group.length;
       group.forEach((apt, idx) => {
-        const startMin = this.timeToMinutes(apt.startTime);
-        const endMin = this.timeToMinutes(apt.endTime);
+        const normalizedStart = this.normalizeTime(apt.startTime);
+        const normalizedEnd = this.normalizeTime(apt.endTime);
+        const startMin = this.timeToMinutes(normalizedStart);
+        const endMin = this.timeToMinutes(normalizedEnd);
         const topPx = (startMin - gridStartMinutes) * pxPerMinute;
         const heightPx = Math.max((endMin - startMin) * pxPerMinute, slotHeightPx * 0.5);
 
         const widthPct = 100 / groupSize;
         const leftPct = widthPct * idx;
 
-        // Titolo: nome paziente + servizio
-        const serviceName = apt.appointmentServices?.[0]?.service?.name || apt.service?.name || '';
         const title = apt.title || 'Appuntamento';
-        const timeLabel = `${apt.startTime} - ${apt.endTime}`;
+        const timeLabel = `${normalizedStart} - ${normalizedEnd}`;
 
         events.push({
           appointment: apt,
@@ -191,8 +200,8 @@ export class CalendarV2GridService {
           title,
           timeLabel,
           isRecurring: apt.isRecurring || false,
-          originalStartTime: apt.startTime,
-          originalEndTime: apt.endTime,
+          originalStartTime: normalizedStart,
+          originalEndTime: normalizedEnd,
         });
       });
     }
@@ -209,8 +218,8 @@ export class CalendarV2GridService {
     let currentGroupEnd = 0;
 
     for (const apt of appointments) {
-      const start = this.timeToMinutes(apt.startTime);
-      const end = this.timeToMinutes(apt.endTime);
+      const start = this.timeToMinutes(this.normalizeTime(apt.startTime));
+      const end = this.timeToMinutes(this.normalizeTime(apt.endTime));
 
       if (currentGroup.length === 0 || start < currentGroupEnd) {
         // Si sovrappone: aggiungi al gruppo
@@ -231,7 +240,13 @@ export class CalendarV2GridService {
   // ==================== UTILITIES ====================
 
   private timeToMinutes(time: string): number {
-    const [h, m] = time.split(':').map(Number);
-    return h * 60 + m;
+    // Normalizza: accetta HH:MM e HH:MM:SS
+    const parts = time.split(':').map(Number);
+    return parts[0] * 60 + (parts[1] || 0);
+  }
+
+  /** Normalizza orario a HH:MM (rimuove secondi se presenti) */
+  private normalizeTime(time: string): string {
+    return time.substring(0, 5);
   }
 }

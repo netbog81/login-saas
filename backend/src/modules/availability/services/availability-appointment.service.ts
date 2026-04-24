@@ -199,6 +199,27 @@ export class AvailabilityAppointmentService {
     return this.dataSource.transaction(async (manager: EntityManager) => {
       const appointmentRepo = manager.getRepository(AvailabilityAppointment);
 
+      // Check sovrapposizione: verifica che l'operatore non abbia gia' un appuntamento
+      // nella stessa fascia oraria (non si applica agli appuntamenti palestra che usano createSingleGymAppointment)
+      if (appointmentData.operatorId) {
+        const overlapping = await appointmentRepo
+          .createQueryBuilder('a')
+          .where('a.operatorId = :operatorId', { operatorId: appointmentData.operatorId })
+          .andWhere('a.appointmentDate = :date', { date: appointmentData.appointmentDate })
+          .andWhere('a.bookingStatus NOT IN (:...excluded)', { excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW] })
+          .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
+            startTime: appointmentData.startTime,
+            endTime: appointmentData.endTime,
+          })
+          .getCount();
+
+        if (overlapping > 0) {
+          throw new ConflictException(
+            `L'operatore ha già un appuntamento in questa fascia oraria (${appointmentData.startTime} - ${appointmentData.endTime})`
+          );
+        }
+      }
+
       const appointment = appointmentRepo.create({
         ...appointmentData,
         bookingStatus: BookingStatus.SCHEDULED,
@@ -808,6 +829,28 @@ export class AvailabilityAppointmentService {
       (input.appointmentDate && String(input.appointmentDate) !== String(appointment.appointmentDate)) ||
       (input.startTime && input.startTime !== appointment.startTime) ||
       (input.endTime && input.endTime !== appointment.endTime);
+
+    // Check sovrapposizione se cambiano orari (solo per appuntamenti non-palestra)
+    if (positionChanged && appointment.appointmentType !== AppointmentType.GYM) {
+      const checkDate = input.appointmentDate || appointment.appointmentDate;
+      const checkStart = input.startTime || appointment.startTime;
+      const checkEnd = input.endTime || appointment.endTime;
+
+      const overlapping = await this.appointmentRepo
+        .createQueryBuilder('a')
+        .where('a.operatorId = :operatorId', { operatorId: appointment.operatorId })
+        .andWhere('a.appointmentDate = :date', { date: checkDate })
+        .andWhere('a.id != :id', { id })
+        .andWhere('a.bookingStatus NOT IN (:...excluded)', { excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW] })
+        .andWhere('a.startTime < :endTime AND a.endTime > :startTime', { startTime: checkStart, endTime: checkEnd })
+        .getCount();
+
+      if (overlapping > 0) {
+        throw new ConflictException(
+          `L'operatore ha già un appuntamento in questa fascia oraria (${checkStart} - ${checkEnd})`
+        );
+      }
+    }
 
     const { instruments, services, ...updateData } = input;
 

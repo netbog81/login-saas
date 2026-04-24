@@ -160,14 +160,20 @@ export class CalendarV2StateService {
     const startHour = config.showWorkingHoursOnly ? config.workingHoursStart : config.startHour;
     const endHour = config.showWorkingHoursOnly ? config.workingHoursEnd : config.endHour;
     const slots: TimeSlot[] = [];
+
+    const startMinutes = startHour * 60;
+    const endMinutes = endHour * 60;
+    let currentMinutes = startMinutes;
     let index = 0;
 
-    for (let h = startHour; h < endHour; h++) {
-      for (let m = 0; m < 60; m += config.slotDuration) {
-        if (h * 60 + m >= endHour * 60) break;
-        const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-        slots.push({ time, index: index++ });
-      }
+    while (currentMinutes < endMinutes) {
+      const h = Math.floor(currentMinutes / 60);
+      const m = currentMinutes % 60;
+      slots.push({
+        time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+        index: index++,
+      });
+      currentMinutes += config.slotDuration;
     }
     return slots;
   }

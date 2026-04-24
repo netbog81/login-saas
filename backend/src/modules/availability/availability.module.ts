@@ -34,6 +34,8 @@ import { Treatment } from './entities/treatment.entity';
 import { TreatmentInstrument } from './entities/treatment-instrument.entity';
 import { AppointmentService } from './entities/appointment-service.entity';
 import { TreatmentService as TreatmentServiceEntity } from './entities/treatment-service.entity';
+import { TreatmentInvoiceLine } from './entities/treatment-invoice-line.entity';
+import { ServiceInvoicePrefix } from './entities/service-invoice-prefix.entity';
 import { ServiceSubcategory } from './entities/service-subcategory.entity';
 import { TherapeuticPath } from './entities/therapeutic-path.entity';
 import { PathDocument } from './entities/path-document.entity';
@@ -74,6 +76,7 @@ import { TherapeuticPathService } from './services/therapeutic-path.service';
 import { PatientEvaluationService } from './services/patient-evaluation.service';
 import { PatientAnamnesisService } from './services/patient-anamnesis.service';
 import { WaitingListService } from './services/waiting-list.service';
+import { ServiceInvoicePrefixService } from './services/service-invoice-prefix.service';
 
 // Resolvers
 import { AvailabilityResolver } from './resolvers/availability.resolver';
@@ -100,6 +103,8 @@ import { ServiceSubcategoryResolver } from './resolvers/service-subcategory.reso
 import { PatientEvaluationResolver } from './resolvers/patient-evaluation.resolver';
 import { PatientAnamnesisResolver } from './resolvers/patient-anamnesis.resolver';
 import { WaitingListResolver } from './resolvers/waiting-list.resolver';
+import { ServiceInvoicePrefixResolver } from './resolvers/service-invoice-prefix.resolver';
+import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver';
 
 @Module({
   imports: [
@@ -133,6 +138,8 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
       AppointmentService,       // Junction table - PRIMA del parent per evitare circular dependency
       TreatmentServiceEntity,   // Junction table - PRIMA del parent per evitare circular dependency
       TreatmentInstrument,
+      TreatmentInvoiceLine,
+      ServiceInvoicePrefix,
       AppointmentLog,
       Patient,
       // Parent entities DOPO le junction tables
@@ -179,6 +186,7 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
     PatientEvaluationService,
     PatientAnamnesisService,
     WaitingListService,
+    ServiceInvoicePrefixService,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -204,6 +212,8 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
     PatientEvaluationResolver,
     PatientAnamnesisResolver,
     WaitingListResolver,
+    ServiceInvoicePrefixResolver,
+    TreatmentServiceResolver,
   ],
   exports: [
     AvailabilityService,

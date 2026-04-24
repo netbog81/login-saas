@@ -100,6 +100,12 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../models/calendar-v2
           <mat-icon>view_array</mat-icon>
         </mat-button-toggle>
       </mat-button-toggle-group>
+
+      <!-- Apri dialog Trattamenti -->
+      <button mat-stroked-button (click)="openTreatments.emit()" matTooltip="Trattamenti del giorno">
+        <mat-icon>healing</mat-icon>
+        Trattamenti
+      </button>
     </div>
   `,
   styles: [`
@@ -161,6 +167,7 @@ export class CalendarV2ToolbarComponent {
   @Output() showWeekendChange = new EventEmitter<boolean>();
   @Output() compactModeChange = new EventEmitter<boolean>();
   @Output() openWaitingList = new EventEmitter<void>();
+  @Output() openTreatments = new EventEmitter<void>();
 
   slotDurations = [15, 30, 45, 60];
 

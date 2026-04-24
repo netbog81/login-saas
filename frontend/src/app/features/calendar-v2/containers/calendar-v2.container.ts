@@ -99,7 +99,8 @@ import { Treatment } from '../../../models/treatment.model';
         (showWorkingHoursOnlyChange)="onShowWorkingHoursOnlyChange($event)"
         (showWeekendChange)="onShowWeekendChange($event)"
         (compactModeChange)="onCompactModeChange($event)"
-        (openWaitingList)="onOpenWaitingList()">
+        (openWaitingList)="onOpenWaitingList()"
+        (openTreatments)="onOpenTreatments()">
       </app-calendar-v2-toolbar>
 
       <!-- Content -->
@@ -140,7 +141,8 @@ import { Treatment } from '../../../models/treatment.model';
               (availableSlotDblClick)="onAvailableSlotDblClick($event)"
               (eventClick)="onEventClick($event)"
               (eventDblClick)="onEventDblClick($event)"
-              (dragMove)="onDragMove($event)">
+              (dragMove)="onDragMove($event)"
+              (resizeEnd)="onResizeEnd($event)">
             </app-operator-grid>
           }
 
@@ -424,7 +426,11 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   }
 
   onViewModeChange(viewMode: 'operators' | 'gyms'): void {
-    this.stateService.updateConfig({ viewMode });
+    if (viewMode === 'gyms') {
+      this.stateService.updateConfig({ viewMode, slotDuration: 60 });
+    } else {
+      this.stateService.updateConfig({ viewMode });
+    }
   }
 
   onSlotDurationChange(slotDuration: number): void {
@@ -448,6 +454,7 @@ export class CalendarV2Container implements OnInit, OnDestroy {
   }
 
   private waitingListDialogRef: any = null;
+  private treatmentsDialogRef: any = null;
 
   onOpenWaitingList(): void {
     if (this.waitingListDialogRef) return;
@@ -461,6 +468,30 @@ export class CalendarV2Container implements OnInit, OnDestroy {
       });
       this.waitingListDialogRef.afterClosed().subscribe(() => {
         this.waitingListDialogRef = null;
+      });
+    });
+  }
+
+  onOpenTreatments(): void {
+    if (this.treatmentsDialogRef) return;
+    const today = this.stateService.formatDate(this.stateService.currentDate);
+    import('../../trattamenti/containers/trattamenti-dialog.container').then(m => {
+      this.treatmentsDialogRef = this.dialog.open(m.TrattamentiDialogContainer, {
+        data: {
+          initialFilters: { dateFrom: today, dateTo: today },
+          initialViewMode: 'flat',
+        },
+        width: '1100px',
+        maxWidth: '95vw',
+        height: '80vh',
+        maxHeight: '90vh',
+        hasBackdrop: false,
+        panelClass: 'trattamenti-dialog-pane',
+        disableClose: false,
+        autoFocus: false,
+      });
+      this.treatmentsDialogRef.afterClosed().subscribe(() => {
+        this.treatmentsDialogRef = null;
       });
     });
   }
@@ -797,6 +828,18 @@ export class CalendarV2Container implements OnInit, OnDestroy {
     });
   }
 
+  onResizeEnd(event: { appointmentId: string; newEndTime: string }): void {
+    this.appointmentService.updateAppointment(event.appointmentId, {
+      endTime: event.newEndTime,
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.reloadCurrentView(),
+      error: (err: any) => {
+        console.error('[CalendarV2] Error resizing appointment:', err);
+        alert('Errore nel ridimensionamento dell\'appuntamento');
+      },
+    });
+  }
+
   onDragMove(event: DragMoveEvent): void {
     // Aggiorna appuntamento con nuovi orari
     this.appointmentService.updateAppointment(event.appointmentId, {
@@ -879,7 +922,16 @@ export class CalendarV2Container implements OnInit, OnDestroy {
         }));
       }
     } catch (error: any) {
-      const msg = error?.graphQLErrors?.[0]?.message || 'Errore durante il salvataggio';
+      // Estrai messaggio di errore da GraphQL (vari formati possibili)
+      let msg = 'Errore durante il salvataggio';
+      if (error?.graphQLErrors?.[0]?.message) {
+        msg = error.graphQLErrors[0].message;
+      } else if (error?.message?.includes('CombinedGraphQLErrors:')) {
+        msg = error.message.replace('CombinedGraphQLErrors: ', '');
+      } else if (error?.message) {
+        msg = error.message;
+      }
+      console.error('[CalendarV2] Save error:', error);
       alert(msg);
     }
   }

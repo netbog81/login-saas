@@ -90,6 +90,15 @@ export class Operator {
   @Column({ name: 'professional_registration', length: 255, nullable: true })
   professionalRegistration?: string;
 
+  /**
+   * Permesso di registrare pagamenti sui trattamenti.
+   * Default per categoria: false per GYM_INSTRUCTOR, true per le altre.
+   * Editabile dall'admin dalla UI operatori.
+   */
+  @Field()
+  @Column({ default: true })
+  canCollectPayment: boolean;
+
   @Field({ nullable: true })
   @Column({ name: 'app_user_id', type: 'uuid', nullable: true })
   appUserId?: string;

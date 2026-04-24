@@ -1,8 +1,9 @@
-import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent, registerEnumType } from '@nestjs/graphql';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Treatment } from '../entities/treatment.entity';
+import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
+import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
 import { TreatmentService } from '../services/treatment.service';
 import {
   CompleteTreatmentInput,
@@ -10,7 +11,23 @@ import {
   RecordPaymentInput,
   TreatmentInstrumentInput,
   UpdateTreatmentInput,
+  UpdateTreatmentBySecretaryInput,
+  UpdateTreatmentServiceInvoiceDescriptionInput,
+  CreateTreatmentInvoiceLineInput,
+  UpdateTreatmentInvoiceLineInput,
 } from '../dto/treatment.input';
+
+/**
+ * Ruolo del chiamante per le mutation soggette ad autorizzazione
+ * per categoria operatore (es. recordTreatmentPayment).
+ * TODO: rimuovere quando il ruolo sarà letto dal JWT sul server.
+ */
+export enum TreatmentCallerRole {
+  OPERATOR = 'operator',
+  SECRETARY = 'secretary',
+}
+
+registerEnumType(TreatmentCallerRole, { name: 'TreatmentCallerRole' });
 
 @Resolver(() => Treatment)
 export class TreatmentResolver {
@@ -207,14 +224,20 @@ export class TreatmentResolver {
   }
 
   /**
-   * Mutation: Registra pagamento del paziente
+   * Mutation: Registra pagamento del paziente.
+   *
+   * `callerRole`: indica se la chiamata arriva dall'interfaccia operatore
+   * o da quella della segreteria. Se 'operator', l'operatore del
+   * trattamento deve avere canCollectPayment=true; se 'secretary', passa
+   * sempre. Default 'secretary' per retrocompatibilità.
    */
   @Mutation(() => Treatment, { name: 'recordTreatmentPayment' })
   async recordPayment(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: RecordPaymentInput,
+    @Args('callerRole', { type: () => TreatmentCallerRole, nullable: true }) callerRole?: TreatmentCallerRole,
   ): Promise<Treatment> {
-    return this.treatmentService.recordPayment(id, input);
+    return this.treatmentService.recordPayment(id, input, callerRole ?? TreatmentCallerRole.SECRETARY);
   }
 
   /**
@@ -267,5 +290,137 @@ export class TreatmentResolver {
   @Mutation(() => Int, { name: 'deleteAllTreatments' })
   async deleteAllTreatments(): Promise<number> {
     return this.treatmentService.deleteAll();
+  }
+
+  // ==================== SECRETARY WORKFLOW ====================
+
+  /**
+   * Mutation: segreteria aggiorna campi economici di un trattamento
+   * (OPERATOR_COMPLETED o CLOSED). Mai campi clinici.
+   */
+  @Mutation(() => Treatment, { name: 'updateTreatmentBySecretary' })
+  async updateBySecretary(
+    @Args('input') input: UpdateTreatmentBySecretaryInput,
+  ): Promise<Treatment> {
+    return this.treatmentService.updateBySecretary(input);
+  }
+
+  /**
+   * Mutation: marca N trattamenti come pronti (o non pronti) per essere
+   * inviati al sistema di fatturazione. Step separato dall'invio reale.
+   */
+  @Mutation(() => [Treatment], { name: 'setTreatmentsReadyForBilling' })
+  async setReadyForBilling(
+    @Args('ids', { type: () => [ID] }) ids: string[],
+    @Args('ready', { type: () => Boolean }) ready: boolean,
+  ): Promise<Treatment[]> {
+    return this.treatmentService.setReadyForBilling(ids, ready);
+  }
+
+  /**
+   * Mutation: aggiorna la descrizione riga fattura di un TreatmentService.
+   */
+  @Mutation(() => TreatmentServiceEntity, { name: 'updateTreatmentServiceInvoiceDescription' })
+  async updateTreatmentServiceInvoiceDescription(
+    @Args('input') input: UpdateTreatmentServiceInvoiceDescriptionInput,
+  ): Promise<TreatmentServiceEntity> {
+    return this.treatmentService.updateTreatmentServiceInvoiceDescription(
+      input.treatmentServiceId,
+      input.description,
+    );
+  }
+
+  // ==================== INVOICE LINES (CUSTOM) ====================
+
+  @Query(() => [TreatmentInvoiceLine], { name: 'treatmentInvoiceLines' })
+  async getInvoiceLines(
+    @Args('treatmentId', { type: () => ID }) treatmentId: string,
+  ): Promise<TreatmentInvoiceLine[]> {
+    return this.treatmentService.getInvoiceLinesByTreatment(treatmentId);
+  }
+
+  @Mutation(() => TreatmentInvoiceLine, { name: 'createTreatmentInvoiceLine' })
+  async createInvoiceLine(
+    @Args('input') input: CreateTreatmentInvoiceLineInput,
+    @Args('createdBy', { type: () => ID, nullable: true }) createdBy?: string,
+  ): Promise<TreatmentInvoiceLine> {
+    return this.treatmentService.createInvoiceLine({
+      treatmentId: input.treatmentId,
+      description: input.description,
+      amount: input.amount,
+      createdBy,
+    });
+  }
+
+  @Mutation(() => TreatmentInvoiceLine, { name: 'updateTreatmentInvoiceLine' })
+  async updateInvoiceLine(
+    @Args('input') input: UpdateTreatmentInvoiceLineInput,
+  ): Promise<TreatmentInvoiceLine> {
+    return this.treatmentService.updateInvoiceLine(input);
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteTreatmentInvoiceLine' })
+  async deleteInvoiceLine(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.treatmentService.deleteInvoiceLine(id);
+  }
+
+  // ==================== LISTING QUERIES ====================
+
+  /**
+   * Query per la segreteria/admin: elenca tutti i trattamenti con filtri.
+   * Fragments (paziente, operatore, servizi, strumenti, righe custom)
+   * caricati in un solo round trip.
+   */
+  @Query(() => [Treatment], { name: 'treatmentsForSecretary' })
+  async treatmentsForSecretary(
+    @Args('patientId', { type: () => ID, nullable: true }) patientId?: string,
+    @Args('operatorId', { type: () => ID, nullable: true }) operatorId?: string,
+    @Args('statuses', { type: () => [TreatmentStatus], nullable: true }) statuses?: TreatmentStatus[],
+    @Args('dateFrom', { nullable: true }) dateFrom?: string,
+    @Args('dateTo', { nullable: true }) dateTo?: string,
+    @Args('readyForBilling', { nullable: true }) readyForBilling?: boolean,
+    @Args('isInvoicedToPatient', { nullable: true }) isInvoicedToPatient?: boolean,
+    @Args('scontoFE', { nullable: true }) scontoFE?: boolean,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
+  ): Promise<Treatment[]> {
+    return this.treatmentService.findForListing({
+      patientId,
+      operatorId,
+      statuses,
+      dateFrom,
+      dateTo,
+      readyForBilling,
+      isInvoicedToPatient,
+      scontoFE,
+      limit,
+      offset,
+    });
+  }
+
+  /**
+   * Query per un operatore specifico: stesso shape ma filtrata.
+   * Il frontend deve passare sempre operatorId; il server non ricava il
+   * ruolo (TODO auth). La segreteria lato client deve usare treatmentsForSecretary.
+   */
+  @Query(() => [Treatment], { name: 'treatmentsForOperator' })
+  async treatmentsForOperator(
+    @Args('operatorId', { type: () => ID }) operatorId: string,
+    @Args('statuses', { type: () => [TreatmentStatus], nullable: true }) statuses?: TreatmentStatus[],
+    @Args('dateFrom', { nullable: true }) dateFrom?: string,
+    @Args('dateTo', { nullable: true }) dateTo?: string,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
+  ): Promise<Treatment[]> {
+    return this.treatmentService.findForListing({
+      operatorId,
+      statuses,
+      dateFrom,
+      dateTo,
+      limit,
+      offset,
+    });
   }
 }

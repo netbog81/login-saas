@@ -46,6 +46,9 @@ import { ConflictService } from './services/conflict.service';
                 Contabilità
               </a>
             }
+            <a class="nav-item" routerLink="/trattamenti" routerLinkActive="active">
+              Trattamenti
+            </a>
             <a class="nav-item" routerLink="/patients" routerLinkActive="active">
               Pazienti
             </a>

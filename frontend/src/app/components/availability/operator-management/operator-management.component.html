@@ -188,6 +188,16 @@
             Operatore Attivo
           </label>
         </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingOperator.canCollectPayment">
+            Può registrare pagamenti sui trattamenti
+          </label>
+          <small class="form-text">
+            Se disattivato, l'operatore non potrà incassare dai propri trattamenti (la segreteria può sempre). Per gli istruttori di palestra viene disattivato di default.
+          </small>
+        </div>
       </div>
 
       <div class="modal-footer">

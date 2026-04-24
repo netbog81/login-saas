@@ -41,7 +41,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   showOperatorForm = false;
   isEditMode = false;
   editingOperatorId: string | null = null;
-  editingOperator: Partial<CreateOperatorInput> & { isActive?: boolean } = {
+  editingOperator: Partial<CreateOperatorInput> & { isActive?: boolean; canCollectPayment?: boolean } = {
     name: '',
     surname: '',
     email: '',
@@ -54,6 +54,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     isActive: true,
     royaltyPercentage: 0,
     professionalRegistration: '',
+    canCollectPayment: true,
   };
 
   // Preferred durations as string for input
@@ -233,6 +234,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           isActive: operator.isActive,
           royaltyPercentage: (operator as any).royaltyPercentage || 0,
           professionalRegistration: (operator as any).professionalRegistration || '',
+          canCollectPayment: (operator as any).canCollectPayment ?? true,
         };
         this.preferredDurationsString =
           (operator.preferredDurations || []).join(', ');
@@ -252,6 +254,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           isActive: true,
           royaltyPercentage: 0,
           professionalRegistration: '',
+          canCollectPayment: true,
         };
         this.preferredDurationsString = '';
       }
@@ -278,6 +281,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         isActive: true,
         royaltyPercentage: 0,
         professionalRegistration: '',
+        canCollectPayment: true,
       };
       this.preferredDurationsString = '';
       this.error = null;
@@ -324,7 +328,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           this.editingOperator.maxConcurrentAppointments,
         royaltyPercentage: this.editingOperator.royaltyPercentage,
         professionalRegistration: this.editingOperator.professionalRegistration?.trim() || undefined,
-      };
+        canCollectPayment: this.editingOperator.canCollectPayment,
+      } as UpdateOperatorInput;
 
       this.operatorService.updateOperator(this.editingOperatorId, input).subscribe({
         next: (operator) => {
@@ -374,7 +379,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           this.editingOperator.maxConcurrentAppointments || 1,
         royaltyPercentage: this.editingOperator.royaltyPercentage,
         professionalRegistration: this.editingOperator.professionalRegistration?.trim() || undefined,
-      };
+        canCollectPayment: this.editingOperator.canCollectPayment,
+      } as CreateOperatorInput;
 
       this.operatorService.createOperator(input).subscribe({
         next: (operator) => {

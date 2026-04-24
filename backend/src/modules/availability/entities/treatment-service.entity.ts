@@ -71,6 +71,26 @@ export class TreatmentService {
   @Column('boolean', { default: false })
   isCustomPrice: boolean;
 
+  /**
+   * Descrizione della riga fattura personalizzata dall'utente.
+   * Medici: compilata durante la chiusura (opzionale).
+   * Segreteria: sempre editabile.
+   *
+   * Se null, il frontend userà `invoiceLineDescriptionAuto` (campo virtuale
+   * ritornato dal resolver) come fallback.
+   */
+  @Field({ nullable: true })
+  @Column('text', { nullable: true })
+  invoiceLineDescription?: string;
+
+  /**
+   * Campo VIRTUALE (non persistito): descrizione auto-generata al volo
+   * dal resolver combinando prefisso categoria + data + servizio + strumenti
+   * + operatore + albo. Il frontend lo usa come placeholder/ripristino.
+   */
+  @Field({ nullable: true })
+  invoiceLineDescriptionAuto?: string;
+
   // ==================== TIMESTAMPS ====================
 
   @Field()

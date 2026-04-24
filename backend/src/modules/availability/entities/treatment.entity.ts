@@ -7,6 +7,7 @@ import { Patient } from '../../../entities/patient.entity';
 import { PatientModel } from '../../../patients/models/patient.model';
 import { TreatmentInstrument } from './treatment-instrument.entity';
 import { TreatmentService } from './treatment-service.entity';
+import { TreatmentInvoiceLine } from './treatment-invoice-line.entity';
 import { TherapeuticPath } from './therapeutic-path.entity';
 import { TreatmentStatus, PaymentMethod } from './treatment-enums';
 
@@ -185,6 +186,22 @@ export class Treatment {
   @Column({ length: 100, nullable: true })
   patientInvoiceNumber?: string;
 
+  // ==================== READY FOR BILLING ====================
+
+  /**
+   * Flag "pronto per essere inviato al sistema di fatturazione".
+   * Settato dalla segreteria dopo verifica delle righe/importi.
+   * Richiede status = CLOSED e scontoFE = false.
+   * Separato da `isInvoicedToPatient` che indica l'invio effettivo.
+   */
+  @Field()
+  @Column({ default: false })
+  readyForBilling: boolean;
+
+  @Field({ nullable: true })
+  @Column('timestamp', { nullable: true })
+  readyForBillingAt?: Date;
+
   // ==================== OPERATOR INVOICE ====================
 
   @Field()
@@ -253,4 +270,12 @@ export class Treatment {
   @Field(() => [TreatmentService], { nullable: true })
   @OneToMany(() => TreatmentService, treatmentService => treatmentService.treatment)
   treatmentServices?: TreatmentService[];
+
+  /**
+   * Righe di fatturazione custom inserite dalla segreteria.
+   * Si aggiungono alle righe derivate dai servizi eseguiti (treatmentServices).
+   */
+  @Field(() => [TreatmentInvoiceLine], { nullable: true })
+  @OneToMany(() => TreatmentInvoiceLine, line => line.treatment)
+  invoiceLines?: TreatmentInvoiceLine[];
 }

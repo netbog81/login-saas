@@ -84,7 +84,13 @@ async function runMigrationsOnSchema(
       return { applied: ['<pending — dry run>'], skipped: false };
     }
 
-    const migrations = await tenantDataSource.runMigrations();
+    // transaction: 'each' → una transazione per migration, con COMMIT
+    // intermedio. Necessario perché alcune operazioni DDL (es. ALTER TYPE
+    // ADD VALUE) rendono il nuovo valore visibile solo dopo COMMIT: se la
+    // migration successiva lo usasse nella stessa transazione 'all', Postgres
+    // ritorna "invalid input value for enum". 'each' è il comportamento
+    // standard TypeORM e disaccoppia correttamente le migration.
+    const migrations = await tenantDataSource.runMigrations({ transaction: 'each' });
     return {
       applied: migrations.map((m) => m.name),
       skipped: migrations.length === 0,

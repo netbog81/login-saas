@@ -69,6 +69,8 @@ import { Treatment } from './modules/availability/entities/treatment.entity';
 import { TreatmentInstrument } from './modules/availability/entities/treatment-instrument.entity';
 import { AppointmentService } from './modules/availability/entities/appointment-service.entity';
 import { TreatmentService } from './modules/availability/entities/treatment-service.entity';
+import { TreatmentInvoiceLine } from './modules/availability/entities/treatment-invoice-line.entity';
+import { ServiceInvoicePrefix } from './modules/availability/entities/service-invoice-prefix.entity';
 // Therapeutic path entities
 import { TherapeuticPath } from './modules/availability/entities/therapeutic-path.entity';
 import { PathDocument } from './modules/availability/entities/path-document.entity';
@@ -144,6 +146,8 @@ const ALL_ENTITIES = [
   TreatmentInstrument,
   AppointmentService,
   TreatmentService,
+  TreatmentInvoiceLine,
+  ServiceInvoicePrefix,
   TherapeuticPath,
   PathDocument,
   PatientEvaluation,

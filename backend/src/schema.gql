@@ -461,6 +461,7 @@ input CreateOperatorAbsenceTypeInput {
 }
 
 input CreateOperatorInput {
+  canCollectPayment: Boolean
   categoryId: String
   color: String
   email: String
@@ -677,6 +678,12 @@ input CreateTherapeuticPathInput {
   notes: String
   patientId: ID!
   primaryOperatorId: ID!
+}
+
+input CreateTreatmentInvoiceLineInput {
+  amount: Float!
+  description: String!
+  treatmentId: ID!
 }
 
 input CreateWaitingListEntryInput {
@@ -1180,6 +1187,7 @@ type Mutation {
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   createTherapeuticPath(input: CreateTherapeuticPathInput!): TherapeuticPath!
   createTreatment(appointmentId: ID!, scontoFE: Boolean = false, therapeuticPathId: ID!): Treatment!
+  createTreatmentInvoiceLine(createdBy: ID, input: CreateTreatmentInvoiceLineInput!): TreatmentInvoiceLine!
   createVacation(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createWaitingListEntry(input: CreateWaitingListEntryInput!): WaitingListEntry!
   deactivateAllTemplateAssignmentsForOperator(operatorId: ID!): Boolean!
@@ -1229,6 +1237,7 @@ type Mutation {
   deleteTestEvaluationEntry(evaluationHistoryId: ID!): Boolean!
   deleteTherapeuticPath(id: ID!): Boolean!
   deleteTreatment(id: ID!): Boolean!
+  deleteTreatmentInvoiceLine(id: ID!): Boolean!
   deleteWaitingListEntry(id: ID!): Boolean!
   deleteWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
@@ -1256,7 +1265,7 @@ type Mutation {
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
   provisionTenantSchema: TenantSchemaStatus!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
-  recordTreatmentPayment(id: ID!, input: RecordPaymentInput!): Treatment!
+  recordTreatmentPayment(callerRole: TreatmentCallerRole, id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   reopenTreatment(id: ID!): Treatment!
   reorderWaitingList(input: ReorderWaitingListInput!): [WaitingListEntry!]!
@@ -1276,6 +1285,7 @@ type Mutation {
   sendAppointmentRecap(appointmentId: ID!): Boolean!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
+  setTreatmentsReadyForBilling(ids: [ID!]!, ready: Boolean!): [Treatment!]!
   testWhatsappConnection: Boolean!
   testWhatsappDirect(message: String, name: String!, phone: String!): WhatsappTestResult!
   testWhatsappFullFlow(name: String!, phone: String!): WhatsappTestResult!
@@ -1322,12 +1332,16 @@ type Mutation {
   updateTestResult(input: UpdateTestResultInput!, testId: ID!): EvaluationTest!
   updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
   updateTreatment(input: UpdateTreatmentInput!): Treatment!
+  updateTreatmentBySecretary(input: UpdateTreatmentBySecretaryInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
+  updateTreatmentInvoiceLine(input: UpdateTreatmentInvoiceLineInput!): TreatmentInvoiceLine!
+  updateTreatmentServiceInvoiceDescription(input: UpdateTreatmentServiceInvoiceDescriptionInput!): TreatmentService!
   updateWaitingListEntry(id: ID!, input: UpdateWaitingListEntryInput!): WaitingListEntry!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 
   """Crea o aggiorna anamnesi paziente"""
   upsertPatientAnamnesis(input: UpdatePatientAnamnesisInput!, patientId: ID!): PatientAnamnesis!
+  upsertServiceInvoicePrefix(input: UpsertServiceInvoicePrefixInput!): ServiceInvoicePrefix!
   upsertWhatsappConfig(input: WhatsappConfigInput!): WhatsappTenantConfig!
   upsertWhatsappTemplate(input: WhatsappTemplateInput!): WhatsappMessageTemplate!
   verifyKeycloakEmail(keycloakUserId: ID!): Boolean!
@@ -1372,6 +1386,7 @@ type Operator {
   appointments: [AvailabilityAppointment!]
   availabilityExceptions: [AvailabilityException!]
   availabilityTemplates: [AvailabilityTemplate!]
+  canCollectPayment: Boolean!
   category: OperatorCategory
   categoryId: String
   color: String
@@ -1973,6 +1988,7 @@ type Query {
   secretaries: [Secretary!]!
   secretary(id: ID!): Secretary
   service(id: ID!): Service
+  serviceInvoicePrefixes: [ServiceInvoicePrefix!]!
   serviceOperators(serviceId: ID!): [OperatorService!]!
   serviceSubcategories(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [ServiceSubcategory!]!
   serviceSubcategory(id: ID!): ServiceSubcategory
@@ -1997,11 +2013,14 @@ type Query {
   therapeuticPathsByPatients(patientIds: [ID!]!): [TherapeuticPath!]!
   treatment(id: ID!): Treatment
   treatmentByAppointment(appointmentId: ID!): Treatment
+  treatmentInvoiceLines(treatmentId: ID!): [TreatmentInvoiceLine!]!
   treatmentsByAppointments(appointmentIds: [ID!]!): [Treatment!]!
   treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
   treatmentsByOperators(date: String, operatorIds: [ID!]!): [Treatment!]!
   treatmentsByPatient(limit: Int, offset: Int, patientId: ID!): [Treatment!]!
   treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
+  treatmentsForOperator(dateFrom: String, dateTo: String, limit: Int, offset: Int, operatorId: ID!, statuses: [TreatmentStatus!]): [Treatment!]!
+  treatmentsForSecretary(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, limit: Int, offset: Int, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!]): [Treatment!]!
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
   treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
   treatmentsPendingClosure: [Treatment!]!
@@ -2232,6 +2251,14 @@ type ServiceInstrument {
   updatedAt: DateTime!
 }
 
+type ServiceInvoicePrefix {
+  createdAt: DateTime!
+  id: ID!
+  macroCategory: OperatorMacroCategory!
+  prefix: String!
+  updatedAt: DateTime!
+}
+
 type ServiceSubcategory {
   createdAt: DateTime!
   description: String
@@ -2454,6 +2481,7 @@ type Treatment {
   createdAt: DateTime!
   id: ID!
   instruments: [TreatmentInstrument!]
+  invoiceLines: [TreatmentInvoiceLine!]
   invoicedByOperatorAt: DateTime
   invoicedToPatientAt: DateTime
   isInvoicedByOperator: Boolean!
@@ -2474,6 +2502,8 @@ type Treatment {
   patientNotes: String
   paymentMethod: PaymentMethod
   price: Float!
+  readyForBilling: Boolean!
+  readyForBillingAt: DateTime
   rescheduleRequested: Boolean
   reschedulingNotes: String
   reschedulingType: String
@@ -2494,6 +2524,11 @@ type Treatment {
   therapeuticPathId: ID!
   treatmentServices: [TreatmentService!]
   updatedAt: DateTime!
+}
+
+enum TreatmentCallerRole {
+  OPERATOR
+  SECRETARY
 }
 
 type TreatmentInstrument {
@@ -2521,10 +2556,22 @@ input TreatmentInstrumentInput {
   wasUsed: Boolean!
 }
 
+type TreatmentInvoiceLine {
+  amount: Float!
+  createdAt: DateTime!
+  createdBy: ID
+  description: String!
+  id: ID!
+  treatmentId: ID!
+  updatedAt: DateTime!
+}
+
 type TreatmentService {
   createdAt: DateTime!
   duration: Int
   id: ID!
+  invoiceLineDescription: String
+  invoiceLineDescriptionAuto: String
   isCustomPrice: Boolean!
   orderPosition: Int!
   price: Float
@@ -2670,6 +2717,7 @@ input UpdateOperatorAbsenceTypeInput {
 }
 
 input UpdateOperatorInput {
+  canCollectPayment: Boolean
   categoryId: String
   color: String
   email: String
@@ -2859,6 +2907,16 @@ input UpdateTherapeuticPathInput {
   status: TherapeuticPathStatus
 }
 
+input UpdateTreatmentBySecretaryInput {
+  id: ID!
+  price: Float
+  scontoFE: Boolean
+  secretaryNotes: String
+
+  """Sostituisce i servizi eseguiti"""
+  treatmentServices: [TreatmentServiceInputItem!]
+}
+
 input UpdateTreatmentInput {
   clinicalNotes: String
   id: ID!
@@ -2897,6 +2955,17 @@ input UpdateTreatmentInstrumentInput {
   wasUsed: Boolean
 }
 
+input UpdateTreatmentInvoiceLineInput {
+  amount: Float
+  description: String
+  id: ID!
+}
+
+input UpdateTreatmentServiceInvoiceDescriptionInput {
+  description: String
+  treatmentServiceId: ID!
+}
+
 input UpdateWaitingListEntryInput {
   notes: String
   operatorId: ID
@@ -2905,6 +2974,11 @@ input UpdateWaitingListEntryInput {
   position: Int
   priority: Int
   status: WaitingListStatus
+}
+
+input UpsertServiceInvoicePrefixInput {
+  macroCategory: OperatorMacroCategory!
+  prefix: String!
 }
 
 type UserRole {

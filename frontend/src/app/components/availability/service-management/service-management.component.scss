@@ -2,9 +2,13 @@
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  /* Il container padre (dashboard configurazioni) ha height fissa +
+     overflow hidden: rendiamo questo component scrollabile da solo così
+     tabella servizi + blocco prefissi sono raggiungibili anche con molti
+     servizi. */
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto;
+  box-sizing: border-box;
 
   .header {
     display: flex;
@@ -75,8 +79,9 @@
   }
 
   .services-table {
-    flex: 1;
-    overflow-y: auto;
+    /* Niente flex/overflow: la tabella ha la sua altezza naturale, il
+       blocco prefissi scorre sotto. */
+    overflow: visible;
 
     table {
       width: 100%;

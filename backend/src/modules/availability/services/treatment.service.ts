@@ -4,6 +4,8 @@ import { Repository, In, IsNull, Not, DataSource, EntityManager } from 'typeorm'
 import { Treatment, TreatmentStatus, PaymentMethod } from '../entities/treatment.entity';
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
+import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
+import { Operator } from '../entities/operator.entity';
 import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
 import { AppointmentInstrument } from '../entities/appointment-instrument.entity';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
@@ -88,6 +90,8 @@ export class TreatmentService {
     private treatmentInstrumentRepo: Repository<TreatmentInstrument>,
     @InjectRepository(TreatmentServiceEntity)
     private treatmentServiceRepo: Repository<TreatmentServiceEntity>,
+    @InjectRepository(TreatmentInvoiceLine)
+    private treatmentInvoiceLineRepo: Repository<TreatmentInvoiceLine>,
     @InjectRepository(AvailabilityAppointment)
     private appointmentRepo: Repository<AvailabilityAppointment>,
     @InjectRepository(AppointmentInstrument)
@@ -298,7 +302,15 @@ export class TreatmentService {
       if (updateData.secretaryNotes !== undefined) treatment.secretaryNotes = updateData.secretaryNotes;
       if (updateData.patientNotes !== undefined) treatment.patientNotes = updateData.patientNotes;
       if (updateData.price !== undefined) treatment.price = updateData.price;
-      if (updateData.scontoFE !== undefined) treatment.scontoFE = updateData.scontoFE;
+      if (updateData.scontoFE !== undefined) {
+        treatment.scontoFE = updateData.scontoFE;
+        // Sconto FE attivo => trattamento NON fatturabile:
+        // forza readyForBilling a false per coerenza con markInvoicedToPatient.
+        if (updateData.scontoFE === true && treatment.readyForBilling) {
+          treatment.readyForBilling = false;
+          treatment.readyForBillingAt = null as any;
+        }
+      }
       if (updateData.painLevel !== undefined) treatment.painLevel = updateData.painLevel;
       if (updateData.painBefore !== undefined) treatment.painBefore = updateData.painBefore;
       if (updateData.painAfter !== undefined) treatment.painAfter = updateData.painAfter;
@@ -426,10 +438,18 @@ export class TreatmentService {
       );
     }
 
+    const now = new Date();
     treatment.status = TreatmentStatus.CLOSED;
-    treatment.closedAt = new Date();
+    treatment.closedAt = now;
     if (input.secretaryNotes) {
       treatment.secretaryNotes = input.secretaryNotes;
+    }
+
+    // Chiusura dalla segreteria = auto-marca "pronto per fatturazione"
+    // a meno che scontoFE sia attivo (non fatturabile) o sia già fatturato.
+    if (!treatment.scontoFE && !treatment.isInvoicedToPatient) {
+      treatment.readyForBilling = true;
+      treatment.readyForBillingAt = now;
     }
 
     const result = await this.treatmentRepo.save(treatment);
@@ -457,14 +477,30 @@ export class TreatmentService {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
     }
 
-    if (treatment.status !== TreatmentStatus.OPERATOR_COMPLETED) {
+    if (treatment.isInvoicedToPatient) {
       throw new BadRequestException(
-        `Solo i trattamenti in stato 'operator_completed' possono essere riaperti. Stato attuale: ${treatment.status}`
+        'Trattamento già fatturato: non può essere riaperto.'
       );
     }
 
-    treatment.status = TreatmentStatus.IN_PROGRESS;
-    treatment.completedAt = null as any;
+    // Due transizioni supportate:
+    // - OPERATOR_COMPLETED → IN_PROGRESS (l'operatore riprende il lavoro)
+    // - CLOSED            → OPERATOR_COMPLETED (la segreteria vuole
+    //   correggere: restituisce il trattamento allo stato precedente,
+    //   azzerando readyForBilling e closedAt)
+    if (treatment.status === TreatmentStatus.OPERATOR_COMPLETED) {
+      treatment.status = TreatmentStatus.IN_PROGRESS;
+      treatment.completedAt = null as any;
+    } else if (treatment.status === TreatmentStatus.CLOSED) {
+      treatment.status = TreatmentStatus.OPERATOR_COMPLETED;
+      treatment.closedAt = null as any;
+      treatment.readyForBilling = false;
+      treatment.readyForBillingAt = null as any;
+    } else {
+      throw new BadRequestException(
+        `Il trattamento è in stato ${treatment.status}: non è riapribile.`
+      );
+    }
 
     const result = await this.treatmentRepo.save(treatment);
 
@@ -483,9 +519,20 @@ export class TreatmentService {
   // ==================== PAYMENT ====================
 
   /**
-   * Registra il pagamento del paziente
+   * Registra il pagamento del paziente.
+   *
+   * @param callerRole - ruolo di chi chiama la mutation.
+   *   'operator': chiamata dall'interfaccia operatore. Richiede che
+   *     l'operatore associato al trattamento abbia canCollectPayment=true.
+   *   'secretary' (default): la segreteria può sempre incassare (a meno
+   *     che il trattamento sia già CLOSED, in cui caso è congelato).
+   *   TODO: sostituire con lettura ruolo dal JWT quando auth sarà attivo.
    */
-  async recordPayment(id: string, input: RecordPaymentInput): Promise<Treatment> {
+  async recordPayment(
+    id: string,
+    input: RecordPaymentInput,
+    callerRole: 'operator' | 'secretary' = 'secretary',
+  ): Promise<Treatment> {
     const treatment = await this.findById(id);
 
     if (!treatment) {
@@ -494,6 +541,24 @@ export class TreatmentService {
 
     if (treatment.isPaid) {
       throw new BadRequestException('Il trattamento è già stato pagato');
+    }
+
+    // Dopo CLOSED l'economia è congelata (solo sblocco via reopen).
+    if (treatment.status === TreatmentStatus.CLOSED) {
+      throw new BadRequestException(
+        'Il trattamento è chiuso dalla segreteria: il pagamento non è più modificabile.'
+      );
+    }
+
+    if (callerRole === 'operator') {
+      const operator = await this.dataSource
+        .getRepository(Operator)
+        .findOne({ where: { id: treatment.operatorId } });
+      if (!operator || operator.canCollectPayment === false) {
+        throw new BadRequestException(
+          "L'operatore non ha il permesso di registrare pagamenti."
+        );
+      }
     }
 
     treatment.isPaid = true;
@@ -511,13 +576,22 @@ export class TreatmentService {
   // ==================== INVOICING ====================
 
   /**
-   * Marca il trattamento come fatturato al paziente
+   * Marca il trattamento come fatturato al paziente.
+   *
+   * Vincolo: i trattamenti con scontoFE attivo non sono fatturabili.
+   * La segreteria deve prima rimuovere lo scontoFE per poterli marcare.
    */
   async markInvoicedToPatient(id: string, invoiceNumber?: string): Promise<Treatment> {
     const treatment = await this.findById(id);
 
     if (!treatment) {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+
+    if (treatment.scontoFE) {
+      throw new BadRequestException(
+        'Il trattamento ha sconto FE attivo: non può essere marcato come fatturato. Rimuovere prima lo sconto FE.'
+      );
     }
 
     treatment.isInvoicedToPatient = true;
@@ -903,5 +977,306 @@ export class TreatmentService {
       .execute();
 
     return result.affected || 0;
+  }
+
+  // ==================== SECRETARY-ONLY ECONOMIC UPDATES ====================
+
+  /**
+   * Aggiorna i campi economici/contabili di un trattamento OPERATOR_COMPLETED
+   * o CLOSED. Pensato per la segreteria che verifica prima della fatturazione.
+   *
+   * Campi consentiti: price, scontoFE, secretaryNotes, treatmentServices.
+   * Campi proibiti: tutto quello che è clinico (clinicalNotes, painLevel,
+   * painBefore, painAfter, operatorNotes, patientNotes). Se la segreteria
+   * deve far cambiare dati clinici, riapre il trattamento con reopen.
+   *
+   * Se scontoFE passa a true, readyForBilling viene forzato a false.
+   */
+  async updateBySecretary(input: {
+    id: string;
+    price?: number;
+    scontoFE?: boolean;
+    secretaryNotes?: string;
+    treatmentServices?: TreatmentServiceInputItem[];
+  }): Promise<Treatment> {
+    return this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id: input.id } });
+
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${input.id} non trovato`);
+      }
+
+      const allowed = [
+        TreatmentStatus.OPERATOR_COMPLETED,
+        TreatmentStatus.CLOSED,
+      ];
+      if (!allowed.includes(treatment.status)) {
+        throw new BadRequestException(
+          `La segreteria può modificare solo trattamenti chiusi dall'operatore o dalla segreteria. Stato attuale: ${treatment.status}`
+        );
+      }
+
+      if (input.price !== undefined) treatment.price = input.price;
+      if (input.secretaryNotes !== undefined) treatment.secretaryNotes = input.secretaryNotes;
+
+      if (input.scontoFE !== undefined) {
+        treatment.scontoFE = input.scontoFE;
+        if (input.scontoFE === true && treatment.readyForBilling) {
+          treatment.readyForBilling = false;
+          treatment.readyForBillingAt = null as any;
+        }
+      }
+
+      await treatmentRepo.save(treatment);
+
+      if (input.treatmentServices !== undefined) {
+        await this.saveTreatmentServicesWithManager(
+          manager,
+          input.id,
+          input.treatmentServices,
+          treatment.scontoFE || false,
+        );
+      }
+
+      return this.findByIdWithManager(manager, input.id);
+    });
+  }
+
+  // ==================== READY FOR BILLING ====================
+
+  /**
+   * Marca (o smarca) N trattamenti come pronti per essere inviati al
+   * sistema di fatturazione.
+   *
+   * Comportamento con ready=true:
+   * - Se il trattamento è già CLOSED: marca readyForBilling=true.
+   * - Se il trattamento è OPERATOR_COMPLETED: lo chiude automaticamente
+   *   (status=CLOSED, closedAt=now) e marca readyForBilling=true.
+   *   Questo riflette la policy concordata "chiusura da segreteria =
+   *   pronto per fatturazione", coerente con close().
+   * - Se il trattamento è IN_PROGRESS/WAITING: errore (l'operatore non
+   *   ha ancora completato).
+   * - scontoFE attivo o già fatturato: errore.
+   *
+   * Comportamento con ready=false: toglie solo il flag readyForBilling,
+   * non tocca lo stato del trattamento.
+   */
+  async setReadyForBilling(ids: string[], ready: boolean): Promise<Treatment[]> {
+    if (ids.length === 0) return [];
+
+    return this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatments = await treatmentRepo.find({ where: { id: In(ids) } });
+
+      if (treatments.length !== ids.length) {
+        throw new NotFoundException('Alcuni trattamenti non sono stati trovati');
+      }
+
+      if (ready) {
+        const transitionable = [
+          TreatmentStatus.CLOSED,
+          TreatmentStatus.OPERATOR_COMPLETED,
+        ];
+        for (const t of treatments) {
+          if (!transitionable.includes(t.status)) {
+            throw new BadRequestException(
+              `Trattamento ${t.id} in stato ${t.status}: l'operatore deve prima completarlo.`
+            );
+          }
+          if (t.scontoFE) {
+            throw new BadRequestException(
+              `Trattamento ${t.id} ha sconto FE attivo: non può essere marcato come pronto.`
+            );
+          }
+          if (t.isInvoicedToPatient) {
+            throw new BadRequestException(
+              `Trattamento ${t.id} è già fatturato.`
+            );
+          }
+        }
+      }
+
+      const now = new Date();
+      for (const t of treatments) {
+        // Auto-chiusura: se OPERATOR_COMPLETED e stiamo marcando pronto,
+        // lo chiudiamo contestualmente (policy = segreteria chiude+marca).
+        if (ready && t.status === TreatmentStatus.OPERATOR_COMPLETED) {
+          t.status = TreatmentStatus.CLOSED;
+          t.closedAt = now;
+        }
+        t.readyForBilling = ready;
+        t.readyForBillingAt = ready ? now : (null as any);
+      }
+
+      await treatmentRepo.save(treatments);
+      return treatments;
+    });
+  }
+
+  // ==================== INVOICE LINE DESCRIPTIONS ====================
+
+  /**
+   * Aggiorna la descrizione della riga fattura di un TreatmentService.
+   * Chiamata sia dagli operatori (in fase di completeTreatment) che
+   * dalla segreteria (in fase di verifica pre-fatturazione).
+   */
+  async updateTreatmentServiceInvoiceDescription(
+    treatmentServiceId: string,
+    description: string | null | undefined,
+  ): Promise<TreatmentServiceEntity> {
+    const ts = await this.treatmentServiceRepo.findOne({
+      where: { id: treatmentServiceId },
+    });
+    if (!ts) {
+      throw new NotFoundException(`TreatmentService ${treatmentServiceId} non trovato`);
+    }
+    // IMPORTANTE: usare null (non undefined) per cancellare il valore.
+    // TypeORM ignora i campi undefined al save (= "non toccare"), mentre
+    // null viene scritto in DB come NULL. Serve per il "ripristina
+    // auto-generata" che deve azzerare invoiceLineDescription.
+    if (description === undefined || description === null || description === '') {
+      (ts as any).invoiceLineDescription = null;
+    } else {
+      ts.invoiceLineDescription = description;
+    }
+    return this.treatmentServiceRepo.save(ts);
+  }
+
+  // ==================== TREATMENT INVOICE LINES (CUSTOM) ====================
+
+  async createInvoiceLine(input: {
+    treatmentId: string;
+    description: string;
+    amount: number;
+    createdBy?: string;
+  }): Promise<TreatmentInvoiceLine> {
+    const treatment = await this.findById(input.treatmentId);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${input.treatmentId} non trovato`);
+    }
+    if (treatment.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Il trattamento è già fatturato: non si possono aggiungere righe.'
+      );
+    }
+    const line = this.treatmentInvoiceLineRepo.create({
+      treatmentId: input.treatmentId,
+      description: input.description,
+      amount: input.amount,
+      createdBy: input.createdBy,
+    });
+    return this.treatmentInvoiceLineRepo.save(line);
+  }
+
+  async updateInvoiceLine(input: {
+    id: string;
+    description?: string;
+    amount?: number;
+  }): Promise<TreatmentInvoiceLine> {
+    const line = await this.treatmentInvoiceLineRepo.findOne({
+      where: { id: input.id },
+      relations: ['treatment'],
+    });
+    if (!line) {
+      throw new NotFoundException(`Riga ${input.id} non trovata`);
+    }
+    if (line.treatment?.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Il trattamento è già fatturato: le righe non sono modificabili.'
+      );
+    }
+    if (input.description !== undefined) line.description = input.description;
+    if (input.amount !== undefined) line.amount = input.amount;
+    return this.treatmentInvoiceLineRepo.save(line);
+  }
+
+  async deleteInvoiceLine(id: string): Promise<boolean> {
+    const line = await this.treatmentInvoiceLineRepo.findOne({
+      where: { id },
+      relations: ['treatment'],
+    });
+    if (!line) return false;
+    if (line.treatment?.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Il trattamento è già fatturato: le righe non sono eliminabili.'
+      );
+    }
+    const result = await this.treatmentInvoiceLineRepo.delete(id);
+    return (result.affected ?? 0) > 0;
+  }
+
+  async getInvoiceLinesByTreatment(treatmentId: string): Promise<TreatmentInvoiceLine[]> {
+    return this.treatmentInvoiceLineRepo.find({
+      where: { treatmentId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // ==================== QUERIES FOR TRATTAMENTI PAGE/DIALOG ====================
+
+  /**
+   * Query centralizzata per la pagina/dialog Trattamenti.
+   * Se operatorId è fornito, filtra per quell'operatore (uso: un operatore
+   * vede solo i propri). Se null, la query è per la segreteria/admin che
+   * vede tutto.
+   *
+   * Filtri combinabili: stato, range date, readyForBilling, isInvoicedToPatient,
+   * scontoFE, patientId.
+   */
+  async findForListing(filters: {
+    operatorId?: string | null;
+    patientId?: string | null;
+    statuses?: TreatmentStatus[];
+    dateFrom?: string;
+    dateTo?: string;
+    readyForBilling?: boolean;
+    isInvoicedToPatient?: boolean;
+    scontoFE?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<Treatment[]> {
+    const qb = this.treatmentRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.operator', 'operator')
+      .leftJoinAndSelect('t.patient', 'patient')
+      .leftJoinAndSelect('t.appointment', 'appointment')
+      .leftJoinAndSelect('t.treatmentServices', 'ts')
+      .leftJoinAndSelect('ts.service', 'service')
+      .leftJoinAndSelect('t.instruments', 'ti')
+      .leftJoinAndSelect('ti.instrument', 'instrument')
+      .leftJoinAndSelect('t.invoiceLines', 'invoiceLines');
+
+    if (filters.operatorId) {
+      qb.andWhere('t.operatorId = :operatorId', { operatorId: filters.operatorId });
+    }
+    if (filters.patientId) {
+      qb.andWhere('t.patientId = :patientId', { patientId: filters.patientId });
+    }
+    if (filters.statuses && filters.statuses.length > 0) {
+      qb.andWhere('t.status IN (:...statuses)', { statuses: filters.statuses });
+    }
+    if (filters.dateFrom) {
+      qb.andWhere('t.startedAt >= :dateFrom', { dateFrom: filters.dateFrom });
+    }
+    if (filters.dateTo) {
+      qb.andWhere('t.startedAt <= :dateTo', { dateTo: filters.dateTo });
+    }
+    if (filters.readyForBilling !== undefined) {
+      qb.andWhere('t.readyForBilling = :readyForBilling', { readyForBilling: filters.readyForBilling });
+    }
+    if (filters.isInvoicedToPatient !== undefined) {
+      qb.andWhere('t.isInvoicedToPatient = :isInvoiced', { isInvoiced: filters.isInvoicedToPatient });
+    }
+    if (filters.scontoFE !== undefined) {
+      qb.andWhere('t.scontoFE = :scontoFE', { scontoFE: filters.scontoFE });
+    }
+
+    qb.orderBy('t.startedAt', 'DESC');
+
+    if (filters.limit) qb.take(filters.limit);
+    if (filters.offset) qb.skip(filters.offset);
+
+    return qb.getMany();
   }
 }

@@ -121,6 +121,7 @@ import {
                   <div class="event-chip"
                        cdkDrag
                        [cdkDragData]="event"
+                       (cdkDragStarted)="onDragStarted()"
                        (cdkDragEnded)="onDragEnded($event, event)"
                        [style.top.px]="event.topPx"
                        [style.height.px]="event.heightPx"
@@ -295,7 +296,7 @@ import {
       font-size: 0.7rem;
       color: #94a3b8;
       border-bottom: 1px solid #f1f5f9;
-      box-sizing: border-box;
+      /* NO box-sizing border-box: altezza = slotHeight, border è extra */
     }
 
     /* ===== COLUMNS ===== */
@@ -315,7 +316,7 @@ import {
     .grid-cell {
       position: relative;
       border-bottom: 1px solid #f1f5f9;
-      box-sizing: border-box;
+      /* NO box-sizing border-box: il border è EXTRA, come nel calendar v1 */
     }
 
     .cell-available {
@@ -502,8 +503,10 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
   @Output() eventDblClick = new EventEmitter<EventClickEvent>();
   @Output() dragMove = new EventEmitter<DragMoveEvent>();
   @Output() availableSlotDblClick = new EventEmitter<AvailableSlotPosition>();
+  @Output() resizeEnd = new EventEmitter<{ appointmentId: string; newEndTime: string }>();
 
   private scrollListener?: () => void;
+  private isDragging = false;
 
   ngAfterViewInit(): void {
     // Sync scroll orizzontale tra body e header (vista espansa)
@@ -545,15 +548,17 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
   onColumnDblClick(event: MouseEvent, col: OperatorColumnData): void {
     // Ignora se il click era su un evento
     if ((event.target as HTMLElement).closest('.event-chip')) return;
+    if (!this.gridData || this.gridData.timeSlots.length === 0) return;
 
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const yOffset = event.clientY - rect.top + (event.currentTarget as HTMLElement).scrollTop;
-    const slotIndex = Math.floor(yOffset / (this.gridData?.slotHeightPx || 60));
-    const slot = this.gridData?.timeSlots[slotIndex];
+    const slotIndex = Math.floor(yOffset / (this.gridData.slotHeightPx || 60));
+    const slot = this.gridData.timeSlots[slotIndex];
 
     if (slot) {
-      const slotDuration = this.gridData?.timeSlots[1]
-        ? this.timeToMinutes(this.gridData.timeSlots[1].time) - this.timeToMinutes(slot.time)
+      // Durata slot = differenza tra i primi 2 slot
+      const slotDuration = this.gridData.timeSlots.length > 1
+        ? this.timeToMinutes(this.gridData.timeSlots[1].time) - this.timeToMinutes(this.gridData.timeSlots[0].time)
         : 45;
       const endMinutes = this.timeToMinutes(slot.time) + slotDuration;
       const endTime = this.minutesToTime(endMinutes);
@@ -569,34 +574,51 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
 
   onEventClick(event: MouseEvent, posEvent: PositionedEvent): void {
     event.stopPropagation();
+    // Ignora click dopo drag
+    if (this.isDragging) {
+      this.isDragging = false;
+      return;
+    }
     this.eventClick.emit({ appointment: posEvent.appointment, mouseEvent: event });
   }
 
   onEventDblClick(event: MouseEvent, posEvent: PositionedEvent): void {
     event.stopPropagation();
+    if (this.isDragging) return;
     this.eventDblClick.emit({ appointment: posEvent.appointment, mouseEvent: event });
+  }
+
+  onDragStarted(): void {
+    this.isDragging = true;
   }
 
   onDragEnded(cdkEvent: CdkDragEnd, posEvent: PositionedEvent): void {
     const delta = cdkEvent.distance;
-    if (!this.gridData) return;
+    if (!this.gridData) {
+      cdkEvent.source.reset();
+      this.isDragging = false;
+      return;
+    }
 
-    const slotHeightPx = this.gridData.slotHeightPx;
-    const slotDuration = this.gridData.timeSlots[1]
+    const slotDuration = this.gridData.timeSlots.length > 1
       ? this.timeToMinutes(this.gridData.timeSlots[1].time) - this.timeToMinutes(this.gridData.timeSlots[0].time)
       : 45;
+    const pxPerSlot = this.gridData.slotHeightPx;
 
     // Calcola spostamento in minuti (snap a slot)
-    const minuteDelta = Math.round(delta.y / slotHeightPx) * slotDuration;
+    const minuteDelta = Math.round(delta.y / pxPerSlot) * slotDuration;
+
+    cdkEvent.source.reset();
+
     if (minuteDelta === 0) {
-      cdkEvent.source.reset();
+      // Nessuno spostamento — il click handler gestira' l'apertura dialog
+      // isDragging viene resettato nel click handler
+      setTimeout(() => { this.isDragging = false; }, 100);
       return;
     }
 
     const startMinutes = this.timeToMinutes(posEvent.originalStartTime) + minuteDelta;
     const endMinutes = this.timeToMinutes(posEvent.originalEndTime) + minuteDelta;
-
-    cdkEvent.source.reset();
 
     this.dragMove.emit({
       appointmentId: posEvent.appointment.id as string,
@@ -605,12 +627,59 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
       newStartTime: this.minutesToTime(startMinutes),
       newEndTime: this.minutesToTime(endMinutes),
     });
+
+    // Reset drag flag dopo un breve delay per bloccare il click
+    setTimeout(() => { this.isDragging = false; }, 200);
   }
 
   onResizeStart(event: MouseEvent, posEvent: PositionedEvent): void {
     event.stopPropagation();
     event.preventDefault();
-    // TODO: implementare resize con mousemove/mouseup nativi
+    this.isDragging = true;
+
+    if (!this.gridData) return;
+
+    const startY = event.clientY;
+    const originalHeightPx = posEvent.heightPx;
+    const chipEl = (event.target as HTMLElement).parentElement!;
+    const slotDuration = this.gridData.timeSlots.length > 1
+      ? this.timeToMinutes(this.gridData.timeSlots[1].time) - this.timeToMinutes(this.gridData.timeSlots[0].time)
+      : 45;
+    const pxPerMinute = this.gridData.slotHeightPx / slotDuration;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - startY;
+      const newHeight = Math.max(pxPerMinute * slotDuration * 0.5, originalHeightPx + deltaY);
+      chipEl.style.height = `${newHeight}px`;
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      const deltaY = e.clientY - startY;
+      const minuteDelta = Math.round(deltaY / pxPerMinute / slotDuration) * slotDuration;
+
+      // Ripristina altezza originale (il reload riposizionera')
+      chipEl.style.height = `${originalHeightPx}px`;
+
+      if (minuteDelta !== 0) {
+        const endMinutes = this.timeToMinutes(posEvent.originalEndTime) + minuteDelta;
+        const startMinutes = this.timeToMinutes(posEvent.originalStartTime);
+        // Assicura che endTime > startTime (almeno 1 slot)
+        if (endMinutes > startMinutes) {
+          this.resizeEnd.emit({
+            appointmentId: posEvent.appointment.id as string,
+            newEndTime: this.minutesToTime(endMinutes),
+          });
+        }
+      }
+
+      setTimeout(() => { this.isDragging = false; }, 200);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   }
 
   // ==================== UTILITIES ====================

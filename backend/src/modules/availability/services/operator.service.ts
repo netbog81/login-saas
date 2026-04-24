@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException, 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
+import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { CreateOperatorInput } from '../dto/create-operator.input';
 import { UpdateOperatorInput } from '../dto/update-operator.input';
 import { AppUser } from '../../users/entities/app-user.entity';
@@ -158,12 +159,20 @@ export class OperatorService {
     });
     const savedAppUser = await this.appUserRepo.save(appUser);
 
+    // Default canCollectPayment in base alla categoria:
+    // gli istruttori palestra nascono senza permesso di incasso,
+    // tutti gli altri con permesso. Admin può modificare dopo dalla UI.
+    const defaultCanCollectPayment =
+      input.canCollectPayment ??
+      input.macroCategory !== OperatorMacroCategory.GYM_INSTRUCTOR;
+
     // Crea operatore con riferimento ad app_user
     const operator = this.operatorRepo.create({
       ...input,
       appUserId: savedAppUser.id,
       isActive: input.isActive ?? true,
       maxConcurrentAppointments: input.maxConcurrentAppointments || 1,
+      canCollectPayment: defaultCanCollectPayment,
     });
 
     try {

@@ -47,6 +47,7 @@ export const GET_OPERATORS = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      canCollectPayment
       createdAt
       updatedAt
       templateAssignments {
@@ -80,6 +81,7 @@ export const GET_OPERATOR = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      canCollectPayment
       createdAt
       updatedAt
       availabilityTemplates {
@@ -129,6 +131,7 @@ export const MY_OPERATOR = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      canCollectPayment
       createdAt
       updatedAt
       templateAssignments {

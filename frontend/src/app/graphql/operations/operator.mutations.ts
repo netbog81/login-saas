@@ -23,6 +23,7 @@ export const CREATE_OPERATOR = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      canCollectPayment
       createdAt
       updatedAt
     }
@@ -51,6 +52,7 @@ export const UPDATE_OPERATOR = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      canCollectPayment
       createdAt
       updatedAt
     }
