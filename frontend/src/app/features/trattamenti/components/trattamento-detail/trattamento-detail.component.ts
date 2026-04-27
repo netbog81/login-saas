@@ -111,6 +111,13 @@ export interface DetailDialogData {
               Fatturato
             </span>
           }
+          @if (treatment.forcedClosure) {
+            <span class="status-chip status-chip-warn"
+                  matTooltip="Chiusura forzata da segreteria/admin (operatore non ha completato il trattamento)">
+              <mat-icon inline>lock_clock</mat-icon>
+              Chiusura forzata
+            </span>
+          }
         </h2>
         <div class="subtitle">
           {{ formatDate(treatment.appointment.appointmentDate) }}
@@ -332,8 +339,27 @@ export interface DetailDialogData {
               <div class="close-treatment-cta">
                 <mat-icon class="info">info</mat-icon>
                 <div style="flex: 1">
-                  Trattamento ancora in corso: l'operatore deve prima completarlo.
+                  <strong>Trattamento ancora in corso.</strong>
+                  Normalmente è l'operatore che lo completa. Se l'operatore se ne è dimenticato,
+                  puoi forzare la chiusura dopo l'orario di fine appuntamento.
+                  @if (!canForceCloseNow()) {
+                    <div class="force-close-wait">
+                      <mat-icon>schedule</mat-icon>
+                      Forza chiusura disponibile dopo le {{ formatAppointmentEnd() }}.
+                    </div>
+                  }
                 </div>
+                @if (canForceCloseTreatment) {
+                  <button
+                    mat-flat-button
+                    color="warn"
+                    [disabled]="!canForceCloseNow()"
+                    (click)="forceCloseTreatment.emit()"
+                    [matTooltip]="canForceCloseNow() ? 'Forza chiusura: il trattamento passa direttamente a CLOSED' : 'Disponibile dopo l\\'orario di fine appuntamento'">
+                    <mat-icon>lock_clock</mat-icon>
+                    Forza chiusura
+                  </button>
+                }
               </div>
             }
             @if (canEditEconomics && treatment.status === TreatmentStatus.CLOSED) {
@@ -656,6 +682,19 @@ export interface DetailDialogData {
     }
     .close-treatment-cta.cta-closed mat-icon.info { color: #388e3c; }
     .close-treatment-cta mat-icon.info { color: #1976d2; }
+    .force-close-wait {
+      margin-top: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: rgba(0, 0, 0, 0.55);
+    }
+    .force-close-wait mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
     .status-chip {
       display: inline-flex;
       align-items: center;
@@ -673,6 +712,9 @@ export interface DetailDialogData {
     }
     .status-chip-accent {
       background: #f57c00 !important;
+    }
+    .status-chip-warn {
+      background: #b91c1c !important;
     }
     .send-to-billing-cta {
       display: flex; align-items: center; gap: 12px;
@@ -709,6 +751,13 @@ export class TrattamentoDetailComponent {
 
   @Input() canEditEconomics = false;
   @Input() canRecordPayment = false;
+  /**
+   * True se il chiamante ha il permesso `treatment_force_close`
+   * (segreteria/admin). Quando false, il bottone "Forza chiusura" non
+   * compare nemmeno: la regola di business rimane comunque enforced
+   * a livello di backend dal guard.
+   */
+  @Input() canForceCloseTreatment = false;
 
   @Output() updateServiceDescription = new EventEmitter<DetailUpdateServiceDescriptionPayload>();
   @Output() createInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
@@ -719,6 +768,8 @@ export class TrattamentoDetailComponent {
   @Output() toggleReadyForBilling = new EventEmitter<boolean>();
   @Output() closeTreatment = new EventEmitter<void>();
   @Output() reopenTreatment = new EventEmitter<void>();
+  /** Emette la richiesta di force-close (segreteria/admin). */
+  @Output() forceCloseTreatment = new EventEmitter<void>();
 
   svcCols = ['service', 'description', 'price'];
   customCols = ['cdescription', 'camount', 'cactions'];
@@ -751,6 +802,42 @@ export class TrattamentoDetailComponent {
 
   closeDialog(): void {
     this.dialogRef.close();
+  }
+
+  /**
+   * True se l'orario di fine appuntamento è già passato.
+   * Regola di business: la chiusura forzata è consentita SOLO dopo
+   * la fine prevista del trattamento (es. appointment 15-16 del 22/4 →
+   * disponibile dal 22/4 16:00 in poi). Prima il bottone è disabilitato e
+   * mostriamo all'utente quando potrà essere usato.
+   */
+  canForceCloseNow(): boolean {
+    const end = this.appointmentEndDateTime();
+    if (!end) return false;
+    return Date.now() >= end.getTime();
+  }
+
+  /** Etichetta leggibile dell'orario fine appuntamento per il messaggio UI. */
+  formatAppointmentEnd(): string {
+    const end = this.appointmentEndDateTime();
+    if (!end) return '—';
+    return end.toLocaleString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  /** Combina appointmentDate + endTime in un Date. Null se manca un campo. */
+  private appointmentEndDateTime(): Date | null {
+    const appt = this.treatment?.appointment;
+    if (!appt?.appointmentDate || !appt?.endTime) return null;
+    // ISO format con offset locale: "YYYY-MM-DDTHH:MM" è interpretato come ora locale.
+    const iso = `${appt.appointmentDate}T${appt.endTime}`;
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
   }
 
   get totalPreview(): number {

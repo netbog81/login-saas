@@ -2,6 +2,8 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SettingsModule } from '../settings/settings.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { AppUsersModule } from '../users/app-users.module';
+import { OwnershipGuard } from './guards/ownership.guard';
 
 // Entities
 import { Operator } from './entities/operator.entity';
@@ -109,6 +111,7 @@ import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver
 @Module({
   imports: [
     SettingsModule,
+    AppUsersModule,
     forwardRef(() => WhatsappModule),
     TypeOrmModule.forFeature([
       AppUser,
@@ -187,6 +190,8 @@ import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver
     PatientAnamnesisService,
     WaitingListService,
     ServiceInvoicePrefixService,
+    // Guards
+    OwnershipGuard,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,

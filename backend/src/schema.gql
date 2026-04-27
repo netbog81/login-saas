@@ -119,6 +119,8 @@ type AvailabilityAppointment {
   conflictReason: ConflictReason
   createdAt: DateTime!
   createdBy: ID
+  deletedAt: DateTime
+  deletedByUserId: ID
   endTime: String!
   gymRoom: GymRoom
   gymRoomId: ID
@@ -706,6 +708,12 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 """
 scalar DateTime
 
+type DeleteOperatorResult {
+  archived: Boolean!
+  dependencies: OperatorDependencyCount!
+  hardDeleted: Boolean!
+}
+
 """Category of attached document"""
 enum DocumentCategory {
   CONSENT
@@ -728,6 +736,8 @@ type EvaluationExam {
 
   """Data dell'esame"""
   data: DateTime
+  deletedAt: DateTime
+  deletedByUserId: ID
   evaluationId: ID!
   id: ID!
 
@@ -757,6 +767,8 @@ type EvaluationObjective {
 
   """Data in cui l'obiettivo è stato raggiunto"""
   dataRaggiungimento: DateTime
+  deletedAt: DateTime
+  deletedByUserId: ID
 
   """Descrizione dell'obiettivo"""
   descrizione: String!
@@ -796,6 +808,8 @@ type EvaluationTest {
 
   """Data di esecuzione del test"""
   dataEsecuzione: DateTime
+  deletedAt: DateTime
+  deletedByUserId: ID
 
   """Storico valutazioni"""
   evaluationHistory: [TestEvaluationHistory!]
@@ -1037,6 +1051,8 @@ type Instrument {
   categoryId: String!
   color: String
   createdAt: DateTime!
+  deletedAt: DateTime
+  deletedByUserId: ID
   id: ID!
   isActive: Boolean!
   model: String
@@ -1049,6 +1065,8 @@ type Instrument {
 
 type InstrumentCategory {
   createdAt: DateTime!
+  deletedAt: DateTime
+  deletedByUserId: ID
   description: String
   id: ID!
   instruments: [Instrument!]
@@ -1213,7 +1231,7 @@ type Mutation {
   deleteInstrumentCategory(id: ID!): Boolean!
   deleteItManager(id: ID!): Boolean!
   deleteKeycloakUser(keycloakUserId: ID!): Boolean!
-  deleteOperator(id: ID!): Boolean!
+  deleteOperator(id: ID!): DeleteOperatorResult!
   deleteOperatorAbsenceType(id: ID!): Boolean!
   deleteOperatorCategory(id: ID!): Boolean!
   deletePathDocument(id: ID!): Boolean!
@@ -1243,6 +1261,8 @@ type Mutation {
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): EvaluationTest!
   editTestEvaluationEntry(evaluationHistoryId: ID!, evaluationLevel: Int!, note: String): TestEvaluationHistory!
+  emptyRecycleBin(force: Boolean = false): Int!
+  forceCloseTreatment(id: ID!, secretaryNotes: String): Treatment!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
 
@@ -1264,10 +1284,13 @@ type Mutation {
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
   provisionTenantSchema: TenantSchemaStatus!
+  purgeFromRecycleBin(entityType: RecycleBinEntityType!, id: ID!): Boolean!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   recordTreatmentPayment(callerRole: TreatmentCallerRole, id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
-  reopenTreatment(id: ID!): Treatment!
+  reopenTreatment(id: ID!): Treatment! @deprecated(reason: "Usa reopenTreatmentByOperator o reopenTreatmentBySecretary")
+  reopenTreatmentByOperator(id: ID!): Treatment!
+  reopenTreatmentBySecretary(id: ID!): Treatment!
   reorderWaitingList(input: ReorderWaitingListInput!): [WaitingListEntry!]!
 
   """
@@ -1278,6 +1301,8 @@ type Mutation {
   resetTestEvaluation(testId: ID!): EvaluationTest!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
+  restoreFromRecycleBin(entityType: RecycleBinEntityType!, id: ID!): Boolean!
+  restoreOperator(id: ID!): Operator!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
   revokeKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   revokePermissionFromRole(permissionId: ID!, roleId: ID!): Boolean!
@@ -1323,6 +1348,7 @@ type Mutation {
   updatePatientStatus(id: ID!, status: String!): PatientModel!
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
+  updateRecycleBinSettings(retentionDays: Int): RecycleBinSettings!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, subcategoryId: ID): Service!
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
@@ -1345,6 +1371,13 @@ type Mutation {
   upsertWhatsappConfig(input: WhatsappConfigInput!): WhatsappTenantConfig!
   upsertWhatsappTemplate(input: WhatsappTemplateInput!): WhatsappMessageTemplate!
   verifyKeycloakEmail(keycloakUserId: ID!): Boolean!
+}
+
+type MyProfile {
+  appUserId: ID!
+  operatorId: ID
+  permissions: [String!]!
+  userType: AppUserType!
 }
 
 type ObjectiveProgressHistory {
@@ -1391,6 +1424,8 @@ type Operator {
   categoryId: String
   color: String
   createdAt: DateTime!
+  deletedAt: DateTime
+  deletedByUserId: ID
   email: String
   gymSchedules: [GymSchedule!]
   id: ID!
@@ -1439,6 +1474,18 @@ type OperatorConflictCount {
   count: Int!
   operatorId: ID!
   operatorName: String!
+}
+
+type OperatorDependencyCount {
+  anamnesis: Int!
+  appointments: Int!
+  evaluations: Int!
+  gymSchedules: Int!
+  templateAssignments: Int!
+  therapeuticPaths: Int!
+  total: Int!
+  treatments: Int!
+  waitingList: Int!
 }
 
 """
@@ -1530,6 +1577,8 @@ type PatientEvaluation {
 
   """Criticità identificate"""
   criticita: [String!]
+  deletedAt: DateTime
+  deletedByUserId: ID
 
   """Diagnosi fisioterapica"""
   diagnosiFisioterapica: String
@@ -1864,6 +1913,7 @@ type Query {
   appUserByKeycloakId(keycloakId: String!): AppUser
   appUserPermissions(appUserId: ID!): [String!]!
   appUsers(isActive: Boolean, userType: AppUserType): [AppUser!]!
+  archivedOperators: [Operator!]!
   availabilityAppointment(id: ID!): AvailabilityAppointment
   availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
   availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
@@ -1922,6 +1972,7 @@ type Query {
   keycloakOrgMembers: [KeycloakOrgMember!]!
   keycloakRealmRoles: [KeycloakRealmRoleType!]!
   myOperator: Operator
+  myProfile: MyProfile
   objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
   objectivesByEvaluation(evaluationId: ID!): [EvaluationObjective!]!
   objectivesProgress(evaluationId: ID!): ObjectivesProgress!
@@ -1932,6 +1983,7 @@ type Query {
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
   operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
   operatorCategory(id: ID!): OperatorCategory
+  operatorDependencies(id: ID!): OperatorDependencyCount!
   operatorExceptions(endDate: String, operatorId: ID!, startDate: String): [AvailabilityException!]!
   operatorPatternsOnDate(date: String!, operatorId: ID!): [OperatorSlotOnDate!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
@@ -1977,6 +2029,8 @@ type Query {
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
   recurringSeries(recurringGroupId: ID!): [AvailabilityAppointment!]!
+  recycleBin(filter: RecycleBinFilterInput): [RecycleBinItem!]!
+  recycleBinSettings: RecycleBinSettings!
   revalidateConflictsIfNeeded: ConflictRevalidationResult!
   role(id: ID!): Role
   roles: [Role!]!
@@ -2062,6 +2116,72 @@ enum RecurringType {
   DAILY
   MONTHLY
   WEEKLY
+}
+
+"""Tipo di entità nel cestino"""
+enum RecycleBinEntityType {
+  PATIENT_EVALUATION
+  THERAPEUTIC_PATH
+  TREATMENT
+}
+
+input RecycleBinFilterInput {
+  """Tipi di entità da includere. Default: tutti."""
+  entityTypes: [RecycleBinEntityType!]
+
+  """Filtra per AppUser proprietario (admin only)"""
+  ownerUserId: ID
+
+  """Stringa libera (matching su title/subtitle)"""
+  search: String
+}
+
+type RecycleBinItem {
+  """
+  Conteggio figli collegati (es. n trattamenti per un percorso). Solo informativo.
+  """
+  childrenCount: Int
+  deletedAt: DateTime!
+
+  """Nome leggibile dell'AppUser che ha cancellato"""
+  deletedByName: String
+
+  """AppUser che ha eseguito la cancellazione"""
+  deletedByUserId: ID
+  entityType: RecycleBinEntityType!
+
+  """Id dell'entità soft-deletata"""
+  id: ID!
+
+  """Nome dell'operatore proprietario originale"""
+  ownerName: String
+
+  """
+  AppUser proprietario originale (per filtri in UI). Vuoto se l'operatore non è linkato a un AppUser.
+  """
+  ownerUserId: ID
+
+  """
+  Quando l'elemento sarà eliminato definitivamente dal cron (null = retention indefinita)
+  """
+  scheduledPurgeAt: DateTime
+
+  """Sottotitolo opzionale (es. nome paziente, data trattamento)"""
+  subtitle: String
+
+  """Titolo leggibile del record (nome percorso, info trattamento, ecc.)"""
+  title: String!
+}
+
+type RecycleBinSettings {
+  id: ID!
+
+  """
+  Giorni di retention nel cestino prima dell'eliminazione definitiva. null = conservazione indefinita. Minimo 30 se impostato.
+  """
+  retentionDays: Int
+  updatedAt: DateTime!
+  updatedByUserId: ID
 }
 
 input ReorderEntryItem {
@@ -2431,6 +2551,8 @@ type TestsProgress {
 type TherapeuticPath {
   closedAt: DateTime
   createdAt: DateTime!
+  deletedAt: DateTime
+  deletedByUserId: ID
   diagnosis: String
   documents: [PathDocument!]
   externalDoctorName: String
@@ -2476,9 +2598,13 @@ type Treatment {
   appointmentId: ID!
   clinicalNotes: String
   closedAt: DateTime
+  closedByUserId: ID
   collectedBy: ID
   completedAt: DateTime
   createdAt: DateTime!
+  deletedAt: DateTime
+  deletedByUserId: ID
+  forcedClosure: Boolean!
   id: ID!
   instruments: [TreatmentInstrument!]
   invoiceLines: [TreatmentInvoiceLine!]
@@ -2532,7 +2658,11 @@ enum TreatmentCallerRole {
 }
 
 type TreatmentInstrument {
+  brandSnapshot: String
   categoryName: String
+  categoryNameSnapshot: String
+  deletedAt: DateTime
+  deletedByUserId: ID
   endOffsetMinutes: Int!
   id: ID!
   instrument: Instrument
@@ -2540,8 +2670,12 @@ type TreatmentInstrument {
   instrumentCategoryId: ID
   instrumentId: ID!
   instrumentName: String
+  instrumentNameSnapshot: String
+  modelSnapshot: String
   orderPosition: Int
+  snapshotTakenAt: DateTime
   startOffsetMinutes: Int!
+  technicalDataSnapshot: JSON
   treatment: Treatment!
   treatmentId: ID!
   wasUsed: Boolean!

@@ -30,9 +30,44 @@ export const CLOSE_TREATMENT = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+/**
+ * @deprecated Usa REOPEN_TREATMENT_BY_OPERATOR o REOPEN_TREATMENT_BY_SECRETARY.
+ * Manteniamo questa per retrocompatibilità durante la transizione.
+ */
 export const REOPEN_TREATMENT = gql`
   mutation ReopenTreatment($id: ID!) {
     reopenTreatment(id: $id) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
+export const REOPEN_TREATMENT_BY_OPERATOR = gql`
+  mutation ReopenTreatmentByOperator($id: ID!) {
+    reopenTreatmentByOperator(id: $id) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
+export const REOPEN_TREATMENT_BY_SECRETARY = gql`
+  mutation ReopenTreatmentBySecretary($id: ID!) {
+    reopenTreatmentBySecretary(id: $id) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
+/**
+ * Segreteria forza la chiusura di un trattamento rimasto IN_PROGRESS
+ * (operatore dimentico). IN_PROGRESS → CLOSED in una sola transizione.
+ */
+export const FORCE_CLOSE_TREATMENT = gql`
+  mutation ForceCloseTreatment($id: ID!, $secretaryNotes: String) {
+    forceCloseTreatment(id: $id, secretaryNotes: $secretaryNotes) {
       ...TreatmentWithRelationsFields
     }
   }

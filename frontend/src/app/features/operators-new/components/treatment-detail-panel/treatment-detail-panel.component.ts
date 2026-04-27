@@ -12,14 +12,19 @@ import {
   Input,
   Output,
   EventEmitter,
-  ChangeDetectionStrategy
+  ChangeDetectionStrategy,
+  inject,
+  signal,
+  computed,
 } from '@angular/core';
+import { PermissionsService } from '../../../../core/services/permissions.service';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   PathTreatment,
   getTreatmentTypeLabel,
@@ -35,7 +40,8 @@ import {
     MatButtonModule,
     MatChipsModule,
     MatDividerModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="treatment-detail-panel">
@@ -194,7 +200,12 @@ import {
           <span class="created">
             Registrato: {{ formatDateTime(treatment.createdAt) }}
           </span>
-          <button mat-flat-button color="primary" (click)="onEdit()">
+          <button
+            mat-flat-button
+            color="primary"
+            [disabled]="!canEdit()"
+            [matTooltip]="canEdit() ? 'Modifica trattamento' : 'Solo il proprietario o un admin può modificare il trattamento'"
+            (click)="onEdit()">
             <mat-icon>edit</mat-icon>
             Modifica
           </button>
@@ -498,11 +509,35 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TreatmentDetailPanelComponent {
-  @Input() treatment: PathTreatment | null = null;
+  protected readonly perms = inject(PermissionsService);
+
+  /**
+   * Trattamento corrente esposto come signal interno per consentire ai
+   * computed di reagire ai cambi di Input.
+   */
+  private readonly treatmentSignal = signal<PathTreatment | null>(null);
+  @Input() set treatment(value: PathTreatment | null) {
+    this.treatmentSignal.set(value);
+  }
+  get treatment(): PathTreatment | null {
+    return this.treatmentSignal();
+  }
+
   @Input() loading = false;
 
   @Output() close = new EventEmitter<void>();
   @Output() edit = new EventEmitter<PathTreatment>();
+
+  /**
+   * True se l'utente può modificare il trattamento corrente.
+   * Reattivo a: `treatmentSignal` (Input) + `permissions()` (signal globale).
+   */
+  readonly canEdit = computed<boolean>(() => {
+    const t = this.treatmentSignal();
+    if (!t) return false;
+    void this.perms.permissions();
+    return this.perms.canEditTreatment(t.operatorAppUserId ?? null);
+  });
 
   onClose(): void {
     this.close.emit();

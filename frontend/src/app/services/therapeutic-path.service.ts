@@ -52,6 +52,7 @@ interface BackendTherapeuticPath {
     id: string;
     name: string;
     surname: string;
+    appUserId?: string | null;
   };
   patient?: {
     id: string;
@@ -203,6 +204,7 @@ export class TherapeuticPathService extends BaseGraphQLService {
       primaryOperatorName: backend.primaryOperator
         ? `${backend.primaryOperator.name} ${backend.primaryOperator.surname || ''}`.trim()
         : undefined,
+      primaryOperatorAppUserId: backend.primaryOperator?.appUserId ?? null,
       status: backend.status,
       startDate: backend.createdAt,
       actualEndDate: backend.closedAt,

@@ -6,7 +6,11 @@ import { CdkOverlayOrigin, OverlayModule } from '@angular/cdk/overlay';
 import { CdkMenuModule } from '@angular/cdk/menu';
 
 import { AvailabilityStateService } from '../../../services/availability-state.service';
-import { OperatorService } from '../../../services/operator.service';
+import {
+  OperatorService,
+  DeleteOperatorResult,
+  OperatorDependencyCount,
+} from '../../../services/operator.service';
 import { OperatorCategoryService } from '../../../services/operator-category.service';
 import { ServiceService } from '../../../services/service.service';
 import { ServiceSubcategoryService, ServiceSubcategory } from '../../../services/service-subcategory.service';
@@ -31,11 +35,17 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   operators: Operator[] = [];
+  archivedOperators: Operator[] = [];
   categories: OperatorCategory[] = [];
   services: Service[] = [];
   selectedOperator: Operator | null = null;
   loading = false;
   error: string | null = null;
+  /**
+   * Toggle "Mostra archiviati": quando true mostra la lista dei soft-deletati
+   * (caricata on-demand) con bottone Ripristina. Default false.
+   */
+  showArchived = false;
 
   // Form state
   showOperatorForm = false;
@@ -445,25 +455,130 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
 
   deleteOperator(operator: Operator) {
     this.ngZone.run(() => {
-      if (!confirm(`Sei sicuro di voler eliminare l'operatore ${operator.name}?`)) {
-        return;
-      }
+      // Prima recuperiamo le dipendenze per costruire un messaggio
+      // informativo all'admin: archiviazione (soft) vs eliminazione (hard).
+      this.operatorService.getOperatorDependencies(operator.id).subscribe({
+        next: (deps: OperatorDependencyCount) => {
+          const fullName = `${operator.name} ${operator.surname ?? ''}`.trim();
+          const willArchive = deps.total > 0;
+          const message = willArchive
+            ? `L'operatore "${fullName}" ha ${deps.total} record storici associati ` +
+              `(${deps.treatments} trattamenti, ${deps.therapeuticPaths} percorsi, ` +
+              `${deps.evaluations} valutazioni, ${deps.appointments} appuntamenti). ` +
+              `Verrà archiviato: lo storico clinico sarà preservato, ma l'operatore non sarà più ` +
+              `selezionabile per nuovi trattamenti e non potrà più accedere al sistema. Continuare?`
+            : `L'operatore "${fullName}" non ha record storici associati e verrà eliminato definitivamente. Continuare?`;
+
+          if (!confirm(message)) return;
+
+          this.loading = true;
+          this.operatorService.deleteOperator(operator.id).subscribe({
+            next: (result: DeleteOperatorResult) => {
+              this.ngZone.run(() => {
+                this.availabilityState.removeOperator(operator.id);
+                if (this.selectedOperator?.id === operator.id) {
+                  this.availabilityState.selectOperator(null);
+                }
+                this.loading = false;
+                const action = result.archived ? 'archiviato' : 'eliminato definitivamente';
+                console.log(`[OperatorManagement] Operatore ${action}: ${operator.id}`);
+                if (this.showArchived) this.loadArchivedOperators();
+              });
+            },
+            error: (error) => {
+              this.ngZone.run(() => {
+                console.error('Error deleting operator:', error);
+                this.error =
+                  error?.message ?? "Errore durante l'eliminazione dell'operatore";
+                this.loading = false;
+              });
+            },
+          });
+        },
+        error: () => {
+          // Fallback: se il count fallisce, conferma semplice senza dettagli
+          if (!confirm(`Sei sicuro di voler eliminare l'operatore ${operator.name}?`)) {
+            return;
+          }
+          this.loading = true;
+          this.operatorService.deleteOperator(operator.id).subscribe({
+            next: () => {
+              this.ngZone.run(() => {
+                this.availabilityState.removeOperator(operator.id);
+                this.loading = false;
+              });
+            },
+            error: (error) => {
+              this.ngZone.run(() => {
+                this.error = error?.message ?? "Errore durante l'eliminazione";
+                this.loading = false;
+              });
+            },
+          });
+        },
+      });
+    });
+  }
+
+  /**
+   * Toggle vista "Operatori archiviati". Quando attivata carica la lista
+   * dei soft-deletati. Quando disattivata torna alla lista attivi.
+   */
+  toggleArchivedView() {
+    this.showArchived = !this.showArchived;
+    if (this.showArchived) {
+      this.loadArchivedOperators();
+    }
+  }
+
+  /** Carica gli operatori archiviati per la sezione dedicata. */
+  loadArchivedOperators() {
+    this.operatorService
+      .getArchivedOperators()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (list) => {
+          this.ngZone.run(() => {
+            this.archivedOperators = list;
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            console.error('Error loading archived operators:', err);
+            this.error = 'Errore caricamento operatori archiviati';
+          });
+        },
+      });
+  }
+
+  /**
+   * Ripristina un operatore archiviato. NB: i template di disponibilità
+   * NON vengono riattivati automaticamente: l'admin deve riattivarli
+   * manualmente dopo il ripristino.
+   */
+  restoreOperator(operator: Operator) {
+    this.ngZone.run(() => {
+      const fullName = `${operator.name} ${operator.surname ?? ''}`.trim();
+      const message =
+        `Ripristinare l'operatore "${fullName}"?\n\n` +
+        `Diventerà di nuovo selezionabile per nuovi trattamenti e potrà accedere al sistema. ` +
+        `I template di disponibilità restano disattivati: vanno riattivati manualmente.`;
+      if (!confirm(message)) return;
 
       this.loading = true;
-      this.operatorService.deleteOperator(operator.id).subscribe({
+      this.operatorService.restoreOperator(operator.id).subscribe({
         next: () => {
           this.ngZone.run(() => {
-            this.availabilityState.removeOperator(operator.id);
-            if (this.selectedOperator?.id === operator.id) {
-              this.availabilityState.selectOperator(null);
-            }
             this.loading = false;
+            this.loadArchivedOperators();
+            this.availabilityState.loadOperators();
           });
         },
         error: (error) => {
           this.ngZone.run(() => {
-            console.error('Error deleting operator:', error);
-            this.error = "Errore durante l'eliminazione dell'operatore";
+            console.error('Error restoring operator:', error);
+            this.error =
+              error?.message ?? "Errore durante il ripristino dell'operatore";
             this.loading = false;
           });
         },

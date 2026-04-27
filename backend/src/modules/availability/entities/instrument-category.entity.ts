@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn, DeleteDateColumn } from 'typeorm';
 import { ObjectType, Field, ID } from '@nestjs/graphql';
 import { OperatorMacroCategory } from './operator-macro-category.enum';
 import { Instrument } from './instrument.entity';
@@ -37,6 +37,14 @@ export class InstrumentCategory {
   @Field()
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Field({ nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // Relations
   @Field(() => [Instrument], { nullable: true })

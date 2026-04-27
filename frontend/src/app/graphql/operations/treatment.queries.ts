@@ -13,6 +13,7 @@ export const TREATMENT_FRAGMENT = gql`
     scontoFE
     status
     isTest
+    forcedClosure
     startedAt
     completedAt
     closedAt
@@ -60,6 +61,7 @@ export const TREATMENT_WITH_RELATIONS_FRAGMENT = gql`
       surname
       email
       royaltyPercentage
+      appUserId
     }
     patient {
       id

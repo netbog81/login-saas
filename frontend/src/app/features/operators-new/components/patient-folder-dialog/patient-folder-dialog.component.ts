@@ -11,7 +11,8 @@
 import {
   Component,
   Inject,
-  ChangeDetectionStrategy
+  ChangeDetectionStrategy,
+  ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
@@ -25,6 +26,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { Patient } from '../../../../models/patient.model';
 import { Treatment } from '../../../../models/treatment.model';
 import { PatientFolderContainer } from '../../containers/patient-folder.container';
+import { EditTreatmentDialogContainerComponent } from '../../containers/edit-treatment-dialog.container';
 
 export interface PatientFolderDialogData {
   patient: Patient;
@@ -39,7 +41,8 @@ export interface PatientFolderDialogData {
     MatDialogModule,
     MatButtonModule,
     MatIconModule,
-    PatientFolderContainer
+    PatientFolderContainer,
+    EditTreatmentDialogContainerComponent,
   ],
   template: `
     <div class="dialog-container">
@@ -57,12 +60,21 @@ export interface PatientFolderDialogData {
       <!-- Content -->
       <mat-dialog-content class="dialog-content">
         <app-patient-folder-container
+          #patientFolder
           [patient]="data.patient"
           [currentOperatorId]="data.operatorId"
           (viewPatientDetails)="onViewPatientDetails($event)"
           (editTreatment)="onEditTreatment($event)">
         </app-patient-folder-container>
       </mat-dialog-content>
+
+      <!-- Edit Treatment Dialog (sovrapposto al Patient Folder) -->
+      <app-edit-treatment-dialog-container
+        #editTreatmentDialog
+        [patientId]="data.patient.id"
+        (treatmentUpdated)="onTreatmentUpdated($event)"
+        (cancel)="onEditTreatmentCancelled()">
+      </app-edit-treatment-dialog-container>
     </div>
   `,
   styles: [`
@@ -153,8 +165,28 @@ export class PatientFolderDialogComponent {
     console.log('[PatientFolderDialog] View patient details:', patient.id);
   }
 
+  @ViewChild('editTreatmentDialog')
+  editTreatmentDialog?: EditTreatmentDialogContainerComponent;
+
+  @ViewChild('patientFolder')
+  patientFolder?: PatientFolderContainer;
+
   onEditTreatment(treatment: Treatment): void {
-    // Futuro: aprire dialog modifica trattamento
     console.log('[PatientFolderDialog] Edit treatment:', treatment.id);
+    this.editTreatmentDialog?.open(treatment);
+  }
+
+  onTreatmentUpdated(treatment: Treatment): void {
+    console.log('[PatientFolderDialog] Treatment updated:', treatment.id);
+    // Forza il refresh della lista trattamenti nel container sottostante:
+    // Apollo non rifa la fetch automaticamente perché update/complete/reopen
+    // ritornano il singolo Treatment ma la lista paziente è una query
+    // separata. Senza questa chiamata la card del trattamento mostra lo
+    // stato vecchio fino al cambio percorso o alla riapertura del dialog.
+    this.patientFolder?.reloadTreatments();
+  }
+
+  onEditTreatmentCancelled(): void {
+    console.log('[PatientFolderDialog] Edit treatment cancelled');
   }
 }

@@ -102,6 +102,12 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
             @if (t.scontoFE) {
               <mat-icon class="flag-icon" matTooltip="Sconto FE attivo" style="color: #e91e63">discount</mat-icon>
             }
+            @if (t.forcedClosure) {
+              <mat-icon class="flag-icon" style="color: #b91c1c"
+                        matTooltip="Chiusura forzata da segreteria/admin (operatore non ha completato)">
+                lock_clock
+              </mat-icon>
+            }
           </td>
         </ng-container>
 

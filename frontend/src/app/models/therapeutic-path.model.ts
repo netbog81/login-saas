@@ -78,6 +78,8 @@ export interface PathTreatment {
   appointmentId?: string;
   operatorId: string;
   operatorName?: string;
+  /** AppUserId del proprietario, per ownership UI (PermissionsService). */
+  operatorAppUserId?: string | null;
   // Timing
   date: Date | string;
   startTime?: string;
@@ -120,6 +122,8 @@ export interface TherapeuticPath {
   // Operatore responsabile
   primaryOperatorId: string;
   primaryOperatorName?: string;
+  /** AppUserId del proprietario, usato dal PermissionsService per ownership UI. */
+  primaryOperatorAppUserId?: string | null;
   // Status e date
   status: PathStatus;
   startDate: Date | string;

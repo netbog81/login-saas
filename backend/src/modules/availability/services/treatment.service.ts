@@ -113,7 +113,7 @@ export class TreatmentService {
   async createFromAppointment(
     appointmentId: string,
     therapeuticPathId: string,
-    scontoFE: boolean = false
+    scontoFE: boolean = false,
   ): Promise<Treatment> {
     return this.dataSource.transaction(async (manager: EntityManager) => {
       const treatmentRepo = manager.getRepository(Treatment);
@@ -383,7 +383,15 @@ export class TreatmentService {
   // ==================== STATUS MANAGEMENT ====================
 
   /**
-   * Operatore completa il trattamento
+   * Operatore completa il trattamento. Transizione: IN_PROGRESS → OPERATOR_COMPLETED.
+   *
+   * Scatto snapshot strumenti: al completamento fotografiamo nome, brand,
+   * modello, categoria e `technicalData` sullo strumento per preservare i
+   * dati clinicamente rilevanti anche se lo strumento viene archiviato o
+   * modificato in futuro. Lo snapshot viene sovrascritto a ogni nuovo
+   * COMPLETED (in caso di reopen operatore + ricompletamento). Le riaperture
+   * della segreteria (CLOSED → OPERATOR_COMPLETED) NON toccano lo snapshot:
+   * solo transizioni guidate dall'operatore rinfrescano la fotografia.
    */
   async complete(id: string, input: CompleteTreatmentInput): Promise<Treatment> {
     const treatment = await this.findById(id);
@@ -398,19 +406,24 @@ export class TreatmentService {
       );
     }
 
-    treatment.status = TreatmentStatus.OPERATOR_COMPLETED;
-    treatment.completedAt = new Date();
-    treatment.clinicalNotes = input.clinicalNotes;
-    treatment.secretaryNotes = input.secretaryNotes;
-    treatment.operatorNotes = input.operatorNotes;
-    treatment.price = input.price;
-    if (input.isTest !== undefined) {
-      treatment.isTest = input.isTest;
-    }
+    const now = new Date();
 
-    const result = await this.treatmentRepo.save(treatment);
+    await this.dataSource.transaction(async manager => {
+      await manager.getRepository(Treatment).update(id, {
+        status: TreatmentStatus.OPERATOR_COMPLETED,
+        completedAt: now,
+        clinicalNotes: input.clinicalNotes,
+        secretaryNotes: input.secretaryNotes,
+        operatorNotes: input.operatorNotes,
+        price: input.price,
+        ...(input.isTest !== undefined ? { isTest: input.isTest } : {}),
+      });
 
-    // Emetti evento SSE per notificare il frontend
+      await this.writeInstrumentsSnapshot(manager, id, now);
+    });
+
+    const result = (await this.findById(id))!;
+
     this.eventsService.emit({
       type: 'treatment_status_changed',
       treatmentId: result.id,
@@ -423,9 +436,76 @@ export class TreatmentService {
   }
 
   /**
-   * Segreteria chiude il trattamento
+   * Congela nome/marca/modello/categoria/technicalData dello strumento e della
+   * sua categoria nei campi snapshot dei TreatmentInstrument collegati al
+   * trattamento. Usato da `complete()` e `forceCloseByOperatorForgot()`.
+   *
+   * Ciclo di vita dello snapshot — INVARIANTI:
+   *
+   * 1. Lo snapshot scatta SOLO al passaggio `IN_PROGRESS → OPERATOR_COMPLETED`
+   *    (complete operatore) oppure `IN_PROGRESS → CLOSED` (force close).
+   *    È quello l'evento che "fissa" il dato come confermato dall'operatore.
+   *
+   * 2. Lo snapshot viene ELIMINATO implicitamente quando l'operatore
+   *    riapre il trattamento (OPERATOR_COMPLETED → IN_PROGRESS) e poi
+   *    salva i campi senza completare: `update()` ricrea da zero le righe
+   *    TreatmentInstrument tramite delete + create, perdendo i campi
+   *    snapshot. Questo comportamento è INTENZIONALE: in stato IN_PROGRESS
+   *    il trattamento è ancora in lavorazione, gli strumenti non sono
+   *    "confermati definitivamente", e mantenere uno snapshot stantio
+   *    fornirebbe un'informazione potenzialmente errata. Al successivo
+   *    complete lo snapshot viene riscritto sulle righe attuali.
+   *
+   * 3. Se l'operatore riapre ma NON salva (chiude il dialog senza save),
+   *    lo snapshot resta: stiamo solo "guardando" il record, non lo
+   *    abbiamo modificato.
+   *
+   * 4. Le riaperture/chiusure della segreteria (CLOSED ↔ OPERATOR_COMPLETED)
+   *    NON toccano gli strumenti né lo snapshot: la segreteria interviene
+   *    sui dati amministrativi/economici, non clinici.
    */
-  async close(id: string, input: CloseTreatmentInput): Promise<Treatment> {
+  private async writeInstrumentsSnapshot(
+    manager: EntityManager,
+    treatmentId: string,
+    takenAt: Date,
+  ): Promise<void> {
+    // L'UPDATE FROM di Postgres non consente di referenziare la tabella
+    // aggiornata (`treatment_instruments`) dentro un JOIN della FROM clause:
+    // tutti i riferimenti laterali devono passare per la WHERE. Per la
+    // categoria usiamo una subquery scalare che gestisce sia il caso in cui
+    // `instrumentCategoryId` sia popolato sul TreatmentInstrument, sia il
+    // fallback alla categoria dell'Instrument.
+    await manager.query(
+      `UPDATE "treatment_instruments" AS ti
+       SET "instrumentNameSnapshot" = i."name",
+           "brandSnapshot"          = i."brand",
+           "modelSnapshot"          = i."model",
+           "categoryNameSnapshot"   = (
+             SELECT c."name"
+             FROM "instrument_categories" c
+             WHERE c."id" = COALESCE(ti."instrumentCategoryId", i."categoryId")
+           ),
+           "technicalDataSnapshot"  = i."technicalData",
+           "snapshotTakenAt"        = $2
+       FROM "instruments" i
+       WHERE ti."treatmentId" = $1
+         AND ti."instrumentId" = i."id"
+         AND ti."deletedAt" IS NULL`,
+      [treatmentId, takenAt],
+    );
+  }
+
+  /**
+   * Segreteria chiude il trattamento (OPERATOR_COMPLETED → CLOSED).
+   *
+   * @param closedByUserId - AppUser della segreteria che esegue la chiusura
+   *   (per audit). Viene persistito su `treatment.closedByUserId`.
+   */
+  async close(
+    id: string,
+    input: CloseTreatmentInput,
+    closedByUserId?: string,
+  ): Promise<Treatment> {
     const treatment = await this.findById(id);
 
     if (!treatment) {
@@ -441,6 +521,7 @@ export class TreatmentService {
     const now = new Date();
     treatment.status = TreatmentStatus.CLOSED;
     treatment.closedAt = now;
+    treatment.closedByUserId = closedByUserId ?? treatment.closedByUserId;
     if (input.secretaryNotes) {
       treatment.secretaryNotes = input.secretaryNotes;
     }
@@ -467,44 +548,161 @@ export class TreatmentService {
   }
 
   /**
-   * Riapre un trattamento completato (riporta a IN_PROGRESS)
-   * Solo i trattamenti con status OPERATOR_COMPLETED possono essere riaperti
+   * Segreteria forza la chiusura di un trattamento lasciato aperto
+   * dall'operatore (es. operatore dimentico di completare).
+   *
+   * Transizione: IN_PROGRESS → CLOSED in un solo passo, marcando
+   * `forcedClosure = true` per audit. Scatta comunque lo snapshot degli
+   * strumenti (come avviene al passaggio OPERATOR_COMPLETED) perché il
+   * trattamento non tornerà più in mano all'operatore.
+   *
+   * Richiede il permesso `treatment_force_close` (segreteria/admin).
+   *
+   * @param closedByUserId - AppUser della segreteria che forza la chiusura
+   * @param secretaryNotes - note amministrative
    */
-  async reopen(id: string): Promise<Treatment> {
+  async forceCloseByOperatorForgot(
+    id: string,
+    closedByUserId: string,
+    secretaryNotes?: string,
+  ): Promise<Treatment> {
     const treatment = await this.findById(id);
-
     if (!treatment) {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
     }
+    if (treatment.status !== TreatmentStatus.IN_PROGRESS) {
+      throw new BadRequestException(
+        `Il force-close è consentito solo su trattamenti in stato 'in_progress'. ` +
+          `Stato attuale: ${treatment.status}. Per altri stati usare close() o reopen().`,
+      );
+    }
 
+    const now = new Date();
+
+    await this.dataSource.transaction(async manager => {
+      const repo = manager.getRepository(Treatment);
+      await repo.update(id, {
+        status: TreatmentStatus.CLOSED,
+        completedAt: now,
+        closedAt: now,
+        closedByUserId,
+        forcedClosure: true,
+        ...(secretaryNotes ? { secretaryNotes } : {}),
+        ...(!treatment.scontoFE && !treatment.isInvoicedToPatient
+          ? { readyForBilling: true, readyForBillingAt: now }
+          : {}),
+      });
+
+      await this.writeInstrumentsSnapshot(manager, id, now);
+    });
+
+    const result = (await this.findById(id))!;
+
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.status,
+      timestamp: new Date(),
+    });
+
+    return result;
+  }
+
+  /**
+   * Riapre un trattamento completato (riporta a IN_PROGRESS)
+   * Solo i trattamenti con status OPERATOR_COMPLETED possono essere riaperti
+   *
+   * @deprecated Usa `reopenByOperator` o `reopenBySecretary` per chiarezza
+   *   semantica e controlli di autorizzazione distinti.
+   */
+  async reopen(id: string): Promise<Treatment> {
+    const treatment = await this.findById(id);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+    if (treatment.status === TreatmentStatus.OPERATOR_COMPLETED) {
+      return this.reopenByOperator(id);
+    }
+    if (treatment.status === TreatmentStatus.CLOSED) {
+      return this.reopenBySecretary(id);
+    }
+    throw new BadRequestException(
+      `Il trattamento è in stato ${treatment.status}: non è riapribile.`,
+    );
+  }
+
+  /**
+   * Riapertura da parte dell'operatore: OPERATOR_COMPLETED → IN_PROGRESS.
+   * L'operatore vuole riprendere il lavoro clinico. Lo snapshot degli
+   * strumenti NON viene modificato in questa transizione; se poi l'operatore
+   * ricompleta il trattamento lo snapshot verrà sovrascritto in `complete()`.
+   *
+   * Richiede ownership del trattamento (gestita a livello di resolver/guard).
+   */
+  async reopenByOperator(id: string): Promise<Treatment> {
+    const treatment = await this.findById(id);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
     if (treatment.isInvoicedToPatient) {
       throw new BadRequestException(
-        'Trattamento già fatturato: non può essere riaperto.'
+        'Trattamento già fatturato: non può essere riaperto.',
       );
     }
-
-    // Due transizioni supportate:
-    // - OPERATOR_COMPLETED → IN_PROGRESS (l'operatore riprende il lavoro)
-    // - CLOSED            → OPERATOR_COMPLETED (la segreteria vuole
-    //   correggere: restituisce il trattamento allo stato precedente,
-    //   azzerando readyForBilling e closedAt)
-    if (treatment.status === TreatmentStatus.OPERATOR_COMPLETED) {
-      treatment.status = TreatmentStatus.IN_PROGRESS;
-      treatment.completedAt = null as any;
-    } else if (treatment.status === TreatmentStatus.CLOSED) {
-      treatment.status = TreatmentStatus.OPERATOR_COMPLETED;
-      treatment.closedAt = null as any;
-      treatment.readyForBilling = false;
-      treatment.readyForBillingAt = null as any;
-    } else {
+    if (treatment.status !== TreatmentStatus.OPERATOR_COMPLETED) {
       throw new BadRequestException(
-        `Il trattamento è in stato ${treatment.status}: non è riapribile.`
+        `Riapertura operatore consentita solo da OPERATOR_COMPLETED. ` +
+          `Stato attuale: ${treatment.status}.`,
       );
     }
 
+    treatment.status = TreatmentStatus.IN_PROGRESS;
+    treatment.completedAt = null as any;
     const result = await this.treatmentRepo.save(treatment);
 
-    // Emetti evento SSE per notificare il frontend
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.status,
+      timestamp: new Date(),
+    });
+
+    return result;
+  }
+
+  /**
+   * Riapertura da parte della segreteria: CLOSED → OPERATOR_COMPLETED.
+   * Viene usata per correggere campi amministrativi/fatturazione dopo che
+   * la segreteria aveva chiuso il trattamento. Lo snapshot strumenti NON
+   * viene toccato (la segreteria non modifica dato clinico).
+   *
+   * Richiede il permesso `treatment_write` (già gestito dal resolver).
+   */
+  async reopenBySecretary(id: string): Promise<Treatment> {
+    const treatment = await this.findById(id);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+    if (treatment.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Trattamento già fatturato: non può essere riaperto.',
+      );
+    }
+    if (treatment.status !== TreatmentStatus.CLOSED) {
+      throw new BadRequestException(
+        `Riapertura segreteria consentita solo da CLOSED. ` +
+          `Stato attuale: ${treatment.status}.`,
+      );
+    }
+
+    treatment.status = TreatmentStatus.OPERATOR_COMPLETED;
+    treatment.closedAt = null as any;
+    treatment.readyForBilling = false;
+    treatment.readyForBillingAt = null as any;
+    const result = await this.treatmentRepo.save(treatment);
+
     this.eventsService.emit({
       type: 'treatment_status_changed',
       treatmentId: result.id,
@@ -938,10 +1136,20 @@ export class TreatmentService {
   }
 
   /**
-   * Elimina un singolo trattamento per ID
-   * TreatmentInstrument vengono eliminati automaticamente via CASCADE
+   * Soft-delete di un singolo trattamento.
+   *
+   * Imposta `deletedAt` sul trattamento e sui suoi figli (TreatmentInstrument,
+   * TreatmentService, TreatmentInvoiceLine) e sull'appointment collegato
+   * 1-1 (che nasce come appuntamento del trattamento).
+   *
+   * Il record resta in DB, recuperabile dal cestino entro il periodo di
+   * retention. Per l'eliminazione definitiva vedi `hardDelete()`.
+   *
+   * @param id - id del trattamento
+   * @param deletedByUserId - AppUser che sta eseguendo la cancellazione
+   *   (per audit; viene propagato anche sui figli soft-deletati).
    */
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, deletedByUserId?: string): Promise<boolean> {
     const treatment = await this.treatmentRepo.findOne({ where: { id } });
 
     if (!treatment) {
@@ -949,20 +1157,135 @@ export class TreatmentService {
     }
 
     const operatorId = treatment.operatorId;
-    const result = await this.treatmentRepo.delete(id);
-    const success = result.affected ? result.affected > 0 : false;
 
-    // Emetti evento SSE per notificare il frontend
-    if (success) {
-      this.eventsService.emit({
-        type: 'treatment_deleted',
-        treatmentId: id,
-        operatorId: operatorId,
-        timestamp: new Date(),
-      });
+    await this.dataSource.transaction(async manager => {
+      const now = new Date();
+
+      await manager
+        .createQueryBuilder()
+        .update(TreatmentInstrument)
+        .set({ deletedAt: now, deletedByUserId: deletedByUserId ?? null })
+        .where('"treatmentId" = :id AND "deletedAt" IS NULL', { id })
+        .execute();
+
+      await manager
+        .createQueryBuilder()
+        .update(TreatmentServiceEntity)
+        .set({ deletedAt: now, deletedByUserId: deletedByUserId ?? null } as any)
+        .where('"treatmentId" = :id AND "deletedAt" IS NULL', { id })
+        .execute()
+        .catch(() => {
+          /* la colonna deletedAt su treatment_services potrebbe non essere
+             stata aggiunta se si decide di non softdeletare anche i servizi.
+             Non bloccare la transazione su questo. */
+        });
+
+      await manager
+        .createQueryBuilder()
+        .update(Treatment)
+        .set({
+          deletedAt: now,
+          deletedByUserId: deletedByUserId ?? null,
+        } as any)
+        .where('id = :id', { id })
+        .execute();
+
+      // L'appuntamento ha relazione 1-1 col trattamento (il trattamento nasce
+      // dall'appuntamento). Lo soft-deletiamo insieme.
+      if (treatment.appointmentId) {
+        await manager
+          .createQueryBuilder()
+          .update(AvailabilityAppointment)
+          .set({
+            deletedAt: now,
+            deletedByUserId: deletedByUserId ?? null,
+          } as any)
+          .where('id = :aid AND "deletedAt" IS NULL', {
+            aid: treatment.appointmentId,
+          })
+          .execute();
+      }
+    });
+
+    this.eventsService.emit({
+      type: 'treatment_deleted',
+      treatmentId: id,
+      operatorId: operatorId,
+      timestamp: new Date(),
+    });
+
+    return true;
+  }
+
+  /**
+   * Ripristina un trattamento dal cestino (e i suoi figli soft-deletati).
+   *
+   * Ripristina anche l'appuntamento collegato se era stato soft-deletato
+   * nello stesso istante (± tolleranza di 5 secondi) — evita di riportare
+   * in vita appuntamenti che erano già stati cancellati prima.
+   */
+  async restoreFromRecycleBin(id: string): Promise<Treatment> {
+    const treatment = await this.treatmentRepo.findOne({
+      where: { id },
+      withDeleted: true,
+    });
+
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+    if (!treatment.deletedAt) {
+      throw new BadRequestException(
+        `Trattamento ${id} non è nel cestino.`,
+      );
     }
 
-    return success;
+    const deletedAt = treatment.deletedAt;
+
+    await this.dataSource.transaction(async manager => {
+      await manager
+        .createQueryBuilder()
+        .update(Treatment)
+        .set({ deletedAt: null, deletedByUserId: null } as any)
+        .where('id = :id', { id })
+        .execute();
+
+      await manager
+        .createQueryBuilder()
+        .update(TreatmentInstrument)
+        .set({ deletedAt: null, deletedByUserId: null })
+        .where('"treatmentId" = :id', { id })
+        .execute();
+
+      if (treatment.appointmentId) {
+        const toleranceMs = 5000;
+        await manager
+          .createQueryBuilder()
+          .update(AvailabilityAppointment)
+          .set({ deletedAt: null, deletedByUserId: null } as any)
+          .where(
+            'id = :aid AND "deletedAt" BETWEEN :from AND :to',
+            {
+              aid: treatment.appointmentId,
+              from: new Date(deletedAt.getTime() - toleranceMs),
+              to: new Date(deletedAt.getTime() + toleranceMs),
+            },
+          )
+          .execute();
+      }
+    });
+
+    const restored = await this.treatmentRepo.findOne({ where: { id } });
+    return restored!;
+  }
+
+  /**
+   * Eliminazione definitiva (hard delete). Riservata ad admin, da chiamare
+   * solo dal cestino dopo doppia conferma. Rimuove fisicamente il record
+   * e, per effetto dei CASCADE DB, figli e collegamenti.
+   */
+  async hardDelete(id: string): Promise<boolean> {
+    const result = await this.treatmentRepo.delete(id);
+    return (result.affected ?? 0) > 0;
   }
 
   /**

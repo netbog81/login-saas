@@ -50,6 +50,7 @@ export const GET_OPERATORS = gql`
       canCollectPayment
       createdAt
       updatedAt
+      deletedAt
       templateAssignments {
         id
         isCurrent
@@ -159,6 +160,56 @@ export const GET_OPERATOR_AVAILABILITY = gql`
         source
         sourceId
       }
+    }
+  }
+`;
+
+/**
+ * Lista degli operatori archiviati (soft-deletati). Solo per la pagina
+ * admin "Operatori archiviati" — richiede permission `operator_manage`.
+ */
+export const GET_ARCHIVED_OPERATORS = gql`
+  query GetArchivedOperators {
+    archivedOperators {
+      id
+      name
+      surname
+      email
+      phone
+      color
+      macroCategory
+      categoryId
+      category {
+        id
+        name
+        macroCategory
+      }
+      isActive
+      deletedAt
+      deletedByUserId
+      appUserId
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+/**
+ * Conteggio dipendenze storiche di un operatore. Usato dal dialog di
+ * conferma archiviazione per dare contesto all'admin.
+ */
+export const GET_OPERATOR_DEPENDENCIES = gql`
+  query GetOperatorDependencies($id: ID!) {
+    operatorDependencies(id: $id) {
+      total
+      treatments
+      therapeuticPaths
+      evaluations
+      anamnesis
+      appointments
+      gymSchedules
+      templateAssignments
+      waitingList
     }
   }
 `;

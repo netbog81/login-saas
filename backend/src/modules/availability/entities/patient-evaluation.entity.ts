@@ -7,6 +7,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   Index,
   OneToOne
 } from 'typeorm';
@@ -208,6 +209,14 @@ export class PatientEvaluation {
   @Field(() => GraphQLISODateTime)
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // ==================== RELATIONS ====================
 

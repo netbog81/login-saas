@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+                                                                                                                                                                        import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { AvailabilityAppointment } from './availability-appointment.entity';
 import { Operator } from './operator.entity';
@@ -226,6 +226,36 @@ export class Treatment {
   @Field()
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Field({ nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
+
+  // ==================== AUDIT CHIUSURA ====================
+
+  /**
+   * AppUser che ha chiuso il trattamento (transizione → CLOSED).
+   * Tipicamente segreteria; può essere anche admin in casi di override.
+   * L'ownership "operativa" non è qui: deriva da `operatorId →
+   * Operator.appUserId`.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  closedByUserId?: string;
+
+  /**
+   * True se la segreteria ha forzato la chiusura dell'operatore
+   * (operatore dimentico di completare): in tal caso closedByUserId è la
+   * segreteria ma il trattamento salta dallo stato IN_PROGRESS direttamente
+   * al CLOSED tramite procedura dedicata.
+   */
+  @Field()
+  @Column({ default: false })
+  forcedClosure: boolean;
 
   // ==================== RELATIONS ====================
 

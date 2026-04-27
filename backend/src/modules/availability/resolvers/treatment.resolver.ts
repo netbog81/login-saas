@@ -1,6 +1,7 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent, registerEnumType } from '@nestjs/graphql';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UseGuards } from '@nestjs/common';
 import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
 import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
@@ -16,6 +17,16 @@ import {
   CreateTreatmentInvoiceLineInput,
   UpdateTreatmentInvoiceLineInput,
 } from '../dto/treatment.input';
+import {
+  AuthorizationGuard,
+  RequirePermissions,
+} from '../../users/guards/authorization.guard';
+import { AppUserService } from '../../users/services/app-user.service';
+import {
+  CurrentUser,
+  CurrentUserContext,
+} from '../../users/decorators/current-user.decorator';
+import { OwnershipGuard, RequireOwnership } from '../guards/ownership.guard';
 
 /**
  * Ruolo del chiamante per le mutation soggette ad autorizzazione
@@ -33,9 +44,24 @@ registerEnumType(TreatmentCallerRole, { name: 'TreatmentCallerRole' });
 export class TreatmentResolver {
   constructor(
     private readonly treatmentService: TreatmentService,
+    private readonly appUserService: AppUserService,
     @InjectRepository(TreatmentServiceEntity)
     private readonly treatmentServiceRepo: Repository<TreatmentServiceEntity>,
   ) {}
+
+  /**
+   * Risolve l'id `AppUser` (owner del record) dal keycloak sub nel
+   * tenantContext. Ritorna undefined se la risoluzione fallisce: in tal
+   * caso l'ownership non viene tracciata — i guard downstream bloccheranno
+   * comunque operazioni che richiedono l'ownership.
+   */
+  private async resolveAppUserId(
+    user: CurrentUserContext | undefined,
+  ): Promise<string | undefined> {
+    if (!user?.userId) return undefined;
+    const appUser = await this.appUserService.findByKeycloakId(user.userId);
+    return appUser?.id;
+  }
 
   /**
    * ResolveField: Risolve treatmentServices per un trattamento
@@ -173,18 +199,27 @@ export class TreatmentResolver {
    * Mutation: Crea un trattamento da un appuntamento (quando paziente arriva)
    */
   @Mutation(() => Treatment, { name: 'createTreatment' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_create')
   async createTreatment(
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
     @Args('therapeuticPathId', { type: () => ID }) therapeuticPathId: string,
     @Args('scontoFE', { type: () => Boolean, nullable: true, defaultValue: false }) scontoFE: boolean,
   ): Promise<Treatment> {
-    return this.treatmentService.createFromAppointment(appointmentId, therapeuticPathId, scontoFE);
+    return this.treatmentService.createFromAppointment(
+      appointmentId,
+      therapeuticPathId,
+      scontoFE,
+    );
   }
 
   /**
    * Mutation: Aggiorna un trattamento in corso
    */
   @Mutation(() => Treatment, { name: 'updateTreatment' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_write')
+  @RequireOwnership({ resource: 'treatment', idArg: 'input.id' })
   async updateTreatment(
     @Args('input') input: UpdateTreatmentInput,
   ): Promise<Treatment> {
@@ -195,6 +230,9 @@ export class TreatmentResolver {
    * Mutation: Operatore completa il trattamento
    */
   @Mutation(() => Treatment, { name: 'completeTreatment' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_write')
+  @RequireOwnership({ resource: 'treatment' })
   async completeTreatment(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: CompleteTreatmentInput,
@@ -206,21 +244,90 @@ export class TreatmentResolver {
    * Mutation: Segreteria chiude il trattamento
    */
   @Mutation(() => Treatment, { name: 'closeTreatment' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_write')
   async closeTreatment(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: CloseTreatmentInput,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<Treatment> {
-    return this.treatmentService.close(id, input);
+    const closedByUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.close(id, input, closedByUserId);
+  }
+
+  /**
+   * Mutation: Segreteria forza la chiusura di un trattamento rimasto
+   * IN_PROGRESS (operatore dimentico). Transizione singola
+   * IN_PROGRESS → CLOSED con audit `forcedClosure = true`.
+   * Richiede il permesso `treatment_force_close`.
+   */
+  @Mutation(() => Treatment, { name: 'forceCloseTreatment' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_force_close')
+  async forceCloseTreatment(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('secretaryNotes', { type: () => String, nullable: true })
+    secretaryNotes: string | undefined,
+    @CurrentUser() user: CurrentUserContext,
+  ): Promise<Treatment> {
+    const closedByUserId = await this.resolveAppUserId(user);
+    if (!closedByUserId) {
+      throw new Error(
+        'forceCloseTreatment: impossibile risolvere AppUser per il chiamante',
+      );
+    }
+    return this.treatmentService.forceCloseByOperatorForgot(
+      id,
+      closedByUserId,
+      secretaryNotes,
+    );
   }
 
   /**
    * Mutation: Riapre un trattamento completato (riporta a IN_PROGRESS)
    */
-  @Mutation(() => Treatment, { name: 'reopenTreatment' })
+  /**
+   * Mutation legacy: dispatcher tra reopenByOperator / reopenBySecretary
+   * in base allo stato attuale. Non applica ownership perché ramifica in
+   * due sotto-operazioni con regole di autorizzazione diverse. I client
+   * nuovi dovrebbero chiamare esplicitamente `reopenTreatmentByOperator`
+   * o `reopenTreatmentBySecretary`.
+   * @deprecated Usa le mutation specifiche per stato.
+   */
+  @Mutation(() => Treatment, { name: 'reopenTreatment', deprecationReason: 'Usa reopenTreatmentByOperator o reopenTreatmentBySecretary' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_write')
   async reopenTreatment(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<Treatment> {
     return this.treatmentService.reopen(id);
+  }
+
+  /**
+   * Mutation: operatore riapre il proprio trattamento (OPERATOR_COMPLETED
+   * → IN_PROGRESS). Ownership richiesta.
+   */
+  @Mutation(() => Treatment, { name: 'reopenTreatmentByOperator' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_write')
+  @RequireOwnership({ resource: 'treatment' })
+  async reopenTreatmentByOperator(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.reopenByOperator(id);
+  }
+
+  /**
+   * Mutation: segreteria riapre un trattamento CHIUSO per correggere dati
+   * amministrativi (CLOSED → OPERATOR_COMPLETED). Permission-based.
+   */
+  @Mutation(() => Treatment, { name: 'reopenTreatmentBySecretary' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_write')
+  async reopenTreatmentBySecretary(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.reopenBySecretary(id);
   }
 
   /**
@@ -266,6 +373,9 @@ export class TreatmentResolver {
    * Mutation: Aggiorna strumenti del trattamento
    */
   @Mutation(() => Treatment, { name: 'updateTreatmentInstruments' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_write')
+  @RequireOwnership({ resource: 'treatment' })
   async updateInstruments(
     @Args('id', { type: () => ID }) id: string,
     @Args('instruments', { type: () => [TreatmentInstrumentInput] }) instruments: TreatmentInstrumentInput[],
@@ -277,10 +387,18 @@ export class TreatmentResolver {
    * Mutation: Elimina un singolo trattamento
    */
   @Mutation(() => Boolean, { name: 'deleteTreatment' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_delete_own')
+  @RequireOwnership({
+    resource: 'treatment',
+    bypassPermission: 'treatment_delete_any',
+  })
   async deleteTreatment(
     @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<boolean> {
-    return this.treatmentService.delete(id);
+    const deletedByUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.delete(id, deletedByUserId);
   }
 
   /**
@@ -288,6 +406,8 @@ export class TreatmentResolver {
    * Returns: numero di trattamenti eliminati
    */
   @Mutation(() => Int, { name: 'deleteAllTreatments' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_delete_any')
   async deleteAllTreatments(): Promise<number> {
     return this.treatmentService.deleteAll();
   }

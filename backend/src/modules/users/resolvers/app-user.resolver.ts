@@ -1,9 +1,32 @@
-import { Resolver, Query, Mutation, Args, ID, Context } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Context, ObjectType, Field } from '@nestjs/graphql';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { AppUserService } from '../services/app-user.service';
 import { UserLinkingService } from '../services/user-linking.service';
 import { KeycloakAdminService } from '../services/keycloak-admin.service';
+import { Operator } from '../../availability/entities/operator.entity';
+
+/**
+ * Profilo del chiamante esposto al frontend per gestire visibilità UI.
+ * Ritorna appUserId (per ownership-check lato UI), tipo utente, eventuale
+ * operatorId associato, e l'elenco completo dei permessi effettivi.
+ */
+@ObjectType('MyProfile')
+class MyProfile {
+  @Field(() => ID)
+  appUserId: string;
+
+  @Field(() => AppUserType)
+  userType: AppUserType;
+
+  @Field(() => ID, { nullable: true })
+  operatorId: string | null;
+
+  @Field(() => [String])
+  permissions: string[];
+}
 import { CreateAppUserInput } from '../dto/create-app-user.input';
 import { UpdateAppUserInput } from '../dto/update-app-user.input';
 import { LinkKeycloakUserInput } from '../dto/link-keycloak-user.input';
@@ -18,6 +41,8 @@ export class AppUserResolver {
     private readonly appUserService: AppUserService,
     private readonly userLinkingService: UserLinkingService,
     private readonly keycloakAdminService: KeycloakAdminService,
+    @InjectRepository(Operator)
+    private readonly operatorRepo: Repository<Operator>,
   ) {}
 
   // ─── Existing Queries ──────────────────────────────────────────
@@ -52,6 +77,31 @@ export class AppUserResolver {
     @Args('appUserId', { type: () => ID }) appUserId: string,
   ): Promise<string[]> {
     return this.appUserService.getUserPermissions(appUserId);
+  }
+
+  /**
+   * Profilo del chiamante: AppUser id, operatorId associato (se presente)
+   * e lista permessi effettivi. Pensato per il bootstrap del frontend
+   * (PermissionsService) per decidere visibilità di bottoni e menu senza
+   * fare round-trip multipli.
+   */
+  @Query(() => MyProfile, { name: 'myProfile', nullable: true })
+  async getMyProfile(@Context() context: any): Promise<MyProfile | null> {
+    const keycloakId = context.req?.tenantContext?.userId;
+    if (!keycloakId) return null;
+    const appUser = await this.appUserService.findByKeycloakId(keycloakId);
+    if (!appUser) return null;
+    const permissions = await this.appUserService.getUserPermissions(appUser.id);
+    const operator = await this.operatorRepo.findOne({
+      where: { appUserId: appUser.id },
+      select: ['id'],
+    });
+    return {
+      appUserId: appUser.id,
+      userType: appUser.userType,
+      operatorId: operator?.id ?? null,
+      permissions,
+    };
   }
 
   // ─── Keycloak Queries ──────────────────────────────────────────

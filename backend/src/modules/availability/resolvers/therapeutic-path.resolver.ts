@@ -1,4 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { PathDocument, DocumentCategory } from '../entities/path-document.entity';
 import { TherapeuticPathService } from '../services/therapeutic-path.service';
@@ -7,10 +8,31 @@ import {
   UpdateTherapeuticPathInput,
   CreateDocumentInput,
 } from '../dto/therapeutic-path.input';
+import {
+  AuthorizationGuard,
+  RequirePermissions,
+} from '../../users/guards/authorization.guard';
+import { AppUserService } from '../../users/services/app-user.service';
+import {
+  CurrentUser,
+  CurrentUserContext,
+} from '../../users/decorators/current-user.decorator';
+import { OwnershipGuard, RequireOwnership } from '../guards/ownership.guard';
 
 @Resolver(() => TherapeuticPath)
 export class TherapeuticPathResolver {
-  constructor(private readonly pathService: TherapeuticPathService) {}
+  constructor(
+    private readonly pathService: TherapeuticPathService,
+    private readonly appUserService: AppUserService,
+  ) {}
+
+  private async resolveAppUserId(
+    user: CurrentUserContext | undefined,
+  ): Promise<string | undefined> {
+    if (!user?.userId) return undefined;
+    const appUser = await this.appUserService.findByKeycloakId(user.userId);
+    return appUser?.id;
+  }
 
   // ==================== PATH QUERIES ====================
 
@@ -70,6 +92,8 @@ export class TherapeuticPathResolver {
    * Mutation: Crea un nuovo percorso terapeutico
    */
   @Mutation(() => TherapeuticPath, { name: 'createTherapeuticPath' })
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('treatment_create')
   async createTherapeuticPath(
     @Args('input') input: CreateTherapeuticPathInput,
   ): Promise<TherapeuticPath> {
@@ -80,6 +104,9 @@ export class TherapeuticPathResolver {
    * Mutation: Aggiorna un percorso terapeutico
    */
   @Mutation(() => TherapeuticPath, { name: 'updateTherapeuticPath' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_write')
+  @RequireOwnership({ resource: 'therapeutic_path' })
   async updateTherapeuticPath(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: UpdateTherapeuticPathInput,
@@ -91,10 +118,18 @@ export class TherapeuticPathResolver {
    * Mutation: Elimina un percorso terapeutico
    */
   @Mutation(() => Boolean, { name: 'deleteTherapeuticPath' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('therapeutic_path_delete_own')
+  @RequireOwnership({
+    resource: 'therapeutic_path',
+    bypassPermission: 'therapeutic_path_delete_any',
+  })
   async deleteTherapeuticPath(
     @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<boolean> {
-    return this.pathService.deletePath(id);
+    const deletedByUserId = await this.resolveAppUserId(user);
+    return this.pathService.deletePath(id, deletedByUserId);
   }
 
   // ==================== DOCUMENT QUERIES ====================

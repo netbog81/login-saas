@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { OAuthService } from 'angular-oauth2-oidc';
 import { OidcAuthService } from '../../../../core/auth/oidc-auth.service';
 import { TenantResolverService } from '../../../../core/auth/tenant-resolver.service';
+import { PermissionsService } from '../../../../core/services/permissions.service';
 
 @Component({
   selector: 'app-callback',
@@ -61,6 +62,7 @@ export class CallbackComponent implements OnInit {
   private readonly oidcAuth = inject(OidcAuthService);
   private readonly router = inject(Router);
   private readonly tenantResolver = inject(TenantResolverService);
+  private readonly permissions = inject(PermissionsService);
 
   readonly tenantMismatch = signal(false);
   readonly tokenOrg = signal<string | null>(null);
@@ -83,6 +85,14 @@ export class CallbackComponent implements OnInit {
       if (!user) {
         this.oidcAuth.login();
         return;
+      }
+
+      // Pre-carica il profilo (appUserId, operatorId, permessi). Se fallisce
+      // (es. schema non pronto), il PermissionsService resta vuoto e i
+      // bottoni saranno disabilitati conservativamente: il backend resta
+      // comunque la fonte di verità.
+      if (user.tenantStatus === 'active') {
+        await this.permissions.ensureLoaded().catch(() => null);
       }
 
       // Redirect in base allo stato del tenant

@@ -16,6 +16,8 @@ import {
   GET_OPERATORS_AVAILABILITY,
   CHECK_DUPLICATE_OPERATOR,
   MY_OPERATOR,
+  GET_ARCHIVED_OPERATORS,
+  GET_OPERATOR_DEPENDENCIES,
 } from '../graphql/operations/operator.queries';
 import {
   GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS,
@@ -25,8 +27,32 @@ import {
   CREATE_OPERATOR,
   UPDATE_OPERATOR,
   DELETE_OPERATOR,
+  RESTORE_OPERATOR,
 } from '../graphql/operations/operator.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
+
+/**
+ * Conteggio dipendenze storiche dell'operatore. Una qualunque > 0
+ * implica che l'eliminazione viene convertita in archiviazione.
+ */
+export interface OperatorDependencyCount {
+  total: number;
+  treatments: number;
+  therapeuticPaths: number;
+  evaluations: number;
+  anamnesis: number;
+  appointments: number;
+  gymSchedules: number;
+  templateAssignments: number;
+  waitingList: number;
+}
+
+/** Esito dell'eliminazione di un operatore. */
+export interface DeleteOperatorResult {
+  archived: boolean;
+  hardDeleted: boolean;
+  dependencies: OperatorDependencyCount;
+}
 
 @Injectable({
   providedIn: 'root',
@@ -83,14 +109,49 @@ export class OperatorService extends BaseGraphQLService {
   }
 
   /**
-   * Elimina un operatore
+   * Elimina o archivia un operatore.
+   *
+   * Il backend decide automaticamente l'azione:
+   *  - se ha dipendenze storiche → archivia (soft-delete preservando lo
+   *    storico clinico, AppUser disattivato, template scollegati)
+   *  - se non ha dipendenze → hard-delete come prima
+   *
+   * Il client può distinguere i due casi tramite `archived` / `hardDeleted`
+   * per mostrare un messaggio diverso.
    */
-  deleteOperator(id: string): Observable<boolean> {
-    return this.mutate<{ deleteOperator: boolean }>(
+  deleteOperator(id: string): Observable<DeleteOperatorResult> {
+    return this.mutate<{ deleteOperator: DeleteOperatorResult }>(
       DELETE_OPERATOR,
       { id },
-      [{ query: GET_OPERATORS }]
-    ).pipe(map((result) => result.deleteOperator));
+      [{ query: GET_OPERATORS }, { query: GET_ARCHIVED_OPERATORS }],
+    ).pipe(map(result => result.deleteOperator));
+  }
+
+  /** Ripristina un operatore archiviato (admin only). */
+  restoreOperator(id: string): Observable<Operator> {
+    return this.mutate<{ restoreOperator: Operator }>(
+      RESTORE_OPERATOR,
+      { id },
+      [{ query: GET_OPERATORS }, { query: GET_ARCHIVED_OPERATORS }],
+    ).pipe(map(result => result.restoreOperator));
+  }
+
+  /** Lista operatori archiviati per la pagina admin (admin only). */
+  getArchivedOperators(): Observable<Operator[]> {
+    return this.query<{ archivedOperators: Operator[] }>(
+      GET_ARCHIVED_OPERATORS,
+    ).pipe(map(result => result.archivedOperators ?? []));
+  }
+
+  /**
+   * Conteggio dipendenze storiche di un operatore. Pensato per il dialog
+   * di conferma archiviazione (mostra all'admin quanti record sono in gioco).
+   */
+  getOperatorDependencies(id: string): Observable<OperatorDependencyCount> {
+    return this.query<{ operatorDependencies: OperatorDependencyCount }>(
+      GET_OPERATOR_DEPENDENCIES,
+      { id },
+    ).pipe(map(result => result.operatorDependencies));
   }
 
   /**

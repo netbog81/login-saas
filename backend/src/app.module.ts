@@ -108,6 +108,9 @@ import { WaitingListEntry } from './modules/availability/entities/waiting-list-e
 import { TaskMessageModule } from './modules/task-message/task-message.module';
 import { TaskMessage } from './modules/task-message/entities/task-message.entity';
 import { TaskMessageWebhookEvent } from './modules/task-message/entities/task-message-webhook-event.entity';
+// Recycle bin (cestino soft-deleted records)
+import { RecycleBinModule } from './modules/recycle-bin/recycle-bin.module';
+import { RecycleBinSettings } from './modules/availability/entities/recycle-bin-settings.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -177,6 +180,8 @@ const ALL_ENTITIES = [
   // Task Message system
   TaskMessage,
   TaskMessageWebhookEvent,
+  // Recycle bin
+  RecycleBinSettings,
 ];
 
 interface AppModuleOptions {
@@ -236,6 +241,7 @@ export class AppModule implements NestModule {
         AppUsersModule,
         WhatsappModule,
         TaskMessageModule,
+        RecycleBinModule,
       ],
       controllers: [MeController, HealthController],
       providers: [

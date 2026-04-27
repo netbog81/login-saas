@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn } from 'typeorm';
 import { ObjectType, Field, ID, GraphQLISODateTime } from '@nestjs/graphql';
 import { InstrumentCategory } from './instrument-category.entity';
 import { InstrumentStatus } from './instrument-status.enum';
@@ -64,6 +64,14 @@ export class Instrument {
   @Field()
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Field({ nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // Relations
   @Field(() => [AppointmentInstrument], { nullable: true })

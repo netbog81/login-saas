@@ -13,8 +13,12 @@ import {
   Input,
   Output,
   EventEmitter,
-  ChangeDetectionStrategy
+  ChangeDetectionStrategy,
+  inject,
+  signal,
+  computed,
 } from '@angular/core';
+import { PermissionsService } from '../../../../core/services/permissions.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -293,19 +297,33 @@ export type ReschedulingType = 'days' | 'range' | 'none';
               </div>
 
               <div class="action-buttons-row">
-                <button mat-raised-button (click)="onEditTreatment()" matTooltip="Modifica dati trattamento">
+                <button
+                  mat-raised-button
+                  [disabled]="!canEditCurrentTreatment()"
+                  (click)="onEditTreatment()"
+                  [matTooltip]="canEditCurrentTreatment() ? 'Modifica dati trattamento' : 'Solo il proprietario può modificare il trattamento'">
                   <mat-icon>edit</mat-icon>
                   Modifica
                 </button>
 
                 <div class="spacer"></div>
 
-                <button mat-button color="warn" (click)="onCancelTreatment()" matTooltip="Annulla trattamento in corso">
+                <button
+                  mat-button
+                  color="warn"
+                  [disabled]="!canDeleteCurrentTreatment()"
+                  (click)="onCancelTreatment()"
+                  [matTooltip]="canDeleteCurrentTreatment() ? 'Annulla trattamento in corso' : 'Solo il proprietario o un admin può annullare il trattamento'">
                   <mat-icon>close</mat-icon>
                   Annulla
                 </button>
 
-                <button mat-raised-button color="accent" (click)="onFinishTreatment()" matTooltip="Completa il trattamento">
+                <button
+                  mat-raised-button
+                  color="accent"
+                  [disabled]="!canEditCurrentTreatment()"
+                  (click)="onFinishTreatment()"
+                  [matTooltip]="canEditCurrentTreatment() ? 'Completa il trattamento' : 'Solo il proprietario può completare il trattamento'">
                   <mat-icon>check_circle</mat-icon>
                   Completa Trattamento
                 </button>
@@ -325,6 +343,17 @@ export type ReschedulingType = 'days' | 'range' | 'none';
               <div class="treatment-closed-badge">
                 <mat-icon>task_alt</mat-icon>
                 <span>{{ getTreatmentStatusLabel() }}</span>
+              </div>
+            }
+
+            <!-- Badge "Chiusura forzata": visibile su qualsiasi stato finché
+                 il flag forcedClosure resta true (anche dopo riapertura
+                 segreteria, per audit). -->
+            @if (currentTreatment?.forcedClosure) {
+              <div class="treatment-forced-badge"
+                   matTooltip="La chiusura è stata forzata da segreteria/admin. Il trattamento non era stato completato dall'operatore.">
+                <mat-icon>lock_clock</mat-icon>
+                <span>Chiusura forzata</span>
               </div>
             }
 
@@ -808,6 +837,27 @@ export type ReschedulingType = 'days' | 'range' | 'none';
       }
     }
 
+    .treatment-forced-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+      border: 1px solid #f87171;
+      border-radius: 8px;
+      color: #991b1b;
+      font-weight: 500;
+      font-size: 0.85rem;
+      margin-top: 6px;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #b91c1c;
+      }
+    }
+
     /* Responsive */
     @media (max-width: 767px) {
       .patient-info {
@@ -867,9 +917,24 @@ export type ReschedulingType = 'days' | 'range' | 'none';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TreatmentCardComponent {
+  protected readonly perms = inject(PermissionsService);
+
   @Input() appointment: AvailabilityAppointment | null = null;
   @Input() patient: Patient | null = null;
-  @Input() currentTreatment: Treatment | null = null;  // Trattamento in corso
+
+  /**
+   * Trattamento in corso. Esposto anche come signal interno
+   * (`currentTreatmentSignal`) per consentire ai computed di reagire ai
+   * cambi di Input senza dipendere da `markForCheck()` esterno.
+   */
+  private readonly currentTreatmentSignal = signal<Treatment | null>(null);
+  @Input() set currentTreatment(value: Treatment | null) {
+    this.currentTreatmentSignal.set(value);
+  }
+  get currentTreatment(): Treatment | null {
+    return this.currentTreatmentSignal();
+  }
+
   @Input() loading = false;
 
   @Output() startTreatment = new EventEmitter<void>();
@@ -953,6 +1018,34 @@ export class TreatmentCardComponent {
   isNonRetribuito(): boolean {
     return this.appointment?.nonRetribuito === true;
   }
+
+  /**
+   * AppUserId del proprietario del trattamento corrente, per ownership UI.
+   * Esposto come computed per essere reattivo ai cambi di Input.
+   */
+  private readonly currentTreatmentOwnerAppUserId = computed<string | null>(
+    () => (this.currentTreatmentSignal()?.operator as any)?.appUserId ?? null,
+  );
+
+  /**
+   * Computed signals per i bottoni: dipendono da
+   *  - currentTreatmentSignal (Input)
+   *  - permissions() del PermissionsService (signal globale)
+   * Quando cambia uno dei due, OnPush rileva automaticamente il
+   * cambiamento del template che li legge.
+   */
+  readonly canEditCurrentTreatment = computed<boolean>(() => {
+    if (!this.currentTreatmentSignal()) return false;
+    // Lettura diretta del signal permissions() per registrare la dipendenza
+    void this.perms.permissions();
+    return this.perms.canEditTreatment(this.currentTreatmentOwnerAppUserId());
+  });
+
+  readonly canDeleteCurrentTreatment = computed<boolean>(() => {
+    if (!this.currentTreatmentSignal()) return false;
+    void this.perms.permissions();
+    return this.perms.canDeleteTreatment(this.currentTreatmentOwnerAppUserId());
+  });
 
   // Metodi per stato trattamento (case-insensitive per compatibilità con GraphQL)
   hasTreatmentInProgress(): boolean {

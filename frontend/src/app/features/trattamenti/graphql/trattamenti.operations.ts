@@ -15,6 +15,7 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
     operatorId
     patientId
     status
+    forcedClosure
     scontoFE
     price
     isPaid
@@ -49,6 +50,7 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
       professionalRegistration
       canCollectPayment
       color
+      appUserId
     }
     patient {
       id
@@ -246,6 +248,21 @@ export const CLOSE_TREATMENT = gql`
 export const REOPEN_TREATMENT = gql`
   mutation ReopenTreatment($id: ID!) {
     reopenTreatment(id: $id) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+/**
+ * Forza la chiusura di un trattamento rimasto IN_PROGRESS perché l'operatore
+ * ha dimenticato di completarlo. Permission: `treatment_force_close`
+ * (segreteria/admin). Regola UX (frontend): consentito solo dopo l'orario
+ * di fine dell'appuntamento.
+ */
+export const FORCE_CLOSE_TREATMENT = gql`
+  mutation ForceCloseTreatment($id: ID!, $secretaryNotes: String) {
+    forceCloseTreatment(id: $id, secretaryNotes: $secretaryNotes) {
       ...TreatmentDetails
     }
   }

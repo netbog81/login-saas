@@ -436,6 +436,10 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       canRecordPayment: this.canRecordPayment(treatment),
       currentUserId: this.currentUserId ?? undefined,
     };
+    // Solo chi ha già ruolo "segreteria/admin" su Keycloak può forzare la
+    // chiusura. Per ulteriore sicurezza il backend richiede il permesso
+    // applicativo `treatment_force_close`.
+    const canForceCloseTreatment = this.isSecretary;
 
     const ref = this.dialog.open(TrattamentoDetailComponent, {
       data,
@@ -448,6 +452,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     });
 
     const inst = ref.componentInstance;
+    inst.canForceCloseTreatment = canForceCloseTreatment;
 
     inst.updateServiceDescription.subscribe((p: DetailUpdateServiceDescriptionPayload) => {
       this.service.updateServiceInvoiceDescription(p).subscribe({
@@ -576,6 +581,22 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
           this.snackBar.open('Trattamento riaperto', 'OK', { duration: 2000 });
         },
         error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
+    inst.forceCloseTreatment.subscribe(() => {
+      this.service.forceClose(treatment.id).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+          this.snackBar.open(
+            'Trattamento chiuso forzatamente. Operatore avvisato in audit.',
+            'OK',
+            { duration: 3500 },
+          );
+        },
+        error: (e) =>
+          this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
       });
     });
 

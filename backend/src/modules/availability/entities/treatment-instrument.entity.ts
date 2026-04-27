@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, DeleteDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import GraphQLJSON from 'graphql-type-json';
 import { Treatment } from './treatment.entity';
 import { Instrument } from './instrument.entity';
 import { InstrumentCategory } from './instrument-category.entity';
@@ -44,6 +45,47 @@ export class TreatmentInstrument {
   @Field(() => Int, { nullable: true })
   @Column('int', { nullable: true })
   orderPosition?: number;
+
+  // ==================== SNAPSHOT ====================
+  // Popolati al primo passaggio del trattamento a OPERATOR_COMPLETED.
+  // Preservano i dati dello strumento/categoria anche se successivamente
+  // soft-deletati o modificati. Sovrascritti a ogni nuovo COMPLETED da
+  // parte dell'operatore; non modificati dalle transizioni gestite dalla
+  // segreteria (CLOSED ↔ OPERATOR_COMPLETED).
+
+  @Field({ nullable: true })
+  @Column({ length: 255, nullable: true })
+  instrumentNameSnapshot?: string;
+
+  @Field({ nullable: true })
+  @Column({ length: 255, nullable: true })
+  brandSnapshot?: string;
+
+  @Field({ nullable: true })
+  @Column({ length: 255, nullable: true })
+  modelSnapshot?: string;
+
+  @Field({ nullable: true })
+  @Column({ length: 255, nullable: true })
+  categoryNameSnapshot?: string;
+
+  @Field(() => GraphQLJSON, { nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
+  technicalDataSnapshot?: Record<string, any>;
+
+  @Field({ nullable: true })
+  @Column('timestamp', { nullable: true })
+  snapshotTakenAt?: Date;
+
+  // ==================== SOFT DELETE ====================
+
+  @Field({ nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // ==================== RELATIONS ====================
 

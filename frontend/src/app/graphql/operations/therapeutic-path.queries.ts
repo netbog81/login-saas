@@ -45,6 +45,7 @@ export const THERAPEUTIC_PATH_FRAGMENT = gql`
       id
       name
       surname
+      appUserId
     }
     patient {
       id

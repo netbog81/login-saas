@@ -349,6 +349,15 @@ import {
                   Riapri Trattamento
                 </button>
               }
+              @if (data.treatment.status?.toLowerCase() === 'closed' && !data.treatment.isInvoicedToPatient) {
+                <button mat-raised-button color="warn"
+                        [disabled]="isSaving"
+                        (click)="onReopenTreatment()"
+                        matTooltip="Riapre il trattamento riportandolo allo stato 'completato da operatore'">
+                  <mat-icon>replay</mat-icon>
+                  Riapri Trattamento (segreteria)
+                </button>
+              }
             </div>
             <div class="footer-right">
               <button mat-button (click)="onCancel()" [disabled]="isSaving">

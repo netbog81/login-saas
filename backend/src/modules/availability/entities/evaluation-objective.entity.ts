@@ -7,6 +7,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   Index
 } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
@@ -71,6 +72,14 @@ export class EvaluationObjective {
   @Field(() => GraphQLISODateTime)
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // ==================== RELATIONS ====================
 

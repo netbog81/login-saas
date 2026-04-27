@@ -25,6 +25,7 @@ import {
   RECORD_TREATMENT_PAYMENT,
   CLOSE_TREATMENT,
   REOPEN_TREATMENT,
+  FORCE_CLOSE_TREATMENT,
 } from '../graphql/trattamenti.operations';
 
 /**
@@ -150,6 +151,18 @@ export class TrattamentiService extends BaseGraphQLService {
       REOPEN_TREATMENT,
       { id },
     ).pipe(map(r => r.reopenTreatment));
+  }
+
+  /**
+   * Forza la chiusura di un trattamento IN_PROGRESS (segreteria/admin),
+   * tipicamente quando l'operatore ha dimenticato di completarlo.
+   * Backend richiede permesso `treatment_force_close`.
+   */
+  forceClose(id: string, secretaryNotes?: string): Observable<Trattamento> {
+    return this.mutate<{ forceCloseTreatment: Trattamento }>(
+      FORCE_CLOSE_TREATMENT,
+      { id, secretaryNotes },
+    ).pipe(map(r => r.forceCloseTreatment));
   }
 
   // ==================== HELPERS ====================

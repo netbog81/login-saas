@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppUser } from '../entities/app-user.entity';
@@ -90,10 +90,30 @@ export class AppUserService {
 
   async delete(id: string): Promise<boolean> {
     const user = await this.findById(id);
-    // Se è un OPERATOR, rimuovi anche il record operator
+
+    // Se è un OPERATOR collegato a un record operatore, bloccare la
+    // cancellazione: prima va archiviato/eliminato l'operatore (con la
+    // logica delete/archive che preserva lo storico clinico). Non possiamo
+    // hard-deletare cascade qui perché perderemmo trattamenti, percorsi,
+    // valutazioni. L'admin riceve un messaggio esplicito.
     if (user.userType === AppUserType.OPERATOR) {
-      await this.operatorRepo.delete({ appUserId: id });
+      const operator = await this.operatorRepo.findOne({
+        where: { appUserId: id },
+        withDeleted: true,
+      });
+      if (operator && !operator.deletedAt) {
+        throw new BadRequestException(
+          `Questo utente è collegato all'operatore "${operator.name} ${operator.surname ?? ''}". ` +
+            `Prima archivialo o eliminalo dalla pagina Operatori, poi torna qui per eliminare l'utente.`,
+        );
+      }
+      // Operatore già archiviato: scollego il riferimento prima di eliminare l'AppUser,
+      // così il record archiviato resta consultabile senza FK al user cancellato.
+      if (operator?.deletedAt) {
+        await this.operatorRepo.update(operator.id, { appUserId: null as any });
+      }
     }
+
     await this.appUserRepo.remove(user);
     return true;
   }

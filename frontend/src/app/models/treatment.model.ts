@@ -85,6 +85,12 @@ export interface Treatment {
   // Status
   status: TreatmentStatus;
   isTest: boolean;
+  /**
+   * True se la chiusura è stata forzata da segreteria/admin perché
+   * l'operatore aveva dimenticato di completare il trattamento.
+   * Mostrato in UI con un badge.
+   */
+  forcedClosure?: boolean;
 
   // Timestamps
   startedAt: Date | string;

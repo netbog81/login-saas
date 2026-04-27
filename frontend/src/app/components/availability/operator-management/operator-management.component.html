@@ -2,9 +2,14 @@
   <!-- Header -->
   <div class="header">
     <h2>Gestione Operatori</h2>
-    <button class="btn btn-primary" (click)="openOperatorForm()">
-      + Nuovo Operatore
-    </button>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="toggleArchivedView()">
+        {{ showArchived ? '← Operatori attivi' : 'Operatori archiviati' }}
+      </button>
+      <button *ngIf="!showArchived" class="btn btn-primary" (click)="openOperatorForm()">
+        + Nuovo Operatore
+      </button>
+    </div>
   </div>
 
   <!-- Loading/Error states -->
@@ -12,7 +17,7 @@
   <div *ngIf="error && !showOperatorForm && !showServiceAssignment" class="error">{{ error }}</div>
 
   <!-- Operators List -->
-  <div class="operators-container">
+  <div class="operators-container" *ngIf="!showArchived">
     <div class="operators-grid">
       <div *ngFor="let operator of operators"
            class="operator-card"
@@ -71,6 +76,41 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Operatori archiviati: visibile solo quando il toggle è attivo. -->
+  <div class="operators-container archived-container" *ngIf="showArchived">
+    <p class="archived-hint">
+      Gli operatori archiviati non sono selezionabili per nuovi trattamenti e
+      non possono accedere al sistema, ma il loro storico clinico è preservato.
+      Ripristinandoli torneranno attivi (i template di disponibilità andranno
+      riattivati manualmente).
+    </p>
+    <div class="operators-grid" *ngIf="archivedOperators.length > 0">
+      <div *ngFor="let operator of archivedOperators"
+           class="operator-card archived-card">
+        <div class="operator-header">
+          <div class="operator-name-color">
+            <div class="color-indicator" [style.background-color]="operator.color || '#9e9e9e'"></div>
+            <h3>{{ operator.name }} {{ operator.surname || '' }}</h3>
+          </div>
+          <span class="archived-chip">Archiviato</span>
+        </div>
+        <div class="operator-details">
+          <p *ngIf="operator.category"><strong>Categoria:</strong> {{ operator.category.name }}</p>
+          <p *ngIf="operator.email"><strong>Email:</strong> {{ operator.email }}</p>
+          <p *ngIf="operator.phone"><strong>Telefono:</strong> {{ operator.phone }}</p>
+        </div>
+        <div class="operator-actions">
+          <button class="btn btn-sm btn-success" (click)="restoreOperator(operator)">
+            Ripristina
+          </button>
+        </div>
+      </div>
+    </div>
+    <p *ngIf="archivedOperators.length === 0" class="empty-archived">
+      Nessun operatore archiviato.
+    </p>
   </div>
 
   <!-- Operator Form Modal -->

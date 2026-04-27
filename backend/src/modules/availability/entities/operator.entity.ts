@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, OneToOne, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, OneToOne, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn } from 'typeorm';
 import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { AvailabilityTemplate } from './availability-template.entity';
 import { AvailabilityException } from './availability-exception.entity';
@@ -115,6 +115,26 @@ export class Operator {
   @Field()
   @UpdateDateColumn()
   updatedAt: Date;
+
+  /**
+   * Timestamp di archiviazione (soft-delete). Quando valorizzato:
+   *  - l'operatore è "archiviato": preserva lo storico ma non è più
+   *    selezionabile per nuovi trattamenti/appuntamenti
+   *  - `isActive` viene messo a false in transazione
+   *  - l'AppUser collegato (se presente) viene disattivato
+   *  - i suoi availability_templates vengono disattivati
+   * Le query `find()` standard di TypeORM escludono automaticamente i
+   * record soft-deleted; per visualizzare gli archiviati usare
+   * `withDeleted: true`.
+   */
+  @Field({ nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  /** AppUser admin che ha archiviato l'operatore (per audit). */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // Relations
   @Field(() => [AvailabilityTemplate], { nullable: true })

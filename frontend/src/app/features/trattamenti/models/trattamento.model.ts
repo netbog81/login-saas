@@ -124,6 +124,12 @@ export interface Trattamento {
   patientId?: string | null;
 
   status: TreatmentStatus;
+  /**
+   * True se la chiusura è stata forzata da segreteria/admin perché
+   * l'operatore aveva dimenticato di completare il trattamento.
+   * Mostrato in UI con un badge per audit visivo.
+   */
+  forcedClosure?: boolean;
   scontoFE: boolean;
 
   price: number;

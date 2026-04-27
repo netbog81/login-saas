@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 import { Patient } from '../../../entities/patient.entity';
@@ -83,6 +83,14 @@ export class TherapeuticPath {
   @Field({ nullable: true })
   @Column('timestamp', { nullable: true })
   closedAt?: Date;
+
+  @Field({ nullable: true })
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  deletedByUserId?: string;
 
   // ==================== RELATIONS ====================
 

@@ -8,9 +8,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { AdminDatabaseComponent } from './components/admin-database/admin-database.component';
 import { AdminUsersComponent } from './components/admin-users/admin-users.component';
 import { AdminBackupComponent } from './components/admin-backup/admin-backup.component';
+import { AdminRecycleBinComponent } from './components/admin-recycle-bin/admin-recycle-bin.component';
 import { OidcAuthService } from '../../core/auth/oidc-auth.service';
 
-const TAB_NAMES = ['database', 'utenti', 'backup'] as const;
+const TAB_NAMES = ['database', 'utenti', 'backup', 'cestino'] as const;
 type TabName = typeof TAB_NAMES[number];
 
 @Component({
@@ -25,6 +26,7 @@ type TabName = typeof TAB_NAMES[number];
     AdminDatabaseComponent,
     AdminUsersComponent,
     AdminBackupComponent,
+    AdminRecycleBinComponent,
   ],
   template: `
     <div class="admin-container">
@@ -71,6 +73,16 @@ type TabName = typeof TAB_NAMES[number];
           </ng-template>
           <div class="tab-content">
             <app-admin-backup></app-admin-backup>
+          </div>
+        </mat-tab>
+
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">delete_sweep</mat-icon>
+            Cestino
+          </ng-template>
+          <div class="tab-content-wide">
+            <app-admin-recycle-bin></app-admin-recycle-bin>
           </div>
         </mat-tab>
 

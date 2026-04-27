@@ -13,8 +13,12 @@ import {
   Input,
   Output,
   EventEmitter,
-  ChangeDetectionStrategy
+  ChangeDetectionStrategy,
+  inject,
+  signal,
+  computed,
 } from '@angular/core';
+import { PermissionsService } from '../../../../core/services/permissions.service';
 import { CommonModule } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatIconModule } from '@angular/material/icon';
@@ -106,10 +110,19 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
             </div>
           </div>
           <div class="path-actions">
-            <button mat-icon-button matTooltip="Modifica percorso" (click)="onEditPath()">
+            <button
+              mat-icon-button
+              [matTooltip]="canEditOrDelete() ? 'Modifica percorso' : 'Solo il proprietario può modificare il percorso'"
+              [disabled]="!canEditOrDelete()"
+              (click)="onEditPath()">
               <mat-icon>edit</mat-icon>
             </button>
-            <button mat-icon-button matTooltip="Elimina percorso" color="warn" (click)="onDeletePath()">
+            <button
+              mat-icon-button
+              [matTooltip]="canEditOrDelete() ? 'Elimina percorso' : 'Solo il proprietario o un admin può eliminare il percorso'"
+              [disabled]="!canEditOrDelete()"
+              color="warn"
+              (click)="onDeletePath()">
               <mat-icon>delete</mat-icon>
             </button>
           </div>
@@ -470,7 +483,19 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PathContentComponent {
-  @Input() path: TherapeuticPath | null = null;
+  protected readonly perms = inject(PermissionsService);
+
+  /**
+   * Path corrente. Esposto come signal interno per consentire ai computed
+   * di reagire ai cambi di Input senza dipendere da markForCheck esterno.
+   */
+  private readonly pathSignal = signal<TherapeuticPath | null>(null);
+  @Input() set path(value: TherapeuticPath | null) {
+    this.pathSignal.set(value);
+  }
+  get path(): TherapeuticPath | null {
+    return this.pathSignal();
+  }
   @Input() activeTab: PathContentTab = 'treatments';
   @Input() treatments: Treatment[] = [];
   @Input() anamnesis: Anamnesis | null = null;
@@ -531,6 +556,19 @@ export class PathContentComponent {
   onDeletePath(): void {
     this.deletePath.emit();
   }
+
+  /**
+   * True se l'utente può modificare/eliminare il percorso corrente.
+   * Computed signal: reagisce sia al cambio di Input `path` (via
+   * `pathSignal`) sia al cambio di permessi (signal globale del
+   * PermissionsService). Conservativo: false finché il profilo non è caricato.
+   */
+  readonly canEditOrDelete = computed<boolean>(() => {
+    void this.perms.permissions(); // registra dipendenza
+    return this.perms.canDeleteTherapeuticPath(
+      this.pathSignal()?.primaryOperatorAppUserId ?? null,
+    );
+  });
 
   onTreatmentSelect(treatment: Treatment): void {
     this.treatmentSelect.emit(treatment);

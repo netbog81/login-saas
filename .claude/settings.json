@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -nA20 \"deprecated.*reopenByOperator\" /home/marco/agenda/login-saas/backend/src/modules/availability/services/treatment.service.ts)",
+      "Bash(grep -nA15 \"async reopenBySecretary\" /home/marco/agenda/login-saas/backend/src/modules/availability/services/treatment.service.ts)",
+      "Bash(grep -nB3 \"async closeTreatment\\\\b\" /home/marco/agenda/login-saas/backend/src/modules/availability/resolvers/treatment.resolver.ts)",
+      "Bash(echo \"fe-exit=$?\")",
+      "Bash(echo \"be-exit=$?\")",
+      "Bash(grep -nA10 \"async reopenBySecretary\" /home/marco/agenda/login-saas/backend/src/modules/availability/services/treatment.service.ts)"
+    ]
+  }
+}
