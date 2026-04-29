@@ -21,6 +21,8 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subject, forkJoin, combineLatest } from 'rxjs';
 import { takeUntil, filter, switchMap } from 'rxjs/operators';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatIconModule } from '@angular/material/icon';
 
 import { PatientService } from '../../../services/patient.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
@@ -30,6 +32,8 @@ import { Operator } from '../../../graphql/generated/types';
 import { StatsCardComponent } from '../components/dashboard/stats-card/stats-card.component';
 import { QuickActionsComponent } from '../components/dashboard/quick-actions/quick-actions.component';
 import { OperatorWorkspaceStateService } from '../services/operator-workspace-state.service';
+import { TrattamentiContainer } from '../../trattamenti/containers/trattamenti.container';
+import { MyAppointmentsContainer } from './my-appointments.container';
 
 import {
   DashboardStats,
@@ -45,8 +49,12 @@ import {
   standalone: true,
   imports: [
     CommonModule,
+    MatTabsModule,
+    MatIconModule,
     StatsCardComponent,
-    QuickActionsComponent
+    QuickActionsComponent,
+    TrattamentiContainer,
+    MyAppointmentsContainer,
   ],
   template: `
     <div class="dashboard-container">
@@ -122,6 +130,44 @@ import {
           (actionClick)="onQuickAction($event)">
         </app-quick-actions>
       </section>
+
+      <!--
+        Tab "I miei trattamenti" / "I miei appuntamenti".
+        Visibili solo se è selezionato un operatore. Per i trattamenti
+        riusa TrattamentiContainer in modalità readOnly + filtro
+        operatore-only (niente azioni segreteria/pagamento). Per gli
+        appuntamenti usa il container dedicato MyAppointmentsContainer.
+      -->
+      @if (selectedOperator) {
+        <section class="my-data-section">
+          <mat-tab-group animationDuration="200ms" class="my-data-tabs">
+            <mat-tab>
+              <ng-template mat-tab-label>
+                <mat-icon class="tab-icon">medical_services</mat-icon>
+                I miei trattamenti
+              </ng-template>
+              <div class="tab-content">
+                <app-trattamenti-container
+                  [forceOwnOperatorOnly]="true"
+                  [readOnlyMode]="true">
+                </app-trattamenti-container>
+              </div>
+            </mat-tab>
+
+            <mat-tab>
+              <ng-template mat-tab-label>
+                <mat-icon class="tab-icon">event</mat-icon>
+                I miei appuntamenti
+              </ng-template>
+              <div class="tab-content">
+                <app-my-appointments-container
+                  [operatorId]="selectedOperator.id">
+                </app-my-appointments-container>
+              </div>
+            </mat-tab>
+          </mat-tab-group>
+        </section>
+      }
     </div>
   `,
   styles: [`
@@ -181,6 +227,27 @@ import {
 
     .actions-section {
       margin-bottom: 24px;
+    }
+
+    .my-data-section {
+      margin-top: 8px;
+    }
+
+    .my-data-tabs {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      overflow: hidden;
+    }
+
+    .tab-icon {
+      margin-right: 6px;
+      font-size: 18px;
+      vertical-align: middle;
+    }
+
+    .tab-content {
+      padding: 16px;
     }
 
     /* Responsive */

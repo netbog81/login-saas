@@ -6,7 +6,17 @@
       "Bash(grep -nB3 \"async closeTreatment\\\\b\" /home/marco/agenda/login-saas/backend/src/modules/availability/resolvers/treatment.resolver.ts)",
       "Bash(echo \"fe-exit=$?\")",
       "Bash(echo \"be-exit=$?\")",
-      "Bash(grep -nA10 \"async reopenBySecretary\" /home/marco/agenda/login-saas/backend/src/modules/availability/services/treatment.service.ts)"
+      "Bash(grep -nA10 \"async reopenBySecretary\" /home/marco/agenda/login-saas/backend/src/modules/availability/services/treatment.service.ts)",
+      "Bash(grep -nB3 \"name: 'myProfile'\" /home/marco/agenda/login-saas/backend/src/modules/users/resolvers/app-user.resolver.ts)",
+      "Bash(grep -nB1 \"treatments\\\\|Query\" /home/marco/agenda/login-saas/backend/src/modules/availability/resolvers/treatment.resolver.ts)",
+      "Bash(grep -nB3 \"treatmentsForOperator\\\\|treatmentsForSecretary\" /home/marco/agenda/login-saas/backend/src/modules/availability/resolvers/treatment.resolver.ts)",
+      "Bash(grep -nA10 \"loadOperatorsOptions\" /home/marco/agenda/login-saas/frontend/src/app/features/trattamenti/containers/trattamenti.container.ts)",
+      "Bash(grep -nA8 \"protected query<\" /home/marco/agenda/login-saas/frontend/src/app/core/services/base-graphql.service.ts)",
+      "Bash(grep -nA15 \"query<\" /home/marco/agenda/login-saas/frontend/src/app/core/services/apollo-zone.service.ts)",
+      "Bash(grep -nA15 \"findByOperatorAndDateRange\" /home/marco/agenda/login-saas/backend/src/modules/availability/services/availability-appointment.service.ts)"
+    ],
+    "additionalDirectories": [
+      "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/services"
     ]
   }
 }

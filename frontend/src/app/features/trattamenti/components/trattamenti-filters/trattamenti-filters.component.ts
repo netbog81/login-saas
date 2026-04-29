@@ -247,11 +247,17 @@ export class TrattamentiFiltersComponent {
   @Output() viewModeChange = new EventEmitter<TrattamentiViewMode>();
   @Output() reset = new EventEmitter<void>();
 
+  /**
+   * Stati selezionabili come filtro. WAITING è escluso intenzionalmente:
+   * il valore non è presente nell'enum DB (`treatments_status_enum`) di
+   * nessun tenant attualmente, quindi se passato al backend produce
+   * `invalid input value for enum`. L'enum TS lo conserva come literal
+   * per retrocompatibilità di switch/case ma non va mai inviato a SQL.
+   */
   allStatuses: TreatmentStatus[] = [
     TreatmentStatus.IN_PROGRESS,
     TreatmentStatus.OPERATOR_COMPLETED,
     TreatmentStatus.CLOSED,
-    TreatmentStatus.WAITING,
   ];
 
   labelFor(s: TreatmentStatus): string {

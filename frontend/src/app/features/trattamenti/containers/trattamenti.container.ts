@@ -192,6 +192,16 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
   /** Se true, forza anche per segreteria la vista del solo operatore corrente. */
   @Input() forceOwnOperatorOnly = false;
 
+  /**
+   * Se true, il container opera in **modalità sola lettura** per la
+   * pagina dashboard operatore: nasconde tutte le azioni di segreteria
+   * (chiudi, riapri, force-close, marca pronto, invia a fatturazione,
+   * registra pagamento) ma permette di consultare il dettaglio.
+   * Indipendente da `forceOwnOperatorOnly`: è un controllo UI sul
+   * dialog dettaglio. Il backend rimane comunque la fonte di verità.
+   */
+  @Input() readOnlyMode = false;
+
   @Output() closed = new EventEmitter<void>();
 
   isSecretary = false;
@@ -430,16 +440,22 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
   // ==================== DETAIL DIALOG ====================
 
   openDetail(treatment: Trattamento): void {
+    // In modalità readOnly (dashboard operatore) tutte le azioni
+    // amministrative/economiche sono disabilitate: l'operatore può
+    // consultare il dettaglio del proprio trattamento ma non può
+    // chiudere/riaprire/segnare pronto/registrare pagamento. Il backend
+    // resta la fonte di verità (guard sui mutation).
+    const editEconomicsAllowed = this.isSecretary && !this.readOnlyMode;
+    const recordPaymentAllowed =
+      !this.readOnlyMode && this.canRecordPayment(treatment);
     const data: DetailDialogData = {
       treatment,
-      canEditEconomics: this.isSecretary,
-      canRecordPayment: this.canRecordPayment(treatment),
+      canEditEconomics: editEconomicsAllowed,
+      canRecordPayment: recordPaymentAllowed,
       currentUserId: this.currentUserId ?? undefined,
     };
-    // Solo chi ha già ruolo "segreteria/admin" su Keycloak può forzare la
-    // chiusura. Per ulteriore sicurezza il backend richiede il permesso
-    // applicativo `treatment_force_close`.
-    const canForceCloseTreatment = this.isSecretary;
+    // Force-close: anche qui escluso in readOnlyMode.
+    const canForceCloseTreatment = this.isSecretary && !this.readOnlyMode;
 
     const ref = this.dialog.open(TrattamentoDetailComponent, {
       data,
