@@ -46,7 +46,11 @@ export class TenantOpenbaoResolverService {
       const response = await fetch(url);
 
       if (response.status === 404) {
-        this.logger.warn(`Tenant non trovato in OpenBao: alias="${tenantAlias}"`);
+        // 404 può essere un errore legittimo (utente con tenant nel JWT non
+        // mappato in OpenBao) oppure normale (webhook gateway con instance
+        // ignota). Lasciamo decidere il caller: noi logghiamo a debug e
+        // ritorniamo null. I caller "critici" (middleware) loggano da soli.
+        this.logger.debug(`Tenant non trovato in OpenBao: alias="${tenantAlias}"`);
         return null;
       }
 

@@ -69,11 +69,14 @@ export class WhatsappWebhookController {
       }
 
       if (!tenantInfo || !tenantInfo.schemaName || tenantInfo.schemaName === 'pending') {
-        this.logger.warn(
-          `[WA-WEBHOOK] Cannot resolve schema for tenant "${tenantAlias}". Processing on public schema.`,
+        // Tenant non riconosciuto (es. istanza gateway esterna non mappata a un
+        // tenant Curandis: webhook personali di test/debug, ecc.). Non blocca
+        // ma non ha senso processarlo: niente schema valido = scrittura su
+        // public che non vogliamo. Logghiamo a debug e droppiamo il payload.
+        this.logger.debug(
+          `[WA-WEBHOOK] Skip: instance "${tenantAlias}" non mappata a un tenant Curandis`,
         );
-        // Fire-and-forget without tenant schema (will query public)
-        this.routeWebhook(isTaskMessage, tenantAlias, body);
+        return { received: true };
       } else {
         this.logger.log(
           `[WA-WEBHOOK] Resolved tenant "${tenantAlias}" → schema="${tenantInfo.schemaName}"`,
@@ -84,6 +87,7 @@ export class WhatsappWebhookController {
           {
             schemaName: tenantInfo.schemaName,
             tenantId: tenantAlias,
+            tenantAlias,
             userId: 'webhook',
             requestId: randomUUID(),
           },

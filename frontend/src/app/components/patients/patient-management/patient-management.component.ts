@@ -6,9 +6,10 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject, takeUntil, firstValueFrom } from 'rxjs';
+import { Subject, takeUntil, firstValueFrom, Subscription } from 'rxjs';
 import { Patient, getPatientDisplayName, getPatientPhone } from '../../../models/patient.model';
 import { PatientService } from '../../../services/patient.service';
+import { AddressAutocompleteService, AddressSuggestion } from '../../../services/address-autocomplete.service';
 import { PatientAppointmentsDialogComponent } from '../../../features/operators-new/containers/patient-appointments-dialog.component';
 import { PatientTableComponent } from '../../../features/operators-new/components/patients-list/patient-table/patient-table.component';
 import { PatientFolderDialogComponent } from '../../../features/operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
@@ -52,6 +53,12 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   completePatients = 0;
   pendingPatients = 0;
 
+  // Address autocomplete state (registry → Google Places)
+  addressSuggestions: AddressSuggestion[] = [];
+  addressDropdownOpen = false;
+  private addressSearchTimer?: ReturnType<typeof setTimeout>;
+  private addressSearchSub?: Subscription;
+
   // Overlay click tracking (per evitare chiusura durante click-and-drag)
   overlayMouseDownTarget: EventTarget | null = null;
 
@@ -69,6 +76,7 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
 
   constructor(
     private patientService: PatientService,
+    private addressAutocompleteService: AddressAutocompleteService,
     private ngZone: NgZone,
     private dialog: MatDialog,
     private router: Router
@@ -107,7 +115,9 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error = null;
 
-    this.patientService.getPatients()
+    // Registry max pageSize = 100. Per ricerche oltre i primi 100, l'utente
+    // digita 3+ char nel box e parte la global-search remota (vedi onSearchChange).
+    this.patientService.getPatients(100, 0)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (patients) => {
@@ -132,10 +142,15 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
     ).length;
   }
 
+  /**
+   * Filtraggio combinato:
+   * - 0–2 caratteri  → filtro client-side sui pazienti già caricati (max 100)
+   * - 3+ caratteri   → ricerca remota (POST /subjects/global-search del registry,
+   *                    full-text + trigrammi + fonetico, intero dataset 3700+)
+   */
   applyFilters(): void {
     let result = [...this.patients];
 
-    // Search filter
     if (this.searchTerm.trim()) {
       const search = this.searchTerm.toLowerCase();
       result = result.filter(p =>
@@ -148,7 +163,6 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
       );
     }
 
-    // State filter
     if (this.selectedStateFilter) {
       result = result.filter(p => p.statoAnagrafica === this.selectedStateFilter);
     }
@@ -158,7 +172,33 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
 
   onSearchChange(): void {
     this.ngZone.run(() => {
-      this.applyFilters();
+      const term = this.searchTerm.trim();
+
+      if (term.length >= 3) {
+        // Search remoto sul registry (intero dataset)
+        this.loading = true;
+        this.patientService.searchPatients(term)
+          .pipe(takeUntil(this.destroy$))
+          .subscribe({
+            next: (patients) => {
+              this.patients = patients;
+              this.applyFilters();
+              this.updateStats();
+              this.loading = false;
+            },
+            error: (error) => {
+              console.error('Error searching patients:', error);
+              this.error = 'Errore nella ricerca';
+              this.loading = false;
+            }
+          });
+      } else if (term.length === 0) {
+        // Box vuoto → ricarica i primi 100
+        this.loadPatients();
+      } else {
+        // 1-2 char → filtro client-side sui 100 già caricati
+        this.applyFilters();
+      }
     });
   }
 
@@ -206,7 +246,71 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
       this.editingPatientId = null;
       this.editingPatient = this.getEmptyPatient();
       this.formError = null;
+      this.addressSuggestions = [];
+      this.addressDropdownOpen = false;
+      if (this.addressSearchTimer) clearTimeout(this.addressSearchTimer);
+      this.addressSearchSub?.unsubscribe();
     });
+  }
+
+  // ==================== ADDRESS AUTOCOMPLETE ====================
+
+  /**
+   * Triggerato a ogni keystroke nel campo "Indirizzo".
+   * Debounce 300ms; chiama il registry quando >= 3 char.
+   */
+  onAddressInputChange(value: string): void {
+    const q = (value || '').trim();
+    if (this.addressSearchTimer) clearTimeout(this.addressSearchTimer);
+    if (q.length < 3) {
+      this.addressSuggestions = [];
+      this.addressDropdownOpen = false;
+      return;
+    }
+    this.addressSearchTimer = setTimeout(() => {
+      this.addressSearchSub?.unsubscribe();
+      this.addressSearchSub = this.addressAutocompleteService.search(q, 'IT').subscribe({
+        next: (results) => {
+          this.ngZone.run(() => {
+            this.addressSuggestions = results || [];
+            this.addressDropdownOpen = this.addressSuggestions.length > 0;
+          });
+        },
+        error: () => {
+          this.ngZone.run(() => {
+            this.addressSuggestions = [];
+            this.addressDropdownOpen = false;
+          });
+        },
+      });
+    }, 300);
+  }
+
+  /**
+   * Click su un suggerimento: popoliamo i campi indirizzo/cap/città/provincia.
+   * Usa (mousedown) e non (click) per evitare il blur dell'input prima della selezione.
+   */
+  onAddressSuggestionPick(s: AddressSuggestion): void {
+    const fullStreet = [s.street, s.streetNumber].filter(Boolean).join(', ');
+    this.editingPatient = {
+      ...this.editingPatient,
+      indirizzo: fullStreet || s.fullAddress,
+      cap: s.zipCode || this.editingPatient.cap,
+      citta: s.city || this.editingPatient.citta,
+      provincia: (s.province || '').toUpperCase().substring(0, 2) || this.editingPatient.provincia,
+    };
+    this.addressSuggestions = [];
+    this.addressDropdownOpen = false;
+  }
+
+  /**
+   * Chiude il dropdown all'uscita dall'input (con piccolo delay
+   * per non ammazzare il click sull'opzione).
+   */
+  onAddressBlur(): void {
+    setTimeout(() => {
+      this.addressDropdownOpen = false;
+    }, 200);
   }
 
   async savePatient(): Promise<void> {

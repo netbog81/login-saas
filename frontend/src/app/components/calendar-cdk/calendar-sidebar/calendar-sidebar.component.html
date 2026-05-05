@@ -304,7 +304,7 @@
 
               <!-- Info paziente -->
               <div class="treatment-patient">
-                <span class="patient-name">{{ treatment.patient?.nome }} {{ treatment.patient?.cognome }}</span>
+                <span class="patient-name">{{ treatment.patient?.displayName || (treatment.patient?.subject?.firstName + ' ' + treatment.patient?.subject?.lastName) }}</span>
               </div>
 
               <!-- Operatore -->

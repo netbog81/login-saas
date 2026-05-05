@@ -41,6 +41,14 @@ import { ConflictService } from './services/conflict.service';
             <a class="nav-item" routerLink="/calendar" routerLinkActive="active">
               Calendario
             </a>
+            <a class="nav-item" routerLink="/calendar2" routerLinkActive="active">
+              Calendario New
+            </a>
+            @if (registryUrl) {
+              <a class="nav-item" [href]="registryUrl" target="_blank" rel="noopener noreferrer">
+                Anagrafiche
+              </a>
+            }
             @if (accountingUrl && authService.hasRole(['admin', 'amministratore', 'superadmin', 'segreteria'])) {
               <a class="nav-item" [href]="accountingUrl" target="_blank" rel="noopener noreferrer">
                 Contabilità
@@ -283,6 +291,18 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly accountingUrl: string | null = (() => {
     const alias = this.tenantResolver.getTenantAlias();
     return alias ? `https://accounting.${alias}.curandis.cloud` : null;
+  })();
+
+  /**
+   * URL del modulo Anagrafiche (registry) per il tenant corrente.
+   * Es: tenant "demo4" -> https://registry.demo4.curandis.cloud
+   * È il punto autoritativo per la gestione completa di individui e
+   * organizzazioni: clinico/contabilità ne prelevano i dati ma la
+   * creazione/modifica avanzata si fa qui.
+   */
+  readonly registryUrl: string | null = (() => {
+    const alias = this.tenantResolver.getTenantAlias();
+    return alias ? `https://registry.${alias}.curandis.cloud` : null;
   })();
 
   ngOnInit(): void {

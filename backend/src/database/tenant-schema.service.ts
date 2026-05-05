@@ -101,6 +101,12 @@ export class TenantSchemaService {
       password: pgOptions.password,
       database: pgOptions.database,
       schema: schemaName,
+      // Forza search_path al livello libpq (l'opzione `schema` di TypeORM da
+      // sola NON imposta il search_path della connection: senza questa, le
+      // migrazioni che usano nomi non qualificati finiscono su `public`).
+      extra: {
+        options: `-c search_path="${schemaName}"`,
+      },
       entities: this.dataSource.options.entities as any[],
       migrations: this.dataSource.options.migrations as any[],
       migrationsRun: false,

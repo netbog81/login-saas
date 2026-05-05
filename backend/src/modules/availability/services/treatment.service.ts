@@ -11,7 +11,6 @@ import { AppointmentInstrument } from '../entities/appointment-instrument.entity
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { Service } from '../entities/service.entity';
-import { Patient } from '../../../entities/patient.entity';
 import { EventsService } from '../../events/events.service';
 import { TreatmentServiceInputItem } from '../dto/treatment.input';
 
@@ -96,8 +95,6 @@ export class TreatmentService {
     private appointmentRepo: Repository<AvailabilityAppointment>,
     @InjectRepository(AppointmentInstrument)
     private appointmentInstrumentRepo: Repository<AppointmentInstrument>,
-    @InjectRepository(Patient)
-    private patientRepo: Repository<Patient>,
     @InjectRepository(TherapeuticPath)
     private pathRepo: Repository<TherapeuticPath>,
     private dataSource: DataSource,

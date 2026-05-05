@@ -8,7 +8,18 @@ import { WhatsappTemplateService } from '../template/services/whatsapp-template.
 import { WhatsappMessageStatus, WhatsappMessageType, WhatsappTemplateType } from '../enums/whatsapp-enums';
 import { DispatchBookingPayload } from './dto/dispatch-booking.dto';
 import { AvailabilityAppointment } from '../../availability/entities/availability-appointment.entity';
-import { Patient } from '../../../entities/patient.entity';
+
+/**
+ * Shape minimo del paziente richiesto dai metodi del gateway.
+ * Il caller costruisce questo oggetto a partire dal SubjectResponse del registry.
+ */
+export interface WhatsappPatientContact {
+  id: string;
+  nome?: string;
+  cognome?: string;
+  telefono?: string;
+  cellulare?: string;
+}
 
 @Injectable()
 export class WhatsappGatewayService {
@@ -27,7 +38,7 @@ export class WhatsappGatewayService {
    */
   async dispatchBooking(
     appointment: AvailabilityAppointment,
-    patient: Patient,
+    patient: WhatsappPatientContact,
   ): Promise<void> {
     try {
       this.logger.log(`[WA-DISPATCH] START appointmentId=${appointment.id}, patientId=${patient.id}`);
@@ -142,7 +153,7 @@ export class WhatsappGatewayService {
    */
   async cancelBooking(
     appointment: AvailabilityAppointment,
-    patient: Patient,
+    patient: WhatsappPatientContact,
   ): Promise<void> {
     try {
       this.logger.log(`[WA-CANCEL] START appointmentId=${appointment.id}, patientId=${patient.id}`);

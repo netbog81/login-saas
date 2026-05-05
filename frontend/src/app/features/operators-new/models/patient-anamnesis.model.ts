@@ -36,7 +36,7 @@ export interface PatientAnamnesis {
  * Input per creazione anamnesi paziente
  */
 export interface CreatePatientAnamnesisInput {
-  patientId: string;
+  subjectId: string;
   operatorId?: string;
   patologiePregresse?: string;
   interventiChirurgici?: string;

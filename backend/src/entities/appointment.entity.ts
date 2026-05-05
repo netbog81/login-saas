@@ -1,6 +1,5 @@
 import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Operator } from '../modules/availability/entities/operator.entity';
-import { Patient } from './patient.entity';
 
 @Entity('appointments')
 export class Appointment {
@@ -26,10 +25,8 @@ export class Appointment {
   @Column({ type: 'uuid' })
   operatorId: string;
 
-  @ManyToOne(() => Patient, patient => patient.appointments, { nullable: true })
-  @JoinColumn({ name: 'patientId' })
-  patient: Patient;
-
+  // patientId è il subjectId del registry (FK logica, niente FK fisica).
+  // Risolto in GraphQL via field resolver `patient` che usa il SubjectLoader.
   @Column({ type: 'uuid', nullable: true })
   patientId: string;
 

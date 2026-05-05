@@ -18,6 +18,10 @@ import { TenantAuditService } from './database/tenant-audit.service';
 import { TenantAdminResolver } from './database/tenant-admin.resolver';
 import { TenantOpenbaoResolverService } from './database/tenant-openbao-resolver.service';
 import { TenantContextMiddleware } from './middleware/tenant-context.middleware';
+import { RegistryModule } from './modules/registry/registry.module';
+import { RegistryClient } from './modules/registry/registry.client';
+import { buildGraphqlContext } from './modules/registry/utils/build-graphql-context';
+import { RegistryEventsModule } from './modules/registry-events/registry-events.module';
 import { JwksService } from './auth/jwks.service';
 import { MeController } from './auth/me.controller';
 import { UsersModule } from './users/users.module';
@@ -26,7 +30,6 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { AvailabilitiesModule } from './availabilities/availabilities.module';
 import { SeedModule } from './seed/seed.module';
 import { User } from './entities/user.entity';
-import { Patient } from './entities/patient.entity';
 import { Appointment } from './entities/appointment.entity';
 import { Availability } from './entities/availability.entity';
 // New availability management module
@@ -84,9 +87,11 @@ import { ObjectiveProgressHistory } from './modules/availability/entities/object
 import { TestEvaluationHistory } from './modules/availability/entities/test-evaluation-history.entity';
 // Patient anamnesis entity (NEW - linked to patient, not path)
 import { PatientAnamnesis } from './modules/availability/entities/patient-anamnesis.entity';
-// Pazienti module entities
-import { PersonaRiferimento } from './patients/entities/persona-riferimento.entity';
-import { PazientePersonaRelazione } from './patients/entities/paziente-persona-relazione.entity';
+// Pazienti module entities (post-registry-integration)
+import { ClinicalSubjectIndex } from './patients/entities/clinical-subject-index.entity';
+import { ClinicalAttendanceLog } from './patients/entities/clinical-attendance-log.entity';
+import { ClinicalRelationshipExtension } from './patients/entities/clinical-relationship-extension.entity';
+import { ProcessedRegistryEvent } from './modules/registry-events/processed-event.entity';
 // App Users module (multi-type user management + RBAC)
 import { AppUsersModule } from './modules/users/app-users.module';
 import { AppUser } from './modules/users/entities/app-user.entity';
@@ -115,7 +120,6 @@ import { RecycleBinSettings } from './modules/availability/entities/recycle-bin-
 /** All entities registered in the application */
 const ALL_ENTITIES = [
   User,
-  Patient,
   Appointment,
   Availability,
   Operator,
@@ -161,8 +165,10 @@ const ALL_ENTITIES = [
   TestEvaluationHistory,
   PatientAnamnesis,
   WaitingListEntry,
-  PersonaRiferimento,
-  PazientePersonaRelazione,
+  ClinicalSubjectIndex,
+  ClinicalAttendanceLog,
+  ClinicalRelationshipExtension,
+  ProcessedRegistryEvent,
   // App Users system
   AppUser,
   Role,
@@ -221,12 +227,19 @@ export class AppModule implements NestModule {
           migrations: [__dirname + '/migrations/*.{ts,js}'],
           migrationsTableName: 'migrations',
         }),
-        GraphQLModule.forRoot<ApolloDriverConfig>({
+        RegistryModule,
+        RegistryEventsModule,
+        GraphQLModule.forRootAsync<ApolloDriverConfig>({
           driver: ApolloDriver,
-          autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-          sortSchema: true,
-          playground: true,
-          introspection: true,
+          imports: [RegistryModule],
+          inject: [RegistryClient],
+          useFactory: (registryClient: RegistryClient) => ({
+            autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+            sortSchema: true,
+            playground: true,
+            introspection: true,
+            context: ({ req }) => buildGraphqlContext(req, registryClient),
+          }),
         }),
         OpenbaoBaseModule.forRoot(options.openbaoService),
         UsersModule,

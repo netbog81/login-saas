@@ -65,11 +65,21 @@ export const TREATMENT_WITH_RELATIONS_FRAGMENT = gql`
     }
     patient {
       id
-      nome
-      cognome
-      codiceFiscale
-      telefono
-      email
+      displayName
+      subject {
+        id
+        firstName
+        lastName
+        taxCode
+        primaryEmail
+        primaryPhone
+        contacts {
+          id
+          contactType
+          value
+          isPrimary
+        }
+      }
     }
     service {
       id

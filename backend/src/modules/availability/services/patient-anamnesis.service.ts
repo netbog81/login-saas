@@ -8,10 +8,10 @@ import {
 } from '../dto/patient-anamnesis.input';
 
 /**
- * PatientAnamnesisService
+ * PatientAnamnesisService — CRUD anamnesi e dati sanitari "anagrafici"
+ * del paziente.
  *
- * Gestisce le operazioni CRUD per l'anamnesi del paziente.
- * Relazione 1:1 con Patient.
+ * Relazione 1:1 col subject del registry (subjectId UUID).
  */
 @Injectable()
 export class PatientAnamnesisService {
@@ -22,32 +22,24 @@ export class PatientAnamnesisService {
 
   // ==================== QUERIES ====================
 
-  /**
-   * Trova l'anamnesi per ID
-   */
   async findById(id: string): Promise<PatientAnamnesis | null> {
     return this.anamnesisRepository.findOne({
       where: { id },
-      relations: ['patient', 'operator'],
+      relations: ['operator'],
     });
   }
 
-  /**
-   * Trova l'anamnesi per paziente ID
-   */
-  async findByPatientId(patientId: string): Promise<PatientAnamnesis | null> {
+  /** Trova l'anamnesi per il subjectId (UUID del paziente nel registry). */
+  async findBySubjectId(subjectId: string): Promise<PatientAnamnesis | null> {
     return this.anamnesisRepository.findOne({
-      where: { patientId },
-      relations: ['patient', 'operator'],
+      where: { subjectId },
+      relations: ['operator'],
     });
   }
 
-  /**
-   * Verifica se un paziente ha già un'anamnesi
-   */
-  async existsForPatient(patientId: string): Promise<boolean> {
+  async existsForSubject(subjectId: string): Promise<boolean> {
     const count = await this.anamnesisRepository.count({
-      where: { patientId },
+      where: { subjectId },
     });
     return count > 0;
   }
@@ -55,18 +47,19 @@ export class PatientAnamnesisService {
   // ==================== MUTATIONS ====================
 
   /**
-   * Crea una nuova anamnesi per un paziente
-   * Ogni paziente può avere una sola anamnesi (relazione 1:1)
+   * Crea una nuova anamnesi per un paziente.
+   * Ogni paziente può avere una sola anamnesi (relazione 1:1).
    */
   async create(input: CreatePatientAnamnesisInput): Promise<PatientAnamnesis> {
-    // Verifica se esiste già un'anamnesi per questo paziente
-    const existing = await this.findByPatientId(input.patientId);
+    const existing = await this.findBySubjectId(input.subjectId);
     if (existing) {
-      throw new Error(`Il paziente ${input.patientId} ha già un'anamnesi. Usa update invece di create.`);
+      throw new Error(
+        `Il paziente ${input.subjectId} ha già un'anamnesi. Usa update invece di create.`,
+      );
     }
 
     const anamnesis = this.anamnesisRepository.create({
-      patientId: input.patientId,
+      subjectId: input.subjectId,
       operatorId: input.operatorId,
       patologiePregresse: input.patologiePregresse,
       interventiChirurgici: input.interventiChirurgici,
@@ -74,25 +67,22 @@ export class PatientAnamnesisService {
       terapiaFarmacologica: input.terapiaFarmacologica || [],
       allergie: input.allergie,
       storiaFamiliare: input.storiaFamiliare,
+      gruppoSanguigno: input.gruppoSanguigno,
+      medicoBase: input.medicoBase,
+      patologieCroniche: input.patologieCroniche,
       note: input.note,
     });
 
     const saved = await this.anamnesisRepository.save(anamnesis);
-
-    // Ricarica con relazioni
     return this.findById(saved.id) as Promise<PatientAnamnesis>;
   }
 
-  /**
-   * Aggiorna un'anamnesi esistente
-   */
   async update(id: string, input: UpdatePatientAnamnesisInput): Promise<PatientAnamnesis> {
     const anamnesis = await this.findById(id);
     if (!anamnesis) {
       throw new NotFoundException(`Anamnesi con ID ${id} non trovata`);
     }
 
-    // Aggiorna i campi forniti
     if (input.operatorId !== undefined) anamnesis.operatorId = input.operatorId;
     if (input.patologiePregresse !== undefined) anamnesis.patologiePregresse = input.patologiePregresse;
     if (input.interventiChirurgici !== undefined) anamnesis.interventiChirurgici = input.interventiChirurgici;
@@ -100,43 +90,31 @@ export class PatientAnamnesisService {
     if (input.terapiaFarmacologica !== undefined) anamnesis.terapiaFarmacologica = input.terapiaFarmacologica;
     if (input.allergie !== undefined) anamnesis.allergie = input.allergie;
     if (input.storiaFamiliare !== undefined) anamnesis.storiaFamiliare = input.storiaFamiliare;
+    if (input.gruppoSanguigno !== undefined) anamnesis.gruppoSanguigno = input.gruppoSanguigno;
+    if (input.medicoBase !== undefined) anamnesis.medicoBase = input.medicoBase;
+    if (input.patologieCroniche !== undefined) anamnesis.patologieCroniche = input.patologieCroniche;
     if (input.note !== undefined) anamnesis.note = input.note;
 
     await this.anamnesisRepository.save(anamnesis);
-
-    // Ricarica con relazioni
     return this.findById(id) as Promise<PatientAnamnesis>;
   }
 
-  /**
-   * Aggiorna o crea l'anamnesi per un paziente (upsert)
-   */
-  async upsert(patientId: string, input: UpdatePatientAnamnesisInput): Promise<PatientAnamnesis> {
-    const existing = await this.findByPatientId(patientId);
-
+  /** Aggiorna o crea l'anamnesi per un subject (upsert). */
+  async upsert(subjectId: string, input: UpdatePatientAnamnesisInput): Promise<PatientAnamnesis> {
+    const existing = await this.findBySubjectId(subjectId);
     if (existing) {
       return this.update(existing.id, input);
-    } else {
-      return this.create({
-        patientId,
-        ...input,
-      });
     }
+    return this.create({ subjectId, ...input });
   }
 
-  /**
-   * Elimina un'anamnesi
-   */
   async delete(id: string): Promise<boolean> {
     const result = await this.anamnesisRepository.delete(id);
     return (result.affected ?? 0) > 0;
   }
 
-  /**
-   * Elimina l'anamnesi di un paziente
-   */
-  async deleteByPatientId(patientId: string): Promise<boolean> {
-    const result = await this.anamnesisRepository.delete({ patientId });
+  async deleteBySubjectId(subjectId: string): Promise<boolean> {
+    const result = await this.anamnesisRepository.delete({ subjectId });
     return (result.affected ?? 0) > 0;
   }
 }

@@ -8,40 +8,37 @@ import {
   UpdateDateColumn,
   Index
 } from 'typeorm';
-import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
-import { Patient } from '../../../entities/patient.entity';
-import { PatientModel } from '../../../patients/models/patient.model';
+import { ObjectType, Field, ID, GraphQLISODateTime } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 
 /**
- * PatientAnamnesis - Anamnesi del Paziente
+ * PatientAnamnesis — Anamnesi e dati sanitari "anagrafici" del paziente.
  *
- * Contiene le informazioni sull'anamnesi patologica del paziente,
- * indipendente dal percorso terapeutico.
- * Relazione 1:1 con Patient.
+ * Relazione 1:1 col subject del registry (UUID = subjectId, FK logica
+ * verso il registry: niente FK fisica lato clinico).
  *
- * Campi:
- * - patologiePregresse: storia patologica remota
- * - interventiChirurgici: interventi subiti
- * - traumi: traumi significativi
- * - terapiaFarmacologica: farmaci in uso (array)
- * - allergie: allergie note
- * - storiaFamiliare: anamnesi familiare
+ * Contiene:
+ * - Dati art. 9 GDPR: gruppo sanguigno, allergie, terapia, patologie pregresse
+ *   e croniche, medico base, traumi, storia familiare, note.
+ *
+ * NON contiene:
+ * - Dati anagrafici PII (nome, cognome, CF, indirizzo, contatti) → registry.
+ * - Tipo paziente / capacità legale → registry come `legalCapacity`.
  */
 @ObjectType('PatientAnamnesis')
 @Entity('patient_anamnesis')
-@Index('IDX_patient_anamnesis_patient', ['patientId'])
+@Index('IDX_patient_anamnesis_subject', ['subjectId'], { unique: true })
 @Index('IDX_patient_anamnesis_operator', ['operatorId'])
 export class PatientAnamnesis {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // ==================== RELATIONS ====================
+  // ==================== LINK AL REGISTRY ====================
 
   @Field(() => ID)
-  @Column('uuid', { name: 'patient_id', unique: true })
-  patientId: string;
+  @Column('uuid', { name: 'subject_id', unique: true })
+  subjectId: string;
 
   @Field(() => ID, { nullable: true })
   @Column('uuid', { name: 'operator_id', nullable: true })
@@ -49,7 +46,7 @@ export class PatientAnamnesis {
 
   // ==================== ANAMNESI PATOLOGICA REMOTA ====================
 
-  @Field({ nullable: true, description: 'Patologie pregresse' })
+  @Field({ nullable: true, description: 'Patologie pregresse (storia patologica remota)' })
   @Column('text', { name: 'patologie_pregresse', nullable: true })
   patologiePregresse?: string;
 
@@ -65,8 +62,6 @@ export class PatientAnamnesis {
   @Column('varchar', { name: 'terapia_farmacologica', array: true, nullable: true, default: '{}' })
   terapiaFarmacologica?: string[];
 
-  // ==================== NUOVI CAMPI ====================
-
   @Field({ nullable: true, description: 'Allergie note' })
   @Column('text', { nullable: true })
   allergie?: string;
@@ -74,6 +69,20 @@ export class PatientAnamnesis {
   @Field({ nullable: true, description: 'Storia familiare / Anamnesi familiare' })
   @Column('text', { name: 'storia_familiare', nullable: true })
   storiaFamiliare?: string;
+
+  // ==================== DATI SANITARI "ANAGRAFICI" (consolidati da Patient) ====================
+
+  @Field({ nullable: true, description: 'Gruppo sanguigno (es. A+, 0-, ...)' })
+  @Column('varchar', { name: 'gruppo_sanguigno', length: 5, nullable: true })
+  gruppoSanguigno?: string;
+
+  @Field({ nullable: true, description: 'Medico di base / curante' })
+  @Column('varchar', { name: 'medico_base', length: 100, nullable: true })
+  medicoBase?: string;
+
+  @Field({ nullable: true, description: 'Patologie croniche attuali' })
+  @Column('text', { name: 'patologie_croniche', nullable: true })
+  patologieCroniche?: string;
 
   // ==================== NOTE ====================
 
@@ -92,11 +101,6 @@ export class PatientAnamnesis {
   updatedAt: Date;
 
   // ==================== RELATIONS ====================
-
-  @Field(() => PatientModel)
-  @ManyToOne(() => Patient, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'patient_id' })
-  patient: Patient;
 
   @Field(() => Operator, { nullable: true })
   @ManyToOne(() => Operator, { onDelete: 'SET NULL' })

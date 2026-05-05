@@ -1,15 +1,17 @@
 import { Component, Inject, ChangeDetectionStrategy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, AbstractControl } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormControl, Validators, AbstractControl } from '@angular/forms';
 import { MatDialogRef, MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { Patient } from '../../../models/patient.model';
 import { PatientService } from '../../../services/patient.service';
-import { firstValueFrom } from 'rxjs';
+import { AddressAutocompleteService, AddressSuggestion } from '../../../services/address-autocomplete.service';
+import { firstValueFrom, Observable, of } from 'rxjs';
 
 /**
  * Dati opzionali da passare al dialog per pre-popolare i campi.
@@ -52,7 +54,8 @@ export interface NewPatientDialogResult {
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    MatAutocompleteModule
   ],
   template: `
     <h2 mat-dialog-title>Nuovo Paziente</h2>
@@ -97,6 +100,38 @@ export interface NewPatientDialogResult {
           </mat-error>
         </mat-form-field>
 
+        <!-- Indirizzo con autocomplete via registry → Google Places -->
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+          <mat-label>Indirizzo</mat-label>
+          <input matInput
+                 formControlName="indirizzo"
+                 placeholder="Via, civico, città"
+                 [matAutocomplete]="addressAuto">
+          <mat-icon matSuffix>place</mat-icon>
+          <mat-autocomplete #addressAuto="matAutocomplete"
+                            (optionSelected)="onAddressSelected($event)"
+                            [displayWith]="displayAddress">
+            @for (s of addressSuggestions$ | async; track s.fullAddress) {
+              <mat-option [value]="s">{{ s.fullAddress }}</mat-option>
+            }
+          </mat-autocomplete>
+        </mat-form-field>
+
+        <div class="form-row form-row-3">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>CAP</mat-label>
+            <input matInput formControlName="cap" placeholder="00100">
+          </mat-form-field>
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Città</mat-label>
+            <input matInput formControlName="citta">
+          </mat-form-field>
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Prov.</mat-label>
+            <input matInput formControlName="provincia" maxlength="2">
+          </mat-form-field>
+        </div>
+
         <!-- Errore: almeno un contatto obbligatorio -->
         <div class="contact-error" *ngIf="form.hasError('noContact') && form.touched">
           <mat-icon color="warn">warning</mat-icon>
@@ -132,6 +167,10 @@ export interface NewPatientDialogResult {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
+    }
+
+    .form-row.form-row-3 {
+      grid-template-columns: 1fr 2fr 80px;
     }
 
     .form-row:first-child {
@@ -181,10 +220,14 @@ export interface NewPatientDialogResult {
 export class NewPatientDialogComponent {
   private fb = inject(FormBuilder);
   private patientService = inject(PatientService);
+  private addressAutocomplete = inject(AddressAutocompleteService);
 
   form: FormGroup;
   saving = false;
   serverError = '';
+
+  /** Suggerimenti indirizzo dal registry (Google Places sotto). */
+  addressSuggestions$: Observable<AddressSuggestion[]> = of([]);
 
   constructor(
     public dialogRef: MatDialogRef<NewPatientDialogComponent, NewPatientDialogResult>,
@@ -195,11 +238,48 @@ export class NewPatientDialogComponent {
       cognome: [data?.cognome || '', Validators.required],
       telefono: [''],
       cellulare: [''],
-      email: ['', Validators.email]
+      email: ['', Validators.email],
+      indirizzo: [''],
+      cap: [''],
+      citta: [''],
+      provincia: [''],
     }, {
       validators: [this.atLeastOneContactValidator]
     });
+
+    // Autocomplete: si attiva con 3+ char nel campo indirizzo.
+    const indirizzoControl = this.form.get('indirizzo') as FormControl;
+    this.addressSuggestions$ = indirizzoControl.valueChanges.pipe(
+      this.addressAutocomplete.searchPipe('IT'),
+    );
   }
+
+  /**
+   * Quando l'utente seleziona un suggerimento, popoliamo i campi
+   * indirizzo/cap/città/provincia.
+   */
+  onAddressSelected(event: MatAutocompleteSelectedEvent): void {
+    const s = event.option.value as AddressSuggestion;
+    if (!s) return;
+    const fullStreet = [s.street, s.streetNumber].filter(Boolean).join(', ');
+    this.form.patchValue({
+      indirizzo: fullStreet || s.fullAddress,
+      cap: s.zipCode || '',
+      citta: s.city || '',
+      provincia: (s.province || '').toUpperCase().substring(0, 2),
+    });
+  }
+
+  /**
+   * displayWith dell'autocomplete: quando l'utente seleziona un'opzione,
+   * Material chiama questa funzione per scrivere il valore nell'input.
+   * Per noi è la sola via semplificata.
+   */
+  displayAddress = (s: AddressSuggestion | string | null): string => {
+    if (!s) return '';
+    if (typeof s === 'string') return s;
+    return [s.street, s.streetNumber].filter(Boolean).join(', ') || s.fullAddress;
+  };
 
   /**
    * Validatore custom: almeno un contatto è obbligatorio.
@@ -237,6 +317,10 @@ export class NewPatientDialogComponent {
         telefono: this.form.value.telefono?.trim() || '',
         cellulare: this.form.value.cellulare?.trim() || '',
         email: this.form.value.email?.trim() || '',
+        indirizzo: this.form.value.indirizzo?.trim() || '',
+        cap: this.form.value.cap?.trim() || '',
+        citta: this.form.value.citta?.trim() || '',
+        provincia: this.form.value.provincia?.trim().toUpperCase() || '',
         genere: 'NON_SPECIFICATO' as const,
         tipoPaziente: 'ADULTO_AUTONOMO' as const
       };

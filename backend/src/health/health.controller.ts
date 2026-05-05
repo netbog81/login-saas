@@ -1,16 +1,15 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { OpenbaoBaseService } from '@curandis/openbao-core';
 import { CredentialSourceTracker } from './credential-source-tracker.service';
 import { HealthAdminGuard } from './health-admin.guard';
+import { MainDbCredentialManager } from '../database/main-db-credential-manager.service';
 
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly tracker: CredentialSourceTracker,
     private readonly openbaoService: OpenbaoBaseService,
-    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly mainDbManager: MainDbCredentialManager,
   ) {}
 
   /**
@@ -30,7 +29,11 @@ export class HealthController {
 
     let dbOk = false;
     try {
-      await this.dataSource.query('SELECT 1');
+      // safeQuery: se 28P01 (auth error per credenziali stale), fa recovery
+      // automatico via OpenBao + ritenta. Evita che health-check periodici
+      // (load balancer / monitoring) marchino il backend come down per
+      // una window fra rotation OpenBao e prossimo refresh-check.
+      await this.mainDbManager.safeQuery('SELECT 1');
       dbOk = true;
     } catch {
       dbOk = false;
@@ -89,7 +92,10 @@ export class HealthController {
     let dbCurrentUser: string | null = null;
     let dbName: string | null = null;
     try {
-      const result = await this.dataSource.query('SELECT current_user AS user, current_database() AS database');
+      // safeQuery: recovery automatico se 28P01 (vedi commento in /health/status).
+      const result = await this.mainDbManager.safeQuery<Array<{ user: string; database: string }>>(
+        'SELECT current_user AS user, current_database() AS database',
+      );
       dbConnected = true;
       dbCurrentUser = result[0]?.user ?? null;
       dbName = result[0]?.database ?? null;

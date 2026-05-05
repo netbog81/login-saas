@@ -82,6 +82,15 @@ import { Patient } from '../../../../models/patient.model';
           <button mat-icon-button matTooltip="Vedi dettagli paziente" (click)="onViewDetails()">
             <mat-icon>visibility</mat-icon>
           </button>
+          @if (registrySubjectUrl) {
+            <a mat-icon-button
+               matTooltip="Modifica anagrafica completa nel registry"
+               [href]="registrySubjectUrl"
+               target="_blank"
+               rel="noopener noreferrer">
+              <mat-icon>open_in_new</mat-icon>
+            </a>
+          }
           <button mat-flat-button color="primary" (click)="onCreatePath()">
             <mat-icon>add</mat-icon>
             Nuovo Percorso
@@ -297,6 +306,28 @@ export class PatientHeaderComponent {
 
   @Output() viewDetails = new EventEmitter<void>();
   @Output() createPath = new EventEmitter<void>();
+
+  /**
+   * URL per la modifica avanzata del subject nel frontend del registry.
+   * Calcolata dal sottodominio corrente (es. demo.curandis.cloud →
+   * https://registry.demo.curandis.cloud/subjects/{id}).
+   */
+  get registrySubjectUrl(): string | null {
+    if (!this.patient?.id) return null;
+    const alias = this.tenantAliasFromHost();
+    if (!alias) return null;
+    return `https://registry.${alias}.curandis.cloud/subjects/${this.patient.id}`;
+  }
+
+  private tenantAliasFromHost(): string | null {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return null;
+    const parts = hostname.split('.');
+    if (parts.length < 3) return null;
+    const sub = parts[0].toLowerCase();
+    const NON_TENANT = new Set(['api', 'auth', 'tenants', 'my', 'www', 'agenda', 'registry', 'accounting']);
+    return NON_TENANT.has(sub) ? null : sub;
+  }
 
   onViewDetails(): void {
     this.viewDetails.emit();

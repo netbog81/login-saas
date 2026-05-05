@@ -15,8 +15,9 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatRadioModule } from '@angular/material/radio';
-import { Observable, startWith, map, firstValueFrom } from 'rxjs';
+import { Observable, of, startWith, switchMap, debounceTime, distinctUntilChanged, catchError, firstValueFrom } from 'rxjs';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { PatientService } from '../../../services/patient.service';
 
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
@@ -148,6 +149,7 @@ export class EventMatDialogComponent implements OnInit {
   futureSeriesCount = 0;
   loadingSeriesInfo = false;
   private recurringAppointmentService = inject(AvailabilityAppointmentService);
+  private patientService = inject(PatientService);
 
   constructor(
     public dialogRef: MatDialogRef<EventMatDialogComponent, EventMatDialogResult>,
@@ -240,27 +242,54 @@ export class EventMatDialogComponent implements OnInit {
     }
   }
 
+  /**
+   * Filtra l'autocomplete con strategia ibrida:
+   * - 0 char     → mostra i primi 50 dalla lista pre-caricata (data.patients)
+   * - 1-2 char   → filtro client-side sulla lista pre-caricata
+   * - 3+ char    → ricerca remota sul registry (debounced 250ms) — full dataset 3700+
+   */
   private setupPatientFilter(): void {
     this.filteredPatients$ = this.patientSearchControl.valueChanges.pipe(
       startWith(''),
-      map(value => {
-        const searchStr = typeof value === 'string' ? value : '';
-        return this.filterPatients(searchStr);
-      })
+      // value può essere string o Patient (quando autocomplete fa il display)
+      // — convertiamo a string per la query.
+      debounceTime(250),
+      distinctUntilChanged((a, b) => {
+        const sa = typeof a === 'string' ? a : '';
+        const sb = typeof b === 'string' ? b : '';
+        return sa === sb;
+      }),
+      switchMap((value) => {
+        const searchStr = (typeof value === 'string' ? value : '').trim();
+        if (searchStr.length >= 3) {
+          // Ricerca remota: registry global-search trigrammi+fonetico
+          return this.patientService.searchPatients(searchStr).pipe(
+            catchError((err) => {
+              console.warn('[EventMatDialog] Patient remote search failed:', err);
+              // Fallback: filtro locale sui pazienti pre-caricati
+              return of(this.filterPatientsLocal(searchStr));
+            }),
+          );
+        }
+        return of(this.filterPatientsLocal(searchStr));
+      }),
     );
   }
 
-  private filterPatients(search: string): Patient[] {
+  private filterPatientsLocal(search: string): Patient[] {
     if (!search) {
-      return this.patients.slice(0, 50); // Limit results
+      return this.patients.slice(0, 50);
     }
     const lowerSearch = search.toLowerCase();
-    return this.patients.filter(p =>
-      p.nome.toLowerCase().includes(lowerSearch) ||
-      p.cognome.toLowerCase().includes(lowerSearch) ||
-      (p.telefono || '').includes(search) ||
-      (p.cellulare || '').includes(search)
-    ).slice(0, 50);
+    return this.patients
+      .filter(
+        (p) =>
+          (p.nome || '').toLowerCase().includes(lowerSearch) ||
+          (p.cognome || '').toLowerCase().includes(lowerSearch) ||
+          (p.telefono || '').includes(search) ||
+          (p.cellulare || '').includes(search),
+      )
+      .slice(0, 50);
   }
 
   displayPatient(patient: Patient | string | null): string {
@@ -269,16 +298,28 @@ export class EventMatDialogComponent implements OnInit {
     return `${patient.cognome} ${patient.nome}`;
   }
 
+  /**
+   * Paziente attualmente selezionato. Memorizzato a parte perché può venire
+   * dalla search remota (quindi non presente in this.patients).
+   */
+  private _selectedPatient: Patient | undefined;
+
   onPatientSelected(event: MatAutocompleteSelectedEvent): void {
     const patient = event.option.value as Patient;
+    this._selectedPatient = patient;
+    // Aggiungi alla lista locale se non c'è — utile per "selectedPatient" lookup.
+    if (!this.patients.find((p) => p.id === patient.id)) {
+      this.patients = [patient, ...this.patients];
+    }
     this.form.patchValue({
       patientId: patient.id,
-      title: `${patient.cognome} ${patient.nome}`
+      title: `${patient.cognome ?? ''} ${patient.nome ?? ''}`.trim(),
     });
     this.cdr.markForCheck();
   }
 
   clearPatient(): void {
+    this._selectedPatient = undefined;
     this.form.patchValue({ patientId: null });
     this.patientSearchControl.setValue('');
     this.cdr.markForCheck();
@@ -287,7 +328,10 @@ export class EventMatDialogComponent implements OnInit {
   get selectedPatient(): Patient | undefined {
     const patientId = this.form.get('patientId')?.value;
     if (!patientId) return undefined;
-    return this.patients.find(p => p.id == patientId);
+    if (this._selectedPatient && this._selectedPatient.id === patientId) {
+      return this._selectedPatient;
+    }
+    return this.patients.find((p) => p.id == patientId);
   }
 
   // ==================== OPERATOR & SERVICES ====================

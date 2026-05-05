@@ -47,14 +47,6 @@ export const THERAPEUTIC_PATH_FRAGMENT = gql`
       surname
       appUserId
     }
-    patient {
-      id
-      nome
-      cognome
-      codiceFiscale
-      telefono
-      email
-    }
   }
 `;
 

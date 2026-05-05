@@ -1,124 +1,48 @@
-// GraphQL InputType for searching patients
+import { Field, InputType, Int, ObjectType } from '@nestjs/graphql';
 
-import { InputType, Field, Int } from '@nestjs/graphql';
-import {
-  Genere,
-  TipoPaziente,
-  StatoAnagrafica,
-  StatoPrivacy,
-} from '../enums/pazienti-enums';
-
-@InputType({ description: 'Input per ricerca/filtro pazienti' })
+/**
+ * Input mappato direttamente al payload `POST /subjects/global-search` del registry.
+ * Il backend clinico è "trasparente": forwarda al registry senza filtri locali.
+ */
+@InputType({ description: 'Input per ricerca paziente (proxy a registry global-search)' })
 export class SearchPatientInput {
-  // ==================== RICERCA TESTUALE ====================
-
-  @Field({ nullable: true, description: 'Ricerca per nome (match parziale)' })
-  nome?: string;
-
-  @Field({ nullable: true, description: 'Ricerca per cognome (match parziale)' })
-  cognome?: string;
-
-  @Field({ nullable: true, description: 'Ricerca per nome completo (match parziale)' })
-  nomeCompleto?: string;
-
-  @Field({ nullable: true, description: 'Ricerca per codice fiscale (match esatto)' })
-  codiceFiscale?: string;
-
-  @Field({ nullable: true, description: 'Ricerca per telefono (match parziale)' })
-  telefono?: string;
-
-  @Field({ nullable: true, description: 'Ricerca per email (match parziale)' })
-  email?: string;
-
-  // ==================== FILTRI ====================
-
-  @Field(() => Genere, { nullable: true, description: 'Filtra per genere' })
-  genere?: Genere;
-
-  @Field(() => TipoPaziente, { nullable: true, description: 'Filtra per tipo paziente' })
-  tipoPaziente?: TipoPaziente;
-
-  @Field(() => StatoAnagrafica, { nullable: true, description: 'Filtra per stato anagrafica' })
-  statoAnagrafica?: StatoAnagrafica;
-
-  @Field(() => StatoPrivacy, { nullable: true, description: 'Filtra per stato privacy' })
-  statoPrivacy?: StatoPrivacy;
-
-  // ==================== FILTRI DATE ====================
-
-  @Field({ nullable: true, description: 'Filtra per data nascita minima' })
-  dataNascitaMin?: Date;
-
-  @Field({ nullable: true, description: 'Filtra per data nascita massima' })
-  dataNascitaMax?: Date;
-
-  @Field({ nullable: true, description: 'Filtra per età minima' })
-  minAge?: number;
-
-  @Field({ nullable: true, description: 'Filtra per età massima' })
-  maxAge?: number;
-
-  // ==================== FILTRI PRIVACY ====================
-
-  @Field({ nullable: true, description: 'Filtra per consenso privacy' })
-  consensoPrivacy?: boolean;
-
-  @Field({ nullable: true, description: 'Filtra per consenso marketing' })
-  consensoMarketing?: boolean;
-
-  @Field({ nullable: true, description: 'Filtra pazienti con richiesta cancellazione' })
-  richiestaCancellazione?: boolean;
-
-  // ==================== PAGINAZIONE ====================
-
-  @Field(() => Int, {
-    nullable: true,
-    description: 'Numero elementi per pagina (default: 20, max: 100)',
-    defaultValue: 20,
-  })
-  limit?: number;
-
-  @Field(() => Int, {
-    nullable: true,
-    description: 'Offset pagina (default: 0)',
-    defaultValue: 0,
-  })
-  offset?: number;
-
-  // ==================== ORDINAMENTO ====================
+  @Field({ nullable: true, description: 'Testo libero (min 3 char)' })
+  query?: string;
 
   @Field({
     nullable: true,
-    description: 'Campo ordinamento (cognome, nome, dataNascita, createdAt)',
-    defaultValue: 'cognome',
+    description: 'INDIVIDUAL | ORGANIZATION (default: INDIVIDUAL)',
+    defaultValue: 'INDIVIDUAL',
   })
-  sortBy?: string;
+  subjectType?: string;
+
+  @Field({ nullable: true, description: 'Solo soggetti attivi (default: true)' })
+  isActive?: boolean;
 
   @Field({
     nullable: true,
-    description: 'Direzione ordinamento (ASC o DESC)',
-    defaultValue: 'ASC',
+    description: 'Filtro consenso: given | not_given | revoked',
   })
-  sortOrder?: 'ASC' | 'DESC';
+  privacyConsent?: string;
+
+  @Field(() => Int, { nullable: true, defaultValue: 1 })
+  page?: number;
+
+  @Field(() => Int, { nullable: true, defaultValue: 25 })
+  pageSize?: number;
 }
 
-@InputType({ description: 'Metadati risultato paginato' })
+@ObjectType('PaginationInfo')
 export class PaginationInfo {
-  @Field(() => Int, { description: 'Numero totale elementi' })
+  @Field(() => Int)
   total: number;
 
-  @Field(() => Int, { description: 'Pagina corrente (calcolata da offset/limit)' })
+  @Field(() => Int)
   page: number;
 
-  @Field(() => Int, { description: 'Elementi per pagina' })
-  limit: number;
+  @Field(() => Int)
+  pageSize: number;
 
-  @Field(() => Int, { description: 'Numero totale pagine' })
+  @Field(() => Int)
   totalPages: number;
-
-  @Field({ description: 'Ha pagina successiva' })
-  hasNextPage: boolean;
-
-  @Field({ description: 'Ha pagina precedente' })
-  hasPreviousPage: boolean;
 }

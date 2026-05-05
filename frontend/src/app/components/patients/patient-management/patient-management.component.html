@@ -282,9 +282,27 @@
           <h3>Indirizzo</h3>
 
           <div class="form-row">
-            <div class="form-group full-width">
+            <div class="form-group full-width address-autocomplete-wrapper">
               <label>Indirizzo</label>
-              <input type="text" [(ngModel)]="editingPatient.indirizzo" class="form-control" placeholder="Via Roma 1">
+              <input type="text"
+                     [(ngModel)]="editingPatient.indirizzo"
+                     (ngModelChange)="onAddressInputChange($event)"
+                     (focus)="addressDropdownOpen = (addressSuggestions.length > 0)"
+                     (blur)="onAddressBlur()"
+                     class="form-control"
+                     placeholder="Via Roma 1"
+                     autocomplete="off">
+              @if (addressDropdownOpen && addressSuggestions.length > 0) {
+                <ul class="address-dropdown">
+                  @for (s of addressSuggestions; track s.fullAddress) {
+                    <li class="address-option"
+                        (mousedown)="onAddressSuggestionPick(s)">
+                      <mat-icon class="addr-icon">place</mat-icon>
+                      <span>{{ s.fullAddress }}</span>
+                    </li>
+                  }
+                </ul>
+              }
             </div>
           </div>
 
@@ -292,6 +310,10 @@
             <div class="form-group">
               <label>Città</label>
               <input type="text" [(ngModel)]="editingPatient.citta" class="form-control" placeholder="Roma">
+            </div>
+            <div class="form-group" style="max-width: 100px;">
+              <label>Prov.</label>
+              <input type="text" [(ngModel)]="editingPatient.provincia" class="form-control" placeholder="RM" maxlength="2">
             </div>
             <div class="form-group" style="max-width: 150px;">
               <label>CAP</label>

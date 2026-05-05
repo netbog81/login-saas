@@ -3,8 +3,6 @@ import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { AvailabilityAppointment } from './availability-appointment.entity';
 import { Operator } from './operator.entity';
 import { Service } from './service.entity';
-import { Patient } from '../../../entities/patient.entity';
-import { PatientModel } from '../../../patients/models/patient.model';
 import { TreatmentInstrument } from './treatment-instrument.entity';
 import { TreatmentService } from './treatment-service.entity';
 import { TreatmentInvoiceLine } from './treatment-invoice-line.entity';
@@ -269,10 +267,9 @@ export class Treatment {
   @JoinColumn({ name: 'operatorId' })
   operator: Operator;
 
-  @Field(() => PatientModel, { nullable: true })
-  @ManyToOne(() => Patient, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'patientId' })
-  patient?: Patient;
+  // patientId è il subjectId del registry (FK logica, niente FK fisica
+  // né relazione TypeORM). Il campo GraphQL `patient` viene esposto via
+  // field resolver in TreatmentResolver usando il SubjectLoader.
 
   @Field(() => Service, { nullable: true })
   @ManyToOne(() => Service, { nullable: true, onDelete: 'SET NULL' })

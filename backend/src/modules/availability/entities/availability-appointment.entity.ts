@@ -6,7 +6,6 @@ import { GymRoom } from './gym-room.entity';
 import { AppointmentType } from './appointment-type.enum';
 import { AppointmentInstrument } from './appointment-instrument.entity';
 import { AppointmentService } from './appointment-service.entity';
-import { Patient } from '../../../entities/patient.entity';
 import GraphQLJSON from 'graphql-type-json';
 import { TreatmentStatus } from './treatment-enums';
 
@@ -416,12 +415,8 @@ export class AvailabilityAppointment {
   @OneToMany(() => AppointmentInstrument, appointmentInstrument => appointmentInstrument.appointment)
   instruments?: AppointmentInstrument[];
 
-  /**
-   * Relazione con Patient entity
-   */
-  @ManyToOne(() => Patient, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'patientId' })
-  patient?: Patient;
+  // patientId è il subjectId del registry (FK logica, niente FK fisica
+  // né relazione TypeORM). Field GraphQL esposto via AvailabilityAppointmentResolver.
 
   /**
    * Relazione con l'operatore originale (in caso di sostituzione)

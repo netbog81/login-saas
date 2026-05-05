@@ -7,16 +7,33 @@ import { TenantSchemaContextService } from '../database/tenant-schema-context.se
 import { TenantAuditService } from '../database/tenant-audit.service';
 import { TenantOpenbaoResolverService } from '../database/tenant-openbao-resolver.service';
 
+export type ActorType = 'user' | 'service';
+
 export interface TenantContext {
+  /**
+   * Identificativo del caller. Per user è l'UUID Keycloak (`sub`); per
+   * service-account è il `client_id` (es. `curandis-clinico-service`).
+   */
   userId: string;
   email: string;
   name: string;
   roles: string[];
   tenantId: string;
-  orgId: string;
+  /**
+   * UUID organizzazione Keycloak. `null` per service-account o se non
+   * presente nel JWT user. Allineato col contratto auth-core.
+   */
+  orgId: string | null;
+  orgAlias: string;     // alias del tenant, usato come X-Tenant-Alias verso il registry
   schemaName: string;
   tenantStatus: string;  // active | pending_schema | suspended | deleted
   requestId: string;
+  rawToken: string;     // JWT originale Bearer, da forwardare al registry
+  /** Tipo di caller (user vs service-account). */
+  actorType: ActorType;
+  /** Shorthand per `actorType === 'service'`. */
+  isServiceAccount: boolean;
+  toJSON?(): unknown;   // redatta rawToken nei log
 }
 
 declare global {
@@ -26,6 +43,21 @@ declare global {
     }
   }
 }
+
+/**
+ * Whitelist dei client Keycloak riconosciuti come service-account legittimi.
+ * Tipicamente quelli che fanno chiamate S2S verso il clinico (es. cron job
+ * esterni, eventuale futuro modulo che chiama il clinico).
+ *
+ * NOTA: il clinico stesso usa `curandis-clinico-service` per chiamare il
+ * registry, ma quel client NON appare nei JWT in entrata sul clinico
+ * (sono in uscita). Quindi questa whitelist è per S2S diretti verso ME.
+ * Per ora vuota: se in futuro accounting o altri moduli ci chiamano S2S,
+ * aggiungere qui i loro client_id.
+ */
+const SERVICE_ACCOUNT_CLIENT_IDS: ReadonlySet<string> = new Set<string>([
+  // Esempio: 'curandis-accounting-service'
+]);
 
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
@@ -55,49 +87,81 @@ export class TenantContextMiddleware implements NestMiddleware {
       }
 
       // 3. Estrai claims dal JWT Keycloak
-      const userId = payload['sub'] as string;
-      const email = (payload['email'] as string) || '';
-      const name = (payload['name'] as string) || (payload['preferred_username'] as string) || '';
+      const sub = payload['sub'] as string;
+      const azp = (payload['azp'] as string) || '';
       const requestId = randomUUID();
 
-      // Il subdomain (es. "demo4" da demo4.curandis.cloud) è la fonte di verità
-      // per determinare quale tenant servire. L'org nel token serve per verificare
-      // che l'utente sia autorizzato ad accedere a quel subdomain.
-      // X-Tenant-Alias è inviato dal frontend con il subdomain corrente,
-      // necessario perché le API vanno a api.curandis.cloud (Host diverso dal tenant).
-      const requestedTenant = (req.headers['x-tenant-alias'] as string) || this.extractTenantFromHost(req);
+      // 3a. Distingui user vs service-account.
+      // I service-account hanno `azp` nella whitelist e di solito niente
+      // `email` né `organization` claim. I JWT user hanno `azp` = client
+      // del frontend (es. "curandis-app-angular").
+      const isServiceAccount = !!azp && SERVICE_ACCOUNT_CLIENT_IDS.has(azp);
+      const actorType: ActorType = isServiceAccount ? 'service' : 'user';
 
-      // Estrai org dal token/headers per verifica autorizzazione
-      let tokenOrgId = this.extractOrgId(payload);
-      let tokenOrgAlias = this.extractOrgAlias(payload);
-      if (!tokenOrgId) {
-        tokenOrgId = req.headers['x-org-id'] as string || null;
-      }
-      if (!tokenOrgAlias) {
-        tokenOrgAlias = req.headers['x-org-alias'] as string || null;
-      }
+      // Per service-account: identificativo = client_id (azp); per user: sub.
+      const userId = isServiceAccount ? azp : sub;
+      const email = isServiceAccount ? '' : ((payload['email'] as string) || '');
+      const name = isServiceAccount
+        ? azp
+        : ((payload['name'] as string) || (payload['preferred_username'] as string) || '');
 
-      // Il tenant da servire è il subdomain; fallback all'org del token se non c'è subdomain
-      let orgAlias = requestedTenant || tokenOrgAlias || tokenOrgId;
-      let orgId = tokenOrgId || tokenOrgAlias || requestedTenant;
+      // 3b. Tenant target: header X-Tenant-Alias o subdomain.
+      const requestedTenant =
+        (req.headers['x-tenant-alias'] as string) || this.extractTenantFromHost(req);
 
-      if (!orgAlias) {
-        this.logger.warn(`Nessun tenant determinabile per userId="${userId}"`);
-        throw new ForbiddenException('Missing tenant context');
-      }
+      // 3c. Org claim dal JWT (solo per user; service-account non ce l'ha).
+      const tokenOrgId = isServiceAccount ? null : this.extractOrgId(payload);
+      const tokenOrgAlias = isServiceAccount ? null : this.extractOrgAlias(payload);
 
-      // Verifica: se c'è un subdomain E un'org nel token, devono corrispondere
-      if (requestedTenant && tokenOrgAlias && requestedTenant !== tokenOrgAlias) {
-        this.logger.warn(
-          `Tenant mismatch: utente org="${tokenOrgAlias}" su subdomain="${requestedTenant}" (userId="${userId}")`,
-        );
-        throw new ForbiddenException(
-          `Accesso negato: l'utente appartiene a "${tokenOrgAlias}", non a "${requestedTenant}"`,
-        );
-      }
+      // 3d. Risoluzione tenantAlias e orgId: regole diverse per user vs service.
+      let orgAlias: string | null;
+      let orgId: string | null;
 
-      if (!orgId) {
-        orgId = orgAlias;
+      if (isServiceAccount) {
+        // Service-account: DEVE specificare il tenant via header/subdomain.
+        // Niente fallback su claim del JWT (non c'è).
+        if (!requestedTenant) {
+          this.logger.warn(
+            `Service-account "${azp}" senza X-Tenant-Alias o subdomain valido`,
+          );
+          throw new ForbiddenException(
+            'Service-account deve specificare il tenant via subdomain o header X-Tenant-Alias',
+          );
+        }
+        orgAlias = requestedTenant;
+        orgId = null; // service-account non agisce per conto di una specifica organization
+      } else {
+        // User: priorità subdomain → claim. Niente fallback su orgId come alias
+        // (era un bug di sicurezza: mascherava token mal configurati).
+        orgAlias = requestedTenant || tokenOrgAlias;
+        orgId = tokenOrgId; // se manca → null, e sotto throw
+
+        if (!orgAlias) {
+          this.logger.warn(`Nessun tenant determinabile per userId="${userId}"`);
+          throw new ForbiddenException('Missing tenant context');
+        }
+
+        // Coerenza tenant: se c'è un subdomain E un'org nel token, devono corrispondere
+        if (requestedTenant && tokenOrgAlias && requestedTenant !== tokenOrgAlias) {
+          this.logger.warn(
+            `Tenant mismatch: utente org="${tokenOrgAlias}" su subdomain="${requestedTenant}" (userId="${userId}")`,
+          );
+          throw new ForbiddenException(
+            `Accesso negato: l'utente appartiene a "${tokenOrgAlias}", non a "${requestedTenant}"`,
+          );
+        }
+
+        // Niente più fallback orgId = orgAlias: se il claim manca, è un bug
+        // di config Keycloak che vogliamo vedere esplicitamente.
+        if (!orgId) {
+          this.logger.warn(
+            `User token senza claim 'organization'/'org_id' (userId="${userId}", tenant="${orgAlias}"). ` +
+              `Configurare il mapper Keycloak.`,
+          );
+          throw new ForbiddenException(
+            'Missing org_id claim in user token: configurare il mapper Keycloak',
+          );
+        }
       }
 
       // Roles: realm_access.roles + resource_access[clientId].roles
@@ -128,17 +192,27 @@ export class TenantContextMiddleware implements NestMiddleware {
         }
       }
 
-      // 7. Popola tenantContext nella request
+      // 7. Popola tenantContext nella request.
+      // Per service-account: orgId = null. Per il legacy `tenantId` mantengo
+      // un valore non-null (orgId reale per user, orgAlias come fallback per
+      // service-account) per non rompere downstream che si aspettano string.
       const tenantContext: TenantContext = {
         userId,
         email,
         name,
         roles,
-        tenantId: orgId,
+        tenantId: orgId ?? orgAlias,
         orgId,
+        orgAlias,
         schemaName,
         tenantStatus,
         requestId,
+        rawToken: token,
+        actorType,
+        isServiceAccount,
+        toJSON() {
+          return { ...this, rawToken: '[REDACTED]', toJSON: undefined };
+        },
       };
       req.tenantContext = tenantContext;
 
@@ -152,7 +226,7 @@ export class TenantContextMiddleware implements NestMiddleware {
       if (shouldSetSchema) {
         await new Promise<void>((resolve, reject) => {
           this.tenantSchemaContext.run(
-            { schemaName, tenantId: orgId, userId, requestId },
+            { schemaName, tenantId: orgId ?? orgAlias, tenantAlias: orgAlias, userId, requestId },
             () => {
               this.tenantAudit.log('SCHEMA_SET', { requestId, schemaName });
               Promise.resolve(next()).then(resolve).catch(reject);

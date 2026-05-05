@@ -43,7 +43,7 @@ import {
 
 interface BackendPatientAnamnesis {
   id: string;
-  patientId: string;
+  subjectId: string;
   operatorId?: string;
 
   patologiePregresse?: string;
@@ -82,7 +82,7 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
   private mapBackendToFrontend(backend: BackendPatientAnamnesis): PatientAnamnesis {
     return {
       id: backend.id,
-      patientId: backend.patientId,
+      patientId: backend.subjectId,
 
       patologiePregresse: backend.patologiePregresse ?? null,
       interventiChirurgici: backend.interventiChirurgici ?? null,
@@ -106,7 +106,7 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
    */
   mapToCreateInput(anamnesis: Partial<PatientAnamnesis>, patientId: string, operatorId?: string): CreatePatientAnamnesisInput {
     return {
-      patientId,
+      subjectId: patientId,
       operatorId,
       patologiePregresse: anamnesis.patologiePregresse ?? undefined,
       interventiChirurgici: anamnesis.interventiChirurgici ?? undefined,
@@ -153,28 +153,28 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
   }
 
   /**
-   * Ottiene l'anamnesi di un paziente dato il patientId
+   * Ottiene l'anamnesi di un paziente dato il subjectId (= patientId).
    */
   getAnamnesisByPatient(patientId: string): Observable<PatientAnamnesis | null> {
-    return this.query<{ patientAnamnesisByPatient: BackendPatientAnamnesis | null }>(
+    return this.query<{ patientAnamnesisBySubject: BackendPatientAnamnesis | null }>(
       GET_PATIENT_ANAMNESIS_BY_PATIENT,
-      { patientId }
+      { subjectId: patientId }
     ).pipe(
       map((result) =>
-        result.patientAnamnesisByPatient
-          ? this.mapBackendToFrontend(result.patientAnamnesisByPatient)
+        result.patientAnamnesisBySubject
+          ? this.mapBackendToFrontend(result.patientAnamnesisBySubject)
           : null
       )
     );
   }
 
   /**
-   * Verifica se un paziente ha un'anamnesi
+   * Verifica se un paziente ha un'anamnesi.
    */
   hasAnamnesis(patientId: string): Observable<boolean> {
     return this.query<{ hasPatientAnamnesis: boolean }>(
       HAS_PATIENT_ANAMNESIS,
-      { patientId }
+      { subjectId: patientId }
     ).pipe(map((result) => result.hasPatientAnamnesis));
   }
 
@@ -211,7 +211,7 @@ export class SimplePatientAnamnesisService extends BaseGraphQLService {
   upsertAnamnesis(patientId: string, input: UpdatePatientAnamnesisInput): Observable<PatientAnamnesis> {
     return this.mutate<{ upsertPatientAnamnesis: BackendPatientAnamnesis }>(
       UPSERT_PATIENT_ANAMNESIS,
-      { patientId, input }
+      { subjectId: patientId, input }
     ).pipe(
       map((result) => this.mapBackendToFrontend(result.upsertPatientAnamnesis))
     );

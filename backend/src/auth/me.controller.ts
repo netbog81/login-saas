@@ -5,7 +5,8 @@ export interface UserMeResponse {
   userId: string;
   email: string;
   name: string;
-  orgId: string;
+  /** UUID organizzazione Keycloak. `null` per service-account (raro su /api/me). */
+  orgId: string | null;
   schemaName: string;
   tenantStatus: string;
   roles: string[];

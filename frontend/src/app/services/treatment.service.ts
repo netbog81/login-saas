@@ -10,6 +10,7 @@ import {
   CancelAppointmentInput,
 } from '../models/treatment.model';
 import { Appointment } from '../models/appointment.model';
+import { mapEmbeddedPatient } from '../models/patient.model';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
 // Queries
@@ -64,7 +65,7 @@ export class TreatmentService extends BaseGraphQLService {
    */
   getTreatment(id: string): Observable<Treatment | null> {
     return this.query<{ treatment: Treatment | null }>(GET_TREATMENT, { id })
-      .pipe(map((result) => result.treatment));
+      .pipe(map((result) => result.treatment ? mapEmbeddedPatient(result.treatment) : null));
   }
 
   /**
@@ -74,7 +75,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.query<{ treatmentByAppointment: Treatment | null }>(
       GET_TREATMENT_BY_APPOINTMENT,
       { appointmentId }
-    ).pipe(map((result) => result.treatmentByAppointment));
+    ).pipe(map((result) => result.treatmentByAppointment ? mapEmbeddedPatient(result.treatmentByAppointment) : null));
   }
 
   /**
@@ -86,7 +87,7 @@ export class TreatmentService extends BaseGraphQLService {
       GET_TREATMENTS_BY_APPOINTMENTS,
       { appointmentIds },
       'no-cache'
-    ).pipe(map((result) => result.treatmentsByAppointments || []));
+    ).pipe(map((result) => (result.treatmentsByAppointments || []).map(mapEmbeddedPatient)));
   }
 
   /**
@@ -96,7 +97,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.query<{ treatmentsByOperator: Treatment[] }>(
       GET_TREATMENTS_BY_OPERATOR,
       { operatorId, date }
-    ).pipe(map((result) => result.treatmentsByOperator));
+    ).pipe(map((result) => result.treatmentsByOperator.map(mapEmbeddedPatient)));
   }
 
   /**
@@ -108,7 +109,7 @@ export class TreatmentService extends BaseGraphQLService {
       GET_TREATMENTS_BY_OPERATORS,
       { operatorIds, date },
       'no-cache'
-    ).pipe(map((result) => result.treatmentsByOperators || []));
+    ).pipe(map((result) => (result.treatmentsByOperators || []).map(mapEmbeddedPatient)));
   }
 
   /**
@@ -116,7 +117,7 @@ export class TreatmentService extends BaseGraphQLService {
    */
   getTreatmentsPendingClosure(): Observable<Treatment[]> {
     return this.query<{ treatmentsPendingClosure: Treatment[] }>(GET_TREATMENTS_PENDING_CLOSURE)
-      .pipe(map((result) => result.treatmentsPendingClosure));
+      .pipe(map((result) => result.treatmentsPendingClosure.map(mapEmbeddedPatient)));
   }
 
   /**
@@ -133,7 +134,7 @@ export class TreatmentService extends BaseGraphQLService {
       { patientId, limit, offset }
     ).pipe(
       tap(result => console.log('[TreatmentService] raw result:', result)),
-      map((result) => result?.treatmentsByPatient || [])
+      map((result) => (result?.treatmentsByPatient || []).map(mapEmbeddedPatient))
     );
   }
 
@@ -147,7 +148,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.query<{ treatmentsNotInvoicedToPatient: Treatment[] }>(
       GET_TREATMENTS_NOT_INVOICED_TO_PATIENT,
       { dateFrom, dateTo }
-    ).pipe(map((result) => result.treatmentsNotInvoicedToPatient));
+    ).pipe(map((result) => result.treatmentsNotInvoicedToPatient.map(mapEmbeddedPatient)));
   }
 
   /**
@@ -161,7 +162,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.query<{ treatmentsNotInvoicedByOperator: Treatment[] }>(
       GET_TREATMENTS_NOT_INVOICED_BY_OPERATOR,
       { operatorId, dateFrom, dateTo }
-    ).pipe(map((result) => result.treatmentsNotInvoicedByOperator));
+    ).pipe(map((result) => result.treatmentsNotInvoicedByOperator.map(mapEmbeddedPatient)));
   }
 
   // ==================== TREATMENT MUTATIONS ====================
@@ -178,7 +179,7 @@ export class TreatmentService extends BaseGraphQLService {
       appointmentId,
       therapeuticPathId,
       scontoFE
-    }).pipe(map((result) => result.createTreatment));
+    }).pipe(map((result) => mapEmbeddedPatient(result.createTreatment)));
   }
 
   /**
@@ -186,7 +187,7 @@ export class TreatmentService extends BaseGraphQLService {
    */
   completeTreatment(id: string, input: CompleteTreatmentInput): Observable<Treatment> {
     return this.mutate<{ completeTreatment: Treatment }>(COMPLETE_TREATMENT, { id, input })
-      .pipe(map((result) => result.completeTreatment));
+      .pipe(map((result) => mapEmbeddedPatient(result.completeTreatment)));
   }
 
   /**
@@ -194,7 +195,7 @@ export class TreatmentService extends BaseGraphQLService {
    */
   closeTreatment(id: string, input: CloseTreatmentInput): Observable<Treatment> {
     return this.mutate<{ closeTreatment: Treatment }>(CLOSE_TREATMENT, { id, input })
-      .pipe(map((result) => result.closeTreatment));
+      .pipe(map((result) => mapEmbeddedPatient(result.closeTreatment)));
   }
 
   /**
@@ -202,7 +203,7 @@ export class TreatmentService extends BaseGraphQLService {
    */
   reopenTreatment(id: string): Observable<Treatment> {
     return this.mutate<{ reopenTreatment: Treatment }>(REOPEN_TREATMENT, { id })
-      .pipe(map((result) => result.reopenTreatment));
+      .pipe(map((result) => mapEmbeddedPatient(result.reopenTreatment)));
   }
 
   /**
@@ -210,7 +211,7 @@ export class TreatmentService extends BaseGraphQLService {
    */
   recordPayment(id: string, input: RecordPaymentInput): Observable<Treatment> {
     return this.mutate<{ recordTreatmentPayment: Treatment }>(RECORD_TREATMENT_PAYMENT, { id, input })
-      .pipe(map((result) => result.recordTreatmentPayment));
+      .pipe(map((result) => mapEmbeddedPatient(result.recordTreatmentPayment)));
   }
 
   /**
@@ -220,7 +221,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.mutate<{ markTreatmentInvoicedToPatient: Treatment }>(
       MARK_TREATMENT_INVOICED_TO_PATIENT,
       { id, invoiceNumber }
-    ).pipe(map((result) => result.markTreatmentInvoicedToPatient));
+    ).pipe(map((result) => mapEmbeddedPatient(result.markTreatmentInvoicedToPatient)));
   }
 
   /**
@@ -230,7 +231,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.mutate<{ markTreatmentInvoicedByOperator: Treatment }>(
       MARK_TREATMENT_INVOICED_BY_OPERATOR,
       { id, invoiceNumber }
-    ).pipe(map((result) => result.markTreatmentInvoicedByOperator));
+    ).pipe(map((result) => mapEmbeddedPatient(result.markTreatmentInvoicedByOperator)));
   }
 
   /**
@@ -240,7 +241,7 @@ export class TreatmentService extends BaseGraphQLService {
     return this.mutate<{ updateTreatmentInstruments: Treatment }>(
       UPDATE_TREATMENT_INSTRUMENTS,
       { id, instruments }
-    ).pipe(map((result) => result.updateTreatmentInstruments));
+    ).pipe(map((result) => mapEmbeddedPatient(result.updateTreatmentInstruments)));
   }
 
   /**
@@ -283,7 +284,7 @@ export class TreatmentService extends BaseGraphQLService {
     }[];
   }): Observable<Treatment> {
     return this.mutate<{ updateTreatment: Treatment }>(UPDATE_TREATMENT, { input })
-      .pipe(map((result) => result.updateTreatment));
+      .pipe(map((result) => mapEmbeddedPatient(result.updateTreatment)));
   }
 
   /**

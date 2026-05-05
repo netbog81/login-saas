@@ -1,7 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
-import { Patient } from '../../../entities/patient.entity';
 
 export enum WaitingListStatus {
   WAITING = 'waiting',
@@ -68,10 +67,8 @@ export class WaitingListEntry {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  // Relations (Patient non ha @ObjectType, quindi solo relazione TypeORM senza @Field)
-  @ManyToOne(() => Patient, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'patientId' })
-  patient?: Patient;
+  // patientId è il subjectId del registry (FK logica, niente FK fisica
+  // né relazione TypeORM). Field GraphQL esposto via WaitingListResolver.
 
   @Field(() => Operator, { nullable: true })
   @ManyToOne(() => Operator, { nullable: true, onDelete: 'SET NULL' })

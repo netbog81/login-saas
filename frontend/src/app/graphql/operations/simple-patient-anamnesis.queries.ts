@@ -11,7 +11,7 @@ import { gql } from 'apollo-angular';
 export const SIMPLE_PATIENT_ANAMNESIS_FRAGMENT = gql`
   fragment SimplePatientAnamnesisFields on PatientAnamnesis {
     id
-    patientId
+    subjectId
     operatorId
 
     # Anamnesi Patologica Remota
@@ -55,11 +55,11 @@ export const GET_SIMPLE_PATIENT_ANAMNESIS = gql`
 `;
 
 /**
- * Ottiene l'anamnesi di un paziente dato il patientId
+ * Ottiene l'anamnesi di un paziente dato il subjectId (= patientId).
  */
 export const GET_PATIENT_ANAMNESIS_BY_PATIENT = gql`
-  query GetPatientAnamnesisByPatient($patientId: ID!) {
-    patientAnamnesisByPatient(patientId: $patientId) {
+  query GetPatientAnamnesisByPatient($subjectId: ID!) {
+    patientAnamnesisBySubject(subjectId: $subjectId) {
       ...SimplePatientAnamnesisFields
     }
   }
@@ -67,10 +67,10 @@ export const GET_PATIENT_ANAMNESIS_BY_PATIENT = gql`
 `;
 
 /**
- * Verifica se un paziente ha un'anamnesi
+ * Verifica se un paziente ha un'anamnesi.
  */
 export const HAS_PATIENT_ANAMNESIS = gql`
-  query HasPatientAnamnesis($patientId: ID!) {
-    hasPatientAnamnesis(patientId: $patientId)
+  query HasPatientAnamnesis($subjectId: ID!) {
+    hasPatientAnamnesis(subjectId: $subjectId)
   }
 `;

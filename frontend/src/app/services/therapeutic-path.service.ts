@@ -54,14 +54,6 @@ interface BackendTherapeuticPath {
     surname: string;
     appUserId?: string | null;
   };
-  patient?: {
-    id: string;
-    nome: string;
-    cognome: string;
-    codiceFiscale?: string;
-    telefono?: string;
-    email?: string;
-  };
   evaluations?: BackendPatientEvaluation[];
   documents?: BackendPathDocument[];
 }

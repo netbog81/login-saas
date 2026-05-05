@@ -219,7 +219,11 @@ export class OperatorsPatientsContainer implements OnInit, OnDestroy {
     this.uiState = { ...this.uiState, loading: true, error: null };
     this.cdr.markForCheck();
 
-    this.patientService.getPatients(1000, 0)
+    // NOTE registry: pageSize è capped a 100 lato registry. Per dataset
+    // grandi (3700+ pazienti) la lista iniziale carica solo i primi 100;
+    // l'utente trova chiunque digitando 3+ caratteri nel box ricerca, che
+    // scatena POST /subjects/global-search col motore trigrammi+fonetico.
+    this.patientService.getPatients(100, 0)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (patients) => {
@@ -245,19 +249,34 @@ export class OperatorsPatientsContainer implements OnInit, OnDestroy {
   }
 
   onSearch(searchTerm: string): void {
-    this.uiState = { ...this.uiState, searchTerm, searching: true };
+    const trimmed = searchTerm.trim();
+    this.uiState = { ...this.uiState, searchTerm: trimmed, searching: true };
     this.cdr.markForCheck();
 
-    if (!searchTerm.trim()) {
-      // Reset to all patients
+    if (!trimmed) {
+      // Box vuoto → torna alla lista iniziale
       this.displayedPatients = this.patients;
       this.uiState = { ...this.uiState, searching: false };
       this.cdr.markForCheck();
       return;
     }
 
-    // Use the search API
-    this.patientService.searchPatients(searchTerm)
+    // Il registry richiede min 3 char per global-search; sotto la soglia
+    // mostriamo il filtro client-side della lista già caricata (50/100).
+    if (trimmed.length < 3) {
+      const lower = trimmed.toLowerCase();
+      this.displayedPatients = this.patients.filter((p) => {
+        const name = `${p.nome ?? ''} ${p.cognome ?? ''}`.toLowerCase();
+        const phone = (p.cellulare || p.telefono || '').toLowerCase();
+        return name.includes(lower) || phone.includes(lower);
+      });
+      this.uiState = { ...this.uiState, searching: false };
+      this.cdr.markForCheck();
+      return;
+    }
+
+    // 3+ char → ricerca remota sul registry (trigrammi + fonetico, l'intero dataset)
+    this.patientService.searchPatients(trimmed)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (results) => {

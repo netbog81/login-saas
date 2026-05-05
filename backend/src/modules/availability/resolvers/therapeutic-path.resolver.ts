@@ -1,7 +1,8 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { PathDocument, DocumentCategory } from '../entities/path-document.entity';
+import { PatientModel } from '../../../patients/models/patient.model';
 import { TherapeuticPathService } from '../services/therapeutic-path.service';
 import {
   CreateTherapeuticPathInput,
@@ -32,6 +33,17 @@ export class TherapeuticPathResolver {
     if (!user?.userId) return undefined;
     const appUser = await this.appUserService.findByKeycloakId(user.userId);
     return appUser?.id;
+  }
+
+  /**
+   * ResolveField: shell `Patient { id }` da `patientId`. I campi del subject
+   * (firstName, lastName, ecc.) vengono risolti dal PatientResolver via
+   * RegistrySubjectLoader.
+   */
+  @ResolveField(() => PatientModel, { nullable: true })
+  patient(@Parent() path: TherapeuticPath): PatientModel | null {
+    if (!path.patientId) return null;
+    return { id: path.patientId } as PatientModel;
   }
 
   // ==================== PATH QUERIES ====================

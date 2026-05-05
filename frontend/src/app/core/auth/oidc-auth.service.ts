@@ -47,9 +47,22 @@ export class OidcAuthService {
       redirectUri: window.location.origin + '/callback',
       postLogoutRedirectUri: window.location.origin,
       responseType: 'code',
-      scope: 'openid profile email organization',
+      // `offline_access` chiede a Keycloak un refresh_token con vita lunga
+      // (definita server-side). Senza, dopo la scadenza del session token
+      // l'utente deve riloggare manualmente, e il silent SSO cross-modulo
+      // (es. login su registry → ritorno sul clinico) può fallire perché
+      // angular-oauth2-oidc non ha refresh_token utile in storage.
+      // Allineato col modulo registry per coerenza.
+      scope: 'openid profile email organization offline_access',
       showDebugInformation: !environment.production,
-      customQueryParams: orgAlias ? { kc_org: orgAlias } : {},
+      // NB: NON usiamo `kc_org` come customQueryParam.
+      // È un hint di organizzazione che pre-seleziona un'org in Keycloak,
+      // utile se un utente appartiene a più org (gli risparmia il selector).
+      // MA in alcuni casi (cambio subdomain in nuova tab dopo SSO già fatto
+      // su altra org) può forzare un re-prompt invece di rispettare il
+      // cookie KEYCLOAK_IDENTITY → silent SSO rotto.
+      // Il modulo registry non lo usa, e nel nostro setup ogni utente ha
+      // una sola org → nessun beneficio. Tolto per non ostacolare l'SSO.
       // Endpoint statici: fallback se la discovery OIDC non riesce
       loginUrl: `${oidcBase}/auth`,
       logoutUrl: `${oidcBase}/logout`,
@@ -57,13 +70,20 @@ export class OidcAuthService {
       userinfoEndpoint: `${oidcBase}/userinfo`,
       strictDiscoveryDocumentValidation: false,
       requireHttps: environment.production,
+      // Tolleranza disallineamento clock (es. server vs client) — stesso
+      // valore del registry.
+      clockSkewInSec: 30,
+      // Disabilita il check periodico della session via iframe — non
+      // necessario col silent refresh attivo, evita falsi positivi
+      // sessionChanged dovuti a cookie cross-subdomain.
+      sessionChecksEnabled: false,
     };
 
     console.log('[OIDC] configure:', {
       subdomain: orgAlias,
-      kc_org: authConfig.customQueryParams,
       redirectUri: authConfig.redirectUri,
       hostname: window.location.hostname,
+      scope: authConfig.scope,
     });
 
     this.oauthService.configure(authConfig);

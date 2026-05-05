@@ -1,45 +1,47 @@
-// Pazienti Module Configuration
-// This module provides complete patient management with GraphQL API
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-// Entities
-import { Patient } from '../entities/patient.entity';
-import { PersonaRiferimento } from './entities/persona-riferimento.entity';
-import { PazientePersonaRelazione } from './entities/paziente-persona-relazione.entity';
+// Entità locali nuove
+import { ClinicalSubjectIndex } from './entities/clinical-subject-index.entity';
+import { ClinicalAttendanceLog } from './entities/clinical-attendance-log.entity';
+import { ClinicalRelationshipExtension } from './entities/clinical-relationship-extension.entity';
+
+// PatientAnamnesis (riusata, anche se l'entity vive nel modulo availability)
+import { PatientAnamnesis } from '../modules/availability/entities/patient-anamnesis.entity';
+import { PatientAnamnesisService } from '../modules/availability/services/patient-anamnesis.service';
 
 // Services
-import { PazientiService } from './services/patients.service';
-import { PazientiRelazioniService } from './services/patients-relazioni.service';
+import { ClinicalSubjectIndexService } from './services/clinical-subject-index.service';
+import { ClinicalAttendanceService } from './services/clinical-attendance.service';
+import { PatientRelationshipService } from './services/patient-relationship.service';
+import { RegistryPatientService } from './services/registry-patient.service';
 
-// GraphQL Resolvers
-import { PatientsResolver } from './resolvers/patients.resolver';
-
-// GraphQL Enum Registration
-// NOTE: Import this in your app.module.ts to register enums globally
-import './models/graphql-enums';
+// Resolver
+import { PatientResolver } from './resolvers/patient.resolver';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Patient,
-      PersonaRiferimento,
-      PazientePersonaRelazione,
+      ClinicalSubjectIndex,
+      ClinicalAttendanceLog,
+      ClinicalRelationshipExtension,
+      PatientAnamnesis,
     ]),
   ],
   providers: [
-    // Services
-    PazientiService,
-    PazientiRelazioniService,
-
-    // GraphQL Resolvers
-    PatientsResolver,
+    ClinicalSubjectIndexService,
+    ClinicalAttendanceService,
+    PatientRelationshipService,
+    PatientAnamnesisService,
+    RegistryPatientService,
+    PatientResolver,
   ],
   exports: [
-    // Export services so other modules can use them
-    PazientiService,
-    PazientiRelazioniService,
+    ClinicalSubjectIndexService,
+    ClinicalAttendanceService,
+    PatientRelationshipService,
+    PatientAnamnesisService,
+    RegistryPatientService,
   ],
 })
 export class PazientiModule {}

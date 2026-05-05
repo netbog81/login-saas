@@ -13,7 +13,8 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSelectModule } from '@angular/material/select';
 import { MatRadioModule } from '@angular/material/radio';
-import { firstValueFrom, Observable, startWith, map } from 'rxjs';
+import { firstValueFrom, Observable, of, startWith, map, switchMap, debounceTime, distinctUntilChanged, catchError } from 'rxjs';
+import { PatientService } from '../../../services/patient.service';
 import { RepeatConfig } from '../../../models/appointment.model';
 
 import { GymRoom, GymSlotInfo, GymRoomService, CreateGymAppointmentInput, GymAppointment } from '../../../services/gym-room.service';
@@ -460,6 +461,7 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   private dialog = inject(MatDialog);
   private serviceService = inject(ServiceService);
   private gymRoomService = inject(GymRoomService);
+  private patientService = inject(PatientService);
 
   // Form
   form!: FormGroup;
@@ -509,31 +511,56 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   }
 
   /**
-   * Configura l'observable per il filtro pazienti.
+   * Filtra l'autocomplete dei pazienti con strategia ibrida:
+   * - 0 char     → primi 20 dalla lista pre-caricata
+   * - 1-2 char   → filtro client-side
+   * - 3+ char    → ricerca remota sul registry (POST /subjects/global-search,
+   *                trigrammi+fonetico, full dataset 3700+) con debounce 250ms.
    */
   private setupPatientFilter(): void {
     this.filteredPatients$ = this.patientSearchControl.valueChanges.pipe(
       startWith(''),
-      map(value => {
-        // Se il valore è un oggetto Patient (selezionato), mostra tutti
+      debounceTime(250),
+      distinctUntilChanged((a, b) => {
+        const sa = typeof a === 'string' ? a : '';
+        const sb = typeof b === 'string' ? b : '';
+        return sa === sb;
+      }),
+      switchMap((value) => {
+        // Oggetto Patient → autocomplete ha appena selezionato, mostra tutti
         if (typeof value === 'object' && value !== null) {
-          return this.patients;
+          return of(this.patients);
         }
-        // Altrimenti filtra per stringa
-        const filterValue = (value || '').toLowerCase().trim();
-        if (!filterValue) {
-          return this.patients.slice(0, 20); // Mostra i primi 20 se vuoto
+        const filter = (value || '').toLowerCase().trim();
+        if (filter.length >= 3) {
+          // Ricerca remota
+          return this.patientService.searchPatients(filter).pipe(
+            catchError((err) => {
+              console.warn('[GymMatDialog] Patient remote search failed:', err);
+              return of(this.filterPatientsLocal(filter));
+            }),
+          );
         }
-        return this.patients.filter(patient =>
-          patient.nome?.toLowerCase().includes(filterValue) ||
-          patient.cognome?.toLowerCase().includes(filterValue) ||
-          patient.cellulare?.includes(filterValue) ||
-          patient.telefono?.includes(filterValue) ||
-          `${patient.cognome} ${patient.nome}`.toLowerCase().includes(filterValue) ||
-          `${patient.nome} ${patient.cognome}`.toLowerCase().includes(filterValue)
-        ).slice(0, 20);
-      })
+        return of(this.filterPatientsLocal(filter));
+      }),
     );
+  }
+
+  private filterPatientsLocal(filter: string): Patient[] {
+    if (!filter) {
+      return this.patients.slice(0, 20);
+    }
+    return this.patients
+      .filter(
+        (p) =>
+          p.nome?.toLowerCase().includes(filter) ||
+          p.cognome?.toLowerCase().includes(filter) ||
+          p.cellulare?.includes(filter) ||
+          p.telefono?.includes(filter) ||
+          `${p.cognome ?? ''} ${p.nome ?? ''}`.toLowerCase().includes(filter) ||
+          `${p.nome ?? ''} ${p.cognome ?? ''}`.toLowerCase().includes(filter),
+      )
+      .slice(0, 20);
   }
 
   /**
@@ -628,6 +655,11 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   onPatientSelected(event: MatAutocompleteSelectedEvent): void {
     const patient = event.option.value as Patient;
     if (patient && patient.id) {
+      // Se viene da search remota e non è in this.patients, aggiungilo
+      // così le lookup sul submit (selectedPatient = this.patients.find(...)) lo trovano.
+      if (!this.patients.find((p) => p.id === patient.id)) {
+        this.patients = [patient, ...this.patients];
+      }
       this.form.patchValue({ patientId: patient.id });
       this.cdr.markForCheck();
     }

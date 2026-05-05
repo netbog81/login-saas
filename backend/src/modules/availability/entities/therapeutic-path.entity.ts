@@ -1,8 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
-import { Patient } from '../../../entities/patient.entity';
-import { PatientModel } from '../../../patients/models/patient.model';
 import { PathDocument } from './path-document.entity';
 import { Treatment } from './treatment.entity';
 import { TherapeuticPathStatus } from './therapeutic-path-enums';
@@ -94,10 +92,8 @@ export class TherapeuticPath {
 
   // ==================== RELATIONS ====================
 
-  @Field(() => PatientModel)
-  @ManyToOne(() => Patient, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'patientId' })
-  patient: Patient;
+  // patientId è il subjectId del registry. Campo GraphQL `patient`
+  // esposto via field resolver in TherapeuticPathResolver (SubjectLoader).
 
   @Field(() => Operator)
   @ManyToOne(() => Operator, { onDelete: 'SET NULL' })

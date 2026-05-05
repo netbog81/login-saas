@@ -1,17 +1,19 @@
 import { InputType, Field, ID } from '@nestjs/graphql';
 
 /**
- * Input per creazione nuova anamnesi paziente
+ * Input per creazione nuova anamnesi paziente.
+ * subjectId è l'UUID del subject del registry (= ex patientId locale).
  */
 @InputType()
 export class CreatePatientAnamnesisInput {
-  @Field(() => ID, { description: 'ID del paziente' })
-  patientId: string;
+  @Field(() => ID, { description: 'subjectId del paziente nel registry' })
+  subjectId: string;
 
   @Field(() => ID, { nullable: true, description: 'ID operatore che compila' })
   operatorId?: string;
 
-  // Anamnesi Patologica Remota
+  // ==================== ANAMNESI PATOLOGICA REMOTA ====================
+
   @Field({ nullable: true, description: 'Patologie pregresse' })
   patologiePregresse?: string;
 
@@ -24,27 +26,37 @@ export class CreatePatientAnamnesisInput {
   @Field(() => [String], { nullable: true, description: 'Terapia farmacologica in corso' })
   terapiaFarmacologica?: string[];
 
-  // Nuovi campi
   @Field({ nullable: true, description: 'Allergie note' })
   allergie?: string;
 
   @Field({ nullable: true, description: 'Storia familiare / Anamnesi familiare' })
   storiaFamiliare?: string;
 
-  // Note
+  // ==================== DATI SANITARI "ANAGRAFICI" ====================
+
+  @Field({ nullable: true, description: 'Gruppo sanguigno' })
+  gruppoSanguigno?: string;
+
+  @Field({ nullable: true, description: 'Medico di base / curante' })
+  medicoBase?: string;
+
+  @Field({ nullable: true, description: 'Patologie croniche attuali' })
+  patologieCroniche?: string;
+
+  // ==================== NOTE ====================
+
   @Field({ nullable: true, description: 'Note generali' })
   note?: string;
 }
 
 /**
- * Input per aggiornamento anamnesi paziente
+ * Input per aggiornamento anamnesi paziente.
  */
 @InputType()
 export class UpdatePatientAnamnesisInput {
   @Field(() => ID, { nullable: true, description: 'ID operatore che modifica' })
   operatorId?: string;
 
-  // Anamnesi Patologica Remota
   @Field({ nullable: true, description: 'Patologie pregresse' })
   patologiePregresse?: string;
 
@@ -57,14 +69,21 @@ export class UpdatePatientAnamnesisInput {
   @Field(() => [String], { nullable: true, description: 'Terapia farmacologica in corso' })
   terapiaFarmacologica?: string[];
 
-  // Nuovi campi
   @Field({ nullable: true, description: 'Allergie note' })
   allergie?: string;
 
   @Field({ nullable: true, description: 'Storia familiare / Anamnesi familiare' })
   storiaFamiliare?: string;
 
-  // Note
+  @Field({ nullable: true, description: 'Gruppo sanguigno' })
+  gruppoSanguigno?: string;
+
+  @Field({ nullable: true, description: 'Medico di base / curante' })
+  medicoBase?: string;
+
+  @Field({ nullable: true, description: 'Patologie croniche attuali' })
+  patologieCroniche?: string;
+
   @Field({ nullable: true, description: 'Note generali' })
   note?: string;
 }

@@ -95,6 +95,12 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
   patientSearch: string = '';
   filteredPatients: Patient[] = [];
   showPatientDropdown: boolean = false;
+  /** Flag UI: search remota in corso (per spinner). */
+  searchingRemote: boolean = false;
+  /** Cache dei pazienti selezionati venuti da search remota. */
+  private remoteSelectedPatients = new Map<string, Patient>();
+  /** Debounce timer per search remota. */
+  private searchDebounceHandle?: ReturnType<typeof setTimeout>;
 
   // New patient form
   showNewPatientForm: boolean = false;
@@ -339,33 +345,81 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
     });
   }
 
+  /**
+   * Filtra il dropdown paziente:
+   * - 0-2 char  → filtro client-side sui pazienti pre-caricati (data.patients)
+   * - 3+ char   → ricerca remota sul registry (debounce 250ms)
+   */
   onPatientSearchChange(): void {
-    this.runInZone(() => {
-      if (!this.patientSearch || this.patientSearch.length < 2) {
-        this.filteredPatients = this.data.patients?.slice(0, 10) || [];
+    if (this.searchDebounceHandle) {
+      clearTimeout(this.searchDebounceHandle);
+    }
+
+    const search = (this.patientSearch || '').trim();
+
+    if (search.length < 3) {
+      this.runInZone(() => {
+        if (!search || search.length < 2) {
+          this.filteredPatients = this.data.patients?.slice(0, 10) || [];
+        } else {
+          const lower = search.toLowerCase();
+          this.filteredPatients = (this.data.patients || [])
+            .filter((p) => {
+              const fullName = `${p.nome ?? ''} ${p.cognome ?? ''}`.toLowerCase();
+              const phone = (p.telefono || p.cellulare || '').toLowerCase();
+              return fullName.includes(lower) || phone.includes(lower);
+            })
+            .slice(0, 10);
+        }
         this.showPatientDropdown = this.filteredPatients.length > 0;
+        this.searchingRemote = false;
         this.detectChanges();
-        return;
-      }
+      });
+      return;
+    }
 
-      const search = this.patientSearch.toLowerCase();
-      this.filteredPatients = (this.data.patients || [])
-        .filter(p => {
-          const fullName = `${p.nome} ${p.cognome}`.toLowerCase();
-          const phone = (p.telefono || p.cellulare || '').toLowerCase();
-          return fullName.includes(search) || phone.includes(search);
-        })
-        .slice(0, 10);
+    // 3+ char → search remota debounced
+    this.searchingRemote = true;
+    this.showPatientDropdown = true;
+    this.detectChanges();
 
-      this.showPatientDropdown = this.filteredPatients.length > 0;
-      this.detectChanges();
-    });
+    this.searchDebounceHandle = setTimeout(() => {
+      this.patientService.searchPatients(search).subscribe({
+        next: (results) => {
+          this.runInZone(() => {
+            this.filteredPatients = (results || []).slice(0, 10);
+            this.showPatientDropdown = this.filteredPatients.length > 0;
+            this.searchingRemote = false;
+            this.detectChanges();
+          });
+        },
+        error: (err) => {
+          console.warn('[GymDialog] Patient remote search failed:', err);
+          this.runInZone(() => {
+            // Fallback locale
+            const lower = search.toLowerCase();
+            this.filteredPatients = (this.data.patients || [])
+              .filter((p) => {
+                const fullName = `${p.nome ?? ''} ${p.cognome ?? ''}`.toLowerCase();
+                const phone = (p.telefono || p.cellulare || '').toLowerCase();
+                return fullName.includes(lower) || phone.includes(lower);
+              })
+              .slice(0, 10);
+            this.showPatientDropdown = this.filteredPatients.length > 0;
+            this.searchingRemote = false;
+            this.detectChanges();
+          });
+        },
+      });
+    }, 250);
   }
 
   selectPatient(patient: Patient): void {
     this.runInZone(() => {
+      // Memorizza il paziente (utile se viene da search remota e non è in data.patients)
+      this.remoteSelectedPatients.set(patient.id, patient);
       this.selectedPatientId = patient.id;
-      this.clientName = `${patient.nome} ${patient.cognome}`;
+      this.clientName = `${patient.nome ?? ''} ${patient.cognome ?? ''}`.trim();
       this.clientPhone = patient.cellulare || patient.telefono || '';
       this.clientEmail = patient.email || '';
       this.patientSearch = '';

@@ -132,7 +132,12 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const apiUrl = environment.apiUrl;
 
   // Lascia passare le richieste non dirette al backend (es. discovery OIDC, asset).
-  if (!req.url.startsWith(apiUrl)) {
+  // Whitelist:
+  //   - apiUrl (backend clinico, es. https://api.curandis.cloud)
+  //   - registry.<tenant>.curandis.cloud (modulo anagrafiche cross-modulo)
+  const isClinicoApi = req.url.startsWith(apiUrl);
+  const isRegistryApi = /^https:\/\/registry\.[^.]+\.curandis\.cloud\//.test(req.url);
+  if (!isClinicoApi && !isRegistryApi) {
     return next(req);
   }
 

@@ -5,6 +5,7 @@ import { UseGuards } from '@nestjs/common';
 import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
 import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
+import { PatientModel } from '../../../patients/models/patient.model';
 import { TreatmentService } from '../services/treatment.service';
 import {
   CompleteTreatmentInput,
@@ -76,6 +77,17 @@ export class TreatmentResolver {
       relations: ['service'],
       order: { orderPosition: 'ASC' },
     });
+  }
+
+  /**
+   * ResolveField: shell `Patient { id }` da `patientId`. I campi del subject
+   * (firstName, lastName, ecc.) vengono risolti dal PatientResolver via
+   * RegistrySubjectLoader (batch verso il registry).
+   */
+  @ResolveField(() => PatientModel, { nullable: true })
+  patient(@Parent() treatment: Treatment): PatientModel | null {
+    if (!treatment.patientId) return null;
+    return { id: treatment.patientId } as PatientModel;
   }
 
   // ==================== QUERIES ====================

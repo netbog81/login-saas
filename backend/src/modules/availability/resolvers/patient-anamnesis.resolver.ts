@@ -29,23 +29,23 @@ export class PatientAnamnesisResolver {
   }
 
   /**
-   * Ottiene l'anamnesi di un paziente
+   * Ottiene l'anamnesi di un paziente per subjectId.
    */
-  @Query(() => PatientAnamnesis, { nullable: true, description: 'Ottiene anamnesi per paziente ID' })
-  async patientAnamnesisByPatient(
-    @Args('patientId', { type: () => ID }) patientId: string,
+  @Query(() => PatientAnamnesis, { nullable: true, description: 'Ottiene anamnesi per subjectId' })
+  async patientAnamnesisBySubject(
+    @Args('subjectId', { type: () => ID }) subjectId: string,
   ): Promise<PatientAnamnesis | null> {
-    return this.anamnesisService.findByPatientId(patientId);
+    return this.anamnesisService.findBySubjectId(subjectId);
   }
 
   /**
-   * Verifica se un paziente ha un'anamnesi
+   * Verifica se un paziente ha un'anamnesi.
    */
   @Query(() => Boolean, { description: 'Verifica se il paziente ha un\'anamnesi' })
   async hasPatientAnamnesis(
-    @Args('patientId', { type: () => ID }) patientId: string,
+    @Args('subjectId', { type: () => ID }) subjectId: string,
   ): Promise<boolean> {
-    return this.anamnesisService.existsForPatient(patientId);
+    return this.anamnesisService.existsForSubject(subjectId);
   }
 
   // ==================== MUTATIONS ====================
@@ -72,14 +72,14 @@ export class PatientAnamnesisResolver {
   }
 
   /**
-   * Crea o aggiorna l'anamnesi di un paziente (upsert)
+   * Crea o aggiorna l'anamnesi di un paziente (upsert).
    */
   @Mutation(() => PatientAnamnesis, { description: 'Crea o aggiorna anamnesi paziente' })
   async upsertPatientAnamnesis(
-    @Args('patientId', { type: () => ID }) patientId: string,
+    @Args('subjectId', { type: () => ID }) subjectId: string,
     @Args('input') input: UpdatePatientAnamnesisInput,
   ): Promise<PatientAnamnesis> {
-    return this.anamnesisService.upsert(patientId, input);
+    return this.anamnesisService.upsert(subjectId, input);
   }
 
   /**

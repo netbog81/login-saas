@@ -92,6 +92,15 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   newPatientError: string = '';
   savingNewPatient: boolean = false;
 
+  /** Risultati della search remota sul registry (3+ char). Vuoto se ricerca locale. */
+  private remoteSearchResults: Patient[] = [];
+  /** Flag: search remota in corso (per UI loading). */
+  searchingRemote: boolean = false;
+  /** Cache del paziente selezionato venuto da search remota (potrebbe non essere in data.patients). */
+  private remoteSelectedPatient?: Patient;
+  /** Timer di debounce per la search remota. */
+  private searchDebounceHandle?: ReturnType<typeof setTimeout>;
+
   constructor(
     private patientService: PatientService,
     private appointmentService: AvailabilityAppointmentService,
@@ -348,20 +357,33 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
     }));
   }
 
+  /**
+   * Lista mostrata nel dropdown:
+   * - 0 char     → tutti i pazienti pre-caricati (data.patients)
+   * - 1-2 char   → filtro client-side
+   * - 3+ char    → risultati della search remota (registry global-search)
+   */
   get filteredPatients(): Patient[] {
-    if (!this.patientSearch) {
+    const search = (this.patientSearch || '').trim();
+    if (!search) {
       return this.data.patients;
     }
-    const search = this.patientSearch.toLowerCase();
+    if (search.length >= 3 && this.remoteSearchResults.length > 0) {
+      return this.remoteSearchResults;
+    }
+    const lower = search.toLowerCase();
     return this.data.patients.filter(p =>
-      p.nome.toLowerCase().includes(search) ||
-      p.cognome.toLowerCase().includes(search) ||
+      (p.nome || '').toLowerCase().includes(lower) ||
+      (p.cognome || '').toLowerCase().includes(lower) ||
       (p.telefono || p.cellulare || '').includes(search)
     );
   }
 
   get selectedPatient(): Patient | undefined {
     if (!this.patientId) return undefined;
+    if (this.remoteSelectedPatient && this.remoteSelectedPatient.id == this.patientId) {
+      return this.remoteSelectedPatient;
+    }
     // Usa == per gestire confronto stringa/numero (GraphQL ID può essere stringa)
     return this.data.patients.find(p => p.id == this.patientId);
   }
@@ -625,9 +647,39 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   }
 
   onPatientSearchChange(): void {
-    this.runInZone(() => {
-      // Force change detection for filtered patients
-    });
+    // Reset debounce
+    if (this.searchDebounceHandle) {
+      clearTimeout(this.searchDebounceHandle);
+    }
+    const search = (this.patientSearch || '').trim();
+
+    // < 3 char: solo filtro locale, niente remota
+    if (search.length < 3) {
+      this.remoteSearchResults = [];
+      this.searchingRemote = false;
+      this.runInZone(() => {});
+      return;
+    }
+
+    // 3+ char: search remota con debounce 250ms
+    this.searchingRemote = true;
+    this.searchDebounceHandle = setTimeout(() => {
+      this.patientService.searchPatients(search).subscribe({
+        next: (results) => {
+          this.runInZone(() => {
+            this.remoteSearchResults = results || [];
+            this.searchingRemote = false;
+          });
+        },
+        error: (err) => {
+          console.warn('[EventDialog] Patient remote search failed:', err);
+          this.runInZone(() => {
+            this.remoteSearchResults = [];
+            this.searchingRemote = false;
+          });
+        }
+      });
+    }, 250);
   }
 
   onPatientSelect(patientId: string | null): void {
@@ -635,12 +687,17 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       this.patientId = patientId;
       this.patientSearch = '';  // Chiude il dropdown di ricerca
       if (patientId) {
-        // Usa == per confronto loose (GraphQL può restituire ID come stringa)
-        const patient = this.data.patients.find(p => p.id == patientId);
+        // Cerca prima nei risultati remoti, poi nella lista pre-caricata
+        const patient =
+          this.remoteSearchResults.find(p => p.id == patientId) ??
+          this.data.patients.find(p => p.id == patientId);
         if (patient) {
-          this.title = `${patient.nome} ${patient.cognome}`;
+          this.remoteSelectedPatient = patient;
+          this.title = `${patient.nome ?? ''} ${patient.cognome ?? ''}`.trim();
         }
       }
+      // Reset risultati remoti
+      this.remoteSearchResults = [];
     });
   }
 

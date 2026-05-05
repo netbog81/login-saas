@@ -31,7 +31,7 @@ import { Room } from './entities/room.entity';
 import { ServiceInstrument } from './entities/service-instrument.entity';
 import { AppointmentInstrument } from './entities/appointment-instrument.entity';
 import { AppointmentLog } from './entities/appointment-log.entity';
-import { Patient } from '../../entities/patient.entity';
+import { ClinicalSubjectIndex } from '../../patients/entities/clinical-subject-index.entity';
 import { Treatment } from './entities/treatment.entity';
 import { TreatmentInstrument } from './entities/treatment-instrument.entity';
 import { AppointmentService } from './entities/appointment-service.entity';
@@ -108,11 +108,14 @@ import { WaitingListResolver } from './resolvers/waiting-list.resolver';
 import { ServiceInvoicePrefixResolver } from './resolvers/service-invoice-prefix.resolver';
 import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver';
 
+import { PazientiModule } from '../../patients/patients.module';
+
 @Module({
   imports: [
     SettingsModule,
     AppUsersModule,
     forwardRef(() => WhatsappModule),
+    PazientiModule,
     TypeOrmModule.forFeature([
       AppUser,
       Operator,
@@ -144,7 +147,7 @@ import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver
       TreatmentInvoiceLine,
       ServiceInvoicePrefix,
       AppointmentLog,
-      Patient,
+      ClinicalSubjectIndex,
       // Parent entities DOPO le junction tables
       AvailabilityAppointment,
       Treatment,

@@ -15,8 +15,13 @@ import { GymPatternGroupService } from './gym-pattern-group.service';
 import { GymExceptionService } from './gym-exception.service';
 import { ConflictReason } from '../entities/availability-appointment.entity';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
-import { Patient } from '../../../entities/patient.entity';
-import { WhatsappGatewayService } from '../../whatsapp/gateway/whatsapp-gateway.service';
+import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
+import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
+import { AttendanceEventType } from '../../../patients/entities/clinical-attendance-log.entity';
+import { WhatsappGatewayService, WhatsappPatientContact } from '../../whatsapp/gateway/whatsapp-gateway.service';
+import { RegistryClient } from '../../registry/registry.client';
+import { RegistrySubjectResponse } from '../../registry/registry.types';
+import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
 
 export interface RepeatConfigInput {
   type: RecurringType;
@@ -92,13 +97,16 @@ export class AvailabilityAppointmentService {
     private instrumentCategoryRepo: Repository<InstrumentCategory>,
     @InjectRepository(GymRoom)
     private gymRoomRepo: Repository<GymRoom>,
-    @InjectRepository(Patient)
-    private patientRepo: Repository<Patient>,
+    @InjectRepository(ClinicalSubjectIndex)
+    private subjectIndexRepo: Repository<ClinicalSubjectIndex>,
     private dataSource: DataSource,
     @Inject(forwardRef(() => GymPatternGroupService))
     private gymPatternGroupService: GymPatternGroupService,
     @Inject(forwardRef(() => GymExceptionService))
     private gymExceptionService: GymExceptionService,
+    private registryClient: RegistryClient,
+    private tenantSchemaContext: TenantSchemaContextService,
+    private attendanceService: ClinicalAttendanceService,
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
   ) {}
@@ -1023,7 +1031,7 @@ export class AvailabilityAppointmentService {
 
     // Se cancellazione tardiva e c'è un paziente, incrementa il contatore
     if (isCancelledLate && appointment.patientId) {
-      await this.incrementPatientCancellation(appointment.patientId);
+      await this.incrementPatientCancellation(appointment.patientId, appointment.id);
     }
 
     // Fire-and-forget WhatsApp cancel
@@ -1055,7 +1063,7 @@ export class AvailabilityAppointmentService {
 
     // Incrementa contatore no-show del paziente
     if (appointment.patientId) {
-      await this.incrementPatientNoShow(appointment.patientId);
+      await this.incrementPatientNoShow(appointment.patientId, appointment.id);
     }
 
     return this.findById(id);
@@ -1129,39 +1137,33 @@ export class AvailabilityAppointmentService {
   }
 
   /**
-   * Incrementa il contatore cancellazioni del paziente per l'anno corrente
+   * Registra una cancellazione tardiva del paziente nel log attendance.
+   * (Sostituisce la vecchia logica jsonb su `patients.cancellationsByYear`,
+   * tabella droppata col refactor registry-integration.)
    */
-  private async incrementPatientCancellation(patientId: string): Promise<void> {
-    const year = new Date().getFullYear().toString();
-
-    // Query raw per aggiornare il JSONB direttamente
-    await this.dataSource.query(`
-      UPDATE patients
-      SET "cancellationsByYear" = jsonb_set(
-        COALESCE("cancellationsByYear", '{}'::jsonb),
-        '{${year}}',
-        to_jsonb(COALESCE(("cancellationsByYear"->>'${year}')::int, 0) + 1)
-      )
-      WHERE id = $1
-    `, [patientId]);
+  private async incrementPatientCancellation(
+    patientId: string,
+    appointmentId?: string,
+  ): Promise<void> {
+    await this.attendanceService.recordEvent({
+      subjectId: patientId,
+      eventType: AttendanceEventType.CANCELLATION,
+      appointmentId,
+    });
   }
 
   /**
-   * Incrementa il contatore no-show del paziente per l'anno corrente
+   * Registra un no-show del paziente nel log attendance.
    */
-  private async incrementPatientNoShow(patientId: string): Promise<void> {
-    const year = new Date().getFullYear().toString();
-
-    // Query raw per aggiornare il JSONB direttamente
-    await this.dataSource.query(`
-      UPDATE patients
-      SET "noShowsByYear" = jsonb_set(
-        COALESCE("noShowsByYear", '{}'::jsonb),
-        '{${year}}',
-        to_jsonb(COALESCE(("noShowsByYear"->>'${year}')::int, 0) + 1)
-      )
-      WHERE id = $1
-    `, [patientId]);
+  private async incrementPatientNoShow(
+    patientId: string,
+    appointmentId?: string,
+  ): Promise<void> {
+    await this.attendanceService.recordEvent({
+      subjectId: patientId,
+      eventType: AttendanceEventType.NO_SHOW,
+      appointmentId,
+    });
   }
 
   /**
@@ -1559,51 +1561,154 @@ export class AvailabilityAppointmentService {
 
   /**
    * Fire-and-forget: dispatch WhatsApp booking notification.
-   * Never throws - errors are logged silently.
+   *
+   * TODO[registry-integration]: i campi telefono/nome/cognome del paziente
+   * vivono ora nel registry. Per chiamarlo dal background (fire-and-forget,
+   * senza JWT utente) serve service-account Keycloak (roadmap §11 doc).
+   * Fino a quel momento le notifiche WhatsApp sono disabilitate per appointment
+   * con patientId. Le notifiche di walk-in con clientName/clientPhone valorizzati
+   * direttamente nell'appointment continueranno a funzionare quando il caller
+   * passa esplicitamente il PatientContact.
    */
   private dispatchWhatsappBooking(appointment: AvailabilityAppointment): void {
-    if (!this.whatsappGateway || !appointment.patientId) return;
+    if (!this.whatsappGateway) return;
 
-    this.patientRepo
-      .findOne({ where: { id: appointment.patientId } })
-      .then((patient) => {
-        if (patient) {
-          return this.whatsappGateway!.dispatchBooking(appointment, patient);
+    // Walk-in puro: l'appointment ha già telefono → usiamo direttamente i campi
+    // dell'appointment. NB: se c'è solo clientName ma non clientPhone, NON è
+    // walk-in usabile (manca il telefono!) — e se c'è patientId andiamo al
+    // registry a cercarlo. Se non c'è patientId nemmeno, niente notifica.
+    if (appointment.clientPhone) {
+      this.whatsappGateway
+        .dispatchBooking(appointment, this.walkInToContact(appointment))
+        .catch((err) => this.logger.warn(`WhatsApp dispatch failed: ${err?.message}`));
+      return;
+    }
+
+    if (!appointment.patientId) {
+      this.logger.warn(
+        `[WA-DISPATCH] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
+      );
+      return;
+    }
+
+    // Paziente da registry: fetch S2S via service-account Keycloak
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      this.logger.warn(
+        `[WA-DISPATCH] SKIP appointmentId=${appointment.id}: tenantAlias non disponibile`,
+      );
+      return;
+    }
+
+    this.fetchPatientContactAsService(appointment.patientId, tenantAlias)
+      .then((contact) => {
+        if (!contact) {
+          this.logger.warn(
+            `[WA-DISPATCH] SKIP appointmentId=${appointment.id}: subject ${appointment.patientId} non trovato nel registry`,
+          );
+          return;
         }
+        return this.whatsappGateway!.dispatchBooking(appointment, contact);
       })
-      .catch((err) => {
-        this.logger.warn(`WhatsApp dispatch failed: ${err?.message}`);
-      });
+      .catch((err) => this.logger.warn(`WhatsApp dispatch failed: ${err?.message}`));
   }
 
   /**
    * Fire-and-forget: cancel WhatsApp booking notification.
-   * Never throws - errors are logged silently.
    */
   private cancelWhatsappBooking(appointment: AvailabilityAppointment): void {
-    this.logger.log(`[WA-CANCEL-HOOK] appointmentId=${appointment.id} patientId=${appointment.patientId} gateway=${!!this.whatsappGateway}`);
-    if (!this.whatsappGateway) {
-      this.logger.warn(`[WA-CANCEL-HOOK] SKIP: whatsappGateway not injected`);
-      return;
-    }
-    if (!appointment.patientId) {
-      this.logger.warn(`[WA-CANCEL-HOOK] SKIP: no patientId on appointment ${appointment.id}`);
+    if (!this.whatsappGateway) return;
+
+    if (appointment.clientPhone) {
+      this.whatsappGateway
+        .cancelBooking(appointment, this.walkInToContact(appointment))
+        .catch((err) => this.logger.warn(`WhatsApp cancel failed: ${err?.message}`));
       return;
     }
 
-    this.patientRepo
-      .findOne({ where: { id: appointment.patientId } })
-      .then((patient) => {
-        if (patient) {
-          this.logger.log(`[WA-CANCEL-HOOK] Patient found: ${patient.nome} ${patient.cognome}, calling cancelBooking`);
-          return this.whatsappGateway!.cancelBooking(appointment, patient);
-        } else {
-          this.logger.warn(`[WA-CANCEL-HOOK] Patient not found for id=${appointment.patientId}`);
+    if (!appointment.patientId) {
+      this.logger.warn(
+        `[WA-CANCEL] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
+      );
+      return;
+    }
+
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      this.logger.warn(
+        `[WA-CANCEL] SKIP appointmentId=${appointment.id}: tenantAlias non disponibile`,
+      );
+      return;
+    }
+
+    this.fetchPatientContactAsService(appointment.patientId, tenantAlias)
+      .then((contact) => {
+        if (!contact) {
+          this.logger.warn(
+            `[WA-CANCEL] SKIP appointmentId=${appointment.id}: subject ${appointment.patientId} non trovato nel registry`,
+          );
+          return;
         }
+        return this.whatsappGateway!.cancelBooking(appointment, contact);
       })
-      .catch((err) => {
-        this.logger.warn(`WhatsApp cancel failed: ${err?.message}`);
-      });
+      .catch((err) => this.logger.warn(`WhatsApp cancel failed: ${err?.message}`));
+  }
+
+  // ==================== HELPERS PER WHATSAPP ====================
+
+  private walkInToContact(appointment: AvailabilityAppointment): WhatsappPatientContact {
+    const [nome, ...rest] = (appointment.clientName || '').split(' ');
+    return {
+      id: appointment.patientId || appointment.id,
+      nome: nome || undefined,
+      cognome: rest.join(' ') || undefined,
+      cellulare: appointment.clientPhone,
+    };
+  }
+
+  /**
+   * Fetch del subject dal registry usando il service-account Keycloak.
+   * Costruisce il PatientContact minimo per il gateway WhatsApp.
+   */
+  private async fetchPatientContactAsService(
+    subjectId: string,
+    tenantAlias: string,
+  ): Promise<WhatsappPatientContact | null> {
+    try {
+      const subject = await this.registryClient.getSubjectAsService(subjectId, tenantAlias);
+      if (!subject) return null;
+      return {
+        id: subject.id,
+        nome: subject.firstName,
+        cognome: subject.lastName,
+        // Cellulare = STRICTLY MOBILE; Telefono = STRICTLY PHONE.
+        // (no fallback incrociato: il gateway WhatsApp ne riceve uno solo per
+        // chiamata, quindi se manca MOBILE il dispatch userà PHONE come fallback
+        // dentro il gateway stesso)
+        cellulare: this.primaryContactValue(subject, ['MOBILE']),
+        telefono: this.primaryContactValue(subject, ['PHONE']),
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Registry getSubjectAsService(${subjectId}, ${tenantAlias}) failed: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private primaryContactValue(
+    subject: RegistrySubjectResponse,
+    types: string[],
+  ): string | undefined {
+    for (const t of types) {
+      const primary = subject.contacts?.find((c) => c.isPrimary && c.contactType === t);
+      if (primary) return primary.value;
+    }
+    for (const t of types) {
+      const any = subject.contacts?.find((c) => c.contactType === t);
+      if (any) return any.value;
+    }
+    return undefined;
   }
 
   /**
@@ -1634,22 +1739,30 @@ export class AvailabilityAppointmentService {
 
   /**
    * Re-invia il messaggio WhatsApp di recap per un appuntamento esistente.
+   * Usa il service-account Keycloak per fetchare le PII paziente dal registry.
    */
   async sendRecap(appointmentId: string): Promise<boolean> {
     const appointment = await this.findById(appointmentId);
     if (!appointment.patientId) {
-      throw new BadRequestException('L\'appuntamento non ha un paziente associato');
+      throw new BadRequestException("L'appuntamento non ha un paziente associato");
     }
     if (!this.whatsappGateway) {
       throw new BadRequestException('Gateway WhatsApp non configurato');
     }
 
-    const patient = await this.patientRepo.findOne({ where: { id: appointment.patientId } });
-    if (!patient) {
-      throw new NotFoundException(`Paziente con ID ${appointment.patientId} non trovato`);
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      throw new BadRequestException('Tenant non risolto: impossibile contattare il registry');
     }
 
-    await this.whatsappGateway.dispatchBooking(appointment, patient);
+    const contact = await this.fetchPatientContactAsService(appointment.patientId, tenantAlias);
+    if (!contact) {
+      throw new NotFoundException(
+        `Paziente ${appointment.patientId} non trovato nel registry`,
+      );
+    }
+
+    await this.whatsappGateway.dispatchBooking(appointment, contact);
     return true;
   }
 

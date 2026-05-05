@@ -6,8 +6,9 @@ import { AppointmentType } from '../entities/appointment-type.enum';
 import { AppointmentLog, AppointmentLogEventType } from '../entities/appointment-log.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { AvailabilityCache } from '../entities/availability-cache.entity';
-import { Patient } from '../../../entities/patient.entity';
 import { ExceptionType } from '../entities/availability-exception.entity';
+import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
+import { AttendanceEventType } from '../../../patients/entities/clinical-attendance-log.entity';
 
 /**
  * Risultato della verifica conflitti
@@ -48,8 +49,7 @@ export class AppointmentConflictService {
     private assignmentRepo: Repository<TemplateAssignment>,
     @InjectRepository(AvailabilityCache)
     private cacheRepo: Repository<AvailabilityCache>,
-    @InjectRepository(Patient)
-    private patientRepo: Repository<Patient>,
+    private attendanceService: ClinicalAttendanceService,
   ) {}
 
   // ==================== CONFLICT DETECTION ====================
@@ -502,38 +502,49 @@ export class AppointmentConflictService {
   // ==================== PATIENT COUNTERS ====================
 
   /**
-   * Incrementa contatore disdette per un paziente
-   * Da chiamare quando il PAZIENTE disdice (non per conflitti)
+   * Registra una cancellazione paziente nel log audit clinical_attendance_log.
    */
-  async incrementPatientCancellation(patientId: string, year?: number): Promise<void> {
-    const currentYear = year || new Date().getFullYear();
-    const patient = await this.patientRepo.findOne({ where: { id: patientId } });
-
-    if (patient) {
-      const cancellations = patient.cancellationsByYear || {};
-      cancellations[currentYear.toString()] = (cancellations[currentYear.toString()] || 0) + 1;
-
-      await this.patientRepo.update(patientId, {
-        cancellationsByYear: cancellations
-      });
-    }
+  async incrementPatientCancellation(
+    patientId: string,
+    year?: number,
+    reason?: string,
+    appointmentId?: string,
+    operatorId?: string,
+  ): Promise<void> {
+    const occurredAt = year
+      ? new Date(year, 0, 1)
+      : new Date();
+    await this.attendanceService.recordEvent({
+      subjectId: patientId,
+      eventType: AttendanceEventType.CANCELLATION,
+      occurredAt,
+      reason,
+      appointmentId,
+      operatorId,
+    });
   }
 
   /**
-   * Incrementa contatore no-show per un paziente
+   * Registra un no-show paziente nel log audit clinical_attendance_log.
    */
-  async incrementPatientNoShow(patientId: string, year?: number): Promise<void> {
-    const currentYear = year || new Date().getFullYear();
-    const patient = await this.patientRepo.findOne({ where: { id: patientId } });
-
-    if (patient) {
-      const noShows = patient.noShowsByYear || {};
-      noShows[currentYear.toString()] = (noShows[currentYear.toString()] || 0) + 1;
-
-      await this.patientRepo.update(patientId, {
-        noShowsByYear: noShows
-      });
-    }
+  async incrementPatientNoShow(
+    patientId: string,
+    year?: number,
+    reason?: string,
+    appointmentId?: string,
+    operatorId?: string,
+  ): Promise<void> {
+    const occurredAt = year
+      ? new Date(year, 0, 1)
+      : new Date();
+    await this.attendanceService.recordEvent({
+      subjectId: patientId,
+      eventType: AttendanceEventType.NO_SHOW,
+      occurredAt,
+      reason,
+      appointmentId,
+      operatorId,
+    });
   }
 
   // ==================== HELPERS ====================

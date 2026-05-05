@@ -4,6 +4,8 @@ import { AsyncLocalStorage } from 'async_hooks';
 export interface TenantSchemaContextData {
   schemaName: string;
   tenantId: string;
+  /** Alias del tenant (es. "bdq"), usato per X-Tenant-Alias verso il registry. */
+  tenantAlias: string;
   userId: string;
   requestId: string;
 }
@@ -56,5 +58,13 @@ export class TenantSchemaContextService {
    */
   getTenantId(): string | null {
     return this.storage.getStore()?.tenantId ?? null;
+  }
+
+  /**
+   * Restituisce l'alias del tenant corrente (es. "bdq") o null.
+   * Usato per chiamate S2S al registry (X-Tenant-Alias).
+   */
+  getTenantAlias(): string | null {
+    return this.storage.getStore()?.tenantAlias ?? null;
   }
 }

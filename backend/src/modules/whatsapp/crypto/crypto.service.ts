@@ -35,22 +35,26 @@ export class CryptoService {
         if (response.ok) {
           const body = await response.json() as any;
           const data = body?.data?.data;
-          // Prova diversi campi: value, key, encryption_key, oppure se data è direttamente una stringa
-          const keyHex = data?.value || data?.key || data?.encryption_key
-            || (typeof data === 'string' ? data : null);
-          this.logger.debug(
-            `OpenBao response for tenant "${tenantApiId}": keys=${JSON.stringify(data ? Object.keys(data) : null)}, ` +
-            `valueType=${typeof keyHex}, valueLength=${keyHex?.length}`,
-          );
-          if (keyHex && typeof keyHex === 'string' && /^[0-9a-fA-F]{64}$/.test(keyHex)) {
-            const key = Buffer.from(keyHex, 'hex');
+          // Campi possibili in OpenBao: value, key, encryption_key, secret,
+          // oppure data direttamente come stringa. Formato accettato:
+          //  - 64-char hex string
+          //  - base64 (44 char con padding "=") che decodifica a 32 byte
+          const rawKey =
+            data?.value ||
+            data?.key ||
+            data?.encryption_key ||
+            data?.secret ||
+            (typeof data === 'string' ? data : null);
+          const key = this.parseKey(rawKey);
+          if (key) {
             this.keyCache.set(cacheKey, { key, cachedAt: Date.now() });
             this.logger.log(`Encryption key loaded from OpenBao for tenant "${tenantApiId}"`);
             return key;
           }
           this.logger.warn(
-            `OpenBao: key format invalid for tenant "${tenantApiId}". ` +
-            `Got type=${typeof keyHex}, length=${keyHex?.length}. Expected 64-char hex string. Falling back to env.`,
+            `OpenBao: encryption key non valida per tenant "${tenantApiId}" ` +
+              `(campi disponibili: ${data ? Object.keys(data).join(',') : 'none'}). ` +
+              `Atteso hex 64-char o base64 di 32 byte. Fallback su env.`,
           );
         } else if (response.status !== 404) {
           this.logger.warn(`OpenBao error ${response.status} for tenant "${tenantApiId}" encryption key`);
@@ -61,15 +65,52 @@ export class CryptoService {
     }
 
     // 3. Fallback: WHATSAPP_ENCRYPTION_KEY da .env
-    const keyHex = process.env.WHATSAPP_ENCRYPTION_KEY;
-    if (!keyHex || keyHex.length !== 64) {
+    const keyEnvRaw = process.env.WHATSAPP_ENCRYPTION_KEY;
+    const keyEnv = this.parseKey(keyEnvRaw);
+    if (!keyEnv) {
       throw new Error(
-        'WHATSAPP_ENCRYPTION_KEY not found. Set it in OpenBao (kv/whatsapp/{tenant}/encryption_key) or as a 64-char hex env variable.',
+        'WHATSAPP_ENCRYPTION_KEY non trovata. Configurarla in OpenBao ' +
+          '(kv/whatsapp/{tenant}/encryption_key) come hex 64-char o base64 ' +
+          'di 32 byte, oppure come variabile env nel formato analogo.',
       );
     }
-    const key = Buffer.from(keyHex, 'hex');
-    this.keyCache.set(cacheKey, { key, cachedAt: Date.now() });
-    return key;
+    this.keyCache.set(cacheKey, { key: keyEnv, cachedAt: Date.now() });
+    return keyEnv;
+  }
+
+  /**
+   * Parsa una chiave AES-256 da stringa. Accetta:
+   *  - hex 64 caratteri  (32 byte)
+   *  - base64 di 32 byte (44 caratteri con padding `=`, 43 senza)
+   * Ritorna null se il formato non è valido.
+   */
+  private parseKey(raw: string | null | undefined): Buffer | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+
+    // Hex 64-char
+    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      return Buffer.from(trimmed, 'hex');
+    }
+
+    // Base64 → deve decodificare a esattamente 32 byte
+    if (/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) {
+      try {
+        const buf = Buffer.from(trimmed, 'base64');
+        if (buf.length === 32) {
+          // Sanity: il base64 round-trip deve produrre la stessa stringa
+          // (evita falsi positivi su stringhe arbitrarie che caso vuole
+          // hanno length 32 una volta decodate)
+          if (buf.toString('base64').replace(/=+$/, '') === trimmed.replace(/=+$/, '')) {
+            return buf;
+          }
+        }
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
   }
 
   async encrypt(plaintext: string, tenantApiId?: string): Promise<string> {
