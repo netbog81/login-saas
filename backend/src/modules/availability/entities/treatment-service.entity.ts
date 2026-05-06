@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDa
 import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { Treatment } from './treatment.entity';
 import { Service } from './service.entity';
+import { AppUser } from '../../users/entities/app-user.entity';
 
 /**
  * TreatmentService - Tabella di collegamento per relazione ManyToMany
@@ -32,6 +33,17 @@ export class TreatmentService {
   @Field(() => ID)
   @Column('uuid')
   serviceId: string;
+
+  /**
+   * Operatore che ha materialmente eseguito QUESTA riga di servizio.
+   * Default UI: precompilato con `treatment.operator.appUserId`, ma editabile
+   * (cambio turno, consulenza specialistica, prodotto venduto da segretaria).
+   * Valorizzato come `executedByUserId` nel payload `treatment.closed.lines[]`
+   * dopo mapping AppUser.id → AppUser.keycloakId nel publisher.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  executedByOperatorId?: string;
 
   // ==================== SERVICE DATA ====================
 
@@ -107,4 +119,9 @@ export class TreatmentService {
   @ManyToOne(() => Service, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'serviceId' })
   service: Service;
+
+  @Field(() => AppUser, { nullable: true })
+  @ManyToOne(() => AppUser, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'executedByOperatorId' })
+  executedByOperator?: AppUser;
 }

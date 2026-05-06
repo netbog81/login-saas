@@ -39,6 +39,8 @@ import { TreatmentService as TreatmentServiceEntity } from './entities/treatment
 import { TreatmentInvoiceLine } from './entities/treatment-invoice-line.entity';
 import { ServiceInvoicePrefix } from './entities/service-invoice-prefix.entity';
 import { ServiceSubcategory } from './entities/service-subcategory.entity';
+import { Site } from './entities/site.entity';
+import { Product } from './entities/product.entity';
 import { TherapeuticPath } from './entities/therapeutic-path.entity';
 import { PathDocument } from './entities/path-document.entity';
 import { PatientEvaluation } from './entities/patient-evaluation.entity';
@@ -162,6 +164,9 @@ import { PazientiModule } from '../../patients/patients.module';
       TestEvaluationHistory,
       PatientAnamnesis,
       WaitingListEntry,
+      // Billing integration step 1 (sessione 6)
+      Site,
+      Product,
     ]),
   ],
   providers: [

@@ -1,0 +1,1 @@
+/home/marco/curandis-registry/docs/specifica-flusso-accounting-clinico.md

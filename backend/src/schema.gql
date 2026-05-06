@@ -156,6 +156,8 @@ type AvailabilityAppointment {
   repeatConfig: JSON
   service: Service
   serviceId: ID @deprecated(reason: "Usa appointmentServices invece")
+  site: Site!
+  siteId: ID!
   startTime: String!
   status: AppointmentStatus @deprecated(reason: "Use bookingStatus instead")
   substitutionReason: String
@@ -2164,6 +2166,7 @@ type Service {
   preferredDuration: Int
   requiredInstruments: [ServiceInstrument!]
   reverseInstrumentOrder: Boolean
+  serviceCode: String!
   subcategory: ServiceSubcategory
   subcategoryId: ID
   updatedAt: DateTime!
@@ -2208,6 +2211,15 @@ type ServiceSubcategory {
   id: ID!
   isActive: Boolean!
   macroCategory: OperatorMacroCategory!
+  name: String!
+  updatedAt: DateTime!
+}
+
+type Site {
+  address: String
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
   name: String!
   updatedAt: DateTime!
 }
@@ -2351,8 +2363,19 @@ enum TherapeuticPathStatus {
 }
 
 type Treatment {
+  accountingBillableEventId: ID
+  accountingCreditNoteIssuedAt: DateTime
+  accountingCreditNoteNumber: String
+  accountingDocumentType: String
+  accountingInvoiceIssuedAt: DateTime
+  accountingInvoiceUrl: String
+  accountingRefundReason: String
   appointment: AvailabilityAppointment!
   appointmentId: ID!
+  billingAlertAt: DateTime
+  billingAlertDismissedAt: DateTime
+  billingAlertMessage: String
+  billingStatus: TreatmentBillingStatus!
   clinicalNotes: String
   closedAt: DateTime
   closedByUserId: ID
@@ -2394,6 +2417,8 @@ type Treatment {
   secretaryNotes: String
   service: Service
   serviceId: ID @deprecated(reason: "Usa treatmentServices invece")
+  site: Site!
+  siteId: ID!
   startedAt: DateTime!
   status: TreatmentStatus!
 
@@ -2407,6 +2432,19 @@ type Treatment {
   therapeuticPathId: ID!
   treatmentServices: [TreatmentService!]
   updatedAt: DateTime!
+}
+
+"""Stato del trattamento nel ciclo di fatturazione clinico ↔ accounting"""
+enum TreatmentBillingStatus {
+  CANCELLED
+  INVOICED
+  NOT_READY
+  PARTIALLY_REFUNDED
+  PENDING
+  READY_FOR_BILLING
+  REFUNDED
+  REISSUED
+  SENT
 }
 
 enum TreatmentCallerRole {
@@ -2460,6 +2498,8 @@ type TreatmentInvoiceLine {
 type TreatmentService {
   createdAt: DateTime!
   duration: Int
+  executedByOperator: AppUser
+  executedByOperatorId: ID
   id: ID!
   invoiceLineDescription: String
   invoiceLineDescriptionAuto: String

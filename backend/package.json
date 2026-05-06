@@ -18,7 +18,9 @@
     "schema:drop": "typeorm-ts-node-commonjs schema:drop -d ./src/data-source.ts",
     "schema:sync": "typeorm-ts-node-commonjs schema:sync -d ./src/data-source.ts",
     "schema:log": "typeorm-ts-node-commonjs schema:log -d ./src/data-source.ts",
-    "db:check": "npm run schema:log"
+    "db:check": "npm run schema:log",
+    "smoke:publish-treatment-closed": "ts-node src/scripts/test-publish-treatment-closed.ts",
+    "sync:services": "ts-node src/scripts/sync-services-and-products.ts"
   },
   "dependencies": {
     "@apollo/server": "^4.12.2",

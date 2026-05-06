@@ -13,6 +13,16 @@ export class Service {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  /**
+   * Codice business univoco del servizio (es. "FIS-001", "VAL-MED").
+   * Usato come chiave di mapping verso il catalogo accounting
+   * (ClinicalServiceMappingEntity.serviceCode). Migration popola gli
+   * esistenti con `TMP-<id8>`; l'operatore corregge poi via UI.
+   */
+  @Field()
+  @Column({ length: 30, unique: true })
+  serviceCode: string;
+
   @Field()
   @Column({ length: 255 })
   name: string;

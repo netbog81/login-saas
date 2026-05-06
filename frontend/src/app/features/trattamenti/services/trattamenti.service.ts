@@ -29,6 +29,25 @@ import {
 } from '../graphql/trattamenti.operations';
 
 /**
+ * Proietta il payload GraphQL `patient { id, displayName, subject: {firstName, lastName} }`
+ * sulla shape piatta `TrattamentoPaziente { id, nome, cognome }` usata dai consumer.
+ * Idempotente: se `patient` è già piatto o assente, no-op.
+ */
+function flattenPatient(t: Trattamento): Trattamento {
+  const p = t.patient as any;
+  if (!p) return t;
+  if (p.nome != null && p.cognome != null) return t;
+  return {
+    ...t,
+    patient: {
+      id: p.id,
+      nome: p.subject?.firstName ?? p.displayName?.split(' ')[0] ?? '',
+      cognome: p.subject?.lastName ?? p.displayName?.split(' ').slice(1).join(' ') ?? '',
+    },
+  };
+}
+
+/**
  * Layer 3 - Business logic & GraphQL per la feature Trattamenti.
  * Usa BaseGraphQLService per integrazione NgZone obbligatoria.
  */
@@ -49,7 +68,7 @@ export class TrattamentiService extends BaseGraphQLService {
     return this.query<{ treatmentsForSecretary: Trattamento[] }>(
       TREATMENTS_FOR_SECRETARY,
       this.sanitizeFilters(filters),
-    ).pipe(map(r => r?.treatmentsForSecretary ?? []));
+    ).pipe(map(r => (r?.treatmentsForSecretary ?? []).map(flattenPatient)));
   }
 
   /**
@@ -63,7 +82,7 @@ export class TrattamentiService extends BaseGraphQLService {
     return this.query<{ treatmentsForOperator: Trattamento[] }>(
       TREATMENTS_FOR_OPERATOR,
       vars,
-    ).pipe(map(r => r?.treatmentsForOperator ?? []));
+    ).pipe(map(r => (r?.treatmentsForOperator ?? []).map(flattenPatient)));
   }
 
   // ==================== MUTATIONS — SECRETARY ECONOMIC ====================

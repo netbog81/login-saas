@@ -22,6 +22,7 @@ import { RegistryModule } from './modules/registry/registry.module';
 import { RegistryClient } from './modules/registry/registry.client';
 import { buildGraphqlContext } from './modules/registry/utils/build-graphql-context';
 import { RegistryEventsModule } from './modules/registry-events/registry-events.module';
+import { ClinicalEventsModule } from './modules/clinical-events/clinical-events.module';
 import { JwksService } from './auth/jwks.service';
 import { MeController } from './auth/me.controller';
 import { UsersModule } from './users/users.module';
@@ -92,6 +93,10 @@ import { ClinicalSubjectIndex } from './patients/entities/clinical-subject-index
 import { ClinicalAttendanceLog } from './patients/entities/clinical-attendance-log.entity';
 import { ClinicalRelationshipExtension } from './patients/entities/clinical-relationship-extension.entity';
 import { ProcessedRegistryEvent } from './modules/registry-events/processed-event.entity';
+// Billing integration step 1 (sessione 6) — entity nuove + idempotency consumer accounting
+import { Site } from './modules/availability/entities/site.entity';
+import { Product } from './modules/availability/entities/product.entity';
+import { ProcessedClinicalEvent } from './modules/clinical-events/processed-clinical-event.entity';
 // App Users module (multi-type user management + RBAC)
 import { AppUsersModule } from './modules/users/app-users.module';
 import { AppUser } from './modules/users/entities/app-user.entity';
@@ -188,6 +193,10 @@ const ALL_ENTITIES = [
   TaskMessageWebhookEvent,
   // Recycle bin
   RecycleBinSettings,
+  // Billing integration step 1 (sessione 6)
+  Site,
+  Product,
+  ProcessedClinicalEvent,
 ];
 
 interface AppModuleOptions {
@@ -229,6 +238,7 @@ export class AppModule implements NestModule {
         }),
         RegistryModule,
         RegistryEventsModule,
+        ClinicalEventsModule,
         GraphQLModule.forRootAsync<ApolloDriverConfig>({
           driver: ApolloDriver,
           imports: [RegistryModule],

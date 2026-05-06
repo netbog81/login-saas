@@ -54,8 +54,12 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
     }
     patient {
       id
-      nome
-      cognome
+      displayName
+      subject {
+        id
+        firstName
+        lastName
+      }
     }
     appointment {
       id

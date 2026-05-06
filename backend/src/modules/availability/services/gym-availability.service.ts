@@ -447,7 +447,6 @@ export class GymAvailabilityService {
       .createQueryBuilder('appointment')
       .leftJoinAndSelect('appointment.operator', 'operator')
       .leftJoinAndSelect('appointment.originalOperator', 'originalOperator')
-      .leftJoinAndSelect('appointment.patient', 'patient')
       .where('appointment.gymRoomId = :gymRoomId', { gymRoomId })
       .andWhere('appointment.appointmentDate = :date', { date })
       .andWhere('appointment.appointmentType = :type', { type: AppointmentType.GYM })

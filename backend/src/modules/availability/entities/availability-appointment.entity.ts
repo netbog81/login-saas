@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColum
 import { ObjectType, Field, ID, Int, Float, registerEnumType } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 import { Service } from './service.entity';
+import { Site } from './site.entity';
 import { GymRoom } from './gym-room.entity';
 import { AppointmentType } from './appointment-type.enum';
 import { AppointmentInstrument } from './appointment-instrument.entity';
@@ -105,6 +106,18 @@ export class AvailabilityAppointment {
   @Field(() => ID, { nullable: true })
   @Column('uuid', { nullable: true })
   patientId?: string;
+
+  /**
+   * Sede operativa dell'appuntamento. Obbligatorio: serve a propagare la
+   * sede al `Treatment` creato dall'appuntamento (numerazione fattura per
+   * sede). La migration backfilla con "Studio principale".
+   *
+   * Finché la UI di creazione appuntamento non espone il campo, il resolver
+   * `createAppointment` deve fallback su sede default attiva.
+   */
+  @Field(() => ID)
+  @Column('uuid')
+  siteId: string;
 
   // ==================== DATE/TIME ====================
 
@@ -410,6 +423,11 @@ export class AvailabilityAppointment {
   @ManyToOne(() => GymRoom, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'gymRoomId' })
   gymRoom?: GymRoom;
+
+  @Field(() => Site)
+  @ManyToOne(() => Site, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'siteId' })
+  site: Site;
 
   @Field(() => [AppointmentInstrument], { nullable: true })
   @OneToMany(() => AppointmentInstrument, appointmentInstrument => appointmentInstrument.appointment)

@@ -101,7 +101,7 @@ export class TherapeuticPathService {
   async findById(id: string): Promise<TherapeuticPath | null> {
     return this.pathRepo.findOne({
       where: { id },
-      relations: ['patient', 'primaryOperator', 'documents']
+      relations: ['primaryOperator', 'documents']
     });
   }
 
@@ -111,7 +111,7 @@ export class TherapeuticPathService {
   async findByPatient(patientId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { patientId },
-      relations: ['patient', 'primaryOperator', 'documents'],
+      relations: ['primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -123,7 +123,7 @@ export class TherapeuticPathService {
     if (patientIds.length === 0) return [];
     return this.pathRepo.find({
       where: { patientId: In(patientIds) },
-      relations: ['patient', 'primaryOperator', 'documents'],
+      relations: ['primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -137,7 +137,7 @@ export class TherapeuticPathService {
         patientId,
         status: TherapeuticPathStatus.ACTIVE
       },
-      relations: ['patient', 'primaryOperator', 'documents'],
+      relations: ['primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -148,7 +148,7 @@ export class TherapeuticPathService {
   async findByOperator(operatorId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { primaryOperatorId: operatorId },
-      relations: ['patient', 'primaryOperator', 'documents'],
+      relations: ['primaryOperator', 'documents'],
       order: { createdAt: 'DESC' }
     });
   }

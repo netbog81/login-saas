@@ -22,7 +22,7 @@ export class AppointmentsService {
 
     return this.appointmentsRepository.find({
       where,
-      relations: ['operator', 'patient'],
+      relations: ['operator'],
       order: { date: 'ASC', startTime: 'ASC' }
     });
   }
@@ -36,7 +36,7 @@ export class AppointmentsService {
 
     return this.appointmentsRepository.find({
       where,
-      relations: ['operator', 'patient'],
+      relations: ['operator'],
       order: { startTime: 'ASC' }
     });
   }
@@ -44,7 +44,7 @@ export class AppointmentsService {
   findOne(id: string): Promise<Appointment> {
     return this.appointmentsRepository.findOne({
       where: { id },
-      relations: ['operator', 'patient']
+      relations: ['operator']
     });
   }
 

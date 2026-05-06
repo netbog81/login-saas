@@ -11,6 +11,7 @@ import { AppointmentInstrument } from '../entities/appointment-instrument.entity
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { Service } from '../entities/service.entity';
+import { Site } from '../entities/site.entity';
 import { EventsService } from '../../events/events.service';
 import { TreatmentServiceInputItem } from '../dto/treatment.input';
 
@@ -182,6 +183,23 @@ export class TreatmentService {
           : (appointment.service.defaultPrice || 0);
       }
 
+      // siteId: usa quello dell'appuntamento, altrimenti fallback su sede
+      // default attiva (per appuntamenti pre-migrazione billing).
+      let siteId = appointment.siteId;
+      if (!siteId) {
+        const siteRepo = manager.getRepository(Site);
+        const defaultSite = await siteRepo.findOne({
+          where: { isActive: true },
+          order: { createdAt: 'ASC' },
+        });
+        if (!defaultSite) {
+          throw new BadRequestException(
+            'Nessuna sede attiva configurata. Contattare l\'amministratore.',
+          );
+        }
+        siteId = defaultSite.id;
+      }
+
       // Crea il trattamento
       const treatment = treatmentRepo.create({
         appointmentId,
@@ -189,6 +207,7 @@ export class TreatmentService {
         patientId: appointment.patientId,
         serviceId: appointment.serviceId, // Mantiene per retrocompatibilità
         therapeuticPathId,
+        siteId,
         scontoFE,
         status: TreatmentStatus.IN_PROGRESS,
         isTest: false,
@@ -225,7 +244,7 @@ export class TreatmentService {
   async findById(id: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
   }
 
@@ -235,7 +254,7 @@ export class TreatmentService {
   private async findByIdWithManager(manager: EntityManager, id: string): Promise<Treatment> {
     const treatment = await manager.getRepository(Treatment).findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
 
     if (!treatment) {
@@ -251,7 +270,7 @@ export class TreatmentService {
   async findByAppointmentId(appointmentId: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { appointmentId },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
   }
 
@@ -262,7 +281,7 @@ export class TreatmentService {
     if (appointmentIds.length === 0) return [];
     return this.treatmentRepo.find({
       where: { appointmentId: In(appointmentIds) },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
   }
 
@@ -986,7 +1005,6 @@ export class TreatmentService {
     const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
       .leftJoinAndSelect('treatment.appointment', 'appointment')
       .leftJoinAndSelect('treatment.operator', 'operator')
-      .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.instruments', 'instruments')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
@@ -1011,7 +1029,6 @@ export class TreatmentService {
     const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
       .leftJoinAndSelect('treatment.appointment', 'appointment')
       .leftJoinAndSelect('treatment.operator', 'operator')
-      .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.instruments', 'instruments')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
@@ -1034,7 +1051,7 @@ export class TreatmentService {
   async getPendingForSecretary(): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { status: TreatmentStatus.OPERATOR_COMPLETED },
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
       order: { completedAt: 'ASC' }
     });
   }
@@ -1059,7 +1076,6 @@ export class TreatmentService {
     const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
       .leftJoinAndSelect('treatment.appointment', 'appointment')
       .leftJoinAndSelect('treatment.operator', 'operator')
-      .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .leftJoinAndSelect('treatment.treatmentServices', 'treatmentServices')
@@ -1087,7 +1103,6 @@ export class TreatmentService {
     const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
       .leftJoinAndSelect('treatment.appointment', 'appointment')
       .leftJoinAndSelect('treatment.operator', 'operator')
-      .leftJoinAndSelect('treatment.patient', 'patient')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .leftJoinAndSelect('treatment.treatmentServices', 'treatmentServices')
@@ -1116,7 +1131,7 @@ export class TreatmentService {
    */
   async findAll(): Promise<Treatment[]> {
     return this.treatmentRepo.find({
-      relations: ['appointment', 'operator', 'patient', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
       order: { startedAt: 'DESC' }
     });
   }
@@ -1559,7 +1574,6 @@ export class TreatmentService {
     const qb = this.treatmentRepo
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.operator', 'operator')
-      .leftJoinAndSelect('t.patient', 'patient')
       .leftJoinAndSelect('t.appointment', 'appointment')
       .leftJoinAndSelect('t.treatmentServices', 'ts')
       .leftJoinAndSelect('ts.service', 'service')

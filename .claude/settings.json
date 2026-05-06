@@ -22,7 +22,8 @@
     ],
     "additionalDirectories": [
       "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/services",
-      "/home/marco/agenda/login-saas/backend/src/migrations"
+      "/home/marco/agenda/login-saas/backend/src/migrations",
+      "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/containers"
     ]
   }
 }

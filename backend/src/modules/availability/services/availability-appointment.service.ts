@@ -10,6 +10,7 @@ import { InstrumentCategory } from '../entities/instrument-category.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
 import { RecurringType, RecurringEndType, ServiceInputItem } from '../dto/create-availability-appointment.input';
 import { GymRoom } from '../entities/gym-room.entity';
+import { Site } from '../entities/site.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymPatternGroupService } from './gym-pattern-group.service';
 import { GymExceptionService } from './gym-exception.service';
@@ -97,6 +98,8 @@ export class AvailabilityAppointmentService {
     private instrumentCategoryRepo: Repository<InstrumentCategory>,
     @InjectRepository(GymRoom)
     private gymRoomRepo: Repository<GymRoom>,
+    @InjectRepository(Site)
+    private siteRepo: Repository<Site>,
     @InjectRepository(ClinicalSubjectIndex)
     private subjectIndexRepo: Repository<ClinicalSubjectIndex>,
     private dataSource: DataSource,
@@ -110,6 +113,25 @@ export class AvailabilityAppointmentService {
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
   ) {}
+
+  /**
+   * Restituisce l'id della sede default attiva del tenant.
+   * Usato come fallback per appuntamenti/trattamenti finche' la UI
+   * non espone esplicitamente il selettore di sede.
+   */
+  async resolveDefaultSiteId(manager?: EntityManager): Promise<string> {
+    const repo = manager ? manager.getRepository(Site) : this.siteRepo;
+    const site = await repo.findOne({
+      where: { isActive: true },
+      order: { createdAt: 'ASC' },
+    });
+    if (!site) {
+      throw new BadRequestException(
+        'Nessuna sede attiva configurata. Contattare l\'amministratore.',
+      );
+    }
+    return site.id;
+  }
 
   /**
    * Verifica se un appointment GYM ricade in uno slot scoperto di un'eccezione
@@ -228,8 +250,10 @@ export class AvailabilityAppointmentService {
         }
       }
 
+      const defaultSiteId = await this.resolveDefaultSiteId(manager);
       const appointment = appointmentRepo.create({
         ...appointmentData,
+        siteId: defaultSiteId,
         bookingStatus: BookingStatus.SCHEDULED,
         hasConflict: false,
         isRecurring,
@@ -1379,10 +1403,12 @@ export class AvailabilityAppointmentService {
     isMaster: boolean = false,
     masterAppointmentId?: string,
   ): Promise<AvailabilityAppointment> {
+    const defaultSiteId = await this.resolveDefaultSiteId();
     const appointment = this.appointmentRepo.create({
       operatorId: data.operatorId,
       gymRoomId: data.gymRoomId,
       serviceId: data.serviceId,
+      siteId: defaultSiteId,
       appointmentType: AppointmentType.GYM,
       clientName: data.clientName,
       clientEmail: data.clientEmail,

@@ -3,11 +3,13 @@ import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { AvailabilityAppointment } from './availability-appointment.entity';
 import { Operator } from './operator.entity';
 import { Service } from './service.entity';
+import { Site } from './site.entity';
 import { TreatmentInstrument } from './treatment-instrument.entity';
 import { TreatmentService } from './treatment-service.entity';
 import { TreatmentInvoiceLine } from './treatment-invoice-line.entity';
 import { TherapeuticPath } from './therapeutic-path.entity';
 import { TreatmentStatus, PaymentMethod } from './treatment-enums';
+import { TreatmentBillingStatus } from './treatment-billing-status.enum';
 
 // Re-export enums for backward compatibility
 export { TreatmentStatus, PaymentMethod } from './treatment-enums';
@@ -51,6 +53,16 @@ export class Treatment {
   @Field(() => ID)
   @Column('uuid')
   therapeuticPathId: string;
+
+  /**
+   * Sede operativa in cui il trattamento è stato eseguito. Obbligatorio:
+   * accounting numera le fatture per (organizationId, siteId, year). La
+   * migration backfilla il campo con la sede "Studio principale" creata
+   * automaticamente per il tenant.
+   */
+  @Field(() => ID)
+  @Column('uuid')
+  siteId: string;
 
   // ==================== FLAGS ====================
 
@@ -255,6 +267,82 @@ export class Treatment {
   @Column({ default: false })
   forcedClosure: boolean;
 
+  // ==================== BILLING STATUS (clinico ↔ accounting) ====================
+
+  /**
+   * Stato del trattamento nel ciclo di fatturazione clinico ↔ accounting.
+   * Aggiornato sia da azioni locali (closeTreatment, setReadyForBilling,
+   * cancelTreatment) sia dal consumer di `ex.accounting.events`.
+   * Vedi `TreatmentBillingStatus` per la state machine completa.
+   */
+  @Field(() => TreatmentBillingStatus)
+  @Column({
+    name: 'billingStatus',
+    type: 'enum',
+    enum: TreatmentBillingStatus,
+    enumName: 'treatment_billing_status_enum',
+    default: TreatmentBillingStatus.NOT_READY,
+  })
+  @Index('IDX_treatments_billing_status')
+  billingStatus: TreatmentBillingStatus;
+
+  // ==================== ACCOUNTING SNAPSHOT ====================
+
+  /** ID del BillableEvent corrispondente lato accounting (popolato da billable.received). */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { name: 'accountingBillableEventId', nullable: true })
+  accountingBillableEventId?: string;
+
+  /** URL al PDF del documento fiscale (popolato da billable.invoiced). */
+  @Field({ nullable: true })
+  @Column('text', { name: 'accountingInvoiceUrl', nullable: true })
+  accountingInvoiceUrl?: string;
+
+  /** Timestamp di emissione del documento fiscale. */
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'accountingInvoiceIssuedAt', nullable: true })
+  accountingInvoiceIssuedAt?: Date;
+
+  /** Tipo documento accounting: INVOICE | PROFORMA | CREDIT_NOTE. */
+  @Field({ nullable: true })
+  @Column({ name: 'accountingDocumentType', length: 30, nullable: true })
+  accountingDocumentType?: string;
+
+  /** Numero della nota di credito (popolato da billable.refunded / partially-refunded). */
+  @Field({ nullable: true })
+  @Column({ name: 'accountingCreditNoteNumber', length: 50, nullable: true })
+  accountingCreditNoteNumber?: string;
+
+  /** Timestamp emissione nota di credito. */
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'accountingCreditNoteIssuedAt', nullable: true })
+  accountingCreditNoteIssuedAt?: Date;
+
+  /** Causale del rimborso/storno (free text dall'operatore accounting). */
+  @Field({ nullable: true })
+  @Column('text', { name: 'accountingRefundReason', nullable: true })
+  accountingRefundReason?: string;
+
+  // ==================== BILLING ALERT (cancellation-rejected) ====================
+
+  /**
+   * Messaggio alert mostrato al clinico quando arriva
+   * `billable.cancellation-rejected` (race condition: clinico ha cancellato
+   * un trattamento che accounting aveva già fatturato). Visibile in UI come
+   * badge finché non viene dismissato dall'operatore.
+   */
+  @Field({ nullable: true })
+  @Column('text', { name: 'billingAlertMessage', nullable: true })
+  billingAlertMessage?: string;
+
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'billingAlertAt', nullable: true })
+  billingAlertAt?: Date;
+
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'billingAlertDismissedAt', nullable: true })
+  billingAlertDismissedAt?: Date;
+
   // ==================== RELATIONS ====================
 
   @Field(() => AvailabilityAppointment)
@@ -284,6 +372,11 @@ export class Treatment {
   @ManyToOne(() => TherapeuticPath, path => path.treatments, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'therapeuticPathId' })
   therapeuticPath: TherapeuticPath;
+
+  @Field(() => Site)
+  @ManyToOne(() => Site, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'siteId' })
+  site: Site;
 
   // ==================== MULTIPLE SERVICES ====================
 
