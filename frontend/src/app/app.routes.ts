@@ -74,6 +74,12 @@ export const routes: Routes = [
     title: 'Calendario V2',
   },
   {
+    path: 'calendar3',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    loadChildren: () => import('./features/calendar-v3/calendar-v3.routes').then(m => m.CALENDAR_V3_ROUTES),
+    title: 'Calendario V3',
+  },
+  {
     path: 'trattamenti',
     canActivate: [authGuard, linkedGuard, schemaGuard],
     loadChildren: () => import('./features/trattamenti/trattamenti.routes').then(m => m.TRATTAMENTI_ROUTES),

@@ -81,9 +81,6 @@ export class TenantAdminResolver {
 
     await this.tenantSchemaService.provisionTenantSchema(schemaName, tenantId, bearerToken);
 
-    // Dopo il provisioning imposta il search_path per questa richiesta
-    await this.tenantSchemaService.setSearchPath(schemaName);
-
     const existsInMainDb = await this.tenantSchemaService.schemaExists(schemaName);
     // Dopo confirmSchemaCreated, l'Auth DB ha aggiornato lo stato
     // Ma il JWT corrente ha ancora il vecchio tenantStatus — il frontend

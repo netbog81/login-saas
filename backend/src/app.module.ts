@@ -1,4 +1,5 @@
 import { Module, DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
@@ -18,6 +19,7 @@ import { TenantAuditService } from './database/tenant-audit.service';
 import { TenantAdminResolver } from './database/tenant-admin.resolver';
 import { TenantOpenbaoResolverService } from './database/tenant-openbao-resolver.service';
 import { TenantContextMiddleware } from './middleware/tenant-context.middleware';
+import { TenantContextInterceptor } from './middleware/tenant-context.interceptor';
 import { RegistryModule } from './modules/registry/registry.module';
 import { RegistryClient } from './modules/registry/registry.client';
 import { buildGraphqlContext } from './modules/registry/utils/build-graphql-context';
@@ -281,6 +283,10 @@ export class AppModule implements NestModule {
         TenantOpenbaoResolverService,
         TenantContextMiddleware,
         JwksService,
+        {
+          provide: APP_INTERCEPTOR,
+          useClass: TenantContextInterceptor,
+        },
       ],
       exports: [
         TenantSchemaContextService,

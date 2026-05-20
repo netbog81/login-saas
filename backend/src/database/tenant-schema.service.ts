@@ -165,11 +165,4 @@ export class TenantSchemaService {
       databaseHost: `${host}:${port}`,
     };
   }
-
-  /**
-   * Imposta il search_path per la connessione corrente.
-   */
-  async setSearchPath(schemaName: string): Promise<void> {
-    await this.dataSource.query(`SET search_path TO "${schemaName}"`);
-  }
 }

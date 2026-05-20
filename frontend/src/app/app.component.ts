@@ -44,6 +44,9 @@ import { ConflictService } from './services/conflict.service';
             <a class="nav-item" routerLink="/calendar2" routerLinkActive="active">
               Calendario New
             </a>
+            <a class="nav-item" routerLink="/calendar3" routerLinkActive="active">
+              Calendario V3
+            </a>
             @if (registryUrl) {
               <a class="nav-item" [href]="registryUrl" target="_blank" rel="noopener noreferrer">
                 Anagrafiche
@@ -170,7 +173,7 @@ import { ConflictService } from './services/conflict.service';
       background: none;
       border: none;
       color: rgba(255,255,255,0.8);
-      padding: 20px 24px;
+      padding: 10px 18px;
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
