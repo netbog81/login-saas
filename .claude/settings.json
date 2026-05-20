@@ -18,7 +18,9 @@
       "Bash(TENANT_SCHEMA_TARGET=t_4701c4aaba73713294696ae7ae46d21b npx typeorm-ts-node-commonjs migration:show -d ./src/data-source-tenant.ts)",
       "Bash(TENANT_SCHEMA_TARGET=t_4701c4aaba73713294696ae7ae46d21b npx typeorm-ts-node-commonjs migration:run -d ./src/data-source-tenant.ts)",
       "Bash(node /tmp/inspect-tenant-anamnesi.js)",
-      "Bash(curl -s http://127.0.0.1:8200/v1/kv/data/tenant-map/bdq)"
+      "Bash(curl -s http://127.0.0.1:8200/v1/kv/data/tenant-map/bdq)",
+      "Bash(grep -nA5 \"private async resolveAppUserId\\\\|resolveAppUserId\" /home/marco/agenda/login-saas/backend/src/modules/availability/resolvers/treatment.resolver.ts)",
+      "Bash(npm run *)"
     ],
     "additionalDirectories": [
       "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/services",

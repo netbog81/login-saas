@@ -208,13 +208,6 @@ export class RegistryClient {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= this.config.retryCount; attempt++) {
       const startedAt = Date.now();
-      // [DIAG sessione 6] log URL + token-len + tenant-alias prima dell'invio,
-      // per scoprire se axios sta tentando un URL diverso o con headers strani.
-      this.logger.warn(
-        `[DIAG] Registry ${method} → URL="${url}" tenant="${ctx.tenantAlias}" ` +
-          `orgId="${ctx.orgId ?? 'null'}" tokenLen=${ctx.rawToken?.length ?? 0} ` +
-          `timeout=${this.config.timeoutMs}ms attempt=${attempt + 1}/${this.config.retryCount + 1}`,
-      );
       try {
         const res: AxiosResponse<T> = await firstValueFrom(this.http.request<T>(reqConfig));
         const elapsed = Date.now() - startedAt;

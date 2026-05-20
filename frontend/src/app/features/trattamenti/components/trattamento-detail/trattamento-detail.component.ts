@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA, MatDialog } from '@angular/material/dialog';
+import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { TextFieldModule } from '@angular/cdk/text-field';
@@ -21,7 +21,9 @@ import {
   TrattamentoServizio,
   PaymentMethod,
   TreatmentStatus,
+  TreatmentBillingStatus,
 } from '../../models/trattamento.model';
+import { TreatmentBillingSectionComponent } from '../treatment-billing-section/treatment-billing-section.component';
 
 export interface DetailEditInvoiceLinePayload {
   mode: 'create' | 'update' | 'delete';
@@ -87,6 +89,7 @@ export interface DetailDialogData {
     MatExpansionModule,
     MatTabsModule,
     MatTooltipModule,
+    TreatmentBillingSectionComponent,
   ],
   template: `
     <div class="detail-header" mat-dialog-title>
@@ -390,6 +393,26 @@ export interface DetailDialogData {
                 </button>
               </div>
             }
+
+            <!-- BILLING SECTION (sessione 6 — clinico ↔ accounting) -->
+            <!-- Mostra status accounting + snapshot fattura/credit-note + alert + azioni.
+                 Sopra il toggle "Pronto per fatturazione" per sequenza visiva
+                 "stato → azione". I bottoni di azione (Annulla/Riapri/Fattura subito)
+                 vivono qui dentro, NON duplicarli altrove. I flag disabled
+                 arrivano dal container (Step 6.5) basati su billingStatus. -->
+            <app-treatment-billing-section
+              [treatment]="treatment"
+              [cancelDisabled]="billingCancelDisabled"
+              [cancelDisabledReason]="billingCancelDisabledReason"
+              [reopenDisabled]="billingReopenDisabled"
+              [reopenDisabledReason]="billingReopenDisabledReason"
+              [immediateInvoiceDisabled]="billingImmediateInvoiceDisabled"
+              [immediateInvoiceDisabledReason]="billingImmediateInvoiceDisabledReason"
+              (dismissAlert)="dismissBillingAlert.emit($event)"
+              (cancelTreatment)="cancelTreatmentBilling.emit($event)"
+              (reopenTreatment)="reopenTreatmentBilling.emit($event)"
+              (immediateInvoice)="immediateInvoiceBilling.emit($event)">
+            </app-treatment-billing-section>
 
             <!-- READY FOR BILLING -->
             @if (canEditEconomics) {
@@ -767,6 +790,22 @@ export class TrattamentoDetailComponent {
   @Output() recordPayment = new EventEmitter<DetailRecordPaymentPayload>();
   @Output() toggleReadyForBilling = new EventEmitter<boolean>();
   @Output() closeTreatment = new EventEmitter<void>();
+
+  // Vincoli BillingSection (Step 6.5). Default conservativo: tutto disabled
+  // finché il container non sblocca esplicitamente sulla base di billingStatus.
+  @Input() billingCancelDisabled = true;
+  @Input() billingCancelDisabledReason: string | null = null;
+  @Input() billingReopenDisabled = true;
+  @Input() billingReopenDisabledReason: string | null = null;
+  @Input() billingImmediateInvoiceDisabled = true;
+  @Input() billingImmediateInvoiceDisabledReason: string | null = null;
+
+  // Output dalla BillingSection (sessione 6 — clinico ↔ accounting).
+  // Emettono treatmentId; il container gestisce le mutation reali.
+  @Output() dismissBillingAlert = new EventEmitter<string>();
+  @Output() cancelTreatmentBilling = new EventEmitter<string>();
+  @Output() reopenTreatmentBilling = new EventEmitter<string>();
+  @Output() immediateInvoiceBilling = new EventEmitter<string>();
   @Output() reopenTreatment = new EventEmitter<void>();
   /** Emette la richiesta di force-close (segreteria/admin). */
   @Output() forceCloseTreatment = new EventEmitter<void>();
@@ -793,7 +832,6 @@ export class TrattamentoDetailComponent {
     private dialogRef: MatDialogRef<TrattamentoDetailComponent>,
     @Inject(MAT_DIALOG_DATA) public data: DetailDialogData,
     private cdr: ChangeDetectorRef,
-    private dialog: MatDialog,
   ) {
     this.treatment = data.treatment;
     this.canEditEconomics = data.canEditEconomics;
@@ -874,22 +912,34 @@ export class TrattamentoDetailComponent {
     }
   }
 
+  /**
+   * CTA "Invia al sistema di fatturazione" disponibile SOLO se:
+   * - readyForBilling=true (operatore ha cliccato il toggle)
+   * - scontoFE=false (escluso da fatturazione)
+   * - billingStatus IN (NOT_READY, READY_FOR_BILLING) — esclude i
+   *   trattamenti già SENT/PENDING/INVOICED/CANCELLED. Una volta
+   *   inviato non si può re-inviare (idempotenza UI). Per fattura
+   *   immediata usare il bottone separato in BillingSection.
+   */
   get canSendToBilling(): boolean {
-    return this.treatment.readyForBilling === true
-      && this.treatment.isInvoicedToPatient === false
-      && this.treatment.scontoFE === false;
+    if (this.treatment.readyForBilling !== true) return false;
+    if (this.treatment.scontoFE === true) return false;
+    const status = this.treatment.billingStatus;
+    return status == null
+      || status === TreatmentBillingStatus.NotReady
+      || status === TreatmentBillingStatus.ReadyForBilling;
   }
 
   /**
-   * Mostra un dialog informativo: per ora l'invio al sistema di fatturazione
-   * è solo UI, non c'è una mutation backend che modifichi lo stato. Quando
-   * l'integrazione sarà pronta qui chiameremo la vera mutation.
+   * Sessione 6 chiusa: emit `toggleReadyForBilling(true)` al container
+   * parent, che chiama la mutation backend `setReadyForBilling([id], true)`.
+   * Il backend pubblica `treatment.closed.<tenant>` → consumer accounting
+   * crea BillableEvent → `billable.received` aggiorna treatment a SENT/PENDING.
+   * AutoIssue non scatta (requestImmediateInvoice=false). Per "Fattura subito
+   * + incassa" usare il bottone separato in BillingSection (Step 6.5).
    */
   onSendToBilling(): void {
-    this.dialog.open(BillingSubmitInfoDialog, {
-      width: '420px',
-      data: { count: 1 },
-    });
+    this.toggleReadyForBilling.emit(true);
   }
 
   formatDate(iso: string): string {
@@ -1037,54 +1087,7 @@ export class TrattamentoDetailComponent {
   }
 }
 
-/**
- * Dialog informativo di "invio al sistema di fatturazione".
- *
- * Per ora è un semplice avviso: mostra che l'invio è stato "registrato"
- * (ma in realtà NON modifica nulla lato server). Quando ci sarà
- * l'integrazione reale, sostituiremo questo con una mutation e un
- * feedback con il numero fattura ricevuto dal sistema contabilità.
- */
-@Component({
-  selector: 'app-billing-submit-info-dialog',
-  standalone: true,
-  imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule],
-  template: `
-    <h2 mat-dialog-title>
-      <mat-icon color="primary" style="vertical-align: middle">info</mat-icon>
-      Invio al sistema di fatturazione
-    </h2>
-    <mat-dialog-content>
-      @if (data.count && data.count > 1) {
-        <p>
-          I <strong>{{ data.count }}</strong> trattamenti selezionati sono stati inviati
-          al sistema di fatturazione.
-        </p>
-      } @else {
-        <p>Il trattamento è stato inviato al sistema di fatturazione.</p>
-      }
-      <p class="hint">
-        <mat-icon inline style="vertical-align: middle; font-size: 16px">construction</mat-icon>
-        L'integrazione con la contabilità è in fase di predisposizione:
-        per ora questa azione è solo un'anteprima UI e non modifica
-        lo stato del trattamento.
-      </p>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-flat-button color="primary" mat-dialog-close>OK</button>
-    </mat-dialog-actions>
-  `,
-  styles: [`
-    .hint {
-      color: rgba(0,0,0,0.6);
-      font-size: 0.85rem;
-      background: #fff3e0;
-      padding: 8px 12px;
-      border-radius: 4px;
-      border-left: 3px solid #f57c00;
-    }
-  `],
-})
-export class BillingSubmitInfoDialog {
-  constructor(@Inject(MAT_DIALOG_DATA) public data: { count?: number }) {}
-}
+// `BillingSubmitInfoDialog` rimosso 2026-05-09: era placeholder
+// pre-Sessione 6 ("integrazione in fase di predisposizione"). Ora
+// l'invio al sistema di fatturazione chiama davvero
+// `setReadyForBilling([id], true)` via `toggleReadyForBilling.emit(true)`.

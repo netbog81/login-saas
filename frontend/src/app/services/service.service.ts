@@ -64,6 +64,7 @@ export class ServiceService extends BaseGraphQLService {
   createService(input: CreateServiceInput): Observable<Service> {
     const variables = {
       name: input.name,
+      serviceCode: input.serviceCode,
       description: input.description,
       defaultDuration: input.defaultDuration,
       defaultPrice: input.defaultPrice,
@@ -99,6 +100,7 @@ export class ServiceService extends BaseGraphQLService {
       {
         id,
         name: input.name,
+        serviceCode: input.serviceCode,
         description: input.description,
         defaultDuration: input.defaultDuration,
         defaultPrice: input.defaultPrice,

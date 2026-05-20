@@ -99,13 +99,19 @@ async function main(): Promise<void> {
     'beneficiarySubjectId',
     '22222222-2222-2222-2222-222222222222',
   )!;
+  const serviceId = parseArg('serviceId', '44444444-4444-4444-4444-444444444444')!;
+  const serviceCode = parseArg('serviceCode', 'TMP-44444444')!;
   const immediate = parseFlag('immediate');
+  const noCustomLine = parseFlag('no-custom');
 
   console.log('Parametri:');
   console.log(`  tenant                  = ${tenantAlias}`);
   console.log(`  treatmentId             = ${treatmentId}`);
   console.log(`  beneficiarySubjectId    = ${beneficiarySubjectId}`);
+  console.log(`  serviceId               = ${serviceId}`);
+  console.log(`  serviceCode             = ${serviceCode}`);
   console.log(`  requestImmediateInvoice = ${immediate}`);
+  console.log(`  no-custom-line          = ${noCustomLine}`);
   console.log('');
 
   const app = await NestFactory.createApplicationContext(SmokeTestModule, {
@@ -143,8 +149,8 @@ async function main(): Promise<void> {
         {
           lineId: '33333333-3333-3333-3333-333333333333',
           lineType: 'SERVICE',
-          serviceId: '44444444-4444-4444-4444-444444444444',
-          serviceCode: 'TMP-44444444',
+          serviceId,
+          serviceCode,
           executedByUserId: 'kc-smoke-operator-sub',
           professionalRegistration: 'Albo FT n. 12345',
           macroCategory: 'PHYSIOTHERAPIST',
@@ -158,14 +164,18 @@ async function main(): Promise<void> {
           externalDoctorName: null,
           externalPrescriptionRef: null,
         },
-        {
-          lineId: '55555555-5555-5555-5555-555555555555',
-          lineType: 'CUSTOM',
-          description: 'Crema medicale (extra)',
-          amount: '12.00',
-          quantity: '1',
-          createdByUserId: 'kc-smoke-secretary-sub',
-        },
+        ...(noCustomLine
+          ? []
+          : [
+              {
+                lineId: '55555555-5555-5555-5555-555555555555',
+                lineType: 'CUSTOM' as const,
+                description: 'Crema medicale (extra)',
+                amount: '12.00',
+                quantity: '1',
+                createdByUserId: 'kc-smoke-secretary-sub',
+              },
+            ]),
       ],
       totalAmount: '67.00',
       payment: {

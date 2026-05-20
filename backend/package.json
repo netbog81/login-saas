@@ -19,8 +19,9 @@
     "schema:sync": "typeorm-ts-node-commonjs schema:sync -d ./src/data-source.ts",
     "schema:log": "typeorm-ts-node-commonjs schema:log -d ./src/data-source.ts",
     "db:check": "npm run schema:log",
-    "smoke:publish-treatment-closed": "ts-node src/scripts/test-publish-treatment-closed.ts",
-    "sync:services": "ts-node src/scripts/sync-services-and-products.ts"
+    "smoke:publish-treatment-closed": "ts-node --transpile-only src/scripts/test-publish-treatment-closed.ts",
+    "sync:services": "ts-node src/scripts/sync-services-and-products.ts",
+    "smoke:2-cascade": "ts-node --transpile-only src/scripts/smoke-2-treatment-cascade.ts"
   },
   "dependencies": {
     "@apollo/server": "^4.12.2",
@@ -42,6 +43,7 @@
     "class-validator": "^0.14.0",
     "cookie-parser": "^1.4.7",
     "dataloader": "^2.2.3",
+    "decimal.js": "^10.6.0",
     "dotenv": "^17.3.1",
     "eventemitter2": "^6.4.9",
     "graphql": "^16.12.0",

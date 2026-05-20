@@ -28,6 +28,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   showServiceForm = false;
   editingService: Partial<CreateServiceInput> & { subcategoryId?: string | null; discountFE?: number | null } = {
     name: '',
+    serviceCode: '',
     description: '',
     defaultDuration: 30,
     defaultPrice: 0,
@@ -138,6 +139,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         this.selectedService = service;
         this.editingService = {
           name: service.name,
+          serviceCode: (service as any).serviceCode ?? '',
           description: service.description,
           defaultDuration: service.defaultDuration,
           defaultPrice: service.defaultPrice,
@@ -154,6 +156,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         this.selectedService = null;
         this.editingService = {
           name: '',
+          serviceCode: '',
           description: '',
           defaultDuration: 30,
           defaultPrice: 0,
@@ -204,6 +207,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
       this.selectedService = null;
       this.editingService = {
         name: '',
+        serviceCode: '',
         description: '',
         defaultDuration: 30,
         defaultPrice: 0,
@@ -224,6 +228,14 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
       this.error = 'Nome e durata sono obbligatori';
       return;
     }
+    // serviceCode obbligatorio (UNIQUE per-schema, vedi backend Step 1).
+    // L'operatore corregge i TMP-* generati dalla migration con codici reali
+    // (es. "FIS-001"). Spazi e maiuscole-minuscole consigliati come scelta
+    // operativa, ma niente normalizzazione client-side per ora.
+    if (!this.editingService.serviceCode || this.editingService.serviceCode.trim().length === 0) {
+      this.error = 'Codice servizio (serviceCode) è obbligatorio';
+      return;
+    }
 
     this.loading = true;
 
@@ -232,6 +244,7 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
       const input: UpdateServiceInput & { subcategoryId?: string | null; discountFE?: number | null } = {
         id: this.selectedService.id,
         name: this.editingService.name,
+        serviceCode: this.editingService.serviceCode!.trim(),
         description: this.editingService.description,
         defaultDuration: this.editingService.defaultDuration!,
         defaultPrice: this.editingService.defaultPrice!,
@@ -259,7 +272,10 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         });
     } else {
       // Create new service
-      const input: CreateServiceInput = this.editingService as CreateServiceInput;
+      const input: CreateServiceInput = {
+        ...(this.editingService as CreateServiceInput),
+        serviceCode: this.editingService.serviceCode!.trim(),
+      };
 
       console.log('Creating service with input:', input);
       this.serviceService.createService(input)

@@ -1,21 +1,52 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
 import { Service } from '../entities/service.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
-// import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
+import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
+import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
+import { CatalogEventMapper } from '../../clinical-events/mappers/catalog-event.mapper';
+import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
 
+/**
+ * Resolver del catalogo Service.
+ *
+ * Sessione 6 Step 7.6: ogni create/update/delete pubblica
+ * `service.upserted.<tenant>` o `service.deleted.<tenant>` verso accounting
+ * tramite `ex.clinical.events`. Pattern publish-after-commit:
+ *  - Tutta la mutazione DB dentro `dataSource.transaction(...)`.
+ *  - Dentro la tx: `eventBuffer.add()`.
+ *  - Solo dopo il commit OK: `flushBufferedEvents()` emette su EventEmitter2
+ *    → @OnEvent listener nel publisher → publish reale.
+ *  - Se la tx throw, gli eventi restano nel buffer ALS e vengono droppati.
+ *
+ * IMPORTANTE: `serviceCode` è obbligatorio in create (UNIQUE per-schema).
+ * Lo script `sync:services` ha popolato i 17 service esistenti con
+ * `TMP-<id8>`; l'operatore corregge poi via UI.
+ */
 @Resolver(() => Service)
 export class ServiceResolver {
+  private readonly logger = new Logger(ServiceResolver.name);
+
   constructor(
     @InjectRepository(Service)
     private serviceRepo: Repository<Service>,
+    @InjectDataSource()
+    private dataSource: DataSource,
+    private readonly eventBuffer: ClinicalEventBuffer,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly catalogMapper: CatalogEventMapper,
+    private readonly tenantContext: TenantSchemaContextService,
   ) {}
 
-  // Queries
+  // ============================================================================
+  // Queries (invariate)
+  // ============================================================================
+
   @Query(() => [Service], { name: 'services' })
-  // @UseGuards(GqlAuthGuard)
   async getServices(
     @Args('macroCategory', { type: () => OperatorMacroCategory, nullable: true })
     macroCategory?: OperatorMacroCategory,
@@ -34,9 +65,8 @@ export class ServiceResolver {
   }
 
   @Query(() => Service, { name: 'service', nullable: true })
-  // @UseGuards(GqlAuthGuard)
   async getService(
-    @Args('id', { type: () => ID }) id: string
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<Service | null> {
     return this.serviceRepo.findOne({
       where: { id },
@@ -44,11 +74,14 @@ export class ServiceResolver {
     });
   }
 
+  // ============================================================================
   // Mutations
+  // ============================================================================
+
   @Mutation(() => Service, { name: 'createService' })
-  // @UseGuards(GqlAuthGuard)
   async createService(
     @Args('name') name: string,
+    @Args('serviceCode') serviceCode: string,
     @Args('defaultDuration', { type: () => Int }) defaultDuration: number,
     @Args('macroCategory', { type: () => OperatorMacroCategory, nullable: true })
     macroCategory?: OperatorMacroCategory,
@@ -63,30 +96,54 @@ export class ServiceResolver {
     @Args('subcategoryId', { type: () => ID, nullable: true }) subcategoryId?: string,
     @Args('discountFE', { nullable: true }) discountFE?: number,
   ): Promise<Service> {
-    const service = this.serviceRepo.create({
-      name,
-      description,
-      defaultDuration,
-      defaultPrice: defaultPrice || 0,
-      bufferTimeBefore: bufferTimeBefore || 0,
-      bufferTimeAfter: bufferTimeAfter || 0,
-      color,
-      isActive: isActive !== false,
-      macroCategory,
-      preferredDuration,
-      instrumentOrderMatters: instrumentOrderMatters || false,
-      subcategoryId,
-      discountFE,
+    if (!serviceCode || serviceCode.trim().length === 0) {
+      throw new BadRequestException('serviceCode è obbligatorio.');
+    }
+
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Service);
+      const service = repo.create({
+        name,
+        serviceCode: serviceCode.trim(),
+        description,
+        defaultDuration,
+        defaultPrice: defaultPrice || 0,
+        bufferTimeBefore: bufferTimeBefore || 0,
+        bufferTimeAfter: bufferTimeAfter || 0,
+        color,
+        isActive: isActive !== false,
+        macroCategory,
+        preferredDuration,
+        instrumentOrderMatters: instrumentOrderMatters || false,
+        subcategoryId,
+        discountFE,
+      });
+      const result = await repo.save(service);
+
+      if (tenantAlias) {
+        this.eventBuffer.add({
+          eventType: 'service.upserted',
+          payload: this.catalogMapper.mapServiceUpserted(result),
+          tenantAlias,
+          correlationId,
+        });
+      }
+
+      return result;
     });
 
-    return this.serviceRepo.save(service);
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return saved;
   }
 
   @Mutation(() => Service, { name: 'updateService' })
-  // @UseGuards(GqlAuthGuard)
   async updateService(
     @Args('id', { type: () => ID }) id: string,
     @Args('name', { nullable: true }) name?: string,
+    @Args('serviceCode', { nullable: true }) serviceCode?: string,
     @Args('description', { nullable: true }) description?: string,
     @Args('defaultDuration', { type: () => Int, nullable: true }) defaultDuration?: number,
     @Args('defaultPrice', { nullable: true }) defaultPrice?: number,
@@ -101,39 +158,102 @@ export class ServiceResolver {
     @Args('subcategoryId', { type: () => ID, nullable: true }) subcategoryId?: string,
     @Args('discountFE', { nullable: true }) discountFE?: number,
   ): Promise<Service> {
-    await this.serviceRepo.update(id, {
-      ...(name !== undefined && { name }),
-      ...(description !== undefined && { description }),
-      ...(defaultDuration !== undefined && { defaultDuration }),
-      ...(defaultPrice !== undefined && { defaultPrice }),
-      ...(bufferTimeBefore !== undefined && { bufferTimeBefore }),
-      ...(bufferTimeAfter !== undefined && { bufferTimeAfter }),
-      ...(color !== undefined && { color }),
-      ...(isActive !== undefined && { isActive }),
-      ...(macroCategory !== undefined && { macroCategory }),
-      ...(preferredDuration !== undefined && { preferredDuration }),
-      ...(instrumentOrderMatters !== undefined && { instrumentOrderMatters }),
-      ...(subcategoryId !== undefined && { subcategoryId }),
-      ...(discountFE !== undefined && { discountFE }),
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Service);
+      const existing = await repo.findOne({ where: { id } });
+      if (!existing) {
+        throw new NotFoundException(`Service ${id} non trovato`);
+      }
+
+      await repo.update(id, {
+        ...(name !== undefined && { name }),
+        ...(serviceCode !== undefined && { serviceCode: serviceCode.trim() }),
+        ...(description !== undefined && { description }),
+        ...(defaultDuration !== undefined && { defaultDuration }),
+        ...(defaultPrice !== undefined && { defaultPrice }),
+        ...(bufferTimeBefore !== undefined && { bufferTimeBefore }),
+        ...(bufferTimeAfter !== undefined && { bufferTimeAfter }),
+        ...(color !== undefined && { color }),
+        ...(isActive !== undefined && { isActive }),
+        ...(macroCategory !== undefined && { macroCategory }),
+        ...(preferredDuration !== undefined && { preferredDuration }),
+        ...(instrumentOrderMatters !== undefined && { instrumentOrderMatters }),
+        ...(subcategoryId !== undefined && { subcategoryId }),
+        ...(discountFE !== undefined && { discountFE }),
+      });
+
+      const reloaded = await repo.findOne({
+        where: { id },
+        relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory', 'subcategory'],
+      });
+      if (!reloaded) {
+        throw new NotFoundException(`Service ${id} sparito durante l'update`);
+      }
+
+      if (tenantAlias) {
+        this.eventBuffer.add({
+          eventType: 'service.upserted',
+          payload: this.catalogMapper.mapServiceUpserted(reloaded),
+          tenantAlias,
+          correlationId,
+        });
+      }
+      return reloaded;
     });
 
-    const service = await this.serviceRepo.findOne({
-      where: { id },
-      relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory', 'subcategory'],
-    });
-    if (!service) {
-      throw new Error('Service not found');
-    }
-
-    return service;
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return updated;
   }
 
+  /**
+   * Soft-delete logico: marca `isActive=false` invece di rimuovere fisicamente.
+   * Pubblica `service.deleted.<tenant>` per informare accounting che il
+   * servizio non sarà più offerto.
+   *
+   * Hard-delete intenzionalmente NON supportato qui: i trattamenti storici
+   * fanno FK al service e perderemmo l'audit. Per cleanup database, script
+   * separato dedicato.
+   */
   @Mutation(() => Boolean, { name: 'deleteService' })
-  // @UseGuards(GqlAuthGuard)
   async deleteService(
-    @Args('id', { type: () => ID }) id: string
+    @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {
-    const result = await this.serviceRepo.delete(id);
-    return result.affected ? result.affected > 0 : false;
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Service);
+      const existing = await repo.findOne({ where: { id } });
+      if (!existing) {
+        return false;
+      }
+      // Soft-delete = isActive=false. Niente DELETE fisica per preservare FK.
+      if (existing.isActive) {
+        await repo.update(id, { isActive: false });
+      } else {
+        // Idempotenza mantenuta (return true), ma logghiamo per distinguere
+        // "cancellato adesso" da "era già cancellato" (utile in audit).
+        this.logger.warn(
+          `[ServiceResolver] deleteService no-op: service ${id} già isActive=false`,
+        );
+      }
+      const deletedAt = new Date();
+
+      if (tenantAlias) {
+        this.eventBuffer.add({
+          eventType: 'service.deleted',
+          payload: this.catalogMapper.mapServiceDeleted(id, deletedAt),
+          tenantAlias,
+          correlationId,
+        });
+      }
+      return true;
+    });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return result;
   }
 }

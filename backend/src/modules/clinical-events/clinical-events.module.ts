@@ -4,8 +4,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ClinicalEventsConfig } from './clinical-events.config';
 import { ClinicalEventPublisher } from './clinical-event.publisher';
+import { ClinicalEventBuffer } from './clinical-event-buffer.service';
+import { ClinicalEventBufferMiddleware } from './clinical-event-buffer.middleware';
 import { AccountingEventConsumer } from './accounting-event.consumer';
 import { ProcessedClinicalEvent } from './processed-clinical-event.entity';
+import { TreatmentEventMapper } from './mappers/treatment-event.mapper';
+import { CatalogEventMapper } from './mappers/catalog-event.mapper';
 
 /**
  * Modulo eventi clinici:
@@ -30,8 +34,19 @@ import { ProcessedClinicalEvent } from './processed-clinical-event.entity';
   providers: [
     ClinicalEventsConfig,
     ClinicalEventPublisher,
+    ClinicalEventBuffer,
+    ClinicalEventBufferMiddleware,
     AccountingEventConsumer,
+    TreatmentEventMapper,
+    CatalogEventMapper,
   ],
-  exports: [ClinicalEventPublisher, ClinicalEventsConfig],
+  exports: [
+    ClinicalEventPublisher,
+    ClinicalEventBuffer,
+    ClinicalEventBufferMiddleware,
+    ClinicalEventsConfig,
+    TreatmentEventMapper,
+    CatalogEventMapper,
+  ],
 })
 export class ClinicalEventsModule {}

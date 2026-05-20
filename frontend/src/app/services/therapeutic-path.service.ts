@@ -436,32 +436,35 @@ export class TherapeuticPathService extends BaseGraphQLService {
 
   /**
    * Crea una nuova valutazione
+   *
+   * NB: schema backend rinominato `createPatientEvaluation` → `createEvaluation`.
+   * Il response field è ora `result.createEvaluation`.
    */
   createEvaluation(input: CreateEvaluationInput): Observable<Anamnesis> {
-    return this.mutate<{ createPatientEvaluation: BackendPatientEvaluation }>(
+    return this.mutate<{ createEvaluation: BackendPatientEvaluation }>(
       CREATE_PATIENT_EVALUATION,
       { input }
-    ).pipe(map((result) => this.mapEvaluationToAnamnesis(result.createPatientEvaluation)!));
+    ).pipe(map((result) => this.mapEvaluationToAnamnesis(result.createEvaluation)!));
   }
 
   /**
    * Aggiorna una valutazione
    */
   updateEvaluation(id: string, input: UpdateEvaluationInput): Observable<Anamnesis> {
-    return this.mutate<{ updatePatientEvaluation: BackendPatientEvaluation }>(
+    return this.mutate<{ updateEvaluation: BackendPatientEvaluation }>(
       UPDATE_PATIENT_EVALUATION,
       { id, input }
-    ).pipe(map((result) => this.mapEvaluationToAnamnesis(result.updatePatientEvaluation)!));
+    ).pipe(map((result) => this.mapEvaluationToAnamnesis(result.updateEvaluation)!));
   }
 
   /**
    * Elimina una valutazione
    */
   deleteEvaluation(id: string): Observable<boolean> {
-    return this.mutate<{ deletePatientEvaluation: boolean }>(
+    return this.mutate<{ deleteEvaluation: boolean }>(
       DELETE_PATIENT_EVALUATION,
       { id }
-    ).pipe(map((result) => result.deletePatientEvaluation));
+    ).pipe(map((result) => result.deleteEvaluation));
   }
 
   // ==================== DOCUMENT MUTATIONS ====================

@@ -1,0 +1,133 @@
+<div class="modal-overlay" (click)="onCancel()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Vendita rapida prodotto</h3>
+      <button class="close-btn" (click)="onCancel()">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div *ngIf="error" class="error">{{ error }}</div>
+
+      <div class="form-row">
+        <div class="form-group form-group-full">
+          <label>ID Paziente acquirente *</label>
+          <input type="text"
+                 [(ngModel)]="purchaserSubjectId"
+                 class="form-control"
+                 placeholder="UUID subject del registry">
+          <small class="form-help">
+            UUID del subject registry (paziente che paga e riceve il prodotto).
+            MVP: purchaser e beneficiary coincidono.
+          </small>
+        </div>
+      </div>
+
+      <h4 class="section-title">Righe prodotto</h4>
+      <table class="lines-table">
+        <thead>
+          <tr>
+            <th>Prodotto</th>
+            <th class="num">Qty</th>
+            <th class="num">Prezzo unitario</th>
+            <th class="num">Totale</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let line of draftLines; let i = index; trackBy: trackByLineIndex">
+            <td>
+              <select [(ngModel)]="line.productId" class="form-control">
+                <option [ngValue]="''">— Seleziona —</option>
+                <option *ngFor="let p of products" [ngValue]="p.id">
+                  {{ p.productCode }} — {{ p.name }}
+                </option>
+              </select>
+            </td>
+            <td class="num">
+              <input type="number"
+                     min="1"
+                     step="1"
+                     [(ngModel)]="line.quantity"
+                     class="form-control input-narrow">
+            </td>
+            <td class="num">
+              <input type="number"
+                     min="0"
+                     step="0.01"
+                     [(ngModel)]="line.unitPriceOverride"
+                     [placeholder]="productById(line.productId)?.defaultPrice ?? '—'"
+                     class="form-control input-narrow"
+                     title="Lascia vuoto per usare il prezzo di default">
+            </td>
+            <td class="num">{{ formatPrice(lineTotal(line)) }}</td>
+            <td>
+              <button type="button"
+                      class="btn btn-sm"
+                      (click)="removeLine(i)"
+                      [disabled]="draftLines.length === 1">
+                ✕
+              </button>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" class="add-row">
+              <button type="button" class="btn btn-sm" (click)="addLine()">
+                + Aggiungi riga
+              </button>
+            </td>
+            <td class="num grand-total">{{ formatPrice(grandTotal) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <h4 class="section-title">Pagamento</h4>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="toggle">
+            <input type="checkbox" [(ngModel)]="isPaid">
+            Pagato in cassa
+          </label>
+        </div>
+        <div class="form-group" *ngIf="isPaid">
+          <label>Metodo</label>
+          <select [(ngModel)]="paymentMethod" class="form-control">
+            <option *ngFor="let pm of paymentMethods" [ngValue]="pm.value">{{ pm.label }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group-full">
+          <label class="toggle">
+            <input type="checkbox" [(ngModel)]="requestImmediateInvoice">
+            Emetti fattura subito (AutoIssue accounting)
+          </label>
+          <small class="form-help">
+            Se il mapping prodotto è fiscalmente configurato, accounting emette
+            la fattura entro pochi secondi. Altrimenti la vendita resta in
+            attesa fino alla configurazione del mapping.
+          </small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group-full">
+          <label>Note</label>
+          <textarea [(ngModel)]="notes" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn" (click)="onCancel()">Annulla</button>
+      <button class="btn btn-primary"
+              (click)="onSubmit()"
+              [disabled]="loading">
+        Registra vendita
+      </button>
+    </div>
+  </div>
+</div>

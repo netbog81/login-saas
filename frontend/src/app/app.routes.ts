@@ -80,6 +80,12 @@ export const routes: Routes = [
     title: 'Trattamenti',
   },
   {
+    path: 'products',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    loadChildren: () => import('./features/products/products.routes').then(m => m.PRODUCTS_ROUTES),
+    title: 'Prodotti',
+  },
+  {
     path: 'patients',
     component: PatientManagementComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],

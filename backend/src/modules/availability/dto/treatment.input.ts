@@ -349,6 +349,18 @@ export class UpdateTreatmentBySecretaryInput {
   @ValidateNested({ each: true })
   @Type(() => TreatmentServiceInputItem)
   treatmentServices?: TreatmentServiceInputItem[];
+
+  /**
+   * Motivo dell'amend (es. "aggiunta riga prodotto"). Obbligatorio quando
+   * il trattamento è già pubblicato (billingStatus IN SENT/PENDING) e
+   * la modifica genera un evento `treatment.amended.<tenant>` verso accounting.
+   * Per altri stati può essere omesso.
+   */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: 'amendmentReason non può superare 500 caratteri' })
+  amendmentReason?: string;
 }
 
 /**

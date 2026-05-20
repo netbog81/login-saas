@@ -24,6 +24,7 @@ import {
   TrattamentiFilters,
   TrattamentiViewMode,
   TreatmentStatus,
+  TreatmentBillingStatus,
   PaymentMethod,
 } from '../models/trattamento.model';
 
@@ -36,7 +37,6 @@ import {
   DetailEditInvoiceLinePayload,
   DetailUpdateEconomicsPayload,
   DetailRecordPaymentPayload,
-  BillingSubmitInfoDialog,
 } from '../components/trattamento-detail/trattamento-detail.component';
 
 import { OperatorService } from '../../../services/operator.service';
@@ -132,6 +132,7 @@ const SECRETARY_ROLES = ['admin', 'amministratore', 'superadmin', 'segreteria'];
         [showBillingFlags]="isSecretary"
         [showViewMode]="true"
         (statusesChange)="onStatuses($event)"
+        (billingStatusesChange)="state.setFilters({ billingStatuses: $event })"
         (dateFromChange)="state.setFilters({ dateFrom: $event })"
         (dateToChange)="state.setFilters({ dateTo: $event })"
         (operatorIdChange)="state.setFilters({ operatorId: $event })"
@@ -276,13 +277,36 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       .pipe(debounceTime(200), takeUntil(this.destroy$))
       .subscribe(() => this.reload());
 
-    // Trasforma i treatments in flat + groups ogni volta che cambiano
-    combineLatest([this.state.treatments$, this.state.viewMode$])
+    // Trasforma i treatments in flat + groups ogni volta che cambiano.
+    // Include `state.filters$` per applicare i filtri client-only (es.
+    // billingStatuses, vedi Step 6.4 sessione 6) prima del rendering.
+    combineLatest([this.state.treatments$, this.state.viewMode$, this.state.filters$])
       .pipe(takeUntil(this.destroy$))
-      .subscribe(([treatments, mode]) => {
-        this.flatTreatments = treatments;
-        this.groupedTreatments = this.buildGroups(treatments, mode);
+      .subscribe(([treatments, mode, filters]) => {
+        const filtered = this.applyClientFilters(treatments, filters);
+        this.flatTreatments = filtered;
+        this.groupedTreatments = this.buildGroups(filtered, mode);
       });
+  }
+
+  /**
+   * Filtri applicati lato client su risultati già caricati dal backend.
+   * Per ora solo `billingStatuses` (multi-select chip in
+   * trattamenti-filters). Altri filtri viaggiano server-side via query
+   * GraphQL (vedi sanitizeFilters nel service).
+   */
+  private applyClientFilters(
+    treatments: Trattamento[],
+    filters: TrattamentiFilters,
+  ): Trattamento[] {
+    const billingFilter = filters.billingStatuses;
+    if (!billingFilter || billingFilter.length === 0) {
+      return treatments;
+    }
+    const allowed = new Set(billingFilter);
+    return treatments.filter(t =>
+      t.billingStatus != null && allowed.has(t.billingStatus),
+    );
   }
 
   reload(): void {
@@ -377,34 +401,72 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
   // ==================== INVIO A FATTURAZIONE ====================
 
   /** Restituisce true se TUTTI i trattamenti selezionati sono in stato
-   * "inviabile" (ready + non scontoFE + non già fatturati). */
+   * "inviabile" al sistema di fatturazione.
+   *
+   * Vincoli:
+   * - readyForBilling=true (operatore ha cliccato "Pronto per fatturazione")
+   * - scontoFE=false (i trattamenti fattura elettronica esclusi non
+   *   passano da accounting)
+   * - billingStatus IN (NOT_READY, READY_FOR_BILLING) — esclude i
+   *   trattamenti già SENT/PENDING/INVOICED/CANCELLED/REFUNDED. Una
+   *   volta inviato non si può re-inviare (idempotenza UI).
+   */
   canSendSelection(selectedIds: Set<string>): boolean {
     if (selectedIds.size === 0) return false;
     const set = this.state.treatments.filter(t => selectedIds.has(t.id));
     if (set.length === 0) return false;
+    const sendableStatuses: ReadonlyArray<TreatmentBillingStatus | null | undefined> = [
+      TreatmentBillingStatus.NotReady,
+      TreatmentBillingStatus.ReadyForBilling,
+      null,
+      undefined,  // treatment vecchi pre-sessione 6 senza billingStatus
+    ];
     return set.every(t =>
       t.readyForBilling === true
-      && t.isInvoicedToPatient === false
-      && t.scontoFE === false,
+      && t.scontoFE === false
+      && sendableStatuses.includes(t.billingStatus),
     );
   }
 
   sendSelection(): void {
-    const count = this.state.selectedIds.size;
-    if (count === 0) return;
-    // Dialog informativo: per ora NON chiamiamo il backend (vedi spec:
-    // la predisposizione c'è, l'invio vero verrà fatto quando avremo
-    // il contratto con il sistema di fatturazione).
-    this.dialog.open(BillingSubmitInfoDialog, {
-      width: '440px',
-      data: { count },
+    const ids = Array.from(this.state.selectedIds);
+    if (ids.length === 0) return;
+    // Sessione 6 chiusa: setReadyForBilling pubblica treatment.closed
+    // → consumer accounting crea BillableEvent → billable.received
+    // aggiorna treatment.billingStatus SENT → PENDING (eventually
+    // consistent, ~1s). AutoIssue NON scatta (requestImmediateInvoice=false).
+    // Il primo reload mostra SENT; un refresh manuale dell'utente entro
+    // 1-2s mostrerà PENDING.
+    this.service.setReadyForBilling(ids, true).subscribe({
+      next: () => {
+        this.snackBar.open(
+          ids.length === 1
+            ? 'Trattamento inviato al sistema di fatturazione'
+            : `${ids.length} trattamenti inviati al sistema di fatturazione`,
+          'OK',
+          { duration: 4000 },
+        );
+        this.reload();
+      },
+      error: (err) => {
+        this.snackBar.open(this.extractError(err), 'OK', { duration: 5000 });
+      },
     });
   }
 
-  sendOne(_t: Trattamento): void {
-    this.dialog.open(BillingSubmitInfoDialog, {
-      width: '420px',
-      data: { count: 1 },
+  sendOne(t: Trattamento): void {
+    this.service.setReadyForBilling([t.id], true).subscribe({
+      next: () => {
+        this.snackBar.open(
+          'Trattamento inviato al sistema di fatturazione',
+          'OK',
+          { duration: 4000 },
+        );
+        this.reload();
+      },
+      error: (err) => {
+        this.snackBar.open(this.extractError(err), 'OK', { duration: 5000 });
+      },
     });
   }
 
@@ -562,16 +624,21 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
 
     inst.toggleReadyForBilling.subscribe((ready: boolean) => {
       this.service.setReadyForBilling([treatment.id], ready).subscribe({
-        next: (updated) => {
-          if (updated.length > 0) {
-            const u = updated[0];
-            const merged: Trattamento = {
-              ...treatment,
-              readyForBilling: u.readyForBilling,
-              readyForBillingAt: u.readyForBillingAt ?? null,
-            };
-            this.state.updateTreatment(merged);
-            ref.componentInstance.treatment = merged;
+        next: () => {
+          // Sessione 6: setReadyForBilling+ready=true triggera publish
+          // treatment.closed → billingStatus passa a SENT (sync) e poi
+          // PENDING (async dopo billable.received). Refetch completo
+          // garantisce che il dialog mostri lo stato accounting reale,
+          // non solo readyForBilling boolean. NB: billingStatus PENDING
+          // arriva di solito ~1s dopo, l'utente vedrà SENT poi un
+          // refresh successivo mostrerà PENDING.
+          this.refreshSingleTreatment(treatment.id, ref);
+          if (ready) {
+            this.snackBar.open(
+              'Trattamento inviato al sistema di fatturazione',
+              'OK',
+              { duration: 3000 },
+            );
           }
         },
         error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
@@ -616,12 +683,151 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       });
     });
 
+    // ────────── BillingSection (sessione 6 Step 6.5) ──────────
+    // Cabla i 3 flag disabled basandosi su billingStatus + handler 4 events.
+    // Helper: ricalcola i flag per il treatment correntemente nel dialog.
+    const applyBillingFlagsToInst = (t: Trattamento): void => {
+      const flags = this.computeBillingFlags(t);
+      ref.componentInstance.billingCancelDisabled = flags.cancelDisabled;
+      ref.componentInstance.billingCancelDisabledReason = flags.cancelDisabledReason;
+      ref.componentInstance.billingReopenDisabled = flags.reopenDisabled;
+      ref.componentInstance.billingReopenDisabledReason = flags.reopenDisabledReason;
+      ref.componentInstance.billingImmediateInvoiceDisabled = flags.immediateInvoiceDisabled;
+      ref.componentInstance.billingImmediateInvoiceDisabledReason = flags.immediateInvoiceDisabledReason;
+    };
+    // Inizializza i flag con il treatment iniziale.
+    applyBillingFlagsToInst(treatment);
+
+    // Cancel: dialog conferma con reason obbligatoria.
+    inst.cancelTreatmentBilling.subscribe((id: string) => {
+      const reason = window.prompt(
+        'Annullare il trattamento? Inserisci un motivo (obbligatorio):',
+        '',
+      );
+      if (!reason || reason.trim().length === 0) {
+        return;
+      }
+      this.service.cancelTreatment(id, reason.trim()).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+          applyBillingFlagsToInst(updated);
+          this.snackBar.open('Trattamento annullato', 'OK', { duration: 2500 });
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
+    // Reopen: usa la mutation esistente reopen del service.
+    inst.reopenTreatmentBilling.subscribe((id: string) => {
+      this.service.reopen(id).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+          applyBillingFlagsToInst(updated);
+          this.snackBar.open('Trattamento riaperto', 'OK', { duration: 2000 });
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
+    // Fattura subito + incassa: setReadyForBilling con flag immediate.
+    // Disponibile solo per NOT_READY (closes + publishes con
+    // requestImmediateInvoice=true → accounting AutoIssue).
+    inst.immediateInvoiceBilling.subscribe((id: string) => {
+      this.service.setReadyForBillingImmediate(id).subscribe({
+        next: () => {
+          // Ricarico il singolo treatment per avere lo stato aggiornato
+          // (billingStatus → SENT, eventualmente PENDING/INVOICED al
+          // round-trip successivo).
+          this.reload();
+          this.snackBar.open(
+            'Inviato ad accounting per fatturazione immediata',
+            'OK',
+            { duration: 2500 },
+          );
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
+    // dismissBillingAlert (Step 6.7): chiama mutation backend, idempotente.
+    inst.dismissBillingAlert.subscribe((id: string) => {
+      this.service.dismissBillingAlert(id).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+          // Niente snackbar di conferma: il dismiss visibile è già il
+          // banner che sparisce — feedback visivo immediato sufficiente.
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
     // Dopo la chiusura del dialog, garantiamo che la lista sia sincronizzata:
     // l'utente potrebbe aver chiuso senza applicare tutte le nostre
     // ottimizzazioni ottimistiche (es. mutation pending).
     ref.afterClosed().subscribe(() => {
       this.reload();
     });
+  }
+
+  /**
+   * Calcola i 3 flag disabled per i bottoni della BillingSection in base
+   * a `treatment.billingStatus` (spec §10).
+   *
+   * - Annulla disponibile per: NOT_READY, READY_FOR_BILLING, SENT, PENDING
+   * - Riapri disponibile per: NOT_READY, READY_FOR_BILLING, SENT, PENDING
+   *   (stessa lista — riapertura post-INVOICED richiede storno fiscale)
+   * - Fattura subito + incassa disponibile SOLO per: NOT_READY
+   *   (chiude+pubblica in un unico passo con requestImmediateInvoice=true)
+   *
+   * USA L'ENUM `TreatmentBillingStatus`, niente stringhe hardcoded.
+   */
+  private computeBillingFlags(treatment: Trattamento): {
+    cancelDisabled: boolean;
+    cancelDisabledReason: string | null;
+    reopenDisabled: boolean;
+    reopenDisabledReason: string | null;
+    immediateInvoiceDisabled: boolean;
+    immediateInvoiceDisabledReason: string | null;
+  } {
+    const status = treatment.billingStatus;
+
+    const cancelOrReopenBlocked: ReadonlyArray<TreatmentBillingStatus> = [
+      TreatmentBillingStatus.Invoiced,
+      TreatmentBillingStatus.PartiallyRefunded,
+      TreatmentBillingStatus.Refunded,
+      TreatmentBillingStatus.Reissued,
+      TreatmentBillingStatus.Cancelled,
+    ];
+    const isCancelOrReopenBlocked =
+      status != null && cancelOrReopenBlocked.includes(status);
+
+    const cancelDisabled = isCancelOrReopenBlocked;
+    const cancelDisabledReason = cancelDisabled
+      ? 'Non disponibile per trattamenti già fatturati. Storno richiede nota credito da accounting.'
+      : null;
+
+    const reopenDisabled = isCancelOrReopenBlocked;
+    const reopenDisabledReason = reopenDisabled
+      ? 'Non disponibile per trattamenti già fatturati. Storno richiede nota credito da accounting.'
+      : null;
+
+    // Fattura subito + incassa: unica condizione abilitante.
+    const immediateInvoiceDisabled = status !== TreatmentBillingStatus.NotReady;
+    const immediateInvoiceDisabledReason = immediateInvoiceDisabled
+      ? "Disponibile solo per trattamenti non ancora pronti per fatturazione. Per inviare ora, abilita 'Pronto per fatturazione'."
+      : null;
+
+    return {
+      cancelDisabled,
+      cancelDisabledReason,
+      reopenDisabled,
+      reopenDisabledReason,
+      immediateInvoiceDisabled,
+      immediateInvoiceDisabledReason,
+    };
   }
 
   // ==================== HELPERS ====================

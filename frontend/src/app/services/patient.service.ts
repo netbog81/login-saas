@@ -205,7 +205,11 @@ export class PatientService extends BaseGraphQLService {
     subjectId: string,
     input: UpdatePatientAnamnesisInput,
   ): Observable<unknown> {
-    return this.mutate(UPDATE_PATIENT_ANAMNESIS, { subjectId, input });
+    // NB: lo schema GraphQL ora chiama l'arg `id` (non `subjectId`).
+    // Il valore semantico è lo stesso (subjectId del registry); manteniamo
+    // il nome del parametro TS `subjectId` per compatibilità coi caller,
+    // ma rinominiamo la chiave delle variables a `id`.
+    return this.mutate(UPDATE_PATIENT_ANAMNESIS, { id: subjectId, input });
   }
 
   setPatientPrivacyConsent(

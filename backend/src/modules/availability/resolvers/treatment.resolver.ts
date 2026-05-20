@@ -414,6 +414,41 @@ export class TreatmentResolver {
   }
 
   /**
+   * Mutation: cancella un trattamento dal punto di vista billing
+   * (transition billingStatus → CANCELLED).
+   *
+   * Diversa da `deleteTreatment` (che è soft-delete generico). Questa è
+   * specifica del flusso accounting: se il treatment è già stato
+   * pubblicato (SENT/PENDING) emette `treatment.cancelled.<tenant>` per
+   * informare l'accounting. Per stati post-INVOICED (incluso
+   * PARTIALLY_REFUNDED/REFUNDED/REISSUED) la mutation rifiuta — lo
+   * storno richiede nota di credito da accounting.
+   *
+   * Race condition (cancello dopo che accounting ha già fatturato):
+   * gestita dal consumer accounting che pubblica
+   * `billable.cancellation-rejected`, il cui handler nel clinico fa
+   * rollback CANCELLED → INVOICED + alert (vedi accounting-event.consumer).
+   */
+  @Mutation(() => Treatment, { name: 'cancelTreatment' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_delete_own')
+  @RequireOwnership({
+    resource: 'treatment',
+    bypassPermission: 'treatment_delete_any',
+  })
+  async cancelTreatment(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('reason', { type: () => String }) reason: string,
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<Treatment> {
+    const cancelledByUserId = await this.resolveAppUserId(user);
+    if (!cancelledByUserId) {
+      throw new Error('cancelTreatment: cancelledByUserId non risolto da CurrentUser');
+    }
+    return this.treatmentService.cancelTreatment(id, cancelledByUserId, reason);
+  }
+
+  /**
    * Mutation: Elimina TUTTI i trattamenti (operazione distruttiva)
    * Returns: numero di trattamenti eliminati
    */
@@ -441,12 +476,37 @@ export class TreatmentResolver {
    * Mutation: marca N trattamenti come pronti (o non pronti) per essere
    * inviati al sistema di fatturazione. Step separato dall'invio reale.
    */
+  /**
+   * Mutation: dismiss del billing alert su un treatment (sessione 6 Step 6.7).
+   *
+   * Setta `billingAlertDismissedAt = now`. Idempotente: se non c'è alert
+   * o è già dismissato, no-op (return treatment invariato).
+   *
+   * Use case tipico: operatore legge un `cancellation-rejected` warning
+   * (race condition: clinico ha cancellato un treatment che accounting
+   * aveva già fatturato) e clicca "Letto" nella BillingSection. Il
+   * messaggio resta in DB per audit, scompare dalla UI.
+   */
+  @Mutation(() => Treatment, { name: 'dismissBillingAlert' })
+  async dismissBillingAlert(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.dismissBillingAlert(id);
+  }
+
   @Mutation(() => [Treatment], { name: 'setTreatmentsReadyForBilling' })
   async setReadyForBilling(
     @Args('ids', { type: () => [ID] }) ids: string[],
     @Args('ready', { type: () => Boolean }) ready: boolean,
+    /**
+     * Se true (con ready=true), il payload `treatment.closed.<tenant>` esce
+     * con `requestImmediateInvoice=true` → AutoIssue accounting fatturazione
+     * automatica (se mapping fiscalmente configurato). UX "Fattura subito + incassa".
+     */
+    @Args('immediateInvoice', { type: () => Boolean, nullable: true, defaultValue: false })
+    immediateInvoice?: boolean,
   ): Promise<Treatment[]> {
-    return this.treatmentService.setReadyForBilling(ids, ready);
+    return this.treatmentService.setReadyForBilling(ids, ready, immediateInvoice ?? false);
   }
 
   /**

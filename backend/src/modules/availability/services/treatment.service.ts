@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull, Not, DataSource, EntityManager } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Treatment, TreatmentStatus, PaymentMethod } from '../entities/treatment.entity';
+import { TreatmentBillingStatus } from '../entities/treatment-billing-status.enum';
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
 import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
@@ -14,6 +16,11 @@ import { Service } from '../entities/service.entity';
 import { Site } from '../entities/site.entity';
 import { EventsService } from '../../events/events.service';
 import { TreatmentServiceInputItem } from '../dto/treatment.input';
+import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
+import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
+import { TreatmentEventMapper } from '../../clinical-events/mappers/treatment-event.mapper';
+import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
+import { AppUser } from '../../users/entities/app-user.entity';
 
 // ==================== INPUT INTERFACES ====================
 
@@ -100,6 +107,10 @@ export class TreatmentService {
     private pathRepo: Repository<TherapeuticPath>,
     private dataSource: DataSource,
     private eventsService: EventsService,
+    private readonly eventBuffer: ClinicalEventBuffer,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly treatmentEventMapper: TreatmentEventMapper,
+    private readonly tenantContext: TenantSchemaContextService,
   ) {}
 
   // ==================== CRUD ====================
@@ -516,6 +527,11 @@ export class TreatmentService {
    *
    * @param closedByUserId - AppUser della segreteria che esegue la chiusura
    *   (per audit). Viene persistito su `treatment.closedByUserId`.
+   *
+   * Transition billingStatus (sessione 6):
+   *  - NOT_READY → READY_FOR_BILLING (se !scontoFE && !isInvoicedToPatient)
+   *  - Niente publish ancora: il publish di `treatment.closed` avviene in
+   *    `setReadyForBilling(ids, true)` con la transition READY_FOR_BILLING → SENT.
    */
   async close(
     id: string,
@@ -547,6 +563,12 @@ export class TreatmentService {
     if (!treatment.scontoFE && !treatment.isInvoicedToPatient) {
       treatment.readyForBilling = true;
       treatment.readyForBillingAt = now;
+      // Transition billingStatus: NOT_READY → READY_FOR_BILLING.
+      // Solo se siamo in NOT_READY: edge case (es. trattamento già SENT
+      // riaperto da segreteria e richiuso) non regrediamo lo stato.
+      if (treatment.billingStatus === TreatmentBillingStatus.NOT_READY) {
+        treatment.billingStatus = TreatmentBillingStatus.READY_FOR_BILLING;
+      }
     }
 
     const result = await this.treatmentRepo.save(treatment);
@@ -597,6 +619,17 @@ export class TreatmentService {
 
     await this.dataSource.transaction(async manager => {
       const repo = manager.getRepository(Treatment);
+      const readyForBillingPatch =
+        !treatment.scontoFE && !treatment.isInvoicedToPatient
+          ? { readyForBilling: true, readyForBillingAt: now }
+          : {};
+      // Transition billingStatus: NOT_READY → READY_FOR_BILLING (se ready).
+      const billingStatusPatch =
+        !treatment.scontoFE &&
+        !treatment.isInvoicedToPatient &&
+        treatment.billingStatus === TreatmentBillingStatus.NOT_READY
+          ? { billingStatus: TreatmentBillingStatus.READY_FOR_BILLING }
+          : {};
       await repo.update(id, {
         status: TreatmentStatus.CLOSED,
         completedAt: now,
@@ -604,9 +637,8 @@ export class TreatmentService {
         closedByUserId,
         forcedClosure: true,
         ...(secretaryNotes ? { secretaryNotes } : {}),
-        ...(!treatment.scontoFE && !treatment.isInvoicedToPatient
-          ? { readyForBilling: true, readyForBillingAt: now }
-          : {}),
+        ...readyForBillingPatch,
+        ...billingStatusPatch,
       });
 
       await this.writeInstrumentsSnapshot(manager, id, now);
@@ -1333,8 +1365,17 @@ export class TreatmentService {
     scontoFE?: boolean;
     secretaryNotes?: string;
     treatmentServices?: TreatmentServiceInputItem[];
+    /**
+     * Motivo dell'amend (es. "aggiunta riga prodotto", "correzione prezzo").
+     * Obbligatorio se la modifica genera un evento `treatment.amended` (cioè
+     * billingStatus IN SENT/PENDING). Per altri stati può essere omesso.
+     */
+    amendmentReason?: string;
   }): Promise<Treatment> {
-    return this.dataSource.transaction(async (manager: EntityManager) => {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const result = await this.dataSource.transaction(async (manager: EntityManager) => {
       const treatmentRepo = manager.getRepository(Treatment);
       const treatment = await treatmentRepo.findOne({ where: { id: input.id } });
 
@@ -1351,6 +1392,30 @@ export class TreatmentService {
           `La segreteria può modificare solo trattamenti chiusi dall'operatore o dalla segreteria. Stato attuale: ${treatment.status}`
         );
       }
+
+      // Vincolo billing per amend (spec §10): se il treatment è già stato
+      // pubblicato e fatturato (INVOICED, PARTIALLY_REFUNDED, REFUNDED,
+      // REISSUED), modificare le righe richiede nota credito da accounting.
+      const blockedForAmend = [
+        TreatmentBillingStatus.INVOICED,
+        TreatmentBillingStatus.PARTIALLY_REFUNDED,
+        TreatmentBillingStatus.REFUNDED,
+        TreatmentBillingStatus.REISSUED,
+        TreatmentBillingStatus.CANCELLED,
+      ];
+      if (blockedForAmend.includes(treatment.billingStatus)) {
+        throw new BadRequestException(
+          `Trattamento ${input.id} non modificabile (billingStatus=${treatment.billingStatus}). ` +
+            `Per modifiche post-fatturazione emettere nota di credito da accounting.`,
+        );
+      }
+
+      // Decisione publish: SOLO se accounting già conosce il treatment
+      // (SENT o PENDING). Per NOT_READY/READY_FOR_BILLING le modifiche
+      // sono "private al clinico", non escono ancora.
+      const shouldPublishAmend =
+        treatment.billingStatus === TreatmentBillingStatus.SENT ||
+        treatment.billingStatus === TreatmentBillingStatus.PENDING;
 
       if (input.price !== undefined) treatment.price = input.price;
       if (input.secretaryNotes !== undefined) treatment.secretaryNotes = input.secretaryNotes;
@@ -1374,8 +1439,212 @@ export class TreatmentService {
         );
       }
 
+      // Publish treatment.amended con revision atomic (UPDATE ... RETURNING).
+      // SOLO se billingStatus PRIMA delle modifiche era SENT/PENDING.
+      if (shouldPublishAmend) {
+        if (!input.amendmentReason || input.amendmentReason.trim().length === 0) {
+          throw new BadRequestException(
+            'amendmentReason è obbligatorio quando il trattamento è già stato pubblicato (SENT/PENDING).',
+          );
+        }
+        if (!tenantAlias) {
+          throw new Error(
+            'updateBySecretary chiamato fuori da contesto tenant. Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+          );
+        }
+
+        // Increment atomico via UPDATE ... RETURNING. Evita la race tra
+        // amend concorrenti sullo stesso treatment (postgres garantisce
+        // l'atomicità del SET col valore corrente + RETURNING). NON
+        // read-then-write in due query.
+        // NB: TypeORM `manager.query()` su UPDATE con RETURNING ritorna
+        // `[rows[], affectedCount]` — destruttura per estrarre i rows.
+        const [incRows]: [Array<{ amendmentRevision: number }>, number] = await manager.query(
+          `UPDATE "treatments"
+             SET "amendmentRevision" = "amendmentRevision" + 1
+             WHERE id = $1
+             RETURNING "amendmentRevision"`,
+          [input.id],
+        );
+        const newRevisionRaw = incRows?.[0]?.amendmentRevision;
+        const newRevision = typeof newRevisionRaw === 'string' ? parseInt(newRevisionRaw, 10) : newRevisionRaw;
+        if (typeof newRevision !== 'number' || newRevision < 1) {
+          throw new Error(
+            `Increment atomic amendmentRevision fallito per treatment ${input.id} (rows=${JSON.stringify(incRows)}).`,
+          );
+        }
+
+        const payload = await this.treatmentEventMapper.mapTreatmentAmended(
+          input.id,
+          manager,
+          { revision: newRevision, amendmentReason: input.amendmentReason },
+        );
+        this.eventBuffer.add({
+          eventType: 'treatment.amended',
+          payload,
+          tenantAlias,
+          correlationId,
+        });
+      }
+
       return this.findByIdWithManager(manager, input.id);
     });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return result;
+  }
+
+  // ==================== CANCEL TREATMENT (sessione 6) ====================
+
+  /**
+   * Cancella un trattamento dal punto di vista billing.
+   *
+   * Transition billingStatus → CANCELLED (terminale, no regressione possibile).
+   *
+   * Vincoli (spec §10):
+   *   - billingStatus IN (NOT_READY, READY_FOR_BILLING, SENT, PENDING) → OK
+   *   - billingStatus IN (INVOICED, PARTIALLY_REFUNDED, REFUNDED, REISSUED, CANCELLED)
+   *     → BadRequestException (storno richiede nota credito da accounting)
+   *
+   * Publish `treatment.cancelled.<tenant>` SOLO se billingStatus PRIMA della
+   * transition era IN (SENT, PENDING). Se era NOT_READY o READY_FOR_BILLING,
+   * accounting non ha mai sentito parlare del treatment → niente da pubblicare.
+   *
+   * Race condition (cancello dopo che accounting ha già fatturato): gestita
+   * dal consumer accounting che pubblica `billable.cancellation-rejected`,
+   * il cui handler nel clinico (Step 3) fa rollback CANCELLED → INVOICED + alert.
+   */
+  async cancelTreatment(
+    id: string,
+    cancelledByUserId: string,
+    reason: string,
+  ): Promise<Treatment> {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id } });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      // Vincolo billingStatus: stati post-INVOICED bloccati.
+      const cancellable = [
+        TreatmentBillingStatus.NOT_READY,
+        TreatmentBillingStatus.READY_FOR_BILLING,
+        TreatmentBillingStatus.SENT,
+        TreatmentBillingStatus.PENDING,
+      ];
+      if (!cancellable.includes(treatment.billingStatus)) {
+        throw new BadRequestException(
+          `Trattamento ${id} non cancellabile (billingStatus=${treatment.billingStatus}). ` +
+            `Per stati INVOICED/PARTIALLY_REFUNDED/REFUNDED/REISSUED/CANCELLED ` +
+            `lo storno richiede nota di credito da accounting, non cancellazione.`,
+        );
+      }
+
+      // Decisione publish: SOLO se accounting già conosce il treatment.
+      const shouldPublish =
+        treatment.billingStatus === TreatmentBillingStatus.SENT ||
+        treatment.billingStatus === TreatmentBillingStatus.PENDING;
+
+      const now = new Date();
+      treatment.billingStatus = TreatmentBillingStatus.CANCELLED;
+      // Audit cancellation su colonne dedicate (Step 7.4):
+      // - cancelledAt: timestamp della transition
+      // - cancelledByUserId: AppUser locale che ha cancellato
+      // - cancellationReason: motivo free-text
+      // NIENTE riuso di deletedByUserId/accountingRefundReason: hanno
+      // semantiche distinte (soft-delete TypeORM / motivo refund accounting).
+      treatment.cancelledAt = now;
+      treatment.cancelledByUserId = cancelledByUserId;
+      treatment.cancellationReason = reason;
+      // Niente soft-delete della riga (deletedAt resta NULL): il record
+      // resta visibile in lista trattamenti col badge CANCELLED, così
+      // l'operatore può consultarlo e ricostruire la storia.
+      await treatmentRepo.save(treatment);
+
+      if (shouldPublish) {
+        if (!tenantAlias) {
+          throw new Error(
+            'cancelTreatment chiamato fuori da contesto tenant. Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+          );
+        }
+        // Risolvo il keycloakSub del cancelledBy (consistente con altri payload).
+        const subMap = await this.batchLookupKeycloakSubsForCancel(
+          manager,
+          [cancelledByUserId],
+        );
+        const cancelledByKeycloakSub = subMap.get(cancelledByUserId) ?? null;
+
+        this.eventBuffer.add({
+          eventType: 'treatment.cancelled',
+          payload: {
+            treatmentId: id,
+            cancelledAt: now.toISOString(),
+            cancelledByUserId: cancelledByKeycloakSub,
+            reason,
+          },
+          tenantAlias,
+          correlationId,
+        });
+      }
+
+      return treatment;
+    });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return result;
+  }
+
+  /**
+   * Helper batch lookup AppUser.id → keycloakId limitato a un solo id.
+   * Estratto qui per evitare di caricare il TreatmentEventMapper completo
+   * solo per `cancelTreatment` (che ha payload minimale, niente lines).
+   */
+  private async batchLookupKeycloakSubsForCancel(
+    manager: EntityManager,
+    appUserIds: string[],
+  ): Promise<Map<string, string | null>> {
+    const map = new Map<string, string | null>();
+    if (appUserIds.length === 0) return map;
+    const rows = await manager.find(AppUser, {
+      where: { id: In(appUserIds) },
+      select: { id: true, keycloakId: true },
+    });
+    for (const u of rows) map.set(u.id, u.keycloakId ?? null);
+    for (const id of appUserIds) {
+      if (!map.has(id)) map.set(id, null);
+    }
+    return map;
+  }
+
+  // ==================== BILLING ALERT (sessione 6 Step 6.7) ====================
+
+  /**
+   * Dismissa il billing alert di un treatment (es. dopo che l'operatore
+   * ha letto un `cancellation-rejected` warning). Setta
+   * `billingAlertDismissedAt = now`. NON cancella il messaggio dell'alert
+   * — resta in DB per audit, solo il timestamp di dismissal cambia.
+   *
+   * Idempotente: se l'alert è già dismissato (o non c'è), no-op (return
+   * treatment senza modifiche). Niente throw — UI può chiamare safe.
+   */
+  async dismissBillingAlert(id: string): Promise<Treatment> {
+    const treatment = await this.findById(id);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+
+    // Idempotenza: se non c'è alert da dismissare, ritorna il treatment
+    // così com'è (no UPDATE inutile).
+    if (!treatment.billingAlertMessage || treatment.billingAlertDismissedAt) {
+      return treatment;
+    }
+
+    treatment.billingAlertDismissedAt = new Date();
+    return this.treatmentRepo.save(treatment);
   }
 
   // ==================== READY FOR BILLING ====================
@@ -1397,10 +1666,55 @@ export class TreatmentService {
    * Comportamento con ready=false: toglie solo il flag readyForBilling,
    * non tocca lo stato del trattamento.
    */
-  async setReadyForBilling(ids: string[], ready: boolean): Promise<Treatment[]> {
+  /**
+   * Marca un batch di trattamenti come "pronto per fatturazione" e (se
+   * `ready=true`) pubblica `treatment.closed.<tenant>` per ognuno verso
+   * il modulo accounting tramite `ex.clinical.events`.
+   *
+   * Transition billingStatus (sessione 6):
+   *   ready=true   → READY_FOR_BILLING → SENT (con publish)
+   *   ready=false  → consentito SOLO se billingStatus IN
+   *                  (NOT_READY, READY_FOR_BILLING). Per stati post-publish
+   *                  (SENT, PENDING, INVOICED, ...) lanciamo error: rimuovere
+   *                  il flag dopo il publish significherebbe "annullare un
+   *                  evento già pubblicato" (use case sbagliato — quello giusto
+   *                  è cancelTreatment, non setReady=false).
+   *
+   * Pattern publish-after-commit:
+   *   1. Tutta la mutazione DB (update treatments) avviene dentro la tx.
+   *   2. Dentro la tx: enqueue evento nel ClinicalEventBuffer (ALS).
+   *   3. Solo dopo che la transaction ritorna OK: `flushBufferedEvents()`
+   *      emette su EventEmitter2 → @OnEvent listener nel publisher → publish
+   *      reale al broker. Se la tx fa rollback, gli eventi restano nel
+   *      buffer ALS e vengono droppati alla fine della request HTTP.
+   */
+  async setReadyForBilling(
+    ids: string[],
+    ready: boolean,
+    /**
+     * Se true (e ready=true), il payload `treatment.closed.<tenant>` viene
+     * emesso con `requestImmediateInvoice=true`. Lato accounting, se il
+     * mapping è fiscalmente configurato, AutoIssue scatta automaticamente
+     * → INVOICE emessa entro pochi secondi senza intervento manuale.
+     * Se il mapping è pending, AutoIssue skippa ed entra in coda finché
+     * l'admin non configura il mapping (LOCAL_BILLABLE_MAPPING_COMPLETED
+     * triggera AutoIssue retroattivo).
+     *
+     * Default false: chi chiama il batch standard (lista trattamenti
+     * "Pronto per fatturazione") NON triggera AutoIssue automatico —
+     * la fatturazione resta su passo separato dell'operatore accounting.
+     * Il valore true è UX dell'azione "Fattura subito + incassa".
+     *
+     * Ignorato se ready=false (no payload emesso).
+     */
+    immediateInvoice = false,
+  ): Promise<Treatment[]> {
     if (ids.length === 0) return [];
 
-    return this.dataSource.transaction(async (manager: EntityManager) => {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const updated = await this.dataSource.transaction(async (manager: EntityManager) => {
       const treatmentRepo = manager.getRepository(Treatment);
       const treatments = await treatmentRepo.find({ where: { id: In(ids) } });
 
@@ -1430,6 +1744,21 @@ export class TreatmentService {
             );
           }
         }
+      } else {
+        // ready=false: vincolo billingStatus per evitare di "annullare" un
+        // evento già pubblicato (quel caso d'uso è cancelTreatment, non setReady=false).
+        const allowedToUnset = [
+          TreatmentBillingStatus.NOT_READY,
+          TreatmentBillingStatus.READY_FOR_BILLING,
+        ];
+        for (const t of treatments) {
+          if (!allowedToUnset.includes(t.billingStatus)) {
+            throw new BadRequestException(
+              `Trattamento ${t.id} è già stato pubblicato verso accounting (billingStatus=${t.billingStatus}). ` +
+                `Per annullarlo usa cancelTreatment (se PENDING) o emetti nota di credito da accounting.`,
+            );
+          }
+        }
       }
 
       const now = new Date();
@@ -1442,11 +1771,60 @@ export class TreatmentService {
         }
         t.readyForBilling = ready;
         t.readyForBillingAt = ready ? now : (null as any);
+
+        if (ready) {
+          // Transition billingStatus → SENT. Idempotente: se già SENT/PENDING/...
+          // non regrediamo lo stato (es. operatore clicca "ready" su qualcosa
+          // di già publishato — DB invariato, ma niente re-publish).
+          if (
+            t.billingStatus === TreatmentBillingStatus.NOT_READY ||
+            t.billingStatus === TreatmentBillingStatus.READY_FOR_BILLING
+          ) {
+            t.billingStatus = TreatmentBillingStatus.SENT;
+          }
+        } else {
+          // Unset: torna a NOT_READY. (Vincoli sopra hanno escluso stati post-publish.)
+          t.billingStatus = TreatmentBillingStatus.NOT_READY;
+        }
       }
 
       await treatmentRepo.save(treatments);
+
+      // Enqueue payload solo per i treatment che effettivamente sono
+      // transitati a SENT in questa run (skippa quelli già SENT/PENDING).
+      if (ready && tenantAlias) {
+        for (const t of treatments) {
+          if (t.billingStatus !== TreatmentBillingStatus.SENT) continue;
+          const payload = await this.treatmentEventMapper.mapTreatmentClosed(
+            t.id,
+            manager,
+            { requestImmediateInvoice: immediateInvoice },
+          );
+          this.eventBuffer.add({
+            eventType: 'treatment.closed',
+            payload,
+            tenantAlias,
+            correlationId,
+          });
+        }
+      } else if (ready && !tenantAlias) {
+        // Sicurezza: se chiamato fuori dal contesto HTTP (es. cron senza
+        // runInScope) il tenantAlias è null. NON pubblichiamo (mancherebbe
+        // anche lo scope ALS del buffer): meglio fail rumoroso.
+        throw new Error(
+          'setReadyForBilling chiamato fuori da contesto tenant (tenantAlias mancante). ' +
+            'Per chiamate non-HTTP, wrappare in TenantSchemaContextService.run(...) + eventBuffer.runInScope(...).',
+        );
+      }
+
       return treatments;
     });
+
+    // Flush DOPO commit OK. Se la tx ha throw, questa riga non viene
+    // raggiunta e il buffer ALS resta con gli eventi (mai pubblicati).
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+
+    return updated;
   }
 
   // ==================== INVOICE LINE DESCRIPTIONS ====================

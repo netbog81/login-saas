@@ -1,0 +1,69 @@
+<div class="modal-overlay" (click)="onCancel()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ isEditMode ? 'Modifica Prodotto' : 'Nuovo Prodotto' }}</h3>
+      <button class="close-btn" (click)="onCancel()">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div *ngIf="error" class="error">{{ error }}</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Codice *</label>
+          <input type="text"
+                 [(ngModel)]="productCode"
+                 class="form-control"
+                 maxlength="30"
+                 placeholder="es. CRM-VITA-100ML">
+          <small class="form-help">Codice business univoco (max 30 caratteri).</small>
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <input type="text"
+                 [(ngModel)]="category"
+                 class="form-control"
+                 placeholder="es. COSMETICI / INTEGRATORI">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group-full">
+          <label>Nome *</label>
+          <input type="text" [(ngModel)]="name" class="form-control">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Prezzo di default *</label>
+          <input type="number"
+                 step="0.01"
+                 min="0"
+                 [(ngModel)]="defaultPrice"
+                 class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="toggle">
+            <input type="checkbox" [(ngModel)]="isActive">
+            Attivo (vendibile in cassa)
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group-full">
+          <label>Descrizione</label>
+          <textarea [(ngModel)]="description" class="form-control" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn" (click)="onCancel()">Annulla</button>
+      <button class="btn btn-primary" (click)="onSubmit()" [disabled]="loading">
+        {{ isEditMode ? 'Aggiorna' : 'Crea' }}
+      </button>
+    </div>
+  </div>
+</div>

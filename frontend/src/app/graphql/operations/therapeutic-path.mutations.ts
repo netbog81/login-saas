@@ -33,9 +33,13 @@ export const DELETE_THERAPEUTIC_PATH = gql`
 
 // ==================== EVALUATION MUTATIONS ====================
 
+// NB: schema backend rinominato `createPatientEvaluation` → `createEvaluation`
+// (idem update/delete). Mutation TS const e operation name client mantengono
+// il vecchio name "PatientEvaluation" per minimo impatto sui caller; il
+// nome del field GraphQL è quello nuovo dello schema.
 export const CREATE_PATIENT_EVALUATION = gql`
   mutation CreatePatientEvaluation($input: CreateEvaluationInput!) {
-    createPatientEvaluation(input: $input) {
+    createEvaluation(input: $input) {
       ...PatientEvaluationFields
     }
   }
@@ -44,7 +48,7 @@ export const CREATE_PATIENT_EVALUATION = gql`
 
 export const UPDATE_PATIENT_EVALUATION = gql`
   mutation UpdatePatientEvaluation($id: ID!, $input: UpdateEvaluationInput!) {
-    updatePatientEvaluation(id: $id, input: $input) {
+    updateEvaluation(id: $id, input: $input) {
       ...PatientEvaluationFields
     }
   }
@@ -53,7 +57,7 @@ export const UPDATE_PATIENT_EVALUATION = gql`
 
 export const DELETE_PATIENT_EVALUATION = gql`
   mutation DeletePatientEvaluation($id: ID!) {
-    deletePatientEvaluation(id: $id)
+    deleteEvaluation(id: $id)
   }
 `;
 

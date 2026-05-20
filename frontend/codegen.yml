@@ -1,5 +1,22 @@
-schema: 'http://localhost:3000/graphql'  # URL del tuo backend
-documents: './src/app/graphql/**/*.ts'   # Dove hai le tue query
+# Schema source: file locale `backend/src/schema.gql` rigenerato
+# automaticamente da NestJS (autoSchemaFile in app.module.ts) ad ogni boot.
+# Vantaggio rispetto a HTTP introspection:
+#  - zero dipendenza dal backend in esecuzione per fare codegen
+#  - zero auth (TenantContextMiddleware blocca introspection HTTP senza token)
+#  - schema sempre coerente con l'ultimo boot del backend
+schema: '../backend/src/schema.gql'
+# Documents in 2 location:
+#  - src/app/graphql/**/*.ts (legacy operations)
+#  - src/app/features/** /graphql/**/*.ts (operations per-feature, pattern
+#    architettura "feature wins": vedi architettura-componenti-ref.md)
+#
+# Le 4 collisioni Close/ForceClose/Reopen/RecordPayment sono state risolte
+# con suffisso `Legacy` sull'operation name (NON sulla const TS) nel file
+# legacy `app/graphql/operations/treatment.mutations.ts`. Le const TS dei
+# file legacy continuano a funzionare invariate per i loro caller.
+documents:
+  - './src/app/graphql/**/*.ts'
+  - './src/app/features/**/graphql/**/*.ts'
 generates:
   ./src/app/graphql/generated/types.ts:  # Dove salvare i tipi
     plugins:

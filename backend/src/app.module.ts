@@ -23,6 +23,8 @@ import { RegistryClient } from './modules/registry/registry.client';
 import { buildGraphqlContext } from './modules/registry/utils/build-graphql-context';
 import { RegistryEventsModule } from './modules/registry-events/registry-events.module';
 import { ClinicalEventsModule } from './modules/clinical-events/clinical-events.module';
+import { ClinicalEventBufferMiddleware } from './modules/clinical-events/clinical-event-buffer.middleware';
+import { SalesModule } from './modules/sales/sales.module';
 import { JwksService } from './auth/jwks.service';
 import { MeController } from './auth/me.controller';
 import { UsersModule } from './users/users.module';
@@ -239,6 +241,7 @@ export class AppModule implements NestModule {
         RegistryModule,
         RegistryEventsModule,
         ClinicalEventsModule,
+        SalesModule,
         GraphQLModule.forRootAsync<ApolloDriverConfig>({
           driver: ApolloDriver,
           imports: [RegistryModule],
@@ -287,6 +290,16 @@ export class AppModule implements NestModule {
   }
 
   configure(consumer: MiddlewareConsumer) {
+    // ClinicalEventBufferMiddleware: wrappa OGNI request HTTP in
+    // eventBuffer.runInScope(...) così i service business possono fare
+    // eventBuffer.add() senza preoccuparsi di setup ALS. Va applicato
+    // PRIMA del TenantContextMiddleware, ma entrambi sono safe-by-design
+    // (l'ordine importa solo per la pulizia logica del flusso).
+    consumer
+      .apply(ClinicalEventBufferMiddleware)
+      .exclude('health/status', 'events/(.*)', 'api/webhooks/(.*)')
+      .forRoutes('*');
+
     // Applica TenantContextMiddleware a tutte le rotte operative
     // Escludi: health check, graphql playground, rotte SSE
     consumer

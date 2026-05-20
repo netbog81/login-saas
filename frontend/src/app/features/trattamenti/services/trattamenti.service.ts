@@ -26,6 +26,8 @@ import {
   CLOSE_TREATMENT,
   REOPEN_TREATMENT,
   FORCE_CLOSE_TREATMENT,
+  CANCEL_TREATMENT_BILLING,
+  DISMISS_BILLING_ALERT,
 } from '../graphql/trattamenti.operations';
 
 /**
@@ -94,11 +96,69 @@ export class TrattamentiService extends BaseGraphQLService {
     ).pipe(map(r => r.updateTreatmentBySecretary));
   }
 
-  setReadyForBilling(ids: string[], ready: boolean): Observable<Pick<Trattamento, 'id' | 'readyForBilling' | 'readyForBillingAt'>[]> {
+  /**
+   * Marca treatments come pronti per fatturazione (accounting handoff).
+   *
+   * @param immediateInvoice se true, payload `treatment.closed` viene
+   *   emesso con `requestImmediateInvoice=true` → AutoIssue accounting
+   *   fatturazione automatica (post Step 6.5bis backend).
+   *   Default false: la fatturazione resta su passo separato.
+   */
+  setReadyForBilling(
+    ids: string[],
+    ready: boolean,
+    immediateInvoice = false,
+  ): Observable<Pick<Trattamento, 'id' | 'readyForBilling' | 'readyForBillingAt'>[]> {
     return this.mutate<{ setTreatmentsReadyForBilling: Trattamento[] }>(
       SET_TREATMENTS_READY_FOR_BILLING,
-      { ids, ready },
+      { ids, ready, immediateInvoice },
     ).pipe(map(r => r.setTreatmentsReadyForBilling));
+  }
+
+  /**
+   * "Fattura subito + incassa" UI helper (sessione 6 Step 6.5).
+   *
+   * Chiama `setReadyForBilling([id], true, true)` → backend serializza il
+   * payload `treatment.closed` con `requestImmediateInvoice=true`. Lato
+   * accounting:
+   *  - mapping fiscalmente configurato (isFiscallyConfigured=true) →
+   *    AutoIssue scatta automaticamente, INVOICE emessa entro pochi secondi
+   *  - mapping pending → AutoIssue skippa, riparte automaticamente quando
+   *    admin configura il mapping (event LOCAL_BILLABLE_MAPPING_COMPLETED).
+   *
+   * Niente passo manuale operatore mai (chiarimento accounting smoke 9.B
+   * 2026-05-08).
+   */
+  setReadyForBillingImmediate(id: string): Observable<Pick<Trattamento, 'id' | 'readyForBilling' | 'readyForBillingAt'>[]> {
+    return this.setReadyForBilling([id], true, true);
+  }
+
+  /**
+   * Cancella un trattamento dal punto di vista billing (sessione 6 Step 7.4
+   * backend). Triggera publish `treatment.cancelled.<tenant>` SOLO se il
+   * treatment era già stato pubblicato (SENT/PENDING). Backend rifiuta
+   * con BadRequestException per stati post-INVOICED.
+   */
+  cancelTreatment(id: string, reason: string): Observable<Trattamento> {
+    return this.mutate<{ cancelTreatment: Trattamento }>(
+      CANCEL_TREATMENT_BILLING,
+      { id, reason },
+    ).pipe(map(r => flattenPatient(r.cancelTreatment)));
+  }
+
+  /**
+   * Dismissa il billing alert di un treatment (sessione 6 Step 6.7).
+   * Setta `billingAlertDismissedAt = now`. Idempotente: backend ritorna
+   * il treatment invariato se non c'è alert o è già dismissato.
+   *
+   * Use case: operatore clicca "Letto" sull'alert
+   * `cancellation-rejected` nella BillingSection.
+   */
+  dismissBillingAlert(id: string): Observable<Trattamento> {
+    return this.mutate<{ dismissBillingAlert: Trattamento }>(
+      DISMISS_BILLING_ALERT,
+      { id },
+    ).pipe(map(r => flattenPatient(r.dismissBillingAlert)));
   }
 
   // ==================== INVOICE LINE DESCRIPTIONS (su TreatmentService) ====================
@@ -209,7 +269,11 @@ export class TrattamentiService extends BaseGraphQLService {
    */
   private sanitizeFilters(filters: TrattamentiFilters): Record<string, unknown> {
     const out: Record<string, unknown> = {};
+    // billingStatuses è filtrato lato client (vedi container.applyClientFilters):
+    // il backend non espone l'arg, mandarlo causerebbe errore GraphQL.
+    const CLIENT_ONLY_KEYS = new Set<string>(['billingStatuses']);
     for (const [key, value] of Object.entries(filters)) {
+      if (CLIENT_ONLY_KEYS.has(key)) continue;
       if (value !== undefined && value !== null) {
         out[key] = value;
       }

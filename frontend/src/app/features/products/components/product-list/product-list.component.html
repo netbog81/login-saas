@@ -1,0 +1,65 @@
+<div class="product-list">
+  <div class="header">
+    <h2>Catalogo Prodotti</h2>
+    <button class="btn btn-primary" (click)="create.emit()">+ Nuovo Prodotto</button>
+  </div>
+
+  <div class="filters">
+    <input type="text"
+           [ngModel]="searchTerm"
+           (ngModelChange)="searchTermChange.emit($event)"
+           placeholder="Cerca per nome, codice, categoria…"
+           class="search-input">
+    <label class="toggle">
+      <input type="checkbox"
+             [ngModel]="showInactive"
+             (ngModelChange)="showInactiveChange.emit($event)">
+      Mostra inattivi
+    </label>
+  </div>
+
+  <div *ngIf="loading" class="loading">Caricamento…</div>
+
+  <div class="products-table" *ngIf="!loading">
+    <table>
+      <thead>
+        <tr>
+          <th>Codice</th>
+          <th>Nome</th>
+          <th>Categoria</th>
+          <th>Prezzo</th>
+          <th>Stato</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of visibleProducts; trackBy: trackById"
+            [class.selected]="selectedId === p.id"
+            (click)="select.emit(p)">
+          <td><code>{{ p.productCode }}</code></td>
+          <td>{{ p.name }}</td>
+          <td>{{ p.category || '-' }}</td>
+          <td>{{ formatPrice(p.defaultPrice) }}</td>
+          <td>
+            <span [class]="p.isActive ? 'status-active' : 'status-inactive'">
+              {{ p.isActive ? 'Attivo' : 'Inattivo' }}
+            </span>
+          </td>
+          <td class="actions">
+            <button class="btn btn-sm" (click)="edit.emit(p); $event.stopPropagation()">
+              Modifica
+            </button>
+            <button class="btn btn-sm btn-danger"
+                    *ngIf="p.isActive"
+                    (click)="delete.emit(p); $event.stopPropagation()">
+              Disattiva
+            </button>
+          </td>
+        </tr>
+        <tr *ngIf="visibleProducts.length === 0">
+          <td colspan="6" class="no-data">Nessun prodotto trovato</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

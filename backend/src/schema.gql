@@ -1108,6 +1108,7 @@ type Mutation {
   cancelAppointmentWithNotice(cancelledBy: ID!, id: ID!, reason: String!): AvailabilityAppointment!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
   cancelRecurringSeries(appointmentId: ID!, cancelledBy: ID!, fromDate: String!, reason: String!, scope: RecurringSeriesScope!): Int!
+  cancelTreatment(id: ID!, reason: String!): Treatment!
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTaskMessage(messageId: String!): Boolean!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
@@ -1139,10 +1140,11 @@ type Mutation {
   createPatientRelationship(input: CreatePatientRelationshipInput!): Boolean!
   createPatternGroup(input: CreatePatternGroupInput!): PatternGroup!
   createPrivacyOfficer(input: CreatePrivacyOfficerInput!): PrivacyOfficer!
+  createProduct(category: String, defaultPrice: Float!, description: String, isActive: Boolean = true, name: String!, productCode: String!): Product!
   createRole(description: String, name: String!): Role!
   createRoom(capacity: Int, color: String, name: String!): Room!
   createSecretary(input: CreateSecretaryInput!): Secretary!
-  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, subcategoryId: ID): Service!
+  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, serviceCode: String!, subcategoryId: ID): Service!
   createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTaskMessage(input: CreateTaskMessageInput!): TaskMessageResult!
@@ -1186,6 +1188,7 @@ type Mutation {
   deletePatientRelationship(relationshipId: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
   deletePrivacyOfficer(id: ID!): Boolean!
+  deleteProduct(id: ID!): Boolean!
   deleteRecurringSeries(appointmentId: ID!, fromDate: String!, scope: RecurringSeriesScope!): Int!
   deleteRole(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
@@ -1201,6 +1204,7 @@ type Mutation {
   deleteTreatmentInvoiceLine(id: ID!): Boolean!
   deleteWaitingListEntry(id: ID!): Boolean!
   deleteWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
+  dismissBillingAlert(id: ID!): Treatment!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): EvaluationTest!
   editTestEvaluationEntry(evaluationHistoryId: ID!, evaluationLevel: Int!, note: String): TestEvaluationHistory!
@@ -1221,6 +1225,7 @@ type Mutation {
   purgeFromRecycleBin(entityType: RecycleBinEntityType!, id: ID!): Boolean!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   recordPatientAttendance(appointmentId: ID, eventType: String!, reason: String, subjectId: ID!): Boolean!
+  recordProductSale(input: RecordProductSaleInput!): SaleCompletedResult!
   recordTreatmentPayment(callerRole: TreatmentCallerRole, id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   reopenTreatment(id: ID!): Treatment! @deprecated(reason: "Usa reopenTreatmentByOperator o reopenTreatmentBySecretary")
@@ -1241,7 +1246,7 @@ type Mutation {
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setPatientPrivacyConsent(documentRef: String, given: Boolean!, id: ID!): Patient!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
-  setTreatmentsReadyForBilling(ids: [ID!]!, ready: Boolean!): [Treatment!]!
+  setTreatmentsReadyForBilling(ids: [ID!]!, immediateInvoice: Boolean = false, ready: Boolean!): [Treatment!]!
   testWhatsappConnection: Boolean!
   testWhatsappDirect(message: String, name: String!, phone: String!): WhatsappTestResult!
   testWhatsappFullFlow(name: String!, phone: String!): WhatsappTestResult!
@@ -1271,9 +1276,10 @@ type Mutation {
   updatePatientRegistry(id: ID!, input: UpdateRegistryIndividualInput!): Patient!
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
+  updateProduct(category: String, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String, productCode: String): Product!
   updateRecycleBinSettings(retentionDays: Int): RecycleBinSettings!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
-  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, subcategoryId: ID): Service!
+  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, serviceCode: String, subcategoryId: ID): Service!
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
   updateTaskMessage(input: UpdateTaskMessageInput!, messageId: String!): Boolean!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
@@ -1707,6 +1713,19 @@ type PrivacyOfficer {
   updatedAt: DateTime!
 }
 
+type Product {
+  category: String
+  createdAt: DateTime!
+  createdByUserId: ID
+  defaultPrice: Float!
+  description: String
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  productCode: String!
+  updatedAt: DateTime!
+}
+
 type Query {
   activeTherapeuticPathsByPatient(patientId: ID!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
@@ -1807,6 +1826,8 @@ type Query {
   physiotherapistAvailableSlotsBatch(dates: [String!]!, durationMinutes: Int!, operatorIds: [ID!]!): [PhysiotherapistSlotBatchOutput!]!
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
+  product(id: ID!): Product
+  products(onlyActive: Boolean = false): [Product!]!
   recurringSeries(recurringGroupId: ID!): [AvailabilityAppointment!]!
   recycleBin(filter: RecycleBinFilterInput): [RecycleBinItem!]!
   recycleBinSettings: RecycleBinSettings!
@@ -1873,6 +1894,17 @@ input RecordPaymentInput {
   amount: Float
   collectedBy: ID!
   paymentMethod: PaymentMethod!
+}
+
+input RecordProductSaleInput {
+  beneficiarySubjectId: ID!
+  isPaid: Boolean!
+  lines: [SaleProductLineInput!]!
+  notes: String
+  paymentMethod: PaymentMethod
+  purchaserSubjectId: ID!
+  requestImmediateInvoice: Boolean! = true
+  siteId: ID
 }
 
 """Modalità di fine ricorrenza"""
@@ -2116,6 +2148,18 @@ type Room {
   isActive: Boolean!
   name: String!
   updatedAt: DateTime!
+}
+
+type SaleCompletedResult {
+  publishedAt: DateTime!
+  saleId: ID!
+  totalAmount: Float!
+}
+
+input SaleProductLineInput {
+  productId: ID!
+  quantity: Float!
+  unitPriceOverride: Float
 }
 
 """Input per ricerca paziente (proxy a registry global-search)"""
@@ -2370,12 +2414,16 @@ type Treatment {
   accountingInvoiceIssuedAt: DateTime
   accountingInvoiceUrl: String
   accountingRefundReason: String
+  amendmentRevision: Int!
   appointment: AvailabilityAppointment!
   appointmentId: ID!
   billingAlertAt: DateTime
   billingAlertDismissedAt: DateTime
   billingAlertMessage: String
   billingStatus: TreatmentBillingStatus!
+  cancellationReason: String
+  cancelledAt: DateTime
+  cancelledByUserId: ID
   clinicalNotes: String
   closedAt: DateTime
   closedByUserId: ID
@@ -2746,6 +2794,7 @@ input UpdateTherapeuticPathInput {
 }
 
 input UpdateTreatmentBySecretaryInput {
+  amendmentReason: String
   id: ID!
   price: Float
   scontoFE: Boolean

@@ -323,6 +323,16 @@ export class Treatment {
   @Column('text', { name: 'accountingRefundReason', nullable: true })
   accountingRefundReason?: string;
 
+  /**
+   * Numero di amend (treatment.amended.<tenant>) emessi per questo treatment.
+   * Inizializzato a 0; ogni amend incrementa atomicamente via
+   * `UPDATE treatments SET amendmentRevision = amendmentRevision + 1 ... RETURNING`.
+   * Il primo amend ha revision = 1.
+   */
+  @Field(() => Int)
+  @Column({ name: 'amendmentRevision', type: 'int', default: 0 })
+  amendmentRevision: number;
+
   // ==================== BILLING ALERT (cancellation-rejected) ====================
 
   /**
@@ -342,6 +352,27 @@ export class Treatment {
   @Field({ nullable: true })
   @Column('timestamptz', { name: 'billingAlertDismissedAt', nullable: true })
   billingAlertDismissedAt?: Date;
+
+  // ==================== CANCELLATION AUDIT (sessione 6 Step 7.4) ====================
+
+  /**
+   * Timestamp della transition `billingStatus → CANCELLED` via mutation
+   * `cancelTreatment`. Distinto da `deletedAt` (soft-delete generico):
+   * un treatment CANCELLED resta visibile in lista col badge.
+   */
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'cancelledAt', nullable: true })
+  cancelledAt?: Date;
+
+  /** AppUser locale che ha eseguito `cancelTreatment`. */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { name: 'cancelledByUserId', nullable: true })
+  cancelledByUserId?: string;
+
+  /** Motivo della cancellation (free-text, mostrato in UI + propagato nel payload `treatment.cancelled`). */
+  @Field({ nullable: true })
+  @Column('text', { name: 'cancellationReason', nullable: true })
+  cancellationReason?: string;
 
   // ==================== RELATIONS ====================
 

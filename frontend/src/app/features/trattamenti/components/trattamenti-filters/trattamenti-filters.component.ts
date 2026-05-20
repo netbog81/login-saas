@@ -15,7 +15,9 @@ import {
   TrattamentiFilters,
   TrattamentiViewMode,
   TreatmentStatus,
+  TreatmentBillingStatus,
 } from '../../models/trattamento.model';
+import { BILLING_STATUS_LABELS } from '../treatment-billing-section/treatment-billing-section.component';
 
 interface OperatorOption {
   id: string;
@@ -93,6 +95,19 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
           (change)="onStatusesChange($event.value)">
           @for (s of allStatuses; track s) {
             <mat-chip-option [value]="s">{{ labelFor(s) }}</mat-chip-option>
+          }
+        </mat-chip-listbox>
+      </div>
+
+      <!-- BILLING STATUS CHIPS (sessione 6 — stato fatturazione cross-modulo) -->
+      <div class="filters-row">
+        <span class="filters-label">Fatturazione:</span>
+        <mat-chip-listbox
+          multiple
+          [value]="filters.billingStatuses || []"
+          (change)="onBillingStatusesChange($event.value)">
+          @for (b of allBillingStatuses; track b) {
+            <mat-chip-option [value]="b">{{ billingLabelFor(b) }}</mat-chip-option>
           }
         </mat-chip-listbox>
       </div>
@@ -237,6 +252,7 @@ export class TrattamentiFiltersComponent {
   @Input() showViewMode = true;
 
   @Output() statusesChange = new EventEmitter<TreatmentStatus[]>();
+  @Output() billingStatusesChange = new EventEmitter<TreatmentBillingStatus[]>();
   @Output() dateFromChange = new EventEmitter<string | null>();
   @Output() dateToChange = new EventEmitter<string | null>();
   @Output() operatorIdChange = new EventEmitter<string | null>();
@@ -266,6 +282,32 @@ export class TrattamentiFiltersComponent {
 
   onStatusesChange(value: TreatmentStatus[]): void {
     this.statusesChange.emit(value);
+  }
+
+  /**
+   * Stati billing selezionabili come filtro. Ordine ragionato (flusso temporale):
+   * NOT_READY → READY_FOR_BILLING → SENT → PENDING → INVOICED → ...
+   * I 4 stati post-INVOICED (REFUNDED, PARTIALLY_REFUNDED, REISSUED, CANCELLED)
+   * a fondo lista perché meno frequenti.
+   */
+  allBillingStatuses: TreatmentBillingStatus[] = [
+    TreatmentBillingStatus.NotReady,
+    TreatmentBillingStatus.ReadyForBilling,
+    TreatmentBillingStatus.Sent,
+    TreatmentBillingStatus.Pending,
+    TreatmentBillingStatus.Invoiced,
+    TreatmentBillingStatus.PartiallyRefunded,
+    TreatmentBillingStatus.Refunded,
+    TreatmentBillingStatus.Reissued,
+    TreatmentBillingStatus.Cancelled,
+  ];
+
+  billingLabelFor(b: TreatmentBillingStatus): string {
+    return BILLING_STATUS_LABELS[b] ?? b;
+  }
+
+  onBillingStatusesChange(value: TreatmentBillingStatus[]): void {
+    this.billingStatusesChange.emit(value);
   }
 
   get dateFromAsDate(): Date | null {

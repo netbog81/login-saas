@@ -23,9 +23,13 @@ export const CREATE_PATIENT_ANAMNESIS = gql`
 
 /**
  * Aggiorna un'anamnesi esistente
+ *
+ * Operation name `UpdateSimplePatientAnamnesis` per evitare conflitto con
+ * `patient.mutations.ts` che ha operation `UpdatePatientAnamnesis`
+ * (fragment più completo). La const TS resta uguale → caller intatti.
  */
 export const UPDATE_PATIENT_ANAMNESIS = gql`
-  mutation UpdatePatientAnamnesis($id: ID!, $input: UpdatePatientAnamnesisInput!) {
+  mutation UpdateSimplePatientAnamnesis($id: ID!, $input: UpdatePatientAnamnesisInput!) {
     updatePatientAnamnesis(id: $id, input: $input) {
       ...SimplePatientAnamnesisFields
     }

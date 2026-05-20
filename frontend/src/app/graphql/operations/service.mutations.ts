@@ -3,6 +3,7 @@ import { gql } from '@apollo/client/core';
 export const CREATE_SERVICE = gql`
   mutation CreateService(
     $name: String!
+    $serviceCode: String!
     $description: String
     $defaultDuration: Int!
     $defaultPrice: Float
@@ -16,6 +17,7 @@ export const CREATE_SERVICE = gql`
   ) {
     createService(
       name: $name
+      serviceCode: $serviceCode
       description: $description
       defaultDuration: $defaultDuration
       defaultPrice: $defaultPrice
@@ -29,6 +31,7 @@ export const CREATE_SERVICE = gql`
     ) {
       id
       name
+      serviceCode
       description
       defaultDuration
       defaultPrice
@@ -53,6 +56,7 @@ export const UPDATE_SERVICE = gql`
   mutation UpdateService(
     $id: ID!
     $name: String
+    $serviceCode: String
     $description: String
     $defaultDuration: Int
     $defaultPrice: Float
@@ -67,6 +71,7 @@ export const UPDATE_SERVICE = gql`
     updateService(
       id: $id
       name: $name
+      serviceCode: $serviceCode
       description: $description
       defaultDuration: $defaultDuration
       defaultPrice: $defaultPrice
@@ -80,6 +85,7 @@ export const UPDATE_SERVICE = gql`
     ) {
       id
       name
+      serviceCode
       description
       defaultDuration
       defaultPrice

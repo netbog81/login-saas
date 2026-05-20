@@ -21,8 +21,13 @@ export const COMPLETE_TREATMENT = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+// Operation name `CloseTreatmentLegacy` per evitare collisione codegen con
+// `features/trattamenti/graphql/trattamenti.operations.ts` (pattern "feature
+// wins": le operations dentro features/<name>/graphql/ tengono il nome
+// originale; questa legacy riceve suffisso). La const TS resta `CLOSE_TREATMENT`
+// → caller (app/services/treatment.service.ts) intatti.
 export const CLOSE_TREATMENT = gql`
-  mutation CloseTreatment($id: ID!, $input: CloseTreatmentInput!) {
+  mutation CloseTreatmentLegacy($id: ID!, $input: CloseTreatmentInput!) {
     closeTreatment(id: $id, input: $input) {
       ...TreatmentWithRelationsFields
     }
@@ -34,8 +39,10 @@ export const CLOSE_TREATMENT = gql`
  * @deprecated Usa REOPEN_TREATMENT_BY_OPERATOR o REOPEN_TREATMENT_BY_SECRETARY.
  * Manteniamo questa per retrocompatibilità durante la transizione.
  */
+// Operation name `ReopenTreatmentLegacy` per evitare collisione codegen
+// (vedi nota su CloseTreatment).
 export const REOPEN_TREATMENT = gql`
-  mutation ReopenTreatment($id: ID!) {
+  mutation ReopenTreatmentLegacy($id: ID!) {
     reopenTreatment(id: $id) {
       ...TreatmentWithRelationsFields
     }
@@ -65,8 +72,9 @@ export const REOPEN_TREATMENT_BY_SECRETARY = gql`
  * Segreteria forza la chiusura di un trattamento rimasto IN_PROGRESS
  * (operatore dimentico). IN_PROGRESS → CLOSED in una sola transizione.
  */
+// Operation name `ForceCloseTreatmentLegacy` per evitare collisione codegen.
 export const FORCE_CLOSE_TREATMENT = gql`
-  mutation ForceCloseTreatment($id: ID!, $secretaryNotes: String) {
+  mutation ForceCloseTreatmentLegacy($id: ID!, $secretaryNotes: String) {
     forceCloseTreatment(id: $id, secretaryNotes: $secretaryNotes) {
       ...TreatmentWithRelationsFields
     }
@@ -74,8 +82,9 @@ export const FORCE_CLOSE_TREATMENT = gql`
   ${TREATMENT_WITH_RELATIONS_FRAGMENT}
 `;
 
+// Operation name `RecordTreatmentPaymentLegacy` per evitare collisione codegen.
 export const RECORD_TREATMENT_PAYMENT = gql`
-  mutation RecordTreatmentPayment($id: ID!, $input: RecordPaymentInput!) {
+  mutation RecordTreatmentPaymentLegacy($id: ID!, $input: RecordPaymentInput!) {
     recordTreatmentPayment(id: $id, input: $input) {
       ...TreatmentWithRelationsFields
     }

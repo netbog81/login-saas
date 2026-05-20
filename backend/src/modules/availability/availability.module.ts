@@ -86,6 +86,7 @@ import { ServiceInvoicePrefixService } from './services/service-invoice-prefix.s
 import { AvailabilityResolver } from './resolvers/availability.resolver';
 import { OperatorResolver } from './resolvers/operator.resolver';
 import { ServiceResolver } from './resolvers/service.resolver';
+import { ProductResolver } from './resolvers/product.resolver';
 import { OperatorServiceResolver } from './resolvers/operator-service.resolver';
 import { OperatorCategoryResolver } from './resolvers/operator-category.resolver';
 import { InstrumentCategoryResolver } from './resolvers/instrument-category.resolver';
@@ -204,6 +205,7 @@ import { PazientiModule } from '../../patients/patients.module';
     AvailabilityResolver,
     OperatorResolver,
     ServiceResolver,
+    ProductResolver,
     OperatorServiceResolver,
     OperatorCategoryResolver,
     InstrumentCategoryResolver,

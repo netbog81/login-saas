@@ -10,6 +10,12 @@
  * in un unico round trip.
  */
 
+// Enum BillingStatus importato dai generated types (defensivo contro
+// typos cross-file vs stringhe hardcoded). Il backend lo serializza
+// uppercase coerentemente con TreatmentStatus (vedi nota sotto).
+import { TreatmentBillingStatus } from '../../../graphql/generated/types';
+export { TreatmentBillingStatus };
+
 /**
  * Gli enum GraphQL di NestJS vengono serializzati in uppercase (es. il
  * backend ritorna `"CLOSED"`, non `"closed"`). Usiamo quindi i valori
@@ -149,6 +155,41 @@ export interface Trattamento {
   invoicedByOperatorAt?: string | null;
   operatorInvoiceNumber?: string | null;
 
+  // ==================== BILLING (sessione 6 — clinico ↔ accounting) ====================
+
+  /**
+   * Stato del trattamento nel ciclo di fatturazione cross-modulo.
+   * Aggiornato sia da azioni locali (close, setReady, cancel) sia dal
+   * consumer di `ex.accounting.events` lato backend.
+   * Vedi backend `TreatmentBillingStatus` enum per state machine completa.
+   */
+  billingStatus?: TreatmentBillingStatus | null;
+
+  /** Quante volte il treatment è stato emendato dopo l'invio iniziale (0 = mai). */
+  amendmentRevision?: number | null;
+
+  // Snapshot dati fattura ricevuti dall'accounting via `billable.invoiced`.
+  accountingBillableEventId?: string | null;
+  accountingInvoiceUrl?: string | null;
+  accountingInvoiceIssuedAt?: string | null;
+  accountingDocumentType?: string | null;
+  // Snapshot dati nota credito (refund / partial-refund / reissue).
+  accountingCreditNoteNumber?: string | null;
+  accountingCreditNoteIssuedAt?: string | null;
+  accountingRefundReason?: string | null;
+
+  // Alert per race condition `billable.cancellation-rejected`. Mostrato
+  // come banner finché l'operatore non lo dismisce (mutation
+  // `dismissBillingAlert`). Vedi backend Step 3 + 7.4.
+  billingAlertMessage?: string | null;
+  billingAlertAt?: string | null;
+  billingAlertDismissedAt?: string | null;
+
+  // Audit cancellation (Step 7.4 — colonne dedicate, NON soft-delete generico).
+  cancelledAt?: string | null;
+  cancelledByUserId?: string | null;
+  cancellationReason?: string | null;
+
   clinicalNotes?: string | null;
   secretaryNotes?: string | null;
   operatorNotes?: string | null;
@@ -179,6 +220,13 @@ export interface TrattamentiFilters {
   operatorId?: string | null;
   patientId?: string | null;
   statuses?: TreatmentStatus[];
+  /**
+   * Filtro multi-select sullo stato fatturazione clinico ↔ accounting
+   * (sessione 6). Default: nessun filtro = mostra tutti. Filtraggio
+   * lato client (la query server-side ritorna sempre tutti); per dataset
+   * grandi valutare server-side push-down in roadmap.
+   */
+  billingStatuses?: TreatmentBillingStatus[];
   dateFrom?: string | null;       // YYYY-MM-DD
   dateTo?: string | null;
   readyForBilling?: boolean | null;

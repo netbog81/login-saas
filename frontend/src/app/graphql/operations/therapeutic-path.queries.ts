@@ -120,8 +120,12 @@ export const GET_THERAPEUTIC_PATHS_BY_PATIENTS = gql`
 
 // ==================== EVALUATION QUERIES ====================
 
+// NOTA: operation name `GetPatientEvaluationForPath` (non `GetPatientEvaluation`)
+// per evitare conflitto di nome con `patient-evaluation.queries.ts` che ha
+// operation con stesso nome ma fragment diverso (`PatientEvaluationWithRelationsFields`).
+// La const TS `GET_PATIENT_EVALUATION` resta uguale → caller intatti.
 export const GET_PATIENT_EVALUATION = gql`
-  query GetPatientEvaluation($id: ID!) {
+  query GetPatientEvaluationForPath($id: ID!) {
     patientEvaluation(id: $id) {
       ...PatientEvaluationFields
     }
@@ -132,9 +136,12 @@ export const GET_PATIENT_EVALUATION = gql`
 /**
  * Query per ottenere la valutazione di un percorso terapeutico
  * Relazione 1:1 tra PatientEvaluation e TherapeuticPath
+ *
+ * Operation name `GetEvaluationByPathScope` per evitare conflitto con
+ * `patient-evaluation.queries.ts`.
  */
 export const GET_EVALUATION_BY_PATH = gql`
-  query GetEvaluationByPath($pathId: ID!) {
+  query GetEvaluationByPathScope($pathId: ID!) {
     evaluationByPath(pathId: $pathId) {
       ...PatientEvaluationFields
     }

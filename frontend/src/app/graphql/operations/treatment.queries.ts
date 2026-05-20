@@ -41,10 +41,36 @@ export const TREATMENT_FRAGMENT = gql`
     isInvoicedByOperator
     invoicedByOperatorAt
     operatorInvoiceNumber
+    billingStatus
+    amendmentRevision
+    accountingBillableEventId
+    accountingInvoiceUrl
+    accountingInvoiceIssuedAt
+    accountingDocumentType
+    accountingCreditNoteNumber
+    accountingCreditNoteIssuedAt
+    accountingRefundReason
+    billingAlertMessage
+    billingAlertAt
+    billingAlertDismissedAt
+    cancelledAt
+    cancelledByUserId
+    cancellationReason
     createdAt
     updatedAt
   }
 `;
+// Nota: i 14 campi billing aggiunti sopra (billingStatus..cancellationReason)
+// sono additivi — tutte le query che già spread `TreatmentFields` ricevono
+// lo stato billing senza modifiche caller. Pattern alternativo per query
+// future "leggere": fragment dedicato TREATMENT_BILLING_FIELDS in
+// features/trattamenti/graphql/trattamenti.operations.ts.
+//
+// NOTA TECNICA — niente commenti dentro `gql`...`:
+// NIENTE commenti `//...` o `/* ... */` dentro il template gql, e neanche
+// commenti GraphQL `# ...` che contengono caratteri `/`. TypeScript parser
+// del tagged template interpreta i `/` come operator division e rompe il
+// parsing dell'intero file. Tenere i commenti FUORI dal `gql`...`.
 
 export const TREATMENT_WITH_RELATIONS_FRAGMENT = gql`
   fragment TreatmentWithRelationsFields on Treatment {

@@ -4,6 +4,7 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import * as amqp from 'amqp-connection-manager';
 import type { ConfirmChannel } from 'amqplib';
@@ -14,6 +15,10 @@ import {
   ClinicalOutboundEventType,
   CurandisEvent,
 } from './clinical-events.types';
+import { PendingClinicalEvent } from './clinical-event-buffer.service';
+
+/** Nome dell'event-bus event emesso dal buffer post-commit. */
+export const CLINICAL_PUBLISH_PENDING_EVENT = 'clinical.publish-pending';
 
 /**
  * Pubblica eventi del clinico su `ex.clinical.events` (topic, durable).
@@ -89,6 +94,13 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
       // confirmSelect: il channel si mette in confirm mode automaticamente
       // perché useremo `publish` di amqp-connection-manager che ritorna
       // Promise<void> risolta solo dopo l'ack del broker.
+      //
+      // PublishTimeout: se broker giù al momento del publish, fail dopo
+      // 10s invece di aspettare indefinitamente. Il messaggio resta
+      // bufferizzato lato amqp-connection-manager finché la connection
+      // non si ristabilisce (in-memory, perso al restart del backend —
+      // accettabile per MVP, log `[OUTBOX-MISSING]` cattura il caso).
+      publishTimeout: 10_000,
       setup: async (channel: ConfirmChannel) => {
         // L'exchange `ex.clinical.events` è dichiarato come "owned" dal
         // clinico (configure permission). Lo asseriamo idempotentemente
@@ -106,16 +118,30 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
       },
     });
 
-    // Attende il primo setup OK (apertura connection + assertExchange).
-    try {
-      await this.channelWrapper.waitForConnect();
-    } catch (err) {
-      this.logger.error(
-        `Impossibile stabilire connection iniziale RabbitMQ: ${(err as Error).message}. ` +
-          `Il publisher proverà a riconnettersi automaticamente.`,
-      );
-      // Non rilanciamo: amqp-connection-manager continua a riprovare.
-    }
+    // ROBUSTEZZA AL BOOT (fix post-incident 2026-05-13):
+    // NON aspettiamo `waitForConnect()` con await: se il broker è giù o
+    // rifiuta auth, `waitForConnect()` resta pending per sempre (il
+    // try/catch precedente NON aiutava — la Promise non viene mai
+    // rejected, solo pending). Risultato: tutto `onApplicationBootstrap`
+    // bloccato → NestJS non chiama mai `app.listen()` → backend mai sulla
+    // porta 3000 → frontend in reload loop.
+    //
+    // Pattern fire-and-forget: il publisher resta in stato non-pronto
+    // (`isReady() = false`), `amqp-connection-manager` continua a tentare
+    // riconnessione in background. Quando il broker torna su, il publisher
+    // si connette automaticamente. I publish chiamati prima della
+    // connection vengono bufferizzati (in-memory) e flushati al primo
+    // connect; se backend muore prima, log `[OUTBOX-MISSING]` lo cattura.
+    this.channelWrapper.waitForConnect()
+      .then(() => {
+        this.logger.log('Publisher channel ready (waitForConnect resolved)');
+      })
+      .catch((err) => {
+        this.logger.error(
+          `Connection iniziale RabbitMQ fallita (non-bloccante): ${(err as Error).message}. ` +
+            `Riprovo in background. Publish chiamati nel frattempo restano in coda.`,
+        );
+      });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -224,5 +250,107 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
    */
   isReady(): boolean {
     return this.config.enabled && this.exchangeAsserted && !!this.channelWrapper;
+  }
+
+  /**
+   * Listener post-commit del pattern publish-after-commit.
+   *
+   * Il `ClinicalEventBuffer` accumula eventi dentro la transazione DB e li
+   * emette uno-per-uno su `CLINICAL_PUBLISH_PENDING_EVENT` SOLO dopo il
+   * commit OK (vedi `flushBufferedEvents` di `clinical-event-buffer.helpers`).
+   *
+   * Errori qui NON vengono propagati al chiamante (la transazione DB è già
+   * committata; un publish fallito significa solo che broker non ha
+   * ricevuto l'evento). MVP: log strutturato `[OUTBOX-MISSING]` con
+   * eventId/correlationId/treatmentId per investigation post-incident.
+   * Outbox pattern resiliente è roadmap post-MVP (vedi spec §11 nota outbox).
+   */
+  @OnEvent(CLINICAL_PUBLISH_PENDING_EVENT)
+  async handlePublishPending(event: PendingClinicalEvent): Promise<void> {
+    // Generiamo l'eventId qui (e non dentro publish()) per averlo nei log
+    // di outbox-missing anche quando il publish fallisce.
+    const eventId = randomUUID();
+    const treatmentId =
+      (event.payload as { treatmentId?: string } | null)?.treatmentId ?? '-';
+
+    try {
+      await this.publishWithEventId(eventId, event);
+    } catch (err) {
+      this.logger.error(
+        `[OUTBOX-MISSING] eventType=${event.eventType} eventId=${eventId} ` +
+          `correlationId=${event.correlationId ?? '-'} treatmentId=${treatmentId} ` +
+          `tenant=${event.tenantAlias} err="${(err as Error).message}"`,
+      );
+      // NON re-throw: il flusso di business (es. closeTreatment) è già
+      // committato. Outbox manuale: ops.
+    }
+  }
+
+  /**
+   * Variante interna di publish() che accetta un eventId pre-generato dal
+   * caller. Usata da `handlePublishPending` per garantire che l'eventId
+   * loggato (sia in `[OUTBOX-MISSING]` su error, sia nei log debug su
+   * successo) coincida con quello effettivamente inviato al broker come
+   * AMQP messageId.
+   */
+  private async publishWithEventId<P>(
+    eventId: string,
+    input: {
+      eventType: ClinicalOutboundEventType;
+      payload: P;
+      tenantAlias: string;
+      correlationId?: string;
+    },
+  ): Promise<void> {
+    if (!this.config.enabled) {
+      this.logger.warn(
+        `publishWithEventId() chiamato con RABBITMQ_ENABLED=false: evento "${input.eventType}" droppato`,
+      );
+      return;
+    }
+
+    const occurredAt = new Date().toISOString();
+    const routingKey = `${input.eventType}.${input.tenantAlias}`;
+
+    const event: CurandisEvent<P> = {
+      schemaVersion: '1.0',
+      eventId,
+      occurredAt,
+      eventType: input.eventType,
+      tenantAlias: input.tenantAlias,
+      correlationId: input.correlationId,
+      producerVersion: this.config.producerVersion,
+      payload: input.payload,
+    };
+
+    const body = Buffer.from(JSON.stringify(event), 'utf8');
+
+    if (!this.channelWrapper) {
+      throw new Error(
+        'ClinicalEventPublisher non inizializzato (channelWrapper assente).',
+      );
+    }
+
+    await this.channelWrapper.publish(
+      this.config.clinicalExchange,
+      routingKey,
+      body,
+      {
+        persistent: true,
+        contentType: 'application/json',
+        messageId: eventId,
+        timestamp: Math.floor(Date.now() / 1000),
+        headers: {
+          'x-correlation-id': event.correlationId ?? eventId,
+          'x-tenant-alias': input.tenantAlias,
+          'x-schema-version': '1.0',
+          'x-source-module': 'clinico',
+        },
+      },
+    );
+
+    this.logger.debug(
+      `Publish OK eventType="${input.eventType}" routingKey="${routingKey}" eventId="${eventId}"`,
+    );
   }
 }

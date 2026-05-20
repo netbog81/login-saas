@@ -1,0 +1,112 @@
+<section class="billing-section" [attr.data-status]="statusModifier">
+  <header class="section-header">
+    <h3>Stato fatturazione</h3>
+    <span class="status-badge" [class]="'status-badge--' + statusModifier">
+      {{ statusLabel }}
+    </span>
+    <span *ngIf="showAmendmentBadge" class="amendment-badge"
+          [title]="'Trattamento modificato dopo l\'invio'">
+      Rev. {{ treatment.amendmentRevision }}
+    </span>
+  </header>
+
+  <!-- Banner alert non-dismissato (es. cancellation-rejected) -->
+  <div *ngIf="showAlert" class="billing-alert">
+    <div class="billing-alert__icon" aria-hidden="true">⚠️</div>
+    <div class="billing-alert__content">
+      <p class="billing-alert__message">{{ treatment.billingAlertMessage }}</p>
+      <p *ngIf="treatment.billingAlertAt" class="billing-alert__timestamp">
+        {{ treatment.billingAlertAt | date:'dd/MM/yyyy HH:mm' }}
+      </p>
+    </div>
+    <button type="button"
+            class="btn btn-sm btn-warning"
+            (click)="onDismissAlert()">
+      Letto
+    </button>
+  </div>
+
+  <!-- Snapshot fattura emessa -->
+  <div *ngIf="showInvoiceData" class="invoice-snapshot">
+    <h4 class="snapshot-title">Documento fiscale</h4>
+    <dl class="snapshot-grid">
+      <dt>Numero</dt>
+      <dd>{{ treatment.patientInvoiceNumber || '—' }}</dd>
+
+      <dt>Tipo</dt>
+      <dd>{{ treatment.accountingDocumentType || 'INVOICE' }}</dd>
+
+      <dt>Data emissione</dt>
+      <dd>{{ (treatment.accountingInvoiceIssuedAt || treatment.invoicedToPatientAt) | date:'dd/MM/yyyy' }}</dd>
+
+      <dt *ngIf="treatment.accountingInvoiceUrl">PDF</dt>
+      <dd *ngIf="treatment.accountingInvoiceUrl">
+        <a [href]="treatment.accountingInvoiceUrl" target="_blank" rel="noopener">
+          Apri documento
+        </a>
+      </dd>
+    </dl>
+  </div>
+
+  <!-- Snapshot nota di credito (refund parziale/totale o reissue) -->
+  <div *ngIf="showCreditNoteData" class="credit-note-snapshot">
+    <h4 class="snapshot-title">Nota di credito</h4>
+    <dl class="snapshot-grid">
+      <dt>Numero</dt>
+      <dd>{{ treatment.accountingCreditNoteNumber }}</dd>
+
+      <dt>Data</dt>
+      <dd>{{ treatment.accountingCreditNoteIssuedAt | date:'dd/MM/yyyy' }}</dd>
+
+      <dt *ngIf="treatment.accountingRefundReason">Motivo</dt>
+      <dd *ngIf="treatment.accountingRefundReason">
+        {{ treatment.accountingRefundReason }}
+      </dd>
+    </dl>
+  </div>
+
+  <!-- Snapshot cancellation -->
+  <div *ngIf="showCancellationData" class="cancellation-snapshot">
+    <h4 class="snapshot-title">Annullamento</h4>
+    <dl class="snapshot-grid">
+      <dt>Quando</dt>
+      <dd>{{ treatment.cancelledAt | date:'dd/MM/yyyy HH:mm' }}</dd>
+
+      <dt *ngIf="treatment.cancellationReason">Motivo</dt>
+      <dd *ngIf="treatment.cancellationReason">
+        {{ treatment.cancellationReason }}
+      </dd>
+    </dl>
+  </div>
+
+  <!-- Azioni billing — vincoli arrivano via Input (Step 6.5 cabla la logica).
+       NB: questi bottoni operano SOLO sul flusso fatturazione, NON sullo
+       stato clinico del trattamento (chiusura, riapertura clinica, ecc.
+       sono in altre sezioni del dettaglio). Naming esplicito per
+       evitare confusione con le azioni cliniche omonime. -->
+  <div class="billing-actions">
+    <button type="button"
+            class="btn btn-success"
+            [disabled]="immediateInvoiceDisabled"
+            [title]="immediateInvoiceDisabled ? (immediateInvoiceDisabledReason || '') : 'Chiude trattamento e richiede l\'emissione immediata della fattura ad accounting'"
+            (click)="onImmediateInvoice()">
+      Fattura subito + incassa
+    </button>
+
+    <button type="button"
+            class="btn"
+            [disabled]="reopenDisabled"
+            [title]="reopenDisabled ? (reopenDisabledReason || '') : 'Riapre il trattamento per modifiche di righe/prezzi prima della fattura. Notifica accounting.'"
+            (click)="onReopen()">
+      Riapri per modifiche
+    </button>
+
+    <button type="button"
+            class="btn btn-danger"
+            [disabled]="cancelDisabled"
+            [title]="cancelDisabled ? (cancelDisabledReason || '') : 'Annulla la richiesta di fatturazione. Il trattamento NON sarà fatturato. Notifica accounting.'"
+            (click)="onCancel()">
+      Annulla fatturazione
+    </button>
+  </div>
+</section>

@@ -30,6 +30,7 @@
     <table>
       <thead>
         <tr>
+          <th>Codice</th>
           <th>Nome</th>
           <th>Categoria</th>
           <th>Durata</th>
@@ -43,6 +44,12 @@
         <tr *ngFor="let service of filteredServices"
             [class.selected]="selectedService?.id === service.id"
             (click)="selectService(service)">
+          <td>
+            <code [class.code-tmp]="$any(service).serviceCode?.startsWith('TMP-')"
+                  [title]="$any(service).serviceCode?.startsWith('TMP-') ? 'Codice provvisorio: aggiornalo dalla form' : ''">
+              {{ $any(service).serviceCode || '—' }}
+            </code>
+          </td>
           <td class="service-name">
             <span class="color-indicator" [style.background-color]="service.color"></span>
             {{ service.name }}
@@ -69,7 +76,7 @@
           </td>
         </tr>
         <tr *ngIf="filteredServices.length === 0">
-          <td colspan="7" class="no-data">Nessun servizio trovato</td>
+          <td colspan="8" class="no-data">Nessun servizio trovato</td>
         </tr>
       </tbody>
     </table>
@@ -88,12 +95,24 @@
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group">
-            <label>Nome *</label>
-            <input type="text" [(ngModel)]="editingService.name" class="form-control">
+            <label>Codice servizio *</label>
+            <input type="text"
+                   [(ngModel)]="editingService.serviceCode"
+                   class="form-control"
+                   maxlength="30"
+                   placeholder="es. FIS-001">
+            <small class="form-help">Codice business univoco (max 30 caratteri). Usato per il sync con il sistema di fatturazione.</small>
           </div>
           <div class="form-group">
             <label>Colore</label>
             <input type="color" [(ngModel)]="editingService.color" class="form-control color-picker">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group form-group-full">
+            <label>Nome *</label>
+            <input type="text" [(ngModel)]="editingService.name" class="form-control">
           </div>
         </div>
 

@@ -8,7 +8,8 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatBadgeModule } from '@angular/material/badge';
-import { Trattamento, TrattamentiViewMode, TreatmentStatus } from '../../models/trattamento.model';
+import { Trattamento, TrattamentiViewMode, TreatmentStatus, TreatmentBillingStatus } from '../../models/trattamento.model';
+import { BILLING_STATUS_LABELS } from '../treatment-billing-section/treatment-billing-section.component';
 
 export interface TrattamentoGroup {
   key: string;
@@ -93,11 +94,15 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
             <span class="chip" [style.background]="statusChip(t.status).color">
               {{ statusChip(t.status).label }}
             </span>
-            @if (t.readyForBilling) {
-              <mat-icon class="flag-icon" matTooltip="Pronto per fatturazione" color="primary">check_circle</mat-icon>
+            @if (billingStatusLabel(t.billingStatus); as billingLabel) {
+              <span class="chip billing-chip"
+                    [style.background]="billingStatusColor(t.billingStatus)"
+                    [matTooltip]="'Stato fatturazione: ' + billingLabel">
+                {{ billingLabel }}
+              </span>
             }
-            @if (t.isInvoicedToPatient) {
-              <mat-icon class="flag-icon" matTooltip="Fatturato">receipt</mat-icon>
+            @if (t.readyForBilling && !t.billingStatus) {
+              <mat-icon class="flag-icon" matTooltip="Pronto per fatturazione" color="primary">check_circle</mat-icon>
             }
             @if (t.scontoFE) {
               <mat-icon class="flag-icon" matTooltip="Sconto FE attivo" style="color: #e91e63">discount</mat-icon>
@@ -227,6 +232,9 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
       font-size: 0.75rem;
       font-weight: 500;
     }
+    .billing-chip {
+      margin-left: 6px;
+    }
     .flag-icon {
       font-size: 18px;
       vertical-align: middle;
@@ -281,10 +289,42 @@ export class TrattamentiListComponent {
     return STATUS_CHIP[status] ?? { label: status, color: '#9e9e9e' };
   }
 
+  /**
+   * Bottone "Invia al sistema di fatturazione" (riga lista) disponibile
+   * SOLO se readyForBilling=true + scontoFE=false + billingStatus IN
+   * (NOT_READY, READY_FOR_BILLING) o null. Esclude treatment già SENT/
+   * PENDING/INVOICED/CANCELLED (idempotenza UI: una volta inviato, niente
+   * re-invio).
+   */
   canSendRow(t: Trattamento): boolean {
-    return t.readyForBilling === true
-      && t.isInvoicedToPatient === false
-      && t.scontoFE === false;
+    if (t.readyForBilling !== true) return false;
+    if (t.scontoFE === true) return false;
+    const status = t.billingStatus;
+    return status == null
+      || status === TreatmentBillingStatus.NotReady
+      || status === TreatmentBillingStatus.ReadyForBilling;
+  }
+
+  /** Label umana per il chip billingStatus nella tabella. */
+  billingStatusLabel(status: TreatmentBillingStatus | null | undefined): string | null {
+    if (!status || status === TreatmentBillingStatus.NotReady) return null;
+    return BILLING_STATUS_LABELS[status] ?? status;
+  }
+
+  /** Colore semantico per il chip billingStatus. */
+  billingStatusColor(status: TreatmentBillingStatus | null | undefined): string {
+    if (!status) return '#9e9e9e';
+    switch (status) {
+      case TreatmentBillingStatus.ReadyForBilling: return '#fbc02d';   // giallo
+      case TreatmentBillingStatus.Sent:            return '#1976d2';   // blu
+      case TreatmentBillingStatus.Pending:         return '#5e35b1';   // indaco
+      case TreatmentBillingStatus.Invoiced:        return '#43a047';   // verde
+      case TreatmentBillingStatus.Reissued:        return '#00acc1';   // ciano
+      case TreatmentBillingStatus.Refunded:        return '#e53935';   // rosso
+      case TreatmentBillingStatus.PartiallyRefunded: return '#ef6c00'; // arancio
+      case TreatmentBillingStatus.Cancelled:       return '#757575';   // grigio
+      default:                                     return '#9e9e9e';
+    }
   }
 
   formatDate(iso: string): string {

@@ -21,8 +21,8 @@ export const UPDATE_PATIENT_REGISTRY = gql`
 `;
 
 export const UPDATE_PATIENT_ANAMNESIS = gql`
-  mutation UpdatePatientAnamnesis($subjectId: ID!, $input: UpdatePatientAnamnesisInput!) {
-    updatePatientAnamnesis(subjectId: $subjectId, input: $input) {
+  mutation UpdatePatientAnamnesis($id: ID!, $input: UpdatePatientAnamnesisInput!) {
+    updatePatientAnamnesis(id: $id, input: $input) {
       id
       subjectId
       gruppoSanguigno
