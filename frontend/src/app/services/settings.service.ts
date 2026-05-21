@@ -21,6 +21,7 @@ export interface CalendarSettings {
   slotDuration: number;
   defaultView: 'daily' | 'weekly';
   showUnavailableCellsBackground: boolean;
+  blockAppointmentsOutsideAvailability: boolean;
 }
 
 const GET_ALL_SETTINGS = gql`
@@ -127,6 +128,7 @@ const GET_CALENDAR_SETTINGS = gql`
       slotDuration
       defaultView
       showUnavailableCellsBackground
+      blockAppointmentsOutsideAvailability
     }
   }
 `;
@@ -231,6 +233,7 @@ export class SettingsService extends BaseGraphQLService {
       slotDuration: 15,
       defaultView: 'daily',
       showUnavailableCellsBackground: true,
+      blockAppointmentsOutsideAvailability: false,
     };
 
     return this.query<{ calendarSettings: CalendarSettings }>(GET_CALENDAR_SETTINGS)

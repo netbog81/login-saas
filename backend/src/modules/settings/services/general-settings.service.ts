@@ -30,6 +30,7 @@ export const SETTINGS_KEYS = {
   CALENDAR_SLOT_DURATION: 'calendar.slotDuration',
   CALENDAR_DEFAULT_VIEW: 'calendar.defaultView',
   CALENDAR_SHOW_UNAVAILABLE_BACKGROUND: 'calendar.showUnavailableCellsBackground',
+  CALENDAR_BLOCK_OUTSIDE_AVAILABILITY: 'calendar.blockAppointmentsOutsideAvailability',
 
   // Auto Attendance (cambio automatico stato appuntamento)
   AUTO_ATTENDANCE_ENABLED: 'autoAttendance.enabled',
@@ -239,6 +240,13 @@ export class GeneralSettingsService {
         valueType: 'boolean',
         category: 'calendar'
       },
+      {
+        key: SETTINGS_KEYS.CALENDAR_BLOCK_OUTSIDE_AVAILABILITY,
+        value: false,
+        description: 'Blocca la creazione/spostamento di appuntamenti fuori dalla disponibilità dell\'operatore',
+        valueType: 'boolean',
+        category: 'calendar'
+      },
       // Auto Attendance
       {
         key: SETTINGS_KEYS.AUTO_ATTENDANCE_ENABLED,
@@ -314,8 +322,9 @@ export class GeneralSettingsService {
     slotDuration: number;
     defaultView: 'daily' | 'weekly';
     showUnavailableCellsBackground: boolean;
+    blockAppointmentsOutsideAvailability: boolean;
   }> {
-    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground] = await Promise.all([
+    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground, blockAppointmentsOutsideAvailability] = await Promise.all([
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_START_HOUR, 7),
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY, true),
@@ -323,6 +332,7 @@ export class GeneralSettingsService {
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_SLOT_DURATION, 45),
       this.getValue<'daily' | 'weekly'>(SETTINGS_KEYS.CALENDAR_DEFAULT_VIEW, 'daily'),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_UNAVAILABLE_BACKGROUND, true),
+      this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_BLOCK_OUTSIDE_AVAILABILITY, false),
     ]);
 
     return {
@@ -333,7 +343,15 @@ export class GeneralSettingsService {
       slotDuration,
       defaultView,
       showUnavailableCellsBackground,
+      blockAppointmentsOutsideAvailability,
     };
+  }
+
+  /**
+   * Helper: verifica se il blocco appuntamenti fuori disponibilità è attivo.
+   */
+  async isBlockOutsideAvailabilityEnabled(): Promise<boolean> {
+    return this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_BLOCK_OUTSIDE_AVAILABILITY, false);
   }
 
   // ==================== AUTO ATTENDANCE HELPERS ====================

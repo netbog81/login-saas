@@ -620,6 +620,18 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
     const startMinutes = this.timeToMinutes(posEvent.originalStartTime) + minuteDelta;
     const endMinutes = this.timeToMinutes(posEvent.originalEndTime) + minuteDelta;
 
+    // Annulla lo spostamento se la destinazione esce dai limiti della griglia.
+    // Senza questo controllo un drag oltre il bordo produrrebbe orari fuori
+    // range (anche negativi) che corrompono il calcolo di disponibilita'.
+    const gridStart = this.timeToMinutes(this.gridData.timeSlots[0].time);
+    const gridEnd = this.timeToMinutes(
+      this.gridData.timeSlots[this.gridData.timeSlots.length - 1].time,
+    ) + slotDuration;
+    if (startMinutes < gridStart || endMinutes > gridEnd) {
+      setTimeout(() => { this.isDragging = false; }, 200);
+      return;
+    }
+
     this.dragMove.emit({
       appointmentId: posEvent.appointment.id as string,
       operatorId: posEvent.operatorId,
@@ -663,11 +675,14 @@ export class OperatorGridComponent implements AfterViewInit, OnDestroy {
       // Ripristina altezza originale (il reload riposizionera')
       chipEl.style.height = `${originalHeightPx}px`;
 
-      if (minuteDelta !== 0) {
+      if (minuteDelta !== 0 && this.gridData) {
         const endMinutes = this.timeToMinutes(posEvent.originalEndTime) + minuteDelta;
         const startMinutes = this.timeToMinutes(posEvent.originalStartTime);
-        // Assicura che endTime > startTime (almeno 1 slot)
-        if (endMinutes > startMinutes) {
+        const gridEnd = this.timeToMinutes(
+          this.gridData.timeSlots[this.gridData.timeSlots.length - 1].time,
+        ) + slotDuration;
+        // Assicura endTime > startTime (almeno 1 slot) ed entro il bordo griglia.
+        if (endMinutes > startMinutes && endMinutes <= gridEnd) {
           this.resizeEnd.emit({
             appointmentId: posEvent.appointment.id as string,
             newEndTime: this.minutesToTime(endMinutes),

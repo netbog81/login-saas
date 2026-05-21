@@ -19,7 +19,7 @@ import {
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, combineLatest, firstValueFrom } from 'rxjs';
+import { Subject, combineLatest, forkJoin, firstValueFrom } from 'rxjs';
 import { takeUntil, debounceTime } from 'rxjs/operators';
 
 // Angular Material
@@ -52,11 +52,15 @@ import { SseService } from '../../../services/sse.service';
 import { CalendarV2StateService } from '../../calendar-v2/services/calendar-v2-state.service';
 import { CalendarV2DataService } from '../../calendar-v2/services/calendar-v2-data.service';
 import { CalendarV2GridService } from '../../calendar-v2/services/calendar-v2-grid.service';
+// Service specifico v3 (disponibilita' free-block)
+import { CalendarV3DataService } from '../services/calendar-v3-data.service';
 import { OperatorService } from '../../../services/operator.service';
 import { SettingsService } from '../../../services/settings.service';
 
-// Models riusati da calendar-v2
+// Models e util riusati da calendar-v2
 import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, EventClickEvent, DragMoveEvent, AvailableSlotPosition, SearchFilters } from '../../calendar-v2/models/calendar-v2.model';
+import { isAppointmentWithinAvailability } from '../../calendar-v2/services/availability-check.util';
+import { ConfirmMatDialogComponent, ConfirmMatDialogData } from '../../../shared/components/confirm-mat-dialog';
 import { Appointment } from '../../../models/appointment.model';
 import { Treatment } from '../../../models/treatment.model';
 
@@ -204,6 +208,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
 
   stateService = inject(CalendarV2StateService);
   private dataService = inject(CalendarV2DataService);
+  private v3DataService = inject(CalendarV3DataService);
   private gridService = inject(CalendarV2GridService);
   private operatorService = inject(OperatorService);
   private settingsService = inject(SettingsService);
@@ -220,6 +225,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   treatments: Treatment[] = [];
   currentDateLabel = '';
   sidebarCollapsed = false;
+  /** Da calendar settings: blocca appuntamenti fuori disponibilita' operatore. */
+  blockOutsideAvailability = false;
   operatorGridData: OperatorGridData | null = null;
   currentTimeTop = -1;
   private currentTimeInterval: any;
@@ -267,6 +274,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       try {
         const settings = await this.settingsService.getCalendarSettings().toPromise();
         if (settings) {
+          this.blockOutsideAvailability = settings.blockAppointmentsOutsideAvailability;
           const hasStoredState = sessionStorage.getItem('calendar-v2-state') !== null;
           this.stateService.updateConfig({
             workingHoursStart: settings.startHour,
@@ -362,15 +370,26 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       const withTemplate = operators.filter(o => o.hasTemplate).map(o => o.operatorId);
       const today = this.stateService.formatDate(new Date());
 
-      this.dataService.loadOperatorData(operatorIds, withTemplate, startDate, endDate, today)
+      // Appuntamenti + trattamenti dal data service condiviso; la
+      // disponibilita' invece dal data service V3 (free-block reali).
+      forkJoin({
+        operatorData: this.dataService.loadOperatorData(
+          operatorIds, withTemplate, startDate, endDate, today,
+        ),
+        availabilityV3: this.v3DataService.loadOperatorsAvailability(
+          withTemplate, startDate, endDate,
+        ),
+      })
         .pipe(takeUntil(this.destroy$))
         .subscribe({
-          next: (result) => {
-            this.appointmentCount = this.countAppointments(result.appointments);
-            this.treatments = result.treatments;
+          next: ({ operatorData, availabilityV3 }) => {
+            this.appointmentCount = this.countAppointments(operatorData.appointments);
+            this.treatments = operatorData.treatments;
 
+            // computeOperatorGrid riceve la disponibilita' V3 al posto di
+            // operatorData.availabilities: stessa struttura, dati corretti.
             this.operatorGridData = this.gridService.computeOperatorGrid(
-              config, dates, operators, result.appointments, result.availabilities,
+              config, dates, operators, operatorData.appointments, availabilityV3,
             );
             this.updateCurrentTimeTop();
 
@@ -470,6 +489,48 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         this.treatmentsDialogRef = null;
       });
     });
+  }
+
+  // ==================== AVAILABILITY GUARD ====================
+
+  /**
+   * Verifica se un appuntamento [start,end] per operatore/data e' dentro la
+   * disponibilita'. Se il flag di blocco e' attivo e l'orario e' fuori,
+   * chiede conferma all'utente.
+   *
+   * Ritorna:
+   * - 'proceed': procedi senza forzatura (dentro disponibilita', o flag off)
+   * - 'force': l'utente ha confermato la forzatura → passare forceOutsideAvailability
+   * - 'cancel': l'utente ha annullato → non procedere
+   */
+  private async checkAvailabilityGuard(
+    operatorId: string,
+    date: string,
+    startTime: string,
+    endTime: string,
+    excludeRange?: { startTime: string; endTime: string },
+  ): Promise<'proceed' | 'force' | 'cancel'> {
+    if (!this.blockOutsideAvailability) return 'proceed';
+
+    const within = isAppointmentWithinAvailability(
+      this.operatorGridData, operatorId, date, startTime, endTime, excludeRange,
+    );
+    if (within) return 'proceed';
+
+    const data: ConfirmMatDialogData = {
+      title: 'Orario fuori disponibilità',
+      message:
+        `L'orario ${startTime} - ${endTime} è fuori dalla disponibilità ` +
+        `dell'operatore.\nVuoi procedere comunque?`,
+      confirmText: 'Procedi comunque',
+      cancelText: 'Annulla',
+      confirmColor: 'warn',
+      icon: 'warning',
+    };
+    const confirmed = await firstValueFrom(
+      this.dialog.open(ConfirmMatDialogComponent, { width: '440px', data }).afterClosed(),
+    );
+    return confirmed ? 'force' : 'cancel';
   }
 
   // ==================== UTILITIES ====================
@@ -776,29 +837,97 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
-  onResizeEnd(event: { appointmentId: string; newEndTime: string }): void {
+  async onResizeEnd(event: { appointmentId: string; newEndTime: string }): Promise<void> {
+    // Per il resize serve l'operatore/data/start: li recupero dall'evento in griglia.
+    const posEvent = this.findPositionedEvent(event.appointmentId);
+    if (posEvent) {
+      const guard = await this.checkAvailabilityGuard(
+        posEvent.operatorId, posEvent.date,
+        posEvent.originalStartTime, event.newEndTime,
+        // Escludi l'intervallo originale: l'appuntamento puo' espandersi
+        // nello spazio che gia' occupava senza falso allarme.
+        { startTime: posEvent.originalStartTime, endTime: posEvent.originalEndTime },
+      );
+      if (guard === 'cancel') {
+        this.reloadCurrentView();
+        return;
+      }
+      const force = guard === 'force';
+      this.appointmentService.updateAppointment(event.appointmentId, {
+        endTime: event.newEndTime,
+        forceOutsideAvailability: force,
+      }).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => this.reloadCurrentView(),
+        error: (err: any) => this.handleAppointmentError(err, 'ridimensionamento'),
+      });
+      return;
+    }
+
     this.appointmentService.updateAppointment(event.appointmentId, {
       endTime: event.newEndTime,
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => this.reloadCurrentView(),
-      error: (err: any) => {
-        console.error('[CalendarV3] Error resizing appointment:', err);
-        alert('Errore nel ridimensionamento dell\'appuntamento');
-      },
+      error: (err: any) => this.handleAppointmentError(err, 'ridimensionamento'),
     });
   }
 
-  onDragMove(event: DragMoveEvent): void {
+  async onDragMove(event: DragMoveEvent): Promise<void> {
+    // Escludi l'intervallo originale dell'appuntamento dal calcolo
+    // disponibilita': sta solo cambiando posizione, lo spazio che lasciava
+    // libero non deve generare un falso positivo. Vale solo se resta sullo
+    // stesso operatore e giorno: se cambia colonna lo spazio liberato e'
+    // altrove e non va escluso nella colonna di destinazione.
+    const posEvent = this.findPositionedEvent(event.appointmentId);
+    const excludeRange =
+      posEvent &&
+      posEvent.date === event.newDate &&
+      posEvent.operatorId === event.operatorId
+        ? { startTime: posEvent.originalStartTime, endTime: posEvent.originalEndTime }
+        : undefined;
+
+    const guard = await this.checkAvailabilityGuard(
+      event.operatorId, event.newDate, event.newStartTime, event.newEndTime,
+      excludeRange,
+    );
+    if (guard === 'cancel') {
+      this.reloadCurrentView();
+      return;
+    }
+
     this.appointmentService.updateAppointment(event.appointmentId, {
+      appointmentDate: event.newDate,
       startTime: event.newStartTime,
       endTime: event.newEndTime,
+      forceOutsideAvailability: guard === 'force',
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => this.reloadCurrentView(),
-      error: (err: any) => {
-        console.error('[CalendarV3] Error moving appointment:', err);
-        alert('Errore nello spostamento dell\'appuntamento');
-      },
+      error: (err: any) => this.handleAppointmentError(err, 'spostamento'),
     });
+  }
+
+  /** Cerca un PositionedEvent nella griglia corrente per appointmentId. */
+  private findPositionedEvent(appointmentId: string) {
+    for (const col of this.operatorGridData?.columns ?? []) {
+      const found = col.events.find(e => String(e.appointment.id) === String(appointmentId));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Gestione errori comune per drag/resize. Riconosce l'errore backend
+   * "fuori disponibilita'" e mostra un messaggio dedicato.
+   */
+  private handleAppointmentError(err: any, azione: string): void {
+    const msg: string =
+      err?.graphQLErrors?.[0]?.message || err?.message || '';
+    if (msg.includes('APPOINTMENT_OUTSIDE_AVAILABILITY')) {
+      alert('L\'orario selezionato è fuori dalla disponibilità dell\'operatore.');
+    } else {
+      console.error(`[CalendarV3] Error ${azione} appointment:`, err);
+      alert(`Errore nello ${azione} dell'appuntamento`);
+    }
+    this.reloadCurrentView();
   }
 
   // ==================== DIALOG APERTURA ====================
@@ -835,6 +964,31 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     try {
       const isUpdate = apt.id && typeof apt.id === 'string' && apt.id.length > 10;
 
+      // Guard disponibilita': salta per nonRetribuito (pause & co. sono
+      // legittimamente fuori orario). Per gli altri, se fuori disponibilita'
+      // e flag attivo, chiede conferma di forzatura.
+      let force = false;
+      if (!result.nonRetribuito) {
+        // In update: escludi l'intervallo originale dell'appuntamento dal
+        // calcolo, cosi' modificarne l'orario non genera un falso positivo
+        // per lo spazio che gia' occupava.
+        let excludeRange: { startTime: string; endTime: string } | undefined;
+        if (isUpdate) {
+          const posEvent = this.findPositionedEvent(apt.id as string);
+          if (posEvent && posEvent.date === apt.date) {
+            excludeRange = {
+              startTime: posEvent.originalStartTime,
+              endTime: posEvent.originalEndTime,
+            };
+          }
+        }
+        const guard = await this.checkAvailabilityGuard(
+          apt.operatorId, apt.date, apt.startTime, apt.endTime, excludeRange,
+        );
+        if (guard === 'cancel') return;
+        force = guard === 'force';
+      }
+
       if (isUpdate) {
         await firstValueFrom(this.appointmentService.updateAppointment(
           apt.id as string,
@@ -849,6 +1003,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
             instrumentOrderMatters: result.instrumentOrderMatters,
             instruments: result.instruments,
             nonRetribuito: result.nonRetribuito,
+            forceOutsideAvailability: force,
           },
         ));
       } else {
@@ -865,6 +1020,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
           instruments: result.instruments,
           repeatConfig: result.repeatConfig,
           nonRetribuito: result.nonRetribuito,
+          forceOutsideAvailability: force,
         }));
       }
     } catch (error: any) {

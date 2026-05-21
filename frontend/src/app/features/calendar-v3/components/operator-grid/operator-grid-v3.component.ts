@@ -22,6 +22,8 @@ import {
   ChangeDetectionStrategy,
   TrackByFunction,
   ViewChild,
+  ViewChildren,
+  QueryList,
   ElementRef,
   AfterViewInit,
   OnDestroy,
@@ -99,6 +101,7 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
 
           @for (col of gridData.columns; track trackColumn($index, col)) {
               <div class="operator-column"
+                   #operatorColumnRef
                    [style.min-width.px]="compactMode ? 0 : columnWidth"
                    [class.flex-col]="compactMode"
                    (dblclick)="onColumnDblClick($event, col)">
@@ -486,6 +489,8 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
 export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
   @ViewChild('gridBodyRef') gridBodyRef?: ElementRef<HTMLDivElement>;
   @ViewChild('headerColumnsRef') headerColumnsRef?: ElementRef<HTMLDivElement>;
+  /** Elementi DOM delle colonne, allineati per indice a gridData.columns. */
+  @ViewChildren('operatorColumnRef') operatorColumnRefs?: QueryList<ElementRef<HTMLElement>>;
 
   @Input() gridData: OperatorGridData | null = null;
   @Input() columnWidth = 150;
@@ -602,9 +607,30 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
 
     const minuteDelta = Math.round(delta.y / pxPerSlot) * slotDuration;
 
+    // Hit-test orizzontale: su quale colonna (operatore/giorno) e' stato
+    // rilasciato il chip. Va fatto PRIMA del reset() perche' usa le
+    // coordinate del punto di rilascio.
+    const targetColumn = this.resolveColumnAtX(cdkEvent.dropPoint.x);
+
     cdkEvent.source.reset();
 
-    if (minuteDelta === 0) {
+    // Vincolo operatore: un appuntamento puo' cambiare solo giorno, MAI
+    // operatore (il backend non supporta la riassegnazione). Se il chip
+    // viene rilasciato sulla colonna di un altro operatore, lo spostamento
+    // viene annullato del tutto (niente cambio orario "di consolazione").
+    if (targetColumn && targetColumn.operatorId !== posEvent.operatorId) {
+      setTimeout(() => { this.isDragging = false; }, 200);
+      return;
+    }
+
+    // Colonna di destinazione: stesso operatore, giorno = quello sotto il
+    // punto di rilascio (o quello originale se il drop e' fuori griglia).
+    const destOperatorId = posEvent.operatorId;
+    const destDate = targetColumn?.date ?? posEvent.date;
+    const columnChanged = destDate !== posEvent.date;
+
+    // Nessuno spostamento (ne' orario ne' giorno) → niente da fare.
+    if (minuteDelta === 0 && !columnChanged) {
       setTimeout(() => { this.isDragging = false; }, 100);
       return;
     }
@@ -612,15 +638,45 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
     const startMinutes = this.timeToMinutes(posEvent.originalStartTime) + minuteDelta;
     const endMinutes = this.timeToMinutes(posEvent.originalEndTime) + minuteDelta;
 
+    // Annulla lo spostamento se la destinazione esce dai limiti della griglia.
+    // Senza questo controllo un drag oltre il bordo produrrebbe orari fuori
+    // range (anche negativi) che corrompono il calcolo di disponibilita'.
+    const gridStart = this.timeToMinutes(this.gridData.timeSlots[0].time);
+    const gridEnd = this.timeToMinutes(
+      this.gridData.timeSlots[this.gridData.timeSlots.length - 1].time,
+    ) + slotDuration;
+    if (startMinutes < gridStart || endMinutes > gridEnd) {
+      setTimeout(() => { this.isDragging = false; }, 200);
+      return;
+    }
+
     this.dragMove.emit({
       appointmentId: posEvent.appointment.id as string,
-      operatorId: posEvent.operatorId,
-      newDate: posEvent.date,
+      operatorId: destOperatorId,
+      newDate: destDate,
       newStartTime: this.minutesToTime(startMinutes),
       newEndTime: this.minutesToTime(endMinutes),
     });
 
     setTimeout(() => { this.isDragging = false; }, 200);
+  }
+
+  /**
+   * Trova la colonna (operatore/giorno) il cui elemento DOM contiene la
+   * coordinata X data. Ritorna null se X cade fuori da ogni colonna.
+   * Gli elementi #operatorColumnRef sono allineati per indice a
+   * gridData.columns.
+   */
+  private resolveColumnAtX(x: number): OperatorColumnData | null {
+    if (!this.gridData || !this.operatorColumnRefs) return null;
+    const refs = this.operatorColumnRefs.toArray();
+    for (let i = 0; i < refs.length; i++) {
+      const rect = refs[i].nativeElement.getBoundingClientRect();
+      if (x >= rect.left && x < rect.right) {
+        return this.gridData.columns[i] ?? null;
+      }
+    }
+    return null;
   }
 
   onResizeStart(event: MouseEvent, posEvent: PositionedEvent): void {
@@ -653,10 +709,14 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
 
       chipEl.style.height = `${originalHeightPx}px`;
 
-      if (minuteDelta !== 0) {
+      if (minuteDelta !== 0 && this.gridData) {
         const endMinutes = this.timeToMinutes(posEvent.originalEndTime) + minuteDelta;
         const startMinutes = this.timeToMinutes(posEvent.originalStartTime);
-        if (endMinutes > startMinutes) {
+        const gridEnd = this.timeToMinutes(
+          this.gridData.timeSlots[this.gridData.timeSlots.length - 1].time,
+        ) + slotDuration;
+        // Assicura endTime > startTime (almeno 1 slot) ed entro il bordo griglia.
+        if (endMinutes > startMinutes && endMinutes <= gridEnd) {
           this.resizeEnd.emit({
             appointmentId: posEvent.appointment.id as string,
             newEndTime: this.minutesToTime(endMinutes),

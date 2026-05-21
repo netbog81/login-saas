@@ -12,6 +12,7 @@ import { CreateAvailabilityTemplateInput } from '../dto/create-availability-temp
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot, OperatorAvailabilityResult } from '../dto/availability-slot.output';
+import { OperatorAvailabilityV3 } from '../dto/operator-availability-v3.type';
 import { PhysiotherapistSlotBatchOutput } from '../dto/physiotherapist-slot.output';
 import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherapist-availability.input';
 import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
@@ -66,6 +67,20 @@ export class AvailabilityResolver {
   ): Promise<OperatorAvailabilityResult[]> {
     // Usa il metodo diretto (~4 query totali) invece di quello con cache (~34 query × N operatori)
     return this.availabilityService.getOperatorsAvailabilityDirect(operatorIds, startDate, endDate);
+  }
+
+  /**
+   * Bulk V3: disponibilità operatori come free-block reali (fasce di
+   * template gia' decurtate degli appuntamenti). Usata dal Calendario V3.
+   * Vedi getOperatorsAvailabilityV3 per il modello e le differenze.
+   */
+  @Query(() => [OperatorAvailabilityV3], { name: 'operatorsAvailabilityV3' })
+  async getOperatorsAvailabilityV3(
+    @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
+    @Args('startDate') startDate: string,
+    @Args('endDate') endDate: string,
+  ): Promise<OperatorAvailabilityV3[]> {
+    return this.availabilityService.getOperatorsAvailabilityV3(operatorIds, startDate, endDate);
   }
 
   /**

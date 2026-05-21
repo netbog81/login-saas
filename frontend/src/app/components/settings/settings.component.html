@@ -190,6 +190,22 @@
           La logica di prenotazione rimane invariata (non si puo prenotare in orari non disponibili).
         </small>
       </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="calendarSettings.blockAppointmentsOutsideAvailability"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Blocca appuntamenti fuori dalla disponibilità dell'operatore</span>
+        </label>
+        <small class="hint">
+          Se abilitato, non è possibile creare o spostare un appuntamento su orari
+          in cui l'operatore non è disponibile. L'utente può comunque forzare
+          l'operazione con una conferma esplicita.
+        </small>
+      </div>
     </section>
 
     <!-- Auto Attendance Section -->

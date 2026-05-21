@@ -25,4 +25,7 @@ export class CalendarSettings {
 
   @Field()
   showUnavailableCellsBackground: boolean;
+
+  @Field()
+  blockAppointmentsOutsideAvailability: boolean;
 }

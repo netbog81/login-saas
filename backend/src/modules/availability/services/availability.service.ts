@@ -14,6 +14,7 @@ import { CreateAvailabilityTemplateInput } from '../dto/create-availability-temp
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
+import { OperatorAvailabilityV3, DayAvailabilityV3, TimeBlockV3 } from '../dto/operator-availability-v3.type';
 
 @Injectable()
 export class AvailabilityService {
@@ -317,6 +318,223 @@ export class AvailabilityService {
 
       return { operatorId: opId, availability: dailyResults };
     });
+  }
+
+  // ==================== DISPONIBILITA' V3 (free-blocks) ====================
+
+  /**
+   * Disponibilita' operatori per il Calendario V3.
+   *
+   * A differenza di getOperatorsAvailabilityDirect (che marca una fascia
+   * template intera come non disponibile appena un appuntamento la tocca),
+   * questo metodo restituisce i "free block" REALI: ogni fascia di
+   * template/eccezione viene decurtata degli intervalli effettivamente
+   * occupati dagli appuntamenti.
+   *
+   * Capacita': un minuto e' considerato occupato solo quando il numero di
+   * appuntamenti sovrapposti raggiunge maxConcurrentAppointments. Per gli
+   * operatori 1:1 (caso standard) ogni appuntamento decurta la fascia; per
+   * operatori a capacita' multipla (es. palestra) la fascia resta libera
+   * finche' non si saturano tutti i posti.
+   *
+   * Non usa availability_cache: calcola tutto in memoria con poche query,
+   * stesso approccio di getOperatorsAvailabilityDirect.
+   */
+  async getOperatorsAvailabilityV3(
+    operatorIds: string[],
+    startDate: string,
+    endDate: string,
+    excludeAppointmentId?: string,
+  ): Promise<OperatorAvailabilityV3[]> {
+    if (operatorIds.length === 0) return [];
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Query: template assignments, exceptions, operators, appuntamenti.
+    const allAssignments = await this.assignmentRepo.find({
+      where: { operatorId: In(operatorIds), isCurrent: true },
+      relations: ['patternGroup', 'patternGroup.patterns'],
+    });
+    const allExceptions = await this.exceptionRepo.find({
+      where: { operatorId: In(operatorIds), exceptionDate: Between(start, end) },
+    });
+    const operators = await this.operatorRepo.find({ where: { id: In(operatorIds) } });
+    const operatorMap = new Map(operators.map(o => [o.id, o]));
+
+    // Appuntamenti attivi nel range: servono start/end per la sottrazione.
+    const appointments = await this.appointmentRepo.find({
+      where: {
+        operatorId: In(operatorIds),
+        appointmentDate: Between(start, end),
+        bookingStatus: Not(In(['cancelled', 'cancelled_early', 'cancelled_late', 'no_show'])),
+      },
+      select: ['id', 'operatorId', 'appointmentDate', 'startTime', 'endTime', 'participantCount'],
+    });
+
+    // Indicizza appuntamenti per "operatorId|date". Esclude l'appuntamento
+    // indicato (es. quello in fase di update): il suo intervallo non deve
+    // contare come occupato per se stesso → niente falso positivo quando
+    // lo si sposta nello spazio che gia' occupava.
+    const apptsByOpDate = new Map<string, { start: number; end: number; weight: number }[]>();
+    for (const apt of appointments) {
+      if (excludeAppointmentId && apt.id === excludeAppointmentId) continue;
+      const dateStr = apt.appointmentDate instanceof Date
+        ? apt.appointmentDate.toISOString().split('T')[0]
+        : String(apt.appointmentDate).split('T')[0];
+      const key = `${apt.operatorId}|${dateStr}`;
+      if (!apptsByOpDate.has(key)) apptsByOpDate.set(key, []);
+      apptsByOpDate.get(key)!.push({
+        start: this.hhmmToMinutes(apt.startTime),
+        end: this.hhmmToMinutes(apt.endTime),
+        weight: apt.participantCount || 1,
+      });
+    }
+
+    // Indicizza assignments per operatorId.
+    const assignmentsByOp = new Map<string, typeof allAssignments>();
+    for (const a of allAssignments) {
+      if (!assignmentsByOp.has(a.operatorId)) assignmentsByOp.set(a.operatorId, []);
+      assignmentsByOp.get(a.operatorId)!.push(a);
+    }
+
+    // Indicizza exceptions per "operatorId|date".
+    const exceptionsByOpDate = new Map<string, AvailabilityException>();
+    for (const ex of allExceptions) {
+      const dateStr = ex.exceptionDate instanceof Date
+        ? ex.exceptionDate.toISOString().split('T')[0]
+        : String(ex.exceptionDate).split('T')[0];
+      exceptionsByOpDate.set(`${ex.operatorId}|${dateStr}`, ex);
+    }
+
+    // Genera le date del range.
+    const dates: Date[] = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      dates.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return operatorIds.map(opId => {
+      const operator = operatorMap.get(opId);
+      const maxCapacity = operator?.maxConcurrentAppointments || 1;
+      const assignments = assignmentsByOp.get(opId) || [];
+      const days: DayAvailabilityV3[] = [];
+
+      for (const date of dates) {
+        const dateStr = date.toISOString().split('T')[0];
+        const exception = exceptionsByOpDate.get(`${opId}|${dateStr}`);
+
+        // Raccogli le fasce "lorde" del giorno (template o eccezione).
+        const rawBands: { start: number; end: number }[] = [];
+
+        if (exception) {
+          if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
+            rawBands.push({
+              start: this.hhmmToMinutes(exception.startTime),
+              end: this.hhmmToMinutes(exception.endTime),
+            });
+          }
+          // exceptionType 'unavailable' → nessuna fascia: giorno non lavorativo.
+        } else {
+          for (const assignment of assignments) {
+            if (date >= assignment.validFrom && (!assignment.validUntil || date <= assignment.validUntil)) {
+              const pg = assignment.patternGroup;
+              if (!pg?.patterns) continue;
+              const patternDay = this.getPatternDay(date, assignment.patternStartDate, pg.patternDuration);
+              for (const pattern of pg.patterns) {
+                if (pattern.dayInPattern === patternDay) {
+                  rawBands.push({
+                    start: this.hhmmToMinutes(pattern.startTime),
+                    end: this.hhmmToMinutes(pattern.endTime),
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        if (rawBands.length === 0) continue;
+
+        // Sottrai gli appuntamenti dalle fasce → free-block reali.
+        const appts = apptsByOpDate.get(`${opId}|${dateStr}`) || [];
+        const freeBlocks: TimeBlockV3[] = [];
+        for (const band of rawBands) {
+          for (const fb of this.subtractAppointments(band, appts, maxCapacity)) {
+            freeBlocks.push({
+              startTime: this.minutesToHHmm(fb.start),
+              endTime: this.minutesToHHmm(fb.end),
+            });
+          }
+        }
+
+        freeBlocks.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        days.push({ date: dateStr, freeBlocks });
+      }
+
+      return { operatorId: opId, days };
+    });
+  }
+
+  /**
+   * Sottrae gli intervalli occupati da una fascia, restituendo i tratti
+   * liberi. Un minuto e' "occupato" quando il numero di appuntamenti che
+   * lo coprono (pesati per participantCount) raggiunge maxCapacity.
+   *
+   * Implementato con uno sweep sui confini degli appuntamenti: tra due
+   * confini consecutivi la copertura e' costante, quindi basta confrontarla
+   * con maxCapacity per decidere se quel tratto e' libero.
+   */
+  private subtractAppointments(
+    band: { start: number; end: number },
+    appts: { start: number; end: number; weight: number }[],
+    maxCapacity: number,
+  ): { start: number; end: number }[] {
+    // Confini rilevanti dentro la fascia.
+    const boundaries = new Set<number>([band.start, band.end]);
+    for (const a of appts) {
+      if (a.end > band.start && a.start < band.end) {
+        boundaries.add(Math.max(a.start, band.start));
+        boundaries.add(Math.min(a.end, band.end));
+      }
+    }
+    const points = Array.from(boundaries).sort((x, y) => x - y);
+
+    const free: { start: number; end: number }[] = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const segStart = points[i];
+      const segEnd = points[i + 1];
+      if (segEnd <= segStart) continue;
+      const mid = (segStart + segEnd) / 2;
+
+      // Copertura al centro del segmento.
+      let coverage = 0;
+      for (const a of appts) {
+        if (a.start <= mid && mid < a.end) coverage += a.weight;
+      }
+
+      if (coverage < maxCapacity) {
+        // Segmento libero: estendi il blocco precedente se contiguo.
+        const last = free[free.length - 1];
+        if (last && last.end === segStart) {
+          last.end = segEnd;
+        } else {
+          free.push({ start: segStart, end: segEnd });
+        }
+      }
+    }
+    return free;
+  }
+
+  private hhmmToMinutes(time: string): number {
+    const parts = time.split(':').map(Number);
+    return parts[0] * 60 + (parts[1] || 0);
+  }
+
+  private minutesToHHmm(minutes: number): string {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
   async getAvailableSlots(

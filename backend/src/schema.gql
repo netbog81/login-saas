@@ -246,6 +246,7 @@ enum BookingStatus {
 }
 
 type CalendarSettings {
+  blockAppointmentsOutsideAvailability: Boolean!
   defaultView: String!
   endHour: Int!
   showUnavailableCellsBackground: Boolean!
@@ -328,6 +329,11 @@ input CreateAvailabilityAppointmentInput {
   clientName: String!
   clientPhone: String
   endTime: String!
+
+  """
+  Forza il salvataggio anche fuori dalla disponibilità dell'operatore (conferma esplicita dell'utente)
+  """
+  forceOutsideAvailability: Boolean
   instrumentOrderMatters: Boolean
   instruments: [AppointmentInstrumentInput!]
 
@@ -670,6 +676,14 @@ type DailyAvailability {
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
 scalar DateTime
+
+type DayAvailabilityV3 {
+  """Data (YYYY-MM-DD)"""
+  date: String!
+
+  """Intervalli realmente liberi (template meno appuntamenti)"""
+  freeBlocks: [TimeBlockV3!]!
+}
 
 type DeleteOperatorResult {
   archived: Boolean!
@@ -1389,6 +1403,11 @@ type OperatorAvailabilityResult {
   operatorId: ID!
 }
 
+type OperatorAvailabilityV3 {
+  days: [DayAvailabilityV3!]!
+  operatorId: ID!
+}
+
 type OperatorCategory {
   createdAt: DateTime!
   description: String
@@ -1810,6 +1829,7 @@ type Query {
   operatorServices(operatorId: ID!): [OperatorService!]!
   operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
   operatorsAvailability(endDate: String!, operatorIds: [ID!]!, startDate: String!): [OperatorAvailabilityResult!]!
+  operatorsAvailabilityV3(endDate: String!, operatorIds: [ID!]!, startDate: String!): [OperatorAvailabilityV3!]!
   pathDocument(id: ID!): PathDocument
   patient(id: ID!): Patient
 
@@ -2406,6 +2426,14 @@ enum TherapeuticPathStatus {
   SUSPENDED
 }
 
+type TimeBlockV3 {
+  """Fine blocco (HH:mm)"""
+  endTime: String!
+
+  """Inizio blocco (HH:mm)"""
+  startTime: String!
+}
+
 type Treatment {
   accountingBillableEventId: ID
   accountingCreditNoteIssuedAt: DateTime
@@ -2599,6 +2627,11 @@ input UpdateAvailabilityAppointmentInput {
   clientName: String
   clientPhone: String
   endTime: String
+
+  """
+  Forza il salvataggio anche fuori dalla disponibilità dell'operatore (conferma esplicita dell'utente)
+  """
+  forceOutsideAvailability: Boolean
   instrumentOrderMatters: Boolean
   instruments: [AppointmentInstrumentInput!]
 

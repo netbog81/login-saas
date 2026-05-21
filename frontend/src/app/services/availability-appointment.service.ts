@@ -69,6 +69,8 @@ export interface CreateAvailabilityAppointmentInput {
   instruments?: AppointmentInstrumentInput[];
   repeatConfig?: RepeatConfigInput;
   nonRetribuito?: boolean;
+  /** Forza il salvataggio anche fuori dalla disponibilità dell'operatore. */
+  forceOutsideAvailability?: boolean;
 }
 
 export interface UpdateAvailabilityAppointmentInput {
@@ -90,6 +92,8 @@ export interface UpdateAvailabilityAppointmentInput {
   instrumentOrderMatters?: boolean;
   instruments?: AppointmentInstrumentInput[];
   nonRetribuito?: boolean;
+  /** Forza il salvataggio anche fuori dalla disponibilità dell'operatore. */
+  forceOutsideAvailability?: boolean;
 }
 
 @Injectable({

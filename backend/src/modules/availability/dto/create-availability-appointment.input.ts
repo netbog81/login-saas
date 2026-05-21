@@ -218,4 +218,9 @@ export class CreateAvailabilityAppointmentInput {
   @IsOptional()
   @IsBoolean()
   nonRetribuito?: boolean;
+
+  @Field({ nullable: true, description: 'Forza il salvataggio anche fuori dalla disponibilità dell\'operatore (conferma esplicita dell\'utente)' })
+  @IsOptional()
+  @IsBoolean()
+  forceOutsideAvailability?: boolean;
 }

@@ -23,6 +23,8 @@ import { WhatsappGatewayService, WhatsappPatientContact } from '../../whatsapp/g
 import { RegistryClient } from '../../registry/registry.client';
 import { RegistrySubjectResponse } from '../../registry/registry.types';
 import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
+import { GeneralSettingsService } from '../../settings/services/general-settings.service';
+import { AvailabilityService } from './availability.service';
 
 export interface RepeatConfigInput {
   type: RecurringType;
@@ -58,6 +60,7 @@ export interface CreateAvailabilityAppointmentInput {
   instruments?: CreateAppointmentInstrumentInput[];
   repeatConfig?: RepeatConfigInput;
   nonRetribuito?: boolean;
+  forceOutsideAvailability?: boolean;
 }
 
 export interface UpdateAvailabilityAppointmentInput {
@@ -79,6 +82,7 @@ export interface UpdateAvailabilityAppointmentInput {
   instrumentOrderMatters?: boolean;
   instruments?: CreateAppointmentInstrumentInput[];
   nonRetribuito?: boolean;
+  forceOutsideAvailability?: boolean;
 }
 
 @Injectable()
@@ -110,6 +114,9 @@ export class AvailabilityAppointmentService {
     private registryClient: RegistryClient,
     private tenantSchemaContext: TenantSchemaContextService,
     private attendanceService: ClinicalAttendanceService,
+    private generalSettingsService: GeneralSettingsService,
+    @Inject(forwardRef(() => AvailabilityService))
+    private availabilityService: AvailabilityService,
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
   ) {}
@@ -175,12 +182,121 @@ export class AvailabilityAppointmentService {
   }
 
   /**
+   * Prefisso del messaggio di errore quando un appuntamento viene rifiutato
+   * perche' fuori dalla disponibilita' dell'operatore. Il frontend riconosce
+   * questo prefisso per proporre la conferma di forzatura all'utente.
+   */
+  static readonly OUTSIDE_AVAILABILITY_ERROR =
+    'APPOINTMENT_OUTSIDE_AVAILABILITY';
+
+  /**
+   * Guard: se l'impostazione "blocca appuntamenti fuori disponibilita'" e'
+   * attiva, verifica che l'intervallo [startTime, endTime] sia interamente
+   * coperto dalla disponibilita' dell'operatore in quella data.
+   *
+   * - Salta il controllo se il flag globale e' off, se l'utente ha forzato
+   *   esplicitamente (forceOutsideAvailability), o per appuntamenti
+   *   nonRetribuito (pausa pranzo & co. sono legittimamente fuori orario).
+   * - In caso di violazione lancia ConflictException con un messaggio che
+   *   inizia con OUTSIDE_AVAILABILITY_ERROR, cosi' il frontend puo'
+   *   distinguere questo caso e offrire la forzatura.
+   */
+  private async assertWithinAvailability(params: {
+    operatorId: string;
+    appointmentDate: string;
+    startTime: string;
+    endTime: string;
+    appointmentType?: AppointmentType;
+    nonRetribuito?: boolean;
+    forceOutsideAvailability?: boolean;
+    /** Appuntamento da escludere dal calcolo (in update: se stesso). */
+    excludeAppointmentId?: string;
+  }): Promise<void> {
+    if (params.forceOutsideAvailability) return;
+    if (params.nonRetribuito) return;
+    // La disponibilita' palestra ha regole proprie (eccezioni/coperture);
+    // questo guard riguarda solo gli appuntamenti su operatore.
+    if (params.appointmentType === AppointmentType.GYM) return;
+
+    const blockEnabled =
+      await this.generalSettingsService.isBlockOutsideAvailabilityEnabled();
+    if (!blockEnabled) return;
+
+    // Usa la logica V3 (free-block reali). Esclude l'appuntamento corrente
+    // cosi' lo spazio che gia' occupa non genera un falso positivo.
+    const result = await this.availabilityService.getOperatorsAvailabilityV3(
+      [params.operatorId],
+      params.appointmentDate,
+      params.appointmentDate,
+      params.excludeAppointmentId,
+    );
+    const freeBlocks =
+      result[0]?.days.find(d => d.date === params.appointmentDate)?.freeBlocks ?? [];
+
+    if (!this.isIntervalCovered(params.startTime, params.endTime, freeBlocks)) {
+      throw new ConflictException(
+        `${AvailabilityAppointmentService.OUTSIDE_AVAILABILITY_ERROR}: ` +
+          `l'orario ${params.startTime}-${params.endTime} è fuori dalla disponibilità dell'operatore`,
+      );
+    }
+  }
+
+  /**
+   * Verifica che ogni minuto di [start, end) sia coperto da almeno uno slot
+   * di disponibilita'. Gli slot adiacenti vengono uniti, quindi un
+   * appuntamento a cavallo di piu' slot contigui e' considerato coperto.
+   */
+  private isIntervalCovered(
+    start: string,
+    end: string,
+    slots: { startTime: string; endTime: string }[],
+  ): boolean {
+    const toMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + (m || 0);
+    };
+    const startMin = toMin(start);
+    const endMin = toMin(end);
+    if (endMin <= startMin) return false;
+    if (slots.length === 0) return false;
+
+    // Ordina e fonde gli intervalli di disponibilita' contigui/sovrapposti.
+    const ranges = slots
+      .map(s => ({ s: toMin(s.startTime), e: toMin(s.endTime) }))
+      .sort((a, b) => a.s - b.s);
+
+    const merged: { s: number; e: number }[] = [];
+    for (const r of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && r.s <= last.e) {
+        last.e = Math.max(last.e, r.e);
+      } else {
+        merged.push({ ...r });
+      }
+    }
+
+    // L'appuntamento e' coperto se un singolo range merge-ato lo contiene.
+    return merged.some(r => r.s <= startMin && r.e >= endMin);
+  }
+
+  /**
    * Crea un nuovo appuntamento con eventuali strumenti
    * Se repeatConfig è presente, crea una serie di appuntamenti ricorrenti
    * Ritorna il primo appuntamento della serie (o l'unico se non ricorrente)
    */
   async create(input: CreateAvailabilityAppointmentInput): Promise<AvailabilityAppointment> {
-    const { instruments, repeatConfig, ...appointmentData } = input;
+    const { instruments, repeatConfig, forceOutsideAvailability, ...appointmentData } = input;
+
+    // Guard disponibilita': blocca la creazione fuori orario operatore se
+    // l'impostazione e' attiva e l'utente non ha forzato esplicitamente.
+    await this.assertWithinAvailability({
+      operatorId: appointmentData.operatorId,
+      appointmentDate: appointmentData.appointmentDate,
+      startTime: appointmentData.startTime,
+      endTime: appointmentData.endTime,
+      nonRetribuito: appointmentData.nonRetribuito,
+      forceOutsideAvailability,
+    });
 
     let savedAppointment: AvailabilityAppointment;
 
@@ -467,11 +583,46 @@ export class AvailabilityAppointmentService {
   /**
    * Assegna strumenti all'appuntamento, selezionando automaticamente quelli disponibili
    */
+  /**
+   * Verifica (senza scrivere nulla) che esista uno strumento libero per
+   * ogni categoria richiesta nel time slot dato. Lancia BadRequestException
+   * se una categoria non ha strumenti disponibili. Usato per validare
+   * uno spostamento appuntamento prima di persisterlo.
+   */
+  private async assertInstrumentsAvailable(
+    instruments: CreateAppointmentInstrumentInput[],
+    appointmentDate: Date,
+    appointmentStartTime: string,
+    excludeAppointmentId?: string,
+  ): Promise<void> {
+    for (const instrumentInput of instruments) {
+      const available = await this.findAvailableInstrument(
+        instrumentInput.instrumentCategoryId,
+        appointmentDate,
+        appointmentStartTime,
+        instrumentInput.startOffsetMinutes,
+        instrumentInput.endOffsetMinutes,
+        excludeAppointmentId,
+      );
+      if (!available) {
+        const category = await this.instrumentCategoryRepo.findOne({
+          where: { id: instrumentInput.instrumentCategoryId },
+        });
+        const categoryName = category?.name || 'Sconosciuta';
+        throw new BadRequestException(
+          `Nessuno strumento "${categoryName}" disponibile nel nuovo orario. ` +
+          `Tutti gli strumenti di questa categoria sono già prenotati.`,
+        );
+      }
+    }
+  }
+
   private async assignInstruments(
     appointmentId: string,
     appointmentDate: Date,
     appointmentStartTime: string,
     instruments: CreateAppointmentInstrumentInput[],
+    excludeAppointmentId?: string,
   ): Promise<void> {
     for (const instrumentInput of instruments) {
       // Trova uno strumento disponibile per la categoria e il time slot
@@ -481,6 +632,7 @@ export class AvailabilityAppointmentService {
         appointmentStartTime,
         instrumentInput.startOffsetMinutes,
         instrumentInput.endOffsetMinutes,
+        excludeAppointmentId,
       );
 
       if (!availableInstrument) {
@@ -685,6 +837,7 @@ export class AvailabilityAppointmentService {
     appointmentStartTime: string,
     startOffsetMinutes: number,
     endOffsetMinutes: number,
+    excludeAppointmentId?: string,
   ): Promise<Instrument | null> {
     // Ottieni tutti gli strumenti attivi della categoria
     const instrumentsInCategory = await this.instrumentRepo.find({
@@ -710,6 +863,7 @@ export class AvailabilityAppointmentService {
       appointmentStartTime,
       startOffsetMinutes,
       endOffsetMinutes,
+      excludeAppointmentId,
     );
 
     // Trova il primo strumento non prenotato
@@ -729,6 +883,7 @@ export class AvailabilityAppointmentService {
     appointmentStartTime: string,
     startOffsetMinutes: number,
     endOffsetMinutes: number,
+    excludeAppointmentId?: string,
   ): Promise<string[]> {
     // Formatta la data
     const dateStr = appointmentDate instanceof Date
@@ -736,7 +891,7 @@ export class AvailabilityAppointmentService {
       : appointmentDate;
 
     // Query per trovare strumenti già prenotati che si sovrappongono
-    const result = await this.appointmentInstrumentRepo
+    const qb = this.appointmentInstrumentRepo
       .createQueryBuilder('ai')
       .innerJoin('ai.appointment', 'a')
       .innerJoin('ai.instrument', 'i')
@@ -744,7 +899,15 @@ export class AvailabilityAppointmentService {
       .andWhere('a.appointmentDate = :appointmentDate', { appointmentDate: dateStr })
       .andWhere('a.bookingStatus NOT IN (:...excludedStatuses)', {
         excludedStatuses: [BookingStatus.CANCELLED, BookingStatus.NO_SHOW],
-      })
+      });
+
+    // In update: escludi l'appuntamento stesso, altrimenti i suoi strumenti
+    // risulterebbero "occupati" da se stessi.
+    if (excludeAppointmentId) {
+      qb.andWhere('a.id != :excludeAppointmentId', { excludeAppointmentId });
+    }
+
+    const result = await qb
       // Controlla sovrapposizione usando tempi assoluti (startTime + offset)
       // Due slot si sovrappongono se: inizio_esistente < fine_nuovo AND inizio_nuovo < fine_esistente
       .andWhere(`
@@ -882,9 +1045,58 @@ export class AvailabilityAppointmentService {
           `L'operatore ha già un appuntamento in questa fascia oraria (${checkStart} - ${checkEnd})`
         );
       }
+
+      // Guard disponibilita': blocca lo spostamento fuori orario operatore
+      // se l'impostazione e' attiva e l'utente non ha forzato. Esclude
+      // l'appuntamento stesso dal calcolo (evita falso positivo).
+      await this.assertWithinAvailability({
+        operatorId: appointment.operatorId,
+        appointmentDate: typeof checkDate === 'string'
+          ? checkDate
+          : new Date(checkDate).toISOString().split('T')[0],
+        startTime: checkStart,
+        endTime: checkEnd,
+        appointmentType: appointment.appointmentType,
+        nonRetribuito: appointment.nonRetribuito,
+        forceOutsideAvailability: input.forceOutsideAvailability,
+        excludeAppointmentId: id,
+      });
     }
 
-    const { instruments, services, ...updateData } = input;
+    const { instruments, services, forceOutsideAvailability, ...updateData } = input;
+
+    // ── Strumenti: determina la lista da (ri)assegnare ──────────────
+    // (A) instruments passato (dialog modifica) → usa quella lista.
+    // (B) instruments assente ma orario cambiato (drag/resize) → ri-ancora
+    //     gli strumenti gia' assegnati al nuovo orario.
+    // In entrambi i casi gli strumenti vanno RIVALIDATI ai nuovi orari.
+    let instrumentsToAssign: CreateAppointmentInstrumentInput[] | null = null;
+    if (instruments !== undefined) {
+      instrumentsToAssign = instruments;
+    } else if (positionChanged) {
+      const existing = await this.appointmentInstrumentRepo.find({
+        where: { appointmentId: id },
+        relations: ['instrument'],
+      });
+      if (existing.length > 0) {
+        instrumentsToAssign = existing.map(ai => ({
+          instrumentCategoryId: ai.instrument.categoryId,
+          startOffsetMinutes: ai.startOffsetMinutes,
+          endOffsetMinutes: ai.endOffsetMinutes,
+          orderPosition: ai.orderPosition,
+        }));
+      }
+    }
+
+    // Valida la disponibilita' strumenti PRIMA di salvare l'appuntamento:
+    // se uno strumento e' occupato nel nuovo orario, BadRequestException
+    // interrompe qui senza lasciare l'appuntamento spostato a meta'.
+    // (`update` non e' transazionale: niente save speculativo.)
+    if (instrumentsToAssign && instrumentsToAssign.length > 0) {
+      const newDate = (updateData.appointmentDate as any) ?? appointment.appointmentDate;
+      const newStart = (updateData.startTime as any) ?? appointment.startTime;
+      await this.assertInstrumentsAvailable(instrumentsToAssign, newDate, newStart, id);
+    }
 
     // Aggiorna i campi dell'appuntamento
     if (positionChanged && appointment.hasConflict) {
@@ -896,18 +1108,17 @@ export class AvailabilityAppointmentService {
     Object.assign(appointment, updateData);
     await this.appointmentRepo.save(appointment);
 
-    // Se vengono passati strumenti, aggiorna le associazioni
-    if (instruments !== undefined) {
-      // Rimuovi le vecchie associazioni
+    // Ri-assegna gli strumenti ai nuovi orari (disponibilita' gia' validata
+    // sopra). Sostituisce sempre le associazioni esistenti.
+    if (instrumentsToAssign !== null) {
       await this.appointmentInstrumentRepo.delete({ appointmentId: id });
-
-      // Aggiungi le nuove
-      if (instruments.length > 0) {
+      if (instrumentsToAssign.length > 0) {
         await this.assignInstruments(
           id,
           appointment.appointmentDate,
           appointment.startTime,
-          instruments,
+          instrumentsToAssign,
+          id,
         );
       }
     }
