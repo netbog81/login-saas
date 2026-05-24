@@ -20,6 +20,7 @@
     "schema:log": "typeorm-ts-node-commonjs schema:log -d ./src/data-source.ts",
     "db:check": "npm run schema:log",
     "smoke:publish-treatment-closed": "ts-node --transpile-only src/scripts/test-publish-treatment-closed.ts",
+    "smoke:publish-billable-uninvoiced": "ts-node --transpile-only src/scripts/test-publish-billable-uninvoiced.ts",
     "sync:services": "ts-node src/scripts/sync-services-and-products.ts",
     "smoke:2-cascade": "ts-node --transpile-only src/scripts/smoke-2-treatment-cascade.ts"
   },

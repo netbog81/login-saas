@@ -23,12 +23,13 @@ import {
   BillableReceivedPayload,
   BillableRefundedPayload,
   BillableReissuedPayload,
+  BillableUninvoicedPayload,
   CurandisEvent,
 } from './clinical-events.types';
 
 /**
  * Consumer RabbitMQ degli eventi pubblicati dall'accounting su
- * `ex.accounting.events` (binding `billable.*.<tenant>`, 6 routing key una
+ * `ex.accounting.events` (binding `billable.*.<tenant>`, 7 routing key una
  * per evento). Aggiorna `Treatment.billingStatus` + colonne `accounting*` /
  * `billingAlert*` in base allo stato della fattura.
  *
@@ -38,10 +39,10 @@ import {
  *   - DLQ: `q.clinical.accounting-feedback.dlq` legata a `ex.dlq` (topic).
  *     I messaggi nack-ati con `noRequeue=true` vengono routati nella DLQ.
  *   - Prefetch: 10 (config-driven).
- *   - 6 binding key sull'exchange `ex.accounting.events`:
- *       billable.received.*, billable.invoiced.*, billable.refunded.*,
- *       billable.partially-refunded.*, billable.reissued.*,
- *       billable.cancellation-rejected.*
+ *   - 7 binding key sull'exchange `ex.accounting.events`:
+ *       billable.received.*, billable.invoiced.*, billable.uninvoiced.*,
+ *       billable.refunded.*, billable.partially-refunded.*,
+ *       billable.reissued.*, billable.cancellation-rejected.*
  *
  * IDEMPOTENCY:
  *   1. Parse JSON. Se malformato → reject DLQ.
@@ -82,6 +83,7 @@ export class AccountingEventConsumer
   private readonly bindingKeys: ReadonlyArray<string> = [
     'billable.received.*',
     'billable.invoiced.*',
+    'billable.uninvoiced.*',
     'billable.refunded.*',
     'billable.partially-refunded.*',
     'billable.reissued.*',
@@ -346,6 +348,7 @@ export class AccountingEventConsumer
     return (
       eventType === 'billable.received' ||
       eventType === 'billable.invoiced' ||
+      eventType === 'billable.uninvoiced' ||
       eventType === 'billable.refunded' ||
       eventType === 'billable.partially-refunded' ||
       eventType === 'billable.reissued' ||
@@ -366,6 +369,11 @@ export class AccountingEventConsumer
       case 'billable.invoiced':
         return this.handleBillableInvoiced(
           event as CurandisEvent<BillableInvoicedPayload>,
+          manager,
+        );
+      case 'billable.uninvoiced':
+        return this.handleBillableUninvoiced(
+          event as CurandisEvent<BillableUninvoicedPayload>,
           manager,
         );
       case 'billable.refunded':
@@ -435,6 +443,42 @@ export class AccountingEventConsumer
     treatment.patientInvoiceNumber = p.invoiceNumber;
     treatment.isInvoicedToPatient = true;
     treatment.invoicedToPatientAt = new Date(p.issuedAt);
+    await manager.save(Treatment, treatment);
+  }
+
+  private async handleBillableUninvoiced(
+    event: CurandisEvent<BillableUninvoicedPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    if (!p.treatmentId) {
+      // sale standalone: il clinico non ha billingStatus per i sales, skip.
+      this.logger.debug(`billable.uninvoiced senza treatmentId (sale standalone): ack senza update`);
+      return;
+    }
+
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    // Cancel pre-trasmissione: NON è un rimborso (no nota credito).
+    // Il treatment torna disponibile a nuova fatturazione → riportiamo
+    // lo snapshot accounting allo stato "PENDING fresco" (come dopo
+    // billable.received), così la UI mostra "In attesa di fatturazione"
+    // e i bottoni operativi tornano coerenti.
+    treatment.billingStatus = TreatmentBillingStatus.PENDING;
+    treatment.accountingBillableEventId = p.billableEventId;
+    treatment.accountingInvoiceUrl = undefined;
+    treatment.accountingInvoiceIssuedAt = undefined;
+    treatment.accountingDocumentType = undefined;
+    treatment.accountingCreditNoteNumber = undefined;
+    treatment.accountingCreditNoteIssuedAt = undefined;
+    treatment.accountingRefundReason = undefined;
+    treatment.billingAlertMessage = undefined;
+    treatment.billingAlertAt = undefined;
+    treatment.billingAlertDismissedAt = undefined;
+    treatment.patientInvoiceNumber = undefined;
+    treatment.isInvoicedToPatient = false;
+    treatment.invoicedToPatientAt = undefined;
     await manager.save(Treatment, treatment);
   }
 

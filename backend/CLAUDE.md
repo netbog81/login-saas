@@ -57,16 +57,24 @@ Pubblicazione **publish-after-commit** (Step 7.1):
   tenant=... err=...` per investigation post-incident. Outbox pattern
   resiliente è roadmap post-MVP
 
-### 6 eventi consumati dal clinico
+### 7 eventi consumati dal clinico
 
 | Evento | Effetto su Treatment |
 |---|---|
 | `billable.received` | `billingStatus = PENDING` |
 | `billable.invoiced` | `billingStatus = INVOICED` + numeroFattura + URL + data emissione |
+| `billable.uninvoiced` | rollback a `PENDING` + azzera snapshot accounting (fattura cancellata pre-trasmissione, no nota credito) |
 | `billable.refunded` | `billingStatus = REFUNDED` + creditNote* + reason |
 | `billable.partially-refunded` | `billingStatus = PARTIALLY_REFUNDED` + creditNote* |
 | `billable.reissued` | `billingStatus = INVOICED` con nuovo numero, vecchio salvato |
 | `billable.cancellation-rejected` | rollback `CANCELLED → INVOICED` + popola `billingAlertMessage` (race condition: clinico cancella mentre accounting fattura) |
+
+NOTA — distinzione `uninvoiced` vs `refunded`: `uninvoiced` arriva quando
+accounting cancella un documento (INVOICE/RECEIPT) NON ancora trasmesso
+fiscalmente — il billable torna disponibile per nuova fatturazione, niente
+nota credito. `refunded` è il vero rimborso post-trasmissione, con NC.
+Confondere i due porterebbe a mostrare "Rimborsato" su una situazione che è
+semplicemente "da rifatturare".
 
 Consumer:
 - Coda dedicata `q.clinical.accounting-feedback` (durable, no exclusive)

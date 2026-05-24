@@ -186,6 +186,7 @@ export interface SaleCompletedPayload {
 export type AccountingInboundEventType =
   | 'billable.received'
   | 'billable.invoiced'
+  | 'billable.uninvoiced'
   | 'billable.refunded'
   | 'billable.partially-refunded'
   | 'billable.reissued'
@@ -212,6 +213,24 @@ export interface BillableInvoicedPayload {
   issuedAt: string;
   totalAmount: string;
   documentUrl?: string | null;
+}
+
+/**
+ * Cancellazione di un documento (INVOICE/RECEIPT) emesso ma non ancora
+ * trasmesso fiscalmente (es. allo SDI). Il billable torna disponibile per
+ * nuova fatturazione: NON è un rimborso — non c'è nota credito. Il clinico
+ * deve riportare `billingStatus = PENDING` e ripulire i campi `accounting*`
+ * relativi alla fattura cancellata.
+ */
+export interface BillableUninvoicedPayload {
+  billableEventId: string;
+  treatmentId?: string;            // valorizzato se sourceSystem === 'clinico-treatment'
+  saleId?: string;                 // valorizzato se sourceSystem === 'clinico-sale'
+  cancelledDocumentId: string;
+  cancelledDocumentNumber: string; // es. "I2026-00001"
+  cancelledDocumentType: 'INVOICE' | 'RECEIPT';
+  uninvoicedAt: string;            // ISO 8601
+  reason?: string;                 // oggi sempre 'invoice_cancelled_pre_transmission'
 }
 
 export interface BillableRefundedPayload {
