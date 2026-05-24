@@ -206,6 +206,22 @@
           l'operazione con una conferma esplicita.
         </small>
       </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="calendarSettings.operatorsSelectedOnLoad"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Seleziona tutti gli operatori all'apertura del calendario</span>
+        </label>
+        <small class="hint">
+          Se abilitato, all'apertura del calendario tutti gli operatori risultano
+          selezionati e visibili. Se disabilitato, nessun operatore è selezionato
+          e l'utente sceglie quali mostrare.
+        </small>
+      </div>
     </section>
 
     <!-- Auto Attendance Section -->

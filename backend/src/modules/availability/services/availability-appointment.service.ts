@@ -68,6 +68,8 @@ export interface UpdateAvailabilityAppointmentInput {
   serviceId?: string;
   /** Lista dei servizi da associare all'appuntamento */
   services?: ServiceInputItem[];
+  /** Riassegna l'appuntamento a un altro operatore. */
+  operatorId?: string;
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -1018,22 +1020,34 @@ export class AvailabilityAppointmentService {
       throw new Error(`Appuntamento con ID ${id} non trovato`);
     }
 
-    // Se cambiano data o ora, resetta il flag conflitto:
+    // Cambio operatore: riassegnazione a un altro operatore.
+    const operatorChanged =
+      !!input.operatorId && input.operatorId !== appointment.operatorId;
+
+    // Se cambiano data, ora o operatore, resetta il flag conflitto:
     // verrà ricalcolato subito dopo il save.
     const positionChanged =
       (input.appointmentDate && String(input.appointmentDate) !== String(appointment.appointmentDate)) ||
       (input.startTime && input.startTime !== appointment.startTime) ||
       (input.endTime && input.endTime !== appointment.endTime);
 
-    // Check sovrapposizione se cambiano orari (solo per appuntamenti non-palestra)
-    if (positionChanged && appointment.appointmentType !== AppointmentType.GYM) {
+    // I check vanno rieseguiti se cambia posizione (orario/data) O operatore:
+    // un appuntamento riassegnato va verificato sul nuovo operatore anche a
+    // parità di orario.
+    const needsPositionChecks = positionChanged || operatorChanged;
+
+    // Check sovrapposizione (solo per appuntamenti non-palestra).
+    // L'operatore di riferimento e' quello NUOVO se cambia, altrimenti
+    // quello corrente.
+    const checkOperatorId = input.operatorId || appointment.operatorId;
+    if (needsPositionChecks && appointment.appointmentType !== AppointmentType.GYM) {
       const checkDate = input.appointmentDate || appointment.appointmentDate;
       const checkStart = input.startTime || appointment.startTime;
       const checkEnd = input.endTime || appointment.endTime;
 
       const overlapping = await this.appointmentRepo
         .createQueryBuilder('a')
-        .where('a.operatorId = :operatorId', { operatorId: appointment.operatorId })
+        .where('a.operatorId = :operatorId', { operatorId: checkOperatorId })
         .andWhere('a.appointmentDate = :date', { date: checkDate })
         .andWhere('a.id != :id', { id })
         .andWhere('a.bookingStatus NOT IN (:...excluded)', { excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW] })
@@ -1050,7 +1064,7 @@ export class AvailabilityAppointmentService {
       // se l'impostazione e' attiva e l'utente non ha forzato. Esclude
       // l'appuntamento stesso dal calcolo (evita falso positivo).
       await this.assertWithinAvailability({
-        operatorId: appointment.operatorId,
+        operatorId: checkOperatorId,
         appointmentDate: typeof checkDate === 'string'
           ? checkDate
           : new Date(checkDate).toISOString().split('T')[0],
@@ -1073,7 +1087,7 @@ export class AvailabilityAppointmentService {
     let instrumentsToAssign: CreateAppointmentInstrumentInput[] | null = null;
     if (instruments !== undefined) {
       instrumentsToAssign = instruments;
-    } else if (positionChanged) {
+    } else if (needsPositionChecks) {
       const existing = await this.appointmentInstrumentRepo.find({
         where: { appointmentId: id },
         relations: ['instrument'],
@@ -1099,7 +1113,7 @@ export class AvailabilityAppointmentService {
     }
 
     // Aggiorna i campi dell'appuntamento
-    if (positionChanged && appointment.hasConflict) {
+    if (needsPositionChecks && appointment.hasConflict) {
       // Azzera il flag: verrà rimarcato sotto se il nuovo slot è scoperto
       (updateData as any).hasConflict = false;
       (updateData as any).conflictReason = null;

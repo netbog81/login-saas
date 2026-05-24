@@ -90,7 +90,10 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       </div>
 
       <!-- ===== GRID BODY (scroll area) ===== -->
-      <div class="grid-body" [class.compact]="compactMode" #gridBodyRef>
+      <div class="grid-body"
+           [class.compact]="compactMode"
+           [class.pattern-unavailable]="showUnavailablePattern"
+           #gridBodyRef>
           <div class="time-column" [style.width.px]="timeColumnWidth">
             @for (slot of gridData.timeSlots; track slot.index) {
               <div class="time-label" [style.height.px]="gridData.slotHeightPx">
@@ -122,6 +125,7 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                 <!-- Eventi posizionati (assoluti sopra le celle) -->
                 @for (event of col.events; track event.appointment.id) {
                   <div class="event-chip"
+                       [class.highlighted]="event.appointment.id === highlightedAppointmentId"
                        cdkDrag
                        [cdkDragData]="event"
                        (cdkDragStarted)="onDragStarted()"
@@ -323,6 +327,19 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       cursor: default;
     }
 
+    /* Flag "mostra sfondo celle non disponibili": aggiunge una trama a
+       righe diagonali sopra lo sfondo della cella. CSS puro, nessun
+       impatto sulle performance. */
+    .grid-body.pattern-unavailable .cell-unavailable {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 4px,
+        rgba(100, 116, 139, 0.18) 4px,
+        rgba(100, 116, 139, 0.18) 8px
+      );
+    }
+
     .cell-no-template {
       background: white;
       cursor: pointer;
@@ -365,6 +382,19 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         z-index: 4;
       }
+    }
+
+    /* Chip evidenziato dopo "vai al calendario": bordo pulsante per
+       attirare l'occhio senza coprire il contenuto. */
+    .event-chip.highlighted {
+      z-index: 5;
+      outline: 3px solid #f59e0b;
+      outline-offset: 1px;
+      animation: chip-pulse 1s ease-in-out 3;
+    }
+    @keyframes chip-pulse {
+      0%, 100% { outline-color: #f59e0b; }
+      50% { outline-color: rgba(245, 158, 11, 0.25); }
     }
 
     /* Nome + orario sulla STESSA riga: nome a sinistra (flessibile,
@@ -499,6 +529,10 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
   @Input() currentTimeTop = -1;
   @Input() compactMode = false;
   @Input() availableSlots: AvailableSlotPosition[] = [];
+  /** Appuntamento da evidenziare (es. dopo "vai al calendario"). */
+  @Input() highlightedAppointmentId: string | null = null;
+  /** Da calendar settings: trama tratteggiata sulle celle non disponibili. */
+  @Input() showUnavailablePattern = false;
 
   @Output() cellClick = new EventEmitter<CellClickEvent>();
   @Output() cellDblClick = new EventEmitter<CellClickEvent>();

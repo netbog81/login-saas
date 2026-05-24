@@ -16,6 +16,7 @@ import {
   OnDestroy,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  HostListener,
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -62,6 +63,8 @@ import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, E
 import { isAppointmentWithinAvailability } from '../../calendar-v2/services/availability-check.util';
 import { ConfirmMatDialogComponent, ConfirmMatDialogData } from '../../../shared/components/confirm-mat-dialog';
 import { Appointment } from '../../../models/appointment.model';
+import { AvailabilityAppointment } from '../../../graphql/generated/types';
+import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
 import { Treatment } from '../../../models/treatment.model';
 
 @Component({
@@ -84,6 +87,7 @@ import { Treatment } from '../../../models/treatment.model';
       <!-- Barra unica: navigazione date + controlli + toggle vista -->
       <app-calendar-v3-toolbar
         [dateLabel]="currentDateLabel"
+        [currentDate]="stateService.currentDate"
         [viewMode]="config.viewMode"
         [viewType]="config.viewType"
         [slotDuration]="config.slotDuration"
@@ -94,6 +98,7 @@ import { Treatment } from '../../../models/treatment.model';
         (prev)="onNavigatePrev()"
         (next)="onNavigateNext()"
         (today)="onNavigateToday()"
+        (dateChange)="onDatePicked($event)"
         (viewTypeChange)="onViewTypeChange($event)"
         (viewModeChange)="onViewModeChange($event)"
         (slotDurationChange)="onSlotDurationChange($event)"
@@ -102,7 +107,8 @@ import { Treatment } from '../../../models/treatment.model';
         (showWeekendChange)="onShowWeekendChange($event)"
         (compactModeChange)="onCompactModeChange($event)"
         (openWaitingList)="onOpenWaitingList()"
-        (openTreatments)="onOpenTreatments()">
+        (openTreatments)="onOpenTreatments()"
+        (openAppuntamenti)="onOpenAppuntamenti()">
       </app-calendar-v3-toolbar>
 
       <!-- Content -->
@@ -139,6 +145,8 @@ import { Treatment } from '../../../models/treatment.model';
               [currentTimeTop]="currentTimeTop"
               [compactMode]="config.compactMode"
               [availableSlots]="availableSlots"
+              [highlightedAppointmentId]="highlightedAppointmentId"
+              [showUnavailablePattern]="showUnavailableCellsBackground"
               (cellDblClick)="onCellDblClick($event)"
               (availableSlotDblClick)="onAvailableSlotDblClick($event)"
               (eventClick)="onEventClick($event)"
@@ -227,9 +235,20 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   sidebarCollapsed = false;
   /** Da calendar settings: blocca appuntamenti fuori disponibilita' operatore. */
   blockOutsideAvailability = false;
+  /** Da calendar settings: trama tratteggiata sulle celle non disponibili. */
+  showUnavailableCellsBackground = false;
+  /** Da calendar settings: operatori tutti selezionati all'apertura. */
+  operatorsSelectedOnLoad = false;
   operatorGridData: OperatorGridData | null = null;
   currentTimeTop = -1;
   private currentTimeInterval: any;
+
+  /** Chiave sessionStorage per lo snapshot delle impostazioni /settings. */
+  private static readonly SETTINGS_SNAPSHOT_KEY = 'calendar-v3-settings-snapshot';
+  /** Chiave sessionStorage per la selezione operatori (id selezionati). */
+  private static readonly OPERATOR_SELECTION_KEY = 'calendar-v3-operator-selection';
+  /** true quando il caricamento ha gia' applicato lo stato iniziale operatori. */
+  private operatorSelectionRestored = false;
 
   // Search slot state
   slotSearchEnabled = false;
@@ -270,40 +289,80 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     this.loading = true;
     this.cdr.markForCheck();
 
+    // true se le impostazioni /settings sono cambiate (o primo caricamento):
+    // in tal caso la selezione operatori salvata va scartata e si riparte
+    // dal default.
+    let settingsChanged = false;
+
     try {
       try {
         const settings = await this.settingsService.getCalendarSettings().toPromise();
         if (settings) {
           this.blockOutsideAvailability = settings.blockAppointmentsOutsideAvailability;
+          this.showUnavailableCellsBackground = settings.showUnavailableCellsBackground;
+          this.operatorsSelectedOnLoad = settings.operatorsSelectedOnLoad;
+
+          // Le impostazioni di /settings (durata slot, vista, orari,
+          // weekend) sono il default iniziale, ma vanno RIAPPLICATE se
+          // l'admin le ha cambiate dall'ultimo caricamento. Confronto uno
+          // snapshot in sessionStorage: se diverso (o assente), riapplico.
+          // Zoom/data/compatto restano gestiti dallo stato di sessione.
+          const snapshot = JSON.stringify({
+            slotDuration: settings.slotDuration,
+            showWorkingHoursOnly: settings.showWorkingHoursOnly,
+            showWeekend: settings.showWeekend,
+            defaultView: settings.defaultView,
+          });
+          const prevSnapshot = sessionStorage.getItem(CalendarV3Container.SETTINGS_SNAPSHOT_KEY);
           const hasStoredState = sessionStorage.getItem('calendar-v2-state') !== null;
+          // Riapplica al primo caricamento (niente stato salvato) o se le
+          // impostazioni globali sono cambiate.
+          const shouldApplySettings = !hasStoredState || prevSnapshot !== snapshot;
+          settingsChanged = shouldApplySettings;
+
           this.stateService.updateConfig({
             workingHoursStart: settings.startHour,
             workingHoursEnd: settings.endHour,
-            ...(!hasStoredState ? {
+            ...(shouldApplySettings ? {
               slotDuration: settings.slotDuration,
               showWorkingHoursOnly: settings.showWorkingHoursOnly,
               showWeekend: settings.showWeekend,
               viewType: settings.defaultView as any,
             } : {}),
           });
+          sessionStorage.setItem(CalendarV3Container.SETTINGS_SNAPSHOT_KEY, snapshot);
         }
       } catch { /* usa defaults */ }
 
       const operators = await this.operatorService.getOperators(undefined, undefined, true)
         .toPromise() || [];
 
+      // Selezione iniziale operatori:
+      // - se le impostazioni sono cambiate (o primo caricamento) → default
+      //   dall'impostazione operatorsSelectedOnLoad;
+      // - altrimenti, se c'e' una selezione salvata in sessione, la
+      //   ripristina (l'utente l'ha modificata e va mantenuta).
+      const savedSelection = settingsChanged
+        ? null
+        : this.loadOperatorSelection();
       const calendarOperators: CalendarOperator[] = operators.map(op => ({
         id: op.id,
         operatorId: op.id,
         name: `${op.name}${op.surname ? ' ' + op.surname : ''}`,
         color: op.color || '#667eea',
         active: true,
-        selected: true,
+        selected: savedSelection
+          ? savedSelection.has(op.id)
+          : this.operatorsSelectedOnLoad,
         hasTemplate: true,
         macroCategory: op.macroCategory,
       }));
 
       this.stateService.setOperators(calendarOperators);
+      // Persiste subito lo stato iniziale (e ripulisce un'eventuale
+      // selezione stantia se le impostazioni erano cambiate).
+      this.saveOperatorSelection(calendarOperators);
+      this.operatorSelectionRestored = true;
 
       this.allUsers = operators.map(op => ({
         id: op.id,
@@ -350,6 +409,44 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       this.updateDateLabel();
       this.loadData(config, dates, operators);
     });
+
+    // Persiste la selezione operatori ad ogni cambio (toggle, seleziona/
+    // deseleziona tutti). Cosi' un soft reload o un cambio pagina la
+    // mantiene. Si salta finche' il caricamento iniziale non ha applicato
+    // lo stato di partenza, per non sovrascriverlo con lista vuota.
+    this.stateService.operators$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(operators => {
+        if (this.operatorSelectionRestored && operators.length > 0) {
+          this.saveOperatorSelection(operators);
+        }
+      });
+  }
+
+  /** Salva in sessionStorage gli id degli operatori attualmente selezionati. */
+  private saveOperatorSelection(operators: CalendarOperator[]): void {
+    try {
+      const selectedIds = operators.filter(o => o.selected).map(o => o.operatorId);
+      sessionStorage.setItem(
+        CalendarV3Container.OPERATOR_SELECTION_KEY,
+        JSON.stringify(selectedIds),
+      );
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Legge la selezione operatori da sessionStorage. Ritorna null se non
+   * presente (→ si usera' il default dell'impostazione).
+   */
+  private loadOperatorSelection(): Set<string> | null {
+    try {
+      const raw = sessionStorage.getItem(CalendarV3Container.OPERATOR_SELECTION_KEY);
+      if (raw) {
+        const ids = JSON.parse(raw) as string[];
+        return new Set(ids);
+      }
+    } catch { /* ignore */ }
+    return null;
   }
 
   private loadData(
@@ -416,6 +513,38 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   onNavigateNext(): void { this.stateService.navigateNext(); }
   onNavigateToday(): void { this.stateService.navigateToday(); }
 
+  /**
+   * Scorciatoie da tastiera:
+   * - Alt+A → apre la finestra Appuntamenti
+   * - Alt+T → apre la finestra Trattamenti
+   *
+   * Ignorate mentre si scrive in un campo di testo, per non interferire
+   * con l'input (es. ricerca paziente nel dialog).
+   */
+  @HostListener('document:keydown', ['$event'])
+  onKeyboardShortcut(event: KeyboardEvent): void {
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName;
+    const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
+    if (isTyping) return;
+
+    const key = event.key.toLowerCase();
+    if (key === 'a') {
+      event.preventDefault();
+      this.onOpenAppuntamenti();
+    } else if (key === 't') {
+      event.preventDefault();
+      this.onOpenTreatments();
+    }
+  }
+
+  /** Salto diretto alla data scelta dal datepicker. */
+  onDatePicked(date: Date): void {
+    this.stateService.setCurrentDate(date);
+  }
+
   onViewTypeChange(viewType: 'daily' | 'weekly'): void {
     this.stateService.updateConfig({ viewType });
   }
@@ -450,6 +579,10 @@ export class CalendarV3Container implements OnInit, OnDestroy {
 
   private waitingListDialogRef: any = null;
   private treatmentsDialogRef: any = null;
+  /** Lock anti doppia-apertura: il dialog si apre in modo async (import
+   *  dinamico), nel frattempo il ref e' ancora null. */
+  private treatmentsOpening = false;
+  private appuntamentiOpening = false;
 
   onOpenWaitingList(): void {
     if (this.waitingListDialogRef) return;
@@ -467,8 +600,17 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Apre la finestra Trattamenti, o la chiude se gia' aperta (toggle):
+   * sia il pulsante in barra sia la scorciatoia Alt+T agiscono cosi'.
+   */
   onOpenTreatments(): void {
-    if (this.treatmentsDialogRef) return;
+    if (this.treatmentsDialogRef) {
+      this.treatmentsDialogRef.close();
+      return;
+    }
+    if (this.treatmentsOpening) return;
+    this.treatmentsOpening = true;
     const today = this.stateService.formatDate(this.stateService.currentDate);
     import('../../trattamenti/containers/trattamenti-dialog.container').then(m => {
       this.treatmentsDialogRef = this.dialog.open(m.TrattamentiDialogContainer, {
@@ -485,10 +627,120 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         disableClose: false,
         autoFocus: false,
       });
+      this.treatmentsOpening = false;
       this.treatmentsDialogRef.afterClosed().subscribe(() => {
         this.treatmentsDialogRef = null;
       });
+    }).catch(() => { this.treatmentsOpening = false; });
+  }
+
+  private appuntamentiDialogRef: any = null;
+
+  /**
+   * Apre la finestra "Appuntamenti" (ricerca paziente, lista appuntamenti,
+   * riprenotazione), o la chiude se gia' aperta (toggle): sia il pulsante
+   * in barra sia la scorciatoia Alt+A agiscono cosi'.
+   * Passa al dialog le callback goToCalendar/editAppointment e gli operatori.
+   */
+  onOpenAppuntamenti(): void {
+    if (this.appuntamentiDialogRef) {
+      this.appuntamentiDialogRef.close();
+      return;
+    }
+    if (this.appuntamentiOpening) return;
+    this.appuntamentiOpening = true;
+    import('./appuntamenti-dialog.container').then(m => {
+      this.appuntamentiDialogRef = this.dialog.open(m.AppuntamentiDialogContainer, {
+        width: '1150px',
+        maxWidth: '97vw',
+        height: '82vh',
+        maxHeight: '92vh',
+        hasBackdrop: false,
+        panelClass: 'appuntamenti-dialog-pane',
+        disableClose: false,
+        autoFocus: false,
+        data: {
+          operators: this.stateService.operators.map(o => ({
+            id: o.operatorId,
+            name: o.name,
+            macroCategory: o.macroCategory ?? '',
+          })),
+          goToCalendar: (appt: any) => this.navigateToAppointment(appt),
+          editAppointment: (appt: any) => this.editAppointmentFromDialog(appt),
+        },
+      });
+      this.appuntamentiOpening = false;
+      this.appuntamentiDialogRef.afterClosed().subscribe(() => {
+        this.appuntamentiDialogRef = null;
+      });
+    }).catch(() => { this.appuntamentiOpening = false; });
+  }
+
+  /** ID dell'appuntamento da evidenziare brevemente sul calendario. */
+  highlightedAppointmentId: string | null = null;
+
+  /**
+   * Naviga il calendario alla data dell'appuntamento, assicura che il suo
+   * operatore sia selezionato, ed evidenzia il chip per qualche secondo.
+   */
+  private navigateToAppointment(appt: { appointmentDate: string; operatorId: string; id: string }): void {
+    this.stateService.setCurrentDate(new Date(appt.appointmentDate + 'T00:00:00'));
+    // Assicura che l'operatore dell'appuntamento sia tra quelli selezionati.
+    const op = this.stateService.operators.find(o => o.operatorId === appt.operatorId);
+    if (op && !op.selected) {
+      this.stateService.setOperatorSelection([appt.operatorId], true);
+    }
+    this.highlightedAppointmentId = appt.id;
+    this.cdr.markForCheck();
+    // Rimuove l'evidenziazione dopo qualche secondo.
+    setTimeout(() => {
+      this.highlightedAppointmentId = null;
+      this.cdr.markForCheck();
+    }, 4000);
+  }
+
+  /**
+   * Apre il form standard di modifica appuntamento (usato dalla finestra
+   * Appuntamenti). Riceve un AvailabilityAppointment, lo mappa al model
+   * Appointment, apre EventMatDialogComponent e attende la chiusura.
+   * Ritorna true se l'appuntamento e' stato modificato/eliminato.
+   */
+  private async editAppointmentFromDialog(aa: AvailabilityAppointment): Promise<boolean> {
+    const appointment = mapAvailabilityAppointmentToAppointment(aa);
+    const dialogData: EventMatDialogData = {
+      appointment,
+      users: this.allUsers,
+      patients: this.patients,
+      instrumentCategories: this.instrumentCategories,
+    };
+    const ref = this.dialog.open(EventMatDialogComponent, {
+      width: '700px',
+      maxWidth: '95vw',
+      disableClose: false,
+      data: dialogData,
     });
+    const result: EventMatDialogResult | undefined =
+      await firstValueFrom(ref.afterClosed());
+
+    if (!result || result.action === 'cancel') return false;
+
+    if (result.action === 'save' && result.appointment) {
+      await this.saveAppointment(result);
+      this.reloadCurrentView();
+      return true;
+    }
+    if (result.action === 'delete' && result.appointment) {
+      try {
+        await firstValueFrom(
+          this.appointmentService.deleteAppointment(String(result.appointment.id)),
+        );
+      } catch (err: any) {
+        alert(err?.graphQLErrors?.[0]?.message || 'Errore nell\'eliminazione');
+      }
+      this.reloadCurrentView();
+      return true;
+    }
+    return false;
   }
 
   // ==================== AVAILABILITY GUARD ====================

@@ -255,7 +255,7 @@ export class TreatmentService {
   async findById(id: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
   }
 
@@ -265,7 +265,14 @@ export class TreatmentService {
   private async findByIdWithManager(manager: EntityManager, id: string): Promise<Treatment> {
     const treatment = await manager.getRepository(Treatment).findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      // 'instruments.instrument' e 'instruments.instrumentCategory' sono
+      // necessarie: il fragment GraphQL legge instrument.name; senza il
+      // join annidato la relazione arriva null e il frontend crasha.
+      relations: [
+        'appointment', 'operator', 'service',
+        'instruments', 'instruments.instrument', 'instruments.instrumentCategory',
+        'therapeuticPath', 'treatmentServices', 'treatmentServices.service',
+      ],
     });
 
     if (!treatment) {
@@ -281,7 +288,7 @@ export class TreatmentService {
   async findByAppointmentId(appointmentId: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { appointmentId },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
   }
 
@@ -292,7 +299,7 @@ export class TreatmentService {
     if (appointmentIds.length === 0) return [];
     return this.treatmentRepo.find({
       where: { appointmentId: In(appointmentIds) },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
     });
   }
 
@@ -1039,6 +1046,8 @@ export class TreatmentService {
       .leftJoinAndSelect('treatment.operator', 'operator')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.instruments', 'instruments')
+      .leftJoinAndSelect('instruments.instrument', 'instrumentsInstrument')
+      .leftJoinAndSelect('instruments.instrumentCategory', 'instrumentsCategory')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .leftJoinAndSelect('treatment.treatmentServices', 'treatmentServices')
       .leftJoinAndSelect('treatmentServices.service', 'treatmentServiceService')
@@ -1063,6 +1072,8 @@ export class TreatmentService {
       .leftJoinAndSelect('treatment.operator', 'operator')
       .leftJoinAndSelect('treatment.service', 'service')
       .leftJoinAndSelect('treatment.instruments', 'instruments')
+      .leftJoinAndSelect('instruments.instrument', 'instrumentsInstrument')
+      .leftJoinAndSelect('instruments.instrumentCategory', 'instrumentsCategory')
       .leftJoinAndSelect('treatment.therapeuticPath', 'therapeuticPath')
       .leftJoinAndSelect('treatment.treatmentServices', 'treatmentServices')
       .leftJoinAndSelect('treatmentServices.service', 'treatmentServiceService')
@@ -1083,7 +1094,7 @@ export class TreatmentService {
   async getPendingForSecretary(): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { status: TreatmentStatus.OPERATOR_COMPLETED },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
       order: { completedAt: 'ASC' }
     });
   }
@@ -1094,7 +1105,7 @@ export class TreatmentService {
   async getByPatient(patientId: string, limit?: number, offset?: number): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { patientId },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
       order: { startedAt: 'DESC' },
       take: limit,
       skip: offset
@@ -1163,7 +1174,7 @@ export class TreatmentService {
    */
   async findAll(): Promise<Treatment[]> {
     return this.treatmentRepo.find({
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
       order: { startedAt: 'DESC' }
     });
   }
@@ -1174,7 +1185,7 @@ export class TreatmentService {
   async getByTherapeuticPath(therapeuticPathId: string): Promise<Treatment[]> {
     return this.treatmentRepo.find({
       where: { therapeuticPathId },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service'],
       order: { startedAt: 'DESC' }
     });
   }

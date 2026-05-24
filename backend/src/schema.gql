@@ -249,6 +249,7 @@ type CalendarSettings {
   blockAppointmentsOutsideAvailability: Boolean!
   defaultView: String!
   endHour: Int!
+  operatorsSelectedOnLoad: Boolean!
   showUnavailableCellsBackground: Boolean!
   showWeekend: Boolean!
   showWorkingHoursOnly: Boolean!
@@ -1764,6 +1765,7 @@ type Query {
   availableInstrumentsByCategory(categoryId: ID!): [Instrument!]!
   availableOperatorsForSlot(date: String!, endTime: String!, excludeOperatorId: ID!, gymRoomId: ID!, startTime: String!): [Operator!]!
   availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
+  availableSlotsForRebooking(dates: [String!]!, durationMinutes: Int!, operatorIds: [ID!]!, serviceId: ID): [RebookingSlot!]!
   calendarSettings: CalendarSettings!
   checkDuplicateOperator(name: String!, surname: String): [Operator!]!
   checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
@@ -1908,6 +1910,18 @@ type Query {
   whatsappRetentionStats: WhatsappRetentionStats!
   whatsappTemplate(type: WhatsappTemplateType!): WhatsappMessageTemplate
   whatsappTemplates: [WhatsappMessageTemplate!]!
+}
+
+type RebookingSlot {
+  """Data dello slot (YYYY-MM-DD)"""
+  date: String!
+
+  """Ora fine (HH:mm)"""
+  endTime: String!
+  operatorId: ID!
+
+  """Ora inizio (HH:mm)"""
+  startTime: String!
 }
 
 input RecordPaymentInput {
@@ -2638,6 +2652,9 @@ input UpdateAvailabilityAppointmentInput {
   """Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)"""
   nonRetribuito: Boolean
   notes: String
+
+  """Riassegna l'appuntamento a un altro operatore"""
+  operatorId: ID
   operatorNotes: String
   patientId: ID
   serviceId: ID

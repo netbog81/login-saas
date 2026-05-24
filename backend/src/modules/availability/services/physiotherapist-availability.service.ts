@@ -1087,4 +1087,59 @@ export class PhysiotherapistAvailabilityService {
 
     return results;
   }
+
+  /**
+   * Ricerca slot disponibili per la RIPRENOTAZIONE di un appuntamento.
+   *
+   * A differenza di getAvailableSlotsBatch (veloce ma SENZA check
+   * strumenti), questo metodo verifica anche la disponibilita' degli
+   * strumenti: serve quando si sposta un appuntamento che ha un servizio
+   * con strumenti richiesti, e gli strumenti devono essere liberi nel
+   * nuovo slot.
+   *
+   * Cicla operatori × date riusando getAvailableSlots (che fa il check
+   * completo, strumenti inclusi). Pensato per range di date contenuti
+   * (qualche settimana), tipici del flusso di riprenotazione in segreteria.
+   *
+   * @param operatorIds operatori da considerare (originale + eventuali altri)
+   * @param dates date YYYY-MM-DD da esplorare
+   * @param durationMinutes durata richiesta dello slot
+   * @param serviceId servizio dell'appuntamento (per dedurre gli strumenti)
+   */
+  async getAvailableSlotsForRebooking(
+    operatorIds: string[],
+    dates: string[],
+    durationMinutes: number,
+    serviceId?: string,
+  ): Promise<{ operatorId: string; date: string; startTime: string; endTime: string }[]> {
+    const results: { operatorId: string; date: string; startTime: string; endTime: string }[] = [];
+
+    for (const operatorId of operatorIds) {
+      for (const dateStr of dates) {
+        const date = new Date(dateStr + 'T00:00:00');
+        const slots = await this.getAvailableSlots(
+          operatorId,
+          date,
+          durationMinutes,
+          serviceId,
+        );
+        for (const slot of slots) {
+          if (!slot.available) continue;
+          results.push({
+            operatorId,
+            date: dateStr,
+            startTime: this.dateToHHmm(slot.startTime),
+            endTime: this.dateToHHmm(slot.endTime),
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /** Formatta un Date come HH:mm (orario locale). */
+  private dateToHHmm(d: Date): string {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
 }

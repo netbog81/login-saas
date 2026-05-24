@@ -535,7 +535,7 @@ export interface DetailDialogData {
                 <ul>
                   @for (i of treatment.instruments || []; track i.id) {
                     @if (i.wasUsed) {
-                      <li>{{ i.instrument.name }}</li>
+                      <li>{{ i.instrument?.name || '—' }}</li>
                     }
                   }
                 </ul>

@@ -18,6 +18,7 @@ interface CalendarSettingsForm {
   defaultView: 'daily' | 'weekly';
   showUnavailableCellsBackground: boolean;
   blockAppointmentsOutsideAvailability: boolean;
+  operatorsSelectedOnLoad: boolean;
 }
 
 interface AutoAttendanceSettings {
@@ -51,6 +52,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     defaultView: 'daily',
     showUnavailableCellsBackground: true,
     blockAppointmentsOutsideAvailability: false,
+    operatorsSelectedOnLoad: false,
   };
   originalCalendarSettings: CalendarSettingsForm = { ...this.calendarSettings };
 
@@ -196,6 +198,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
         this.calendarSettings.blockAppointmentsOutsideAvailability,
         { valueType: 'boolean', category: 'calendar' }
       ),
+      calOperatorsSelectedOnLoad: this.settingsService.upsertSetting(
+        'calendar.operatorsSelectedOnLoad',
+        this.calendarSettings.operatorsSelectedOnLoad,
+        { valueType: 'boolean', category: 'calendar' }
+      ),
       // Auto Attendance settings
       autoAttendanceEnabled: this.settingsService.updateSetting(
         'autoAttendance.enabled',
@@ -249,7 +256,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.calendarSettings.slotDuration !== this.originalCalendarSettings.slotDuration ||
       this.calendarSettings.defaultView !== this.originalCalendarSettings.defaultView ||
       this.calendarSettings.showUnavailableCellsBackground !== this.originalCalendarSettings.showUnavailableCellsBackground ||
-      this.calendarSettings.blockAppointmentsOutsideAvailability !== this.originalCalendarSettings.blockAppointmentsOutsideAvailability;
+      this.calendarSettings.blockAppointmentsOutsideAvailability !== this.originalCalendarSettings.blockAppointmentsOutsideAvailability ||
+      this.calendarSettings.operatorsSelectedOnLoad !== this.originalCalendarSettings.operatorsSelectedOnLoad;
 
     const autoAttendanceChanged =
       this.autoAttendanceSettings.enabled !== this.originalAutoAttendanceSettings.enabled ||

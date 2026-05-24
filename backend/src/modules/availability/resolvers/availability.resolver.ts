@@ -13,6 +13,7 @@ import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot, OperatorAvailabilityResult } from '../dto/availability-slot.output';
 import { OperatorAvailabilityV3 } from '../dto/operator-availability-v3.type';
+import { RebookingSlot } from '../dto/rebooking-slot.output';
 import { PhysiotherapistSlotBatchOutput } from '../dto/physiotherapist-slot.output';
 import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherapist-availability.input';
 import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
@@ -81,6 +82,23 @@ export class AvailabilityResolver {
     @Args('endDate') endDate: string,
   ): Promise<OperatorAvailabilityV3[]> {
     return this.availabilityService.getOperatorsAvailabilityV3(operatorIds, startDate, endDate);
+  }
+
+  /**
+   * Slot disponibili per la riprenotazione di un appuntamento: cerca su
+   * piu' operatori e date, con verifica anche della disponibilita'
+   * strumenti del servizio. Usata dal flusso "Sposta appuntamento".
+   */
+  @Query(() => [RebookingSlot], { name: 'availableSlotsForRebooking' })
+  async getAvailableSlotsForRebooking(
+    @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
+    @Args('dates', { type: () => [String] }) dates: string[],
+    @Args('durationMinutes', { type: () => Int }) durationMinutes: number,
+    @Args('serviceId', { type: () => ID, nullable: true }) serviceId?: string,
+  ): Promise<RebookingSlot[]> {
+    return this.physiotherapistAvailabilityService.getAvailableSlotsForRebooking(
+      operatorIds, dates, durationMinutes, serviceId,
+    );
   }
 
   /**

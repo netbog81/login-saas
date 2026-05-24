@@ -18,6 +18,10 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { FormsModule } from '@angular/forms';
 import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/models/calendar-v2.model';
 
@@ -28,6 +32,7 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
   imports: [
     CommonModule, MatButtonModule, MatIconModule, MatButtonToggleModule,
     MatSlideToggleModule, MatMenuModule, MatTooltipModule, FormsModule,
+    MatDatepickerModule, MatNativeDateModule, MatFormFieldModule, MatInputModule,
   ],
   template: `
     <div class="cal-bar">
@@ -41,6 +46,18 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
           <mat-icon>chevron_right</mat-icon>
         </button>
         <span class="date-label">{{ dateLabel }}</span>
+
+        <!-- Salto diretto a una data: l'icona apre il datepicker; la
+             selezione emette dateChange. L'input e' nascosto, serve solo
+             come ancoraggio per il calendario Material. -->
+        <button mat-icon-button class="dense-icon-btn" (click)="picker.open()"
+                matTooltip="Vai a una data">
+          <mat-icon>event</mat-icon>
+        </button>
+        <input class="hidden-date-input" matInput [matDatepicker]="picker"
+               [ngModel]="currentDate"
+               (dateChange)="onDatePicked($event.value)">
+        <mat-datepicker #picker></mat-datepicker>
       </div>
 
       <div class="bar-divider"></div>
@@ -118,9 +135,17 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
       </mat-button-toggle-group>
 
       <!-- Apri dialog Trattamenti -->
-      <button mat-stroked-button class="action-btn" (click)="openTreatments.emit()" matTooltip="Trattamenti del giorno">
+      <button mat-stroked-button class="action-btn" (click)="openTreatments.emit()"
+              matTooltip="Trattamenti del giorno — apri/chiudi (Alt+T)">
         <mat-icon>healing</mat-icon>
         Trattamenti
+      </button>
+
+      <!-- Apri dialog Appuntamenti (ricerca paziente + riprenotazione) -->
+      <button mat-stroked-button class="action-btn" (click)="openAppuntamenti.emit()"
+              matTooltip="Cerca paziente e gestisci appuntamenti — apri/chiudi (Alt+A)">
+        <mat-icon>event_note</mat-icon>
+        Appuntamenti
       </button>
 
       <!-- Spinge il toggle vista in fondo a destra -->
@@ -155,6 +180,18 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
       display: flex;
       align-items: center;
       gap: 4px;
+    }
+
+    /* Input del datepicker: invisibile e fuori flusso, serve solo come
+       ancoraggio per il calendario Material aperto dall'icona "event". */
+    .hidden-date-input {
+      width: 0;
+      height: 0;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      position: absolute;
+      pointer-events: none;
     }
 
     .bar-divider {
@@ -264,6 +301,8 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
 export class CalendarV3ToolbarComponent {
   // Navigazione date (ex header v2)
   @Input() dateLabel = '';
+  /** Data corrente del calendario, per il datepicker di salto rapido. */
+  @Input() currentDate: Date = new Date();
 
   // Controlli funzionali (ex toolbar v2)
   @Input() viewMode: CalendarV2ViewMode = 'operators';
@@ -277,6 +316,8 @@ export class CalendarV3ToolbarComponent {
   @Output() prev = new EventEmitter<void>();
   @Output() next = new EventEmitter<void>();
   @Output() today = new EventEmitter<void>();
+  /** Emesso quando l'utente sceglie una data dal datepicker. */
+  @Output() dateChange = new EventEmitter<Date>();
   @Output() viewTypeChange = new EventEmitter<CalendarV2ViewType>();
 
   @Output() viewModeChange = new EventEmitter<CalendarV2ViewMode>();
@@ -287,8 +328,13 @@ export class CalendarV3ToolbarComponent {
   @Output() compactModeChange = new EventEmitter<boolean>();
   @Output() openWaitingList = new EventEmitter<void>();
   @Output() openTreatments = new EventEmitter<void>();
+  @Output() openAppuntamenti = new EventEmitter<void>();
 
   slotDurations = [15, 30, 45, 60];
+
+  onDatePicked(date: Date | null): void {
+    if (date) this.dateChange.emit(date);
+  }
 
   private static readonly ZOOM_STEP = 0.1;
   private static readonly ZOOM_MIN = 0.5;

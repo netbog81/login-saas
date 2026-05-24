@@ -28,4 +28,7 @@ export class CalendarSettings {
 
   @Field()
   blockAppointmentsOutsideAvailability: boolean;
+
+  @Field()
+  operatorsSelectedOnLoad: boolean;
 }

@@ -237,6 +237,45 @@ body {
   }
 }
 
+/* Appuntamenti Dialog (Calendario V3) - draggable & resizable.
+   Stesso pattern del trattamenti-dialog-pane: resize nativo del browser
+   propagato al contenuto interno (title-bar + body in flex). */
+.appuntamenti-dialog-pane {
+  resize: both;
+  overflow: auto;
+  min-width: 680px;
+  min-height: 420px;
+  max-width: 97vw;
+  max-height: 92vh;
+
+  .mat-mdc-dialog-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .mdc-dialog__surface {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+  }
+}
+
+/* Finestra Appuntamenti minimizzata: collassata alla sola barra blu.
+   Annulla i vincoli di altezza e disabilita il resize. */
+.appuntamenti-dialog-pane.minimized {
+  resize: none;
+  min-height: 0 !important;
+  height: auto !important;
+
+  .mat-mdc-dialog-container,
+  .mdc-dialog__surface {
+    height: auto !important;
+  }
+}
+
 /* Gym Exception Dialog - draggable & resizable
    Stessa struttura di task-message-dialog-panel per fare in modo che il
    resize nativo del browser si propaghi correttamente al contenuto interno

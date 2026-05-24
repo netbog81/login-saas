@@ -29,6 +29,11 @@ export class UpdateAvailabilityAppointmentInput {
   @IsUUID('4', { message: 'ID paziente non valido' })
   patientId?: string;
 
+  @Field(() => ID, { nullable: true, description: 'Riassegna l\'appuntamento a un altro operatore' })
+  @IsOptional()
+  @IsUUID('4', { message: 'ID operatore non valido' })
+  operatorId?: string;
+
   /**
    * @deprecated Usa services invece. Mantenuto per retrocompatibilità.
    */
