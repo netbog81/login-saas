@@ -1220,6 +1220,7 @@ type Mutation {
   deleteWaitingListEntry(id: ID!): Boolean!
   deleteWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   dismissBillingAlert(id: ID!): Treatment!
+  dismissReturnFromAccountingBanner(id: ID!): Treatment!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
   editTestEvaluation(newLevel: Int!, operatorId: ID!, testId: ID!): EvaluationTest!
   editTestEvaluationEntry(evaluationHistoryId: ID!, evaluationLevel: Int!, note: String): TestEvaluationHistory!
@@ -1247,6 +1248,7 @@ type Mutation {
   reopenTreatmentByOperator(id: ID!): Treatment!
   reopenTreatmentBySecretary(id: ID!): Treatment!
   reorderWaitingList(input: ReorderWaitingListInput!): [WaitingListEntry!]!
+  requestTreatmentRecall(id: ID!, reason: String): Treatment!
   resetKeycloakPassword(input: ResetKeycloakPasswordInput!): Boolean!
   resetTestEvaluation(testId: ID!): EvaluationTest!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!

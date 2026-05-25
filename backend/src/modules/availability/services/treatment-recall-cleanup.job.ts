@@ -61,9 +61,14 @@ export class TreatmentRecallCleanupJob {
           `Recall stuck per treatment ${t.id} (requestId=${t.recallRequestId}, ` +
             `requestedAt=${t.recallRequestedAt?.toISOString()}). Azzero per consentire retry.`,
         );
-        t.recallRequestId = undefined;
-        t.recallRequestedAt = undefined;
-        await this.treatmentRepo.save(t);
+        // NB: `repo.update()` con `null` esplicito è necessario per
+        // forzare la UPDATE a NULL. Setting `= undefined` + `save()` viene
+        // ignorato da TypeORM ("non includere il campo nell'UPDATE") —
+        // bug scoperto in produzione 2026-05-25.
+        await this.treatmentRepo.update(t.id, {
+          recallRequestId: null as unknown as string,
+          recallRequestedAt: null as unknown as Date,
+        });
       }
 
       this.logger.log(

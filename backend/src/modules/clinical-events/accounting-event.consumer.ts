@@ -509,18 +509,18 @@ export class AccountingEventConsumer
     // e i bottoni operativi tornano coerenti.
     treatment.billingStatus = TreatmentBillingStatus.PENDING;
     treatment.accountingBillableEventId = p.billableEventId;
-    treatment.accountingInvoiceUrl = undefined;
-    treatment.accountingInvoiceIssuedAt = undefined;
-    treatment.accountingDocumentType = undefined;
-    treatment.accountingCreditNoteNumber = undefined;
-    treatment.accountingCreditNoteIssuedAt = undefined;
-    treatment.accountingRefundReason = undefined;
-    treatment.billingAlertMessage = undefined;
-    treatment.billingAlertAt = undefined;
-    treatment.billingAlertDismissedAt = undefined;
-    treatment.patientInvoiceNumber = undefined;
+    treatment.accountingInvoiceUrl = null as any;
+    treatment.accountingInvoiceIssuedAt = null as any;
+    treatment.accountingDocumentType = null as any;
+    treatment.accountingCreditNoteNumber = null as any;
+    treatment.accountingCreditNoteIssuedAt = null as any;
+    treatment.accountingRefundReason = null as any;
+    treatment.billingAlertMessage = null as any;
+    treatment.billingAlertAt = null as any;
+    treatment.billingAlertDismissedAt = null as any;
+    treatment.patientInvoiceNumber = null as any;
     treatment.isInvoicedToPatient = false;
-    treatment.invoicedToPatientAt = undefined;
+    treatment.invoicedToPatientAt = null as any;
     await manager.save(Treatment, treatment);
   }
 
@@ -602,7 +602,7 @@ export class AccountingEventConsumer
       `Annullamento rifiutato dall'accounting: trattamento già fatturato ` +
       `(fattura ${p.currentInvoiceNumber}). Per stornare emetti nota credito.`;
     treatment.billingAlertAt = new Date(p.rejectedAt);
-    treatment.billingAlertDismissedAt = undefined; // riapre se era stato dismissato
+    treatment.billingAlertDismissedAt = null as any; // riapre se era stato dismissato
     await manager.save(Treatment, treatment);
   }
 
@@ -614,14 +614,17 @@ export class AccountingEventConsumer
     const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
     if (!treatment) return;
 
-    // Anti-stale: ignora accept di un recall non corrispondente al request
-    // attualmente in volo (es. utente ha lanciato un nuovo recall mentre il
-    // primo era in coda). Senza questo check, una vecchia accept potrebbe
-    // sovrascrivere uno stato già evoluto.
-    if (treatment.recallRequestId && treatment.recallRequestId !== p.requestId) {
+    // Anti-stale STRICT: skippa se il recall in volo non coincide. Caso 1:
+    // utente ha lanciato un nuovo recall mentre il primo era in coda (req
+    // diverso). Caso 2 (più subdolo): TreatmentRecallCleanupJob ha già
+    // timeout-liberato il recall (recallRequestId = NULL). Applicare l'accept
+    // in cieco modificherebbe il treatment che nel frattempo può essere
+    // stato re-inviato o cancellato.
+    if (treatment.recallRequestId !== p.requestId) {
       this.logger.warn(
-        `recall-accepted stale: treatment.recallRequestId=${treatment.recallRequestId} ` +
-          `≠ payload.requestId=${p.requestId}. Skip.`,
+        `recall-accepted orphan/stale: treatment.recallRequestId=` +
+          `${treatment.recallRequestId ?? 'null'} ≠ payload.requestId=${p.requestId}. ` +
+          `Skip (possibile cleanup post-timeout o multi-recall).`,
       );
       return;
     }
@@ -631,25 +634,25 @@ export class AccountingEventConsumer
     // riferiti al billable appena cancellato lato accounting vengono scartati
     // dall'anti-stale check in handleBillableInvoiced.
     treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
-    treatment.accountingBillableEventId = undefined;
-    treatment.accountingInvoiceUrl = undefined;
-    treatment.accountingInvoiceIssuedAt = undefined;
-    treatment.accountingDocumentType = undefined;
-    treatment.accountingCreditNoteNumber = undefined;
-    treatment.accountingCreditNoteIssuedAt = undefined;
-    treatment.accountingRefundReason = undefined;
-    treatment.billingAlertMessage = undefined;
-    treatment.billingAlertAt = undefined;
-    treatment.billingAlertDismissedAt = undefined;
-    treatment.patientInvoiceNumber = undefined;
+    treatment.accountingBillableEventId = null as any;
+    treatment.accountingInvoiceUrl = null as any;
+    treatment.accountingInvoiceIssuedAt = null as any;
+    treatment.accountingDocumentType = null as any;
+    treatment.accountingCreditNoteNumber = null as any;
+    treatment.accountingCreditNoteIssuedAt = null as any;
+    treatment.accountingRefundReason = null as any;
+    treatment.billingAlertMessage = null as any;
+    treatment.billingAlertAt = null as any;
+    treatment.billingAlertDismissedAt = null as any;
+    treatment.patientInvoiceNumber = null as any;
     treatment.isInvoicedToPatient = false;
-    treatment.invoicedToPatientAt = undefined;
+    treatment.invoicedToPatientAt = null as any;
 
     // Chiudo il recall in volo + pulisco eventuale rejection precedente.
-    treatment.recallRequestId = undefined;
-    treatment.recallRequestedAt = undefined;
-    treatment.lastRecallRejectionMessage = undefined;
-    treatment.lastRecallRejectionAt = undefined;
+    treatment.recallRequestId = null as any;
+    treatment.recallRequestedAt = null as any;
+    treatment.lastRecallRejectionMessage = null as any;
+    treatment.lastRecallRejectionAt = null as any;
 
     await manager.save(Treatment, treatment);
 
@@ -669,10 +672,12 @@ export class AccountingEventConsumer
     const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
     if (!treatment) return;
 
-    if (treatment.recallRequestId && treatment.recallRequestId !== p.requestId) {
+    // Anti-stale STRICT (vedi nota in handleRecallAccepted).
+    if (treatment.recallRequestId !== p.requestId) {
       this.logger.warn(
-        `recall-rejected stale: treatment.recallRequestId=${treatment.recallRequestId} ` +
-          `≠ payload.requestId=${p.requestId}. Skip.`,
+        `recall-rejected orphan/stale: treatment.recallRequestId=` +
+          `${treatment.recallRequestId ?? 'null'} ≠ payload.requestId=${p.requestId}. ` +
+          `Skip (possibile cleanup post-timeout o multi-recall).`,
       );
       return;
     }
@@ -682,8 +687,8 @@ export class AccountingEventConsumer
     // il recall in volo.
     treatment.lastRecallRejectionMessage = p.message;
     treatment.lastRecallRejectionAt = new Date(p.rejectedAt);
-    treatment.recallRequestId = undefined;
-    treatment.recallRequestedAt = undefined;
+    treatment.recallRequestId = null as any;
+    treatment.recallRequestedAt = null as any;
 
     await manager.save(Treatment, treatment);
 
@@ -713,29 +718,29 @@ export class AccountingEventConsumer
     // accounting (treatment torna NOT_READY, riferimenti azzerati) + salva
     // il motivo per il banner UI dismissibile.
     treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
-    treatment.accountingBillableEventId = undefined;
-    treatment.accountingInvoiceUrl = undefined;
-    treatment.accountingInvoiceIssuedAt = undefined;
-    treatment.accountingDocumentType = undefined;
-    treatment.accountingCreditNoteNumber = undefined;
-    treatment.accountingCreditNoteIssuedAt = undefined;
-    treatment.accountingRefundReason = undefined;
-    treatment.billingAlertMessage = undefined;
-    treatment.billingAlertAt = undefined;
-    treatment.billingAlertDismissedAt = undefined;
-    treatment.patientInvoiceNumber = undefined;
+    treatment.accountingBillableEventId = null as any;
+    treatment.accountingInvoiceUrl = null as any;
+    treatment.accountingInvoiceIssuedAt = null as any;
+    treatment.accountingDocumentType = null as any;
+    treatment.accountingCreditNoteNumber = null as any;
+    treatment.accountingCreditNoteIssuedAt = null as any;
+    treatment.accountingRefundReason = null as any;
+    treatment.billingAlertMessage = null as any;
+    treatment.billingAlertAt = null as any;
+    treatment.billingAlertDismissedAt = null as any;
+    treatment.patientInvoiceNumber = null as any;
     treatment.isInvoicedToPatient = false;
-    treatment.invoicedToPatientAt = undefined;
+    treatment.invoicedToPatientAt = null as any;
 
     treatment.returnedFromAccountingReason = p.reason;
     treatment.returnedFromAccountingAt = new Date(p.returnedAt);
     treatment.returnedFromAccountingByEmail = p.returnedByEmail ?? undefined;
-    treatment.returnedFromAccountingDismissedAt = undefined; // riapre se era stato dismissato
+    treatment.returnedFromAccountingDismissedAt = null as any; // riapre se era stato dismissato
 
     // Se per qualche motivo c'era un recall in volo, lo chiudiamo
     // (returned-to-clinical raggiunge l'effetto desiderato del recall).
-    treatment.recallRequestId = undefined;
-    treatment.recallRequestedAt = undefined;
+    treatment.recallRequestId = null as any;
+    treatment.recallRequestedAt = null as any;
 
     await manager.save(Treatment, treatment);
 
