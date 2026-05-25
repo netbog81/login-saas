@@ -119,16 +119,32 @@ Consumer:
 
 ### State machine `Treatment.billingStatus`
 
+Aggiornata in sessione 7 (UX revisione):
+
 ```
 NOT_READY → READY_FOR_BILLING → SENT → PENDING → INVOICED → ...
-                ↓ (cancel)         ↓ (cancel)    ↓ (cancel)
-              NOT_READY         CANCELLED      [bloccato — serve nota credito]
+   ↑              ↑              ↓ (cancel)    ↓ (cancel)
+   └──────────────┴──────────────┴── cancelTreatment torna a NOT_READY
+                                     (sessione 7 — prima era CANCELLED)
+                                                ↓
+                                              [bloccato — serve nota credito]
 
   INVOICED → REFUNDED                     (billable.refunded)
   INVOICED → PARTIALLY_REFUNDED           (billable.partially-refunded)
   INVOICED → REISSUED → INVOICED' (new)   (billable.reissued)
-  CANCELLED → INVOICED (rollback alert)   (billable.cancellation-rejected)
+  NOT_READY → INVOICED (rollback alert)   (billable.cancellation-rejected)
 ```
+
+**Cambio semantico sessione 7**: `cancelTreatment` ora porta SEMPRE a
+`NOT_READY` (riemibile, modificabile) invece di `CANCELLED` terminale.
+L'operatore può cancellare l'invio, modificare il treatment, rinviarlo.
+Il caso "cestina trattamento" è coperto da `deleteTreatment` (soft-delete
+TypeORM, semantica diversa).
+
+L'enum `CANCELLED` resta usato per:
+- Record storici già in DB (backward compat — pre-sessione 7 il flusso
+  cancel li portava lì)
+- Frontend filtri "Annullati" continua a includerlo per visibilità storia
 
 Implementato in [`treatment-billing-status.enum.ts`](src/modules/availability/entities/treatment-billing-status.enum.ts).
 

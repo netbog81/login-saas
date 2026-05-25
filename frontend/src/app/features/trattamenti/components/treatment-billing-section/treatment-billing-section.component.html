@@ -126,15 +126,15 @@
     <button type="button"
             class="btn btn-success"
             [disabled]="immediateInvoiceDisabled"
-            [title]="immediateInvoiceDisabled ? (immediateInvoiceDisabledReason || '') : 'Chiude trattamento e richiede l\'emissione immediata della fattura ad accounting'"
+            [title]="immediateInvoiceDisabled ? (immediateInvoiceDisabledReason || '') : 'Registra l\'incasso e invia subito ad accounting per emettere fattura automatica'"
             (click)="onImmediateInvoice()">
-      Fattura subito + incassa
+      Fattura e incassa
     </button>
 
     <button type="button"
             class="btn"
             [disabled]="reopenDisabled"
-            [title]="reopenDisabled ? (reopenDisabledReason || '') : 'Riapre il trattamento per modifiche di righe/prezzi prima della fattura. Notifica accounting.'"
+            [title]="reopenDisabled ? (reopenDisabledReason || '') : 'Riapre il trattamento per modificare righe/prezzi prima dell\'invio.'"
             (click)="onReopen()">
       Riapri per modifiche
     </button>
@@ -142,9 +142,9 @@
     <button type="button"
             class="btn btn-danger"
             [disabled]="cancelDisabled"
-            [title]="cancelDisabled ? (cancelDisabledReason || '') : 'Annulla la richiesta di fatturazione. Il trattamento NON sarà fatturato. Notifica accounting.'"
+            [title]="cancelDisabled ? (cancelDisabledReason || '') : 'Riporta il trattamento allo stato modificabile. Se era stato inviato ad accounting, notifica anche lì.'"
             (click)="onCancel()">
-      Annulla fatturazione
+      Annulla invio a fatturazione
     </button>
 
     <!-- Sessione 7 — Richiama indietro. Visibile sempre, disabilitato se non

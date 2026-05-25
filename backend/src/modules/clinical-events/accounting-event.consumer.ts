@@ -591,16 +591,18 @@ export class AccountingEventConsumer
     const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
     if (!treatment) return;
 
-    // Race condition: il clinico aveva spostato lo stato locale a CANCELLED
-    // ottimisticamente al publish di treatment.cancelled, ma accounting ha
-    // già emesso la fattura. Rollback dello stato e alert all'operatore.
+    // Race condition: il clinico aveva spostato lo stato locale a NOT_READY
+    // (sessione 7, prima era CANCELLED) al publish di treatment.cancelled,
+    // ma accounting ha già emesso la fattura. Rollback verso INVOICED +
+    // alert human-friendly all'operatore.
     treatment.billingStatus = TreatmentBillingStatus.INVOICED;
     treatment.accountingBillableEventId = p.billableEventId;
     treatment.patientInvoiceNumber = p.currentInvoiceNumber;
     treatment.isInvoicedToPatient = true;
     treatment.billingAlertMessage =
-      `Annullamento rifiutato dall'accounting: trattamento già fatturato ` +
-      `(fattura ${p.currentInvoiceNumber}). Per stornare emetti nota credito.`;
+      `Non è stato possibile annullare il trattamento: nel frattempo è ` +
+      `stata emessa la fattura ${p.currentInvoiceNumber}. Per stornare ` +
+      `contatta l'amministrazione (serve nota di credito).`;
     treatment.billingAlertAt = new Date(p.rejectedAt);
     treatment.billingAlertDismissedAt = null as any; // riapre se era stato dismissato
     await manager.save(Treatment, treatment);

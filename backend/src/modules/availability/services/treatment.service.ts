@@ -1509,22 +1509,24 @@ export class TreatmentService {
   // ==================== CANCEL TREATMENT (sessione 6) ====================
 
   /**
-   * Cancella un trattamento dal punto di vista billing.
+   * Annulla l'INVIO a fatturazione di un trattamento (rinominato in
+   * sessione 7 da "cancella trattamento" a "annulla invio fatturazione").
    *
-   * Transition billingStatus → CANCELLED (terminale, no regressione possibile).
+   * Semantica REVISIONATA in sessione 7:
+   *   - Da NOT_READY / READY_FOR_BILLING → torna NOT_READY (no-op se già)
+   *   - Da SENT / PENDING → billingStatus = NOT_READY + publish
+   *     `treatment.cancelled` ad accounting (accounting cancella billable).
+   *     Il treatment può essere RI-inviato. Non è più terminale.
+   *   - Da INVOICED+ → BadRequestException (serve nota credito da accounting)
    *
-   * Vincoli (spec §10):
-   *   - billingStatus IN (NOT_READY, READY_FOR_BILLING, SENT, PENDING) → OK
-   *   - billingStatus IN (INVOICED, PARTIALLY_REFUNDED, REFUNDED, REISSUED, CANCELLED)
-   *     → BadRequestException (storno richiede nota credito da accounting)
+   * Pre-sessione 7 portava a `CANCELLED` terminale, ora invece torna a
+   * NOT_READY così l'operatore può modificare e re-inviare. L'enum
+   * `CANCELLED` resta usato SOLO per:
+   *   - record storici già in DB (backward compat)
+   *   - rollback race condition `billable.cancellation-rejected` (verso INVOICED)
    *
-   * Publish `treatment.cancelled.<tenant>` SOLO se billingStatus PRIMA della
-   * transition era IN (SENT, PENDING). Se era NOT_READY o READY_FOR_BILLING,
-   * accounting non ha mai sentito parlare del treatment → niente da pubblicare.
-   *
-   * Race condition (cancello dopo che accounting ha già fatturato): gestita
-   * dal consumer accounting che pubblica `billable.cancellation-rejected`,
-   * il cui handler nel clinico (Step 3) fa rollback CANCELLED → INVOICED + alert.
+   * Per "cestinare definitivamente" un trattamento c'è la mutation generica
+   * `deleteTreatment` (soft-delete TypeORM): semantica completamente diversa.
    */
   async cancelTreatment(
     id: string,
@@ -1541,7 +1543,7 @@ export class TreatmentService {
         throw new NotFoundException(`Trattamento ${id} non trovato`);
       }
 
-      // Vincolo billingStatus: stati post-INVOICED bloccati.
+      // Vincolo billingStatus: stati post-INVOICED bloccati (richiede NC).
       const cancellable = [
         TreatmentBillingStatus.NOT_READY,
         TreatmentBillingStatus.READY_FOR_BILLING,
@@ -1550,9 +1552,8 @@ export class TreatmentService {
       ];
       if (!cancellable.includes(treatment.billingStatus)) {
         throw new BadRequestException(
-          `Trattamento ${id} non cancellabile (billingStatus=${treatment.billingStatus}). ` +
-            `Per stati INVOICED/PARTIALLY_REFUNDED/REFUNDED/REISSUED/CANCELLED ` +
-            `lo storno richiede nota di credito da accounting, non cancellazione.`,
+          `Trattamento già fatturato (billingStatus=${treatment.billingStatus}). ` +
+            `Per modificarlo o cancellarlo contatta l'amministrazione: serve emettere una nota di credito.`,
         );
       }
 
@@ -1562,19 +1563,23 @@ export class TreatmentService {
         treatment.billingStatus === TreatmentBillingStatus.PENDING;
 
       const now = new Date();
-      treatment.billingStatus = TreatmentBillingStatus.CANCELLED;
-      // Audit cancellation su colonne dedicate (Step 7.4):
-      // - cancelledAt: timestamp della transition
-      // - cancelledByUserId: AppUser locale che ha cancellato
-      // - cancellationReason: motivo free-text
-      // NIENTE riuso di deletedByUserId/accountingRefundReason: hanno
-      // semantiche distinte (soft-delete TypeORM / motivo refund accounting).
+      // Sessione 7: torna a NOT_READY (riemibile) invece di CANCELLED.
+      treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+      // Audit dell'annullamento (campi mantenuti per storia: chi/quando/perché).
       treatment.cancelledAt = now;
       treatment.cancelledByUserId = cancelledByUserId;
       treatment.cancellationReason = reason;
-      // Niente soft-delete della riga (deletedAt resta NULL): il record
-      // resta visibile in lista trattamenti col badge CANCELLED, così
-      // l'operatore può consultarlo e ricostruire la storia.
+      // Pulisco snapshot accounting così il treatment torna "fresco" per
+      // un nuovo invio (eventuali billable.invoiced "vecchi" per il billable
+      // appena cancellato vengono filtrati dall'anti-stale check su
+      // accountingBillableEventId in handleBillableInvoiced).
+      treatment.accountingBillableEventId = null as any;
+      treatment.accountingInvoiceUrl = null as any;
+      treatment.accountingInvoiceIssuedAt = null as any;
+      treatment.accountingDocumentType = null as any;
+      treatment.patientInvoiceNumber = null as any;
+      treatment.isInvoicedToPatient = false;
+      treatment.invoicedToPatientAt = null as any;
       await treatmentRepo.save(treatment);
 
       if (shouldPublish) {

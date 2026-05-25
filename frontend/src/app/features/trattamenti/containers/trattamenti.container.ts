@@ -31,6 +31,11 @@ import {
 import { TrattamentiFiltersComponent } from '../components/trattamenti-filters/trattamenti-filters.component';
 import { TrattamentiListComponent, TrattamentoGroup } from '../components/trattamenti-list/trattamenti-list.component';
 import {
+  FatturaIncassaDialogComponent,
+  FatturaIncassaDialogData,
+  FatturaIncassaDialogResult,
+} from '../components/fattura-incassa-dialog/fattura-incassa-dialog.component';
+import {
   TrattamentoDetailComponent,
   DetailDialogData,
   DetailUpdateServiceDescriptionPayload,
@@ -762,10 +767,15 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     // subscription state.treatments$). Qui solo inizializzazione.
     applyBillingFlagsToInst(treatment);
 
-    // Cancel: dialog conferma con reason obbligatoria.
+    // Sessione 7 — "Annulla invio a fatturazione" (rinominato): riporta
+    // il treatment a NOT_READY (riapribile/modificabile) e, se SENT/PENDING,
+    // pubblica treatment.cancelled ad accounting.
     inst.cancelTreatmentBilling.subscribe((id: string) => {
       const reason = window.prompt(
-        'Annullare il trattamento? Inserisci un motivo (obbligatorio):',
+        "Annullare l'invio a fatturazione?\n\n" +
+          'Il trattamento tornerà modificabile (stato "Non pronto"). ' +
+          "Se era già stato inviato ad accounting, verrà notificato.\n\n" +
+          'Inserisci un motivo (obbligatorio):',
         '',
       );
       if (!reason || reason.trim().length === 0) {
@@ -776,7 +786,11 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
           this.state.updateTreatment(updated);
           ref.componentInstance.treatment = updated;
           applyBillingFlagsToInst(updated);
-          this.snackBar.open('Trattamento annullato', 'OK', { duration: 2500 });
+          this.snackBar.open(
+            'Invio a fatturazione annullato. Il trattamento è ora modificabile.',
+            'OK',
+            { duration: 3000 },
+          );
         },
         error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
       });
@@ -795,23 +809,59 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       });
     });
 
-    // Fattura subito + incassa: setReadyForBilling con flag immediate.
-    // Disponibile solo per NOT_READY (closes + publishes con
-    // requestImmediateInvoice=true → accounting AutoIssue).
+    // Sessione 7 — "Fattura e incassa" (rinominato): apre dialog per
+    // raccogliere payment method + amount, poi chain:
+    //   recordTreatmentPayment(input) → setReadyForBillingImmediate(id)
+    // Il "+incassa" è ora effettivamente implementato (opzione B sessione 7).
     inst.immediateInvoiceBilling.subscribe((id: string) => {
-      this.service.setReadyForBillingImmediate(id).subscribe({
-        next: () => {
-          // Ricarico il singolo treatment per avere lo stato aggiornato
-          // (billingStatus → SENT, eventualmente PENDING/INVOICED al
-          // round-trip successivo).
-          this.reload();
-          this.snackBar.open(
-            'Inviato ad accounting per fatturazione immediata',
-            'OK',
-            { duration: 2500 },
-          );
+      const treatment = ref.componentInstance.treatment;
+      const payRef = this.dialog.open<
+        FatturaIncassaDialogComponent,
+        FatturaIncassaDialogData,
+        FatturaIncassaDialogResult
+      >(FatturaIncassaDialogComponent, {
+        width: '480px',
+        data: {
+          totalAmount: treatment.price ?? 0,
+          currentUserId: this.currentUserId ?? '',
         },
-        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+      payRef.afterClosed().subscribe((result) => {
+        if (!result) return; // cancel
+        // Step 1: registra pagamento. Se fallisce, il setReady NON parte.
+        this.service
+          .recordPayment(id, result.paymentMethod, result.collectedBy, result.amount, 'SECRETARY')
+          .subscribe({
+            next: (paid) => {
+              this.state.updateTreatment(paid);
+              ref.componentInstance.treatment = paid;
+              applyBillingFlagsToInst(paid);
+              // Step 2: setReady immediate.
+              this.service.setReadyForBillingImmediate(id).subscribe({
+                next: () => {
+                  this.reload();
+                  this.snackBar.open(
+                    'Pagamento registrato e inviato ad accounting per fatturazione immediata.',
+                    'OK',
+                    { duration: 3000 },
+                  );
+                },
+                error: (e) =>
+                  this.snackBar.open(
+                    `Pagamento registrato ma invio a fatturazione fallito: ${this.extractError(e)}. ` +
+                      `Riprova con "Fattura e incassa" oppure usa "Pronto per fatturazione".`,
+                    'OK',
+                    { duration: 7000 },
+                  ),
+              });
+            },
+            error: (e) =>
+              this.snackBar.open(
+                `Registrazione pagamento fallita: ${this.extractError(e)}`,
+                'OK',
+                { duration: 5000 },
+              ),
+          });
       });
     });
 
@@ -873,16 +923,18 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
   }
 
   /**
-   * Calcola i 3 flag disabled per i bottoni della BillingSection in base
-   * a `treatment.billingStatus` (spec §10).
+   * Calcola i flag disabled per i bottoni della BillingSection in base
+   * a `treatment.billingStatus`. Semantica revisionata in sessione 7:
    *
-   * - Annulla disponibile per: NOT_READY, READY_FOR_BILLING, SENT, PENDING
-   * - Riapri disponibile per: NOT_READY, READY_FOR_BILLING, SENT, PENDING
-   *   (stessa lista — riapertura post-INVOICED richiede storno fiscale)
-   * - Fattura subito + incassa disponibile SOLO per: NOT_READY
-   *   (chiude+pubblica in un unico passo con requestImmediateInvoice=true)
-   *
-   * USA L'ENUM `TreatmentBillingStatus`, niente stringhe hardcoded.
+   * - "Annulla invio a fatturazione": NOT_READY/READY_FOR_BILLING (no-op
+   *   in NOT_READY) o SENT/PENDING (publish treatment.cancelled, status
+   *   torna NOT_READY). Bloccato per INVOICED+ (serve NC).
+   * - "Riapri per modifiche": SOLO NOT_READY/READY_FOR_BILLING (modifica
+   *   locale). SENT/PENDING/INVOICED → tooltip "usa Richiama indietro".
+   *   Post-fatturazione → bloccato (NC).
+   * - "Fattura e incassa": SOLO NOT_READY (apre PaymentDialog poi chiama
+   *   recordPayment + setReadyForBillingImmediate in catena).
+   * - "Richiama indietro": SENT/PENDING/INVOICED.
    */
   private computeBillingFlags(treatment: Trattamento): {
     cancelDisabled: boolean;
@@ -897,35 +949,54 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
   } {
     const status = treatment.billingStatus;
 
-    const cancelOrReopenBlocked: ReadonlyArray<TreatmentBillingStatus> = [
+    // Stati post-fatturazione che richiedono NC (testo unico human-friendly).
+    const postInvoiceStates: ReadonlyArray<TreatmentBillingStatus> = [
       TreatmentBillingStatus.Invoiced,
       TreatmentBillingStatus.PartiallyRefunded,
       TreatmentBillingStatus.Refunded,
       TreatmentBillingStatus.Reissued,
       TreatmentBillingStatus.Cancelled,
     ];
-    const isCancelOrReopenBlocked =
-      status != null && cancelOrReopenBlocked.includes(status);
+    const isPostInvoice = status != null && postInvoiceStates.includes(status);
+    const postInvoiceMsg =
+      "Trattamento già fatturato. Per modificarlo o cancellarlo contatta " +
+      "l'amministrazione (serve emettere una nota di credito).";
 
-    const cancelDisabled = isCancelOrReopenBlocked;
-    const cancelDisabledReason = cancelDisabled
-      ? 'Non disponibile per trattamenti già fatturati. Storno richiede nota credito da accounting.'
+    // "Annulla invio a fatturazione": ammesso da NOT_READY / READY_FOR_BILLING
+    // / SENT / PENDING. NOT_READY è no-op semantico → lo disabilito con
+    // tooltip esplicativo (così non confonde "annulla cosa?").
+    const cancelDisabled = isPostInvoice || status === TreatmentBillingStatus.NotReady;
+    const cancelDisabledReason = isPostInvoice
+      ? postInvoiceMsg
+      : status === TreatmentBillingStatus.NotReady
+      ? "Il trattamento non è stato ancora inviato a fatturazione: niente da annullare."
       : null;
 
-    const reopenDisabled = isCancelOrReopenBlocked;
-    const reopenDisabledReason = reopenDisabled
-      ? 'Non disponibile per trattamenti già fatturati. Storno richiede nota credito da accounting.'
+    // "Riapri per modifiche": SOLO se modifica è locale (NOT_READY /
+    // READY_FOR_BILLING). SENT/PENDING/INVOICED rimanda a "Richiama indietro".
+    const reopenLocallyAllowed: ReadonlyArray<TreatmentBillingStatus> = [
+      TreatmentBillingStatus.NotReady,
+      TreatmentBillingStatus.ReadyForBilling,
+    ];
+    const canReopenLocally = status != null && reopenLocallyAllowed.includes(status);
+    const reopenDisabled = !canReopenLocally;
+    const reopenDisabledReason = isPostInvoice
+      ? postInvoiceMsg
+      : status === TreatmentBillingStatus.Sent ||
+        status === TreatmentBillingStatus.Pending
+      ? "Il trattamento è già stato inviato ad accounting. Usa 'Richiama indietro' per riprenderlo lato amministrazione e poterlo modificare."
       : null;
 
-    // Fattura subito + incassa: unica condizione abilitante.
+    // "Fattura e incassa": SOLO NOT_READY (nuova UX opzione B sessione 7,
+    // apre dialog payment + chain recordPayment → setReadyImmediate).
     const immediateInvoiceDisabled = status !== TreatmentBillingStatus.NotReady;
-    const immediateInvoiceDisabledReason = immediateInvoiceDisabled
-      ? "Disponibile solo per trattamenti non ancora pronti per fatturazione. Per inviare ora, abilita 'Pronto per fatturazione'."
+    const immediateInvoiceDisabledReason = isPostInvoice
+      ? postInvoiceMsg
+      : immediateInvoiceDisabled
+      ? "Disponibile solo per trattamenti non ancora pronti per fatturazione."
       : null;
 
-    // Sessione 7 — Recall: disponibile solo per SENT/PENDING/INVOICED
-    // (treatment già conosciuto da accounting). Bloccato se c'è già un
-    // recall in volo (recallRequestId) o se lo stato è terminale.
+    // "Richiama indietro": SENT/PENDING/INVOICED. Bloccato se recall già in volo.
     const recallable: ReadonlyArray<TreatmentBillingStatus> = [
       TreatmentBillingStatus.Sent,
       TreatmentBillingStatus.Pending,
@@ -934,10 +1005,10 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     const isRecallable = status != null && recallable.includes(status);
     const recallInFlight = !!treatment.recallRequestId;
     const recallDisabled = !isRecallable || recallInFlight;
-    const recallDisabledReason = !isRecallable
-      ? "Disponibile solo per trattamenti inviati ad accounting (SENT/PENDING/INVOICED)."
-      : recallInFlight
-      ? "Richiamo già in corso. Attendi la risposta da accounting o il timeout."
+    const recallDisabledReason = recallInFlight
+      ? "Richiamo già in corso. Attendi la risposta da accounting (massimo 5 minuti)."
+      : !isRecallable
+      ? "Disponibile solo per trattamenti inviati ad accounting."
       : null;
 
     return {
