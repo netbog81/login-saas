@@ -694,6 +694,9 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       ref.componentInstance.billingReopenDisabledReason = flags.reopenDisabledReason;
       ref.componentInstance.billingImmediateInvoiceDisabled = flags.immediateInvoiceDisabled;
       ref.componentInstance.billingImmediateInvoiceDisabledReason = flags.immediateInvoiceDisabledReason;
+      ref.componentInstance.billingRecallDisabled = flags.recallDisabled;
+      ref.componentInstance.billingRecallDisabledReason = flags.recallDisabledReason;
+      ref.componentInstance.billingRecallInFlight = flags.recallInFlight;
     };
     // Inizializza i flag con il treatment iniziale.
     applyBillingFlagsToInst(treatment);
@@ -764,6 +767,42 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       });
     });
 
+    // Sessione 7 — Recall: dialog conferma con reason opzionale.
+    inst.requestTreatmentRecall.subscribe((id: string) => {
+      const reason = window.prompt(
+        'Richiamare il trattamento indietro per modifiche?\n\n' +
+          "Verrà chiesto ad accounting di rilasciare il billable. Inserisci un motivo (opzionale):",
+        '',
+      );
+      // Cancel del prompt → null. Stringa vuota → confermato senza motivo.
+      if (reason === null) return;
+      const trimmed = reason.trim();
+      this.service.requestRecall(id, trimmed.length > 0 ? trimmed : undefined).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+          applyBillingFlagsToInst(updated);
+          this.snackBar.open(
+            'Richiamo inviato ad accounting. Attendi la risposta.',
+            'OK',
+            { duration: 3000 },
+          );
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
+    // Sessione 7 — Dismiss banner "Restituito dall'amministrazione".
+    inst.dismissReturnFromAccountingBanner.subscribe((id: string) => {
+      this.service.dismissReturnFromAccountingBanner(id).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
     // Dopo la chiusura del dialog, garantiamo che la lista sia sincronizzata:
     // l'utente potrebbe aver chiuso senza applicare tutte le nostre
     // ottimizzazioni ottimistiche (es. mutation pending).
@@ -791,6 +830,9 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     reopenDisabledReason: string | null;
     immediateInvoiceDisabled: boolean;
     immediateInvoiceDisabledReason: string | null;
+    recallDisabled: boolean;
+    recallDisabledReason: string | null;
+    recallInFlight: boolean;
   } {
     const status = treatment.billingStatus;
 
@@ -820,6 +862,23 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       ? "Disponibile solo per trattamenti non ancora pronti per fatturazione. Per inviare ora, abilita 'Pronto per fatturazione'."
       : null;
 
+    // Sessione 7 — Recall: disponibile solo per SENT/PENDING/INVOICED
+    // (treatment già conosciuto da accounting). Bloccato se c'è già un
+    // recall in volo (recallRequestId) o se lo stato è terminale.
+    const recallable: ReadonlyArray<TreatmentBillingStatus> = [
+      TreatmentBillingStatus.Sent,
+      TreatmentBillingStatus.Pending,
+      TreatmentBillingStatus.Invoiced,
+    ];
+    const isRecallable = status != null && recallable.includes(status);
+    const recallInFlight = !!treatment.recallRequestId;
+    const recallDisabled = !isRecallable || recallInFlight;
+    const recallDisabledReason = !isRecallable
+      ? "Disponibile solo per trattamenti inviati ad accounting (SENT/PENDING/INVOICED)."
+      : recallInFlight
+      ? "Richiamo già in corso. Attendi la risposta da accounting o il timeout."
+      : null;
+
     return {
       cancelDisabled,
       cancelDisabledReason,
@@ -827,6 +886,9 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       reopenDisabledReason,
       immediateInvoiceDisabled,
       immediateInvoiceDisabledReason,
+      recallDisabled,
+      recallDisabledReason,
+      recallInFlight,
     };
   }
 

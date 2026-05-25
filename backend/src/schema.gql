@@ -2484,6 +2484,8 @@ type Treatment {
   isInvoicedToPatient: Boolean!
   isPaid: Boolean!
   isTest: Boolean!
+  lastRecallRejectionAt: DateTime
+  lastRecallRejectionMessage: String
   operator: Operator!
   operatorId: ID!
   operatorInvoiceNumber: String
@@ -2500,9 +2502,15 @@ type Treatment {
   price: Float!
   readyForBilling: Boolean!
   readyForBillingAt: DateTime
+  recallRequestId: String
+  recallRequestedAt: DateTime
   rescheduleRequested: Boolean
   reschedulingNotes: String
   reschedulingType: String
+  returnedFromAccountingAt: DateTime
+  returnedFromAccountingByEmail: String
+  returnedFromAccountingDismissedAt: DateTime
+  returnedFromAccountingReason: String
   scontoFE: Boolean!
   secretaryNotes: String
   service: Service

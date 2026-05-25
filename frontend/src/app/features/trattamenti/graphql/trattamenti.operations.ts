@@ -23,6 +23,14 @@ export const TREATMENT_BILLING_FIELDS = gql`
     billingAlertMessage
     billingAlertAt
     billingAlertDismissedAt
+    recallRequestId
+    recallRequestedAt
+    lastRecallRejectionMessage
+    lastRecallRejectionAt
+    returnedFromAccountingReason
+    returnedFromAccountingAt
+    returnedFromAccountingByEmail
+    returnedFromAccountingDismissedAt
     cancelledAt
     cancelledByUserId
     cancellationReason
@@ -246,6 +254,32 @@ export const CANCEL_TREATMENT_BILLING = gql`
 export const DISMISS_BILLING_ALERT = gql`
   mutation DismissBillingAlert($id: ID!) {
     dismissBillingAlert(id: $id) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// Sessione 7 — Richiama indietro un trattamento già inviato a fatturazione
+// (SENT/PENDING/INVOICED). Triggera publish `treatment.recall-requested`;
+// accounting risponde async via billable.recall-accepted/rejected. Il
+// backend salva recallRequestId/At immediatamente, billingStatus resta
+// invariato finché non arriva la risposta.
+export const REQUEST_TREATMENT_RECALL = gql`
+  mutation RequestTreatmentRecall($id: ID!, $reason: String) {
+    requestTreatmentRecall(id: $id, reason: $reason) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// Sessione 7 — Chiude il banner "Restituito dall'amministrazione"
+// (popolato da billable.returned-to-clinical). Setta
+// returnedFromAccountingDismissedAt = now. UI-only, nessun evento publish.
+export const DISMISS_RETURN_FROM_ACCOUNTING_BANNER = gql`
+  mutation DismissReturnFromAccountingBanner($id: ID!) {
+    dismissReturnFromAccountingBanner(id: $id) {
       ...TreatmentDetails
     }
   }

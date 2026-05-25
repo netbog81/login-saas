@@ -28,6 +28,8 @@ import {
   FORCE_CLOSE_TREATMENT,
   CANCEL_TREATMENT_BILLING,
   DISMISS_BILLING_ALERT,
+  REQUEST_TREATMENT_RECALL,
+  DISMISS_RETURN_FROM_ACCOUNTING_BANNER,
 } from '../graphql/trattamenti.operations';
 
 /**
@@ -159,6 +161,31 @@ export class TrattamentiService extends BaseGraphQLService {
       DISMISS_BILLING_ALERT,
       { id },
     ).pipe(map(r => flattenPatient(r.dismissBillingAlert)));
+  }
+
+  /**
+   * Sessione 7 — Richiama indietro un trattamento già inviato a fatturazione.
+   * Backend salva recallRequestId/At immediatamente (status invariato),
+   * pubblica `treatment.recall-requested` su accounting. La risposta async
+   * (recall-accepted/rejected) arriva via consumer, modifica lo stato e i
+   * campi recall — il frontend la riceve al prossimo refetch/polling.
+   */
+  requestRecall(id: string, reason?: string): Observable<Trattamento> {
+    return this.mutate<{ requestTreatmentRecall: Trattamento }>(
+      REQUEST_TREATMENT_RECALL,
+      { id, reason: reason ?? null },
+    ).pipe(map(r => flattenPatient(r.requestTreatmentRecall)));
+  }
+
+  /**
+   * Sessione 7 — Chiude il banner "Restituito dall'amministrazione" sul
+   * treatment. UI-local, nessun evento publish.
+   */
+  dismissReturnFromAccountingBanner(id: string): Observable<Trattamento> {
+    return this.mutate<{ dismissReturnFromAccountingBanner: Trattamento }>(
+      DISMISS_RETURN_FROM_ACCOUNTING_BANNER,
+      { id },
+    ).pipe(map(r => flattenPatient(r.dismissReturnFromAccountingBanner)));
   }
 
   // ==================== INVOICE LINE DESCRIPTIONS (su TreatmentService) ====================

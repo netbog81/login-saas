@@ -26,6 +26,44 @@
     </button>
   </div>
 
+  <!-- Sessione 7 — Banner "Richiamo rifiutato" (popolato da billable.recall-rejected).
+       Non dismissibile esplicitamente: scompare al successivo recall-requested
+       (il backend pulisce lastRecallRejection* in requestTreatmentRecall). -->
+  <div *ngIf="showRecallRejection" class="billing-alert billing-alert--recall-rejected">
+    <div class="billing-alert__icon" aria-hidden="true">🚫</div>
+    <div class="billing-alert__content">
+      <p class="billing-alert__title">Richiamo rifiutato da accounting</p>
+      <p class="billing-alert__message">{{ treatment.lastRecallRejectionMessage }}</p>
+      <p *ngIf="treatment.lastRecallRejectionAt" class="billing-alert__timestamp">
+        {{ treatment.lastRecallRejectionAt | date:'dd/MM/yyyy HH:mm' }}
+      </p>
+    </div>
+  </div>
+
+  <!-- Sessione 7 — Banner "Restituito dall'amministrazione" (one-way da
+       billable.returned-to-clinical). Dismissibile: setta
+       returnedFromAccountingDismissedAt. -->
+  <div *ngIf="showReturnedFromAccounting" class="billing-alert billing-alert--returned">
+    <div class="billing-alert__icon" aria-hidden="true">↩️</div>
+    <div class="billing-alert__content">
+      <p class="billing-alert__title">Trattamento restituito dall'amministrazione</p>
+      <p class="billing-alert__message">
+        Motivo: {{ treatment.returnedFromAccountingReason }}
+      </p>
+      <p class="billing-alert__timestamp">
+        {{ treatment.returnedFromAccountingAt | date:'dd/MM/yyyy HH:mm' }}
+        <span *ngIf="treatment.returnedFromAccountingByEmail">
+          — da {{ treatment.returnedFromAccountingByEmail }}
+        </span>
+      </p>
+    </div>
+    <button type="button"
+            class="btn btn-sm"
+            (click)="onDismissReturnBanner()">
+      Letto
+    </button>
+  </div>
+
   <!-- Snapshot fattura emessa -->
   <div *ngIf="showInvoiceData" class="invoice-snapshot">
     <h4 class="snapshot-title">Documento fiscale</h4>
@@ -108,5 +146,23 @@
             (click)="onCancel()">
       Annulla fatturazione
     </button>
+
+    <!-- Sessione 7 — Richiama indietro. Visibile sempre, disabilitato se non
+         richiamabile. In volo (recallInFlight) mostra spinner. -->
+    <ng-container *ngIf="recallInFlight; else recallButton">
+      <span class="recall-in-flight"
+            title="Richiamo in corso. Attendi la risposta da accounting (timeout ~5 min).">
+        ⏳ Richiamo in corso…
+      </span>
+    </ng-container>
+    <ng-template #recallButton>
+      <button type="button"
+              class="btn"
+              [disabled]="recallDisabled"
+              [title]="recallDisabled ? (recallDisabledReason || '') : 'Chiede ad accounting di rilasciare il billable per consentire modifiche al trattamento.'"
+              (click)="onRequestRecall()">
+        Richiama indietro
+      </button>
+    </ng-template>
   </div>
 </section>

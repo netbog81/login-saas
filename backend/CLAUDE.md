@@ -31,7 +31,7 @@ Wrapper `CurandisEvent` standardizzato (vedi spec §4): `schemaVersion`,
 `eventId` UUID v4, `occurredAt`, `eventType`, `tenantAlias`,
 `correlationId?`, `producerVersion`, `payload`.
 
-### 8 eventi pubblicati dal clinico
+### 9 eventi pubblicati dal clinico
 
 | Evento | Quando |
 |---|---|
@@ -42,6 +42,7 @@ Wrapper `CurandisEvent` standardizzato (vedi spec §4): `schemaVersion`,
 | `treatment.closed.<t>` | `setReadyForBilling([id], true, _)` (Step 7.3) |
 | `treatment.amended.<t>` | `updateBySecretary({...amendmentReason})` quando billingStatus IN SENT/PENDING (Step 7.4) |
 | `treatment.cancelled.<t>` | `cancelTreatment(id, reason)` quando billingStatus IN SENT/PENDING |
+| `treatment.recall-requested.<t>` | (sessione 7) `requestTreatmentRecall(id, reason)`. EventId envelope = `recallRequestId` salvato sul treatment; accounting lo eccheggia come `requestId` nella response. |
 | `sale.completed.<t>` | `recordProductSale(input)` (Step 7.5) |
 
 Pubblicazione **publish-after-commit** (Step 7.1):
@@ -79,14 +80,23 @@ nota credito. `refunded` è il vero rimborso post-trasmissione, con NC.
 Confondere i due porterebbe a mostrare "Rimborsato" su una situazione che è
 semplicemente "da rifatturare".
 
-NOTA — protocollo recall (sessione 7): bidirezionale.
-1. Clinico publish `treatment.recall-requested` (Fase 2, non ancora
-   implementato — solo consumer Fase 1 attivo). Setta `recallRequestId` +
-   `recallRequestedAt` sul treatment, lo stato NON cambia ancora.
+NOTA — protocollo recall (sessione 7): bidirezionale, completo Fase 1+2.
+1. Operatore clicca "Richiama indietro" → mutation `requestTreatmentRecall`
+   → service salva `recallRequestId` (UUID generato) + `recallRequestedAt`,
+   stato NON cambia. Publish `treatment.recall-requested` con
+   `envelope.eventId === recallRequestId` (forzato via
+   `PendingClinicalEvent.eventId`). Accounting deriva `requestId` dall'
+   envelope e lo eccheggia nella response per correlazione.
 2. Accounting risponde con `recall-accepted` (treatment → NOT_READY,
-   modificabile) o `recall-rejected` (stato invariato, message in UI).
-3. Variante one-way `returned-to-clinical` iniziata da operatore accounting,
-   stesso effetto di accept ma con motivazione operatore.
+   modificabile) o `recall-rejected` (stato invariato, `lastRecallRejection*`
+   popolato per banner UI).
+3. Variante one-way `returned-to-clinical` iniziata da operatore accounting:
+   stesso effetto di accept + popola `returnedFromAccounting*` per banner
+   dismissibile.
+4. Server-side cleanup: `TreatmentRecallCleanupJob` ogni 5 min azzera
+   `recallRequestId/At` per treatment con `recallRequestedAt < NOW - 5min`
+   (backstop se accounting non risponde mai). UI client-side mostra spinner
+   "Richiamo in corso..." finché recallRequestId valorizzato.
 
 Anti-stale check (sessione 7): `handleBillableInvoiced` ignora eventi con
 `billableEventId` diverso da quello memorizzato sul treatment (può capitare

@@ -408,10 +408,15 @@ export interface DetailDialogData {
               [reopenDisabledReason]="billingReopenDisabledReason"
               [immediateInvoiceDisabled]="billingImmediateInvoiceDisabled"
               [immediateInvoiceDisabledReason]="billingImmediateInvoiceDisabledReason"
+              [recallDisabled]="billingRecallDisabled"
+              [recallDisabledReason]="billingRecallDisabledReason"
+              [recallInFlight]="billingRecallInFlight"
               (dismissAlert)="dismissBillingAlert.emit($event)"
               (cancelTreatment)="cancelTreatmentBilling.emit($event)"
               (reopenTreatment)="reopenTreatmentBilling.emit($event)"
-              (immediateInvoice)="immediateInvoiceBilling.emit($event)">
+              (immediateInvoice)="immediateInvoiceBilling.emit($event)"
+              (requestRecall)="requestTreatmentRecall.emit($event)"
+              (dismissReturnBanner)="dismissReturnFromAccountingBanner.emit($event)">
             </app-treatment-billing-section>
 
             <!-- READY FOR BILLING -->
@@ -799,6 +804,10 @@ export class TrattamentoDetailComponent {
   @Input() billingReopenDisabledReason: string | null = null;
   @Input() billingImmediateInvoiceDisabled = true;
   @Input() billingImmediateInvoiceDisabledReason: string | null = null;
+  // Sessione 7 — recall flags
+  @Input() billingRecallDisabled = true;
+  @Input() billingRecallDisabledReason: string | null = null;
+  @Input() billingRecallInFlight = false;
 
   // Output dalla BillingSection (sessione 6 — clinico ↔ accounting).
   // Emettono treatmentId; il container gestisce le mutation reali.
@@ -806,6 +815,9 @@ export class TrattamentoDetailComponent {
   @Output() cancelTreatmentBilling = new EventEmitter<string>();
   @Output() reopenTreatmentBilling = new EventEmitter<string>();
   @Output() immediateInvoiceBilling = new EventEmitter<string>();
+  // Sessione 7 — recall outputs
+  @Output() requestTreatmentRecall = new EventEmitter<string>();
+  @Output() dismissReturnFromAccountingBanner = new EventEmitter<string>();
   @Output() reopenTreatment = new EventEmitter<void>();
   /** Emette la richiesta di force-close (segreteria/admin). */
   @Output() forceCloseTreatment = new EventEmitter<void>();

@@ -19,6 +19,14 @@ export interface PendingClinicalEvent {
   tenantAlias: string;
   /** Opzionale: il publisher fa fallback a eventId se assente. */
   correlationId?: string;
+  /**
+   * Opzionale: forza l'`eventId` dell'envelope al valore passato dal caller
+   * invece di generarlo nel publisher. Usato per `treatment.recall-requested`
+   * dove il service deve conoscere l'eventId PRIMA del publish per salvarlo
+   * come `recallRequestId` sul Treatment (accounting risponde echeggiando
+   * questo valore come `requestId` per correlazione).
+   */
+  eventId?: string;
 }
 
 /**

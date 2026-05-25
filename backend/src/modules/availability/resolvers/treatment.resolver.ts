@@ -449,6 +449,48 @@ export class TreatmentResolver {
   }
 
   /**
+   * Mutation: Sessione 7 — Richiama indietro un trattamento già inviato
+   * a fatturazione per consentirne la modifica. Emette
+   * `treatment.recall-requested` su accounting; risposta arriva async via
+   * `billable.recall-accepted` (treatment → NOT_READY) o
+   * `billable.recall-rejected` (popola `lastRecallRejectionMessage`).
+   *
+   * Permessi: stesso scope di `cancelTreatment` (delete own/any) — è
+   * un'operazione equivalente per gravità (annulla un treatment già
+   * fatturato).
+   */
+  @Mutation(() => Treatment, { name: 'requestTreatmentRecall' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_delete_own')
+  @RequireOwnership({
+    resource: 'treatment',
+    bypassPermission: 'treatment_delete_any',
+  })
+  async requestTreatmentRecall(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('reason', { type: () => String, nullable: true }) reason?: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.requestTreatmentRecall(id, reason);
+  }
+
+  /**
+   * Mutation: Sessione 7 — Chiude il banner "Restituito dall'amministrazione"
+   * sul treatment. Setta `returnedFromAccountingDismissedAt = NOW`.
+   */
+  @Mutation(() => Treatment, { name: 'dismissReturnFromAccountingBanner' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_update_own')
+  @RequireOwnership({
+    resource: 'treatment',
+    bypassPermission: 'treatment_update_any',
+  })
+  async dismissReturnFromAccountingBanner(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.dismissReturnFromAccountingBanner(id);
+  }
+
+  /**
    * Mutation: Elimina TUTTI i trattamenti (operazione distruttiva)
    * Returns: numero di trattamenti eliminati
    */

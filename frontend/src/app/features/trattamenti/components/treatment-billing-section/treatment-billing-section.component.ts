@@ -56,11 +56,24 @@ export class TreatmentBillingSectionComponent {
   @Input() immediateInvoiceDisabled = true;
   @Input() immediateInvoiceDisabledReason: string | null = null;
 
+  // Sessione 7 — Recall flags
+  /** Disabilita "Richiama indietro". */
+  @Input() recallDisabled = true;
+  @Input() recallDisabledReason: string | null = null;
+  /**
+   * True se c'è un recall in volo (recallRequestId valorizzato). UI mostra
+   * spinner "Richiamo in corso..." al posto del bottone.
+   */
+  @Input() recallInFlight = false;
+
   // ────────── Output ──────────
   @Output() dismissAlert = new EventEmitter<string>(); // emette treatmentId
   @Output() cancelTreatment = new EventEmitter<string>(); // emette treatmentId
   @Output() reopenTreatment = new EventEmitter<string>();
   @Output() immediateInvoice = new EventEmitter<string>();
+  // Sessione 7 — Recall outputs
+  @Output() requestRecall = new EventEmitter<string>();
+  @Output() dismissReturnBanner = new EventEmitter<string>();
 
   // Esposto al template per ngSwitch / classi CSS.
   readonly Status = TreatmentBillingStatus;
@@ -105,6 +118,19 @@ export class TreatmentBillingSectionComponent {
     return !!this.treatment.cancelledAt;
   }
 
+  /** Banner "Richiamo rifiutato" — popolato dopo `billable.recall-rejected`. */
+  get showRecallRejection(): boolean {
+    return !!this.treatment.lastRecallRejectionMessage;
+  }
+
+  /** Banner "Restituito dall'amministrazione" — popolato da `billable.returned-to-clinical`. */
+  get showReturnedFromAccounting(): boolean {
+    return (
+      !!this.treatment.returnedFromAccountingAt &&
+      !this.treatment.returnedFromAccountingDismissedAt
+    );
+  }
+
   onDismissAlert(): void {
     this.dismissAlert.emit(this.treatment.id);
   }
@@ -122,6 +148,15 @@ export class TreatmentBillingSectionComponent {
   onImmediateInvoice(): void {
     if (this.immediateInvoiceDisabled) return;
     this.immediateInvoice.emit(this.treatment.id);
+  }
+
+  onRequestRecall(): void {
+    if (this.recallDisabled) return;
+    this.requestRecall.emit(this.treatment.id);
+  }
+
+  onDismissReturnBanner(): void {
+    this.dismissReturnBanner.emit(this.treatment.id);
   }
 }
 

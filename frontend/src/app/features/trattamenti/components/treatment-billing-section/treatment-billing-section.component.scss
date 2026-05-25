@@ -64,7 +64,7 @@
   border: 1px solid #ffcc80;
 }
 
-// Banner alert (cancellation-rejected)
+// Banner alert (cancellation-rejected default; variant per recall + returned)
 .billing-alert {
   display: flex;
   gap: 12px;
@@ -77,8 +77,41 @@
 
   &__icon { font-size: 1.4em; line-height: 1; }
   &__content { flex: 1; }
+  &__title { margin: 0 0 4px; font-weight: 600; color: #5d4037; }
   &__message { margin: 0 0 4px; color: #5d4037; font-weight: 500; }
   &__timestamp { margin: 0; font-size: 0.8em; color: #8d6e63; }
+
+  // Sessione 7 — recall rejected (rosso, non dismissibile)
+  &--recall-rejected {
+    background: #ffebee;
+    border-color: #ef9a9a;
+    .billing-alert__title,
+    .billing-alert__message { color: #c62828; }
+    .billing-alert__timestamp { color: #b71c1c; }
+  }
+
+  // Sessione 7 — returned-to-clinical (azzurro, dismissibile)
+  &--returned {
+    background: #e1f5fe;
+    border-color: #81d4fa;
+    .billing-alert__title,
+    .billing-alert__message { color: #01579b; }
+    .billing-alert__timestamp { color: #0277bd; }
+  }
+}
+
+// Sessione 7 — Spinner "Richiamo in corso..." inline nelle azioni
+.recall-in-flight {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #ede7f6;
+  color: #5e35b1;
+  border: 1px dashed #b39ddb;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-style: italic;
 }
 
 // Snapshot blocks (invoice, credit-note, cancellation)

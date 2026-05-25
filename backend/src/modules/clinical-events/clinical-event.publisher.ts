@@ -269,7 +269,11 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
   async handlePublishPending(event: PendingClinicalEvent): Promise<void> {
     // Generiamo l'eventId qui (e non dentro publish()) per averlo nei log
     // di outbox-missing anche quando il publish fallisce.
-    const eventId = randomUUID();
+    // Eccezione: se il caller ha passato un eventId esplicito (vedi
+    // PendingClinicalEvent.eventId, es. recall-requested), usiamo quello
+    // così il valore salvato lato clinico coincide con quello che accounting
+    // riceve nell'envelope.
+    const eventId = event.eventId ?? randomUUID();
     const treatmentId =
       (event.payload as { treatmentId?: string } | null)?.treatmentId ?? '-';
 

@@ -76,6 +76,7 @@ import { AppointmentConflictService } from './services/appointment-conflict.serv
 import { ConflictRevalidationService } from './services/conflict-revalidation.service';
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 import { TreatmentService } from './services/treatment.service';
+import { TreatmentRecallCleanupJob } from './services/treatment-recall-cleanup.job';
 import { TherapeuticPathService } from './services/therapeutic-path.service';
 import { PatientEvaluationService } from './services/patient-evaluation.service';
 import { PatientAnamnesisService } from './services/patient-anamnesis.service';
@@ -173,6 +174,7 @@ import { PazientiModule } from '../../patients/patients.module';
   providers: [
     // Services
     AvailabilityService,
+    TreatmentRecallCleanupJob,
     OperatorBusinessService,
     OperatorServiceService,
     OperatorCategoryService,

@@ -35,6 +35,7 @@ export type ClinicalOutboundEventType =
   | 'treatment.closed'
   | 'treatment.amended'
   | 'treatment.cancelled'
+  | 'treatment.recall-requested'
   | 'sale.completed';
 
 // ----- service.* -----
@@ -147,6 +148,23 @@ export interface TreatmentCancelledPayload {
   cancelledAt: string;
   cancelledByUserId: string | null;     // Keycloak sub
   reason: string;
+}
+
+// ----- treatment.recall-requested -----
+
+/**
+ * Richiesta di "richiamare indietro" un treatment già inviato a fatturazione,
+ * per consentire all'operatore clinico di modificarlo. Accounting risponde
+ * con `billable.recall-accepted` (treatment torna NOT_READY) o
+ * `billable.recall-rejected` (doc fiscale già emesso).
+ *
+ * NOTA: il publisher NON cambia subito `Treatment.billingStatus`. Salva
+ * `recallRequestId` (= eventId di QUESTO evento) e `recallRequestedAt`,
+ * lo stato cambia solo all'arrivo della response accounting (handler).
+ */
+export interface TreatmentRecallRequestedPayload {
+  treatmentId: string;
+  reason?: string;
 }
 
 // ----- sale.completed (vendita prodotti standalone) -----

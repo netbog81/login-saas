@@ -185,6 +185,21 @@ export interface Trattamento {
   billingAlertAt?: string | null;
   billingAlertDismissedAt?: string | null;
 
+  // Sessione 7 — protocollo recall clinico↔accounting.
+  // Operatore clicca "Richiama indietro" → recallRequestId/At valorizzati
+  // (status NON cambia). Accounting risponde con:
+  //  - billable.recall-accepted → handler azzera questi campi, status → NOT_READY
+  //  - billable.recall-rejected → popola lastRecallRejection*, recall* azzerati
+  // Banner one-way "restituito dall'amministrazione" da returned-to-clinical.
+  recallRequestId?: string | null;
+  recallRequestedAt?: string | null;
+  lastRecallRejectionMessage?: string | null;
+  lastRecallRejectionAt?: string | null;
+  returnedFromAccountingReason?: string | null;
+  returnedFromAccountingAt?: string | null;
+  returnedFromAccountingByEmail?: string | null;
+  returnedFromAccountingDismissedAt?: string | null;
+
   // Audit cancellation (Step 7.4 — colonne dedicate, NON soft-delete generico).
   cancelledAt?: string | null;
   cancelledByUserId?: string | null;

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull, Not, DataSource, EntityManager } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { randomUUID } from 'crypto';
 import { Treatment, TreatmentStatus, PaymentMethod } from '../entities/treatment.entity';
 import { TreatmentBillingStatus } from '../entities/treatment-billing-status.enum';
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
@@ -1607,6 +1608,117 @@ export class TreatmentService {
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
     return result;
+  }
+
+  /**
+   * Sessione 7 — Richiede ad accounting di "richiamare indietro" un treatment
+   * già inviato a fatturazione, per consentire all'operatore di modificarlo.
+   *
+   * Vincoli:
+   *  - billingStatus IN (SENT, PENDING, INVOICED) → OK. Altri stati: 400.
+   *  - recallRequestId già valorizzato (recall in volo) → 409 Conflict.
+   *
+   * Effetto immediato:
+   *  - genera UUID per `recallRequestId` (= eventId dell'envelope, accounting
+   *    lo riceve come `requestId` e lo eccheggia nella response)
+   *  - salva `recallRequestId` + `recallRequestedAt`
+   *  - billingStatus NON cambia (resta SENT/PENDING/INVOICED) — la transition
+   *    a NOT_READY avviene solo all'arrivo di `billable.recall-accepted`
+   *  - pubblica `treatment.recall-requested.<tenant>` (publish-after-commit)
+   *
+   * Cleanup: se non arriva risposta entro `RECALL_REQUEST_TIMEOUT_MS`, lo
+   * scheduler `recall-cleanup.job` azzera recallRequestId/At (utente può
+   * ritentare). Vedi `recall-cleanup.job.ts`.
+   */
+  async requestTreatmentRecall(id: string, reason?: string): Promise<Treatment> {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const recallEventId = randomUUID();
+
+    const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id } });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      const recallable = [
+        TreatmentBillingStatus.SENT,
+        TreatmentBillingStatus.PENDING,
+        TreatmentBillingStatus.INVOICED,
+      ];
+      if (!recallable.includes(treatment.billingStatus)) {
+        throw new BadRequestException(
+          `Trattamento ${id} non richiamabile (billingStatus=${treatment.billingStatus}). ` +
+            `Richiamabili solo SENT, PENDING, INVOICED.`,
+        );
+      }
+
+      if (treatment.recallRequestId) {
+        throw new ConflictException(
+          `Trattamento ${id} ha già un recall in volo (recallRequestId=${treatment.recallRequestId}). ` +
+            `Aspetta la risposta da accounting o lo scadere del timeout.`,
+        );
+      }
+
+      treatment.recallRequestId = recallEventId;
+      treatment.recallRequestedAt = new Date();
+      // Pulisco una eventuale rejection precedente (UX: nuovo tentativo →
+      // nessun banner stale "richiamo rifiutato" che si sovrapponga).
+      treatment.lastRecallRejectionMessage = undefined;
+      treatment.lastRecallRejectionAt = undefined;
+      await treatmentRepo.save(treatment);
+
+      if (!tenantAlias) {
+        throw new Error(
+          'requestTreatmentRecall chiamato fuori da contesto tenant. Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+        );
+      }
+
+      this.eventBuffer.add({
+        eventType: 'treatment.recall-requested',
+        // eventId forzato → coincide con recallRequestId salvato sul treatment.
+        // Accounting deriva `requestId` dall'envelope.eventId (vedi
+        // accounting/clinical-event.consumer.ts case 'treatment.recall-requested').
+        eventId: recallEventId,
+        payload: {
+          treatmentId: id,
+          reason,
+        },
+        tenantAlias,
+        correlationId,
+      });
+
+      return treatment;
+    });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return result;
+  }
+
+  /**
+   * Sessione 7 — Chiude il banner "Restituito dall'amministrazione"
+   * (one-way da `billable.returned-to-clinical`). Setta
+   * `returnedFromAccountingDismissedAt = NOW`. Nessun evento pubblicato:
+   * la dismiss è puramente UI-local.
+   */
+  async dismissReturnFromAccountingBanner(id: string): Promise<Treatment> {
+    return this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id } });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+      if (!treatment.returnedFromAccountingAt) {
+        throw new BadRequestException(
+          `Trattamento ${id} non ha un banner di restituzione attivo.`,
+        );
+      }
+      treatment.returnedFromAccountingDismissedAt = new Date();
+      await treatmentRepo.save(treatment);
+      return treatment;
+    });
   }
 
   /**
