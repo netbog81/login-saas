@@ -1607,7 +1607,9 @@ export class TreatmentService {
     });
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
-    return result;
+    // Re-fetch con relations per il return GraphQL (vedi nota su
+    // requireFullTreatment in requestTreatmentRecall).
+    return this.requireFullTreatment(result.id);
   }
 
   /**
@@ -1694,7 +1696,11 @@ export class TreatmentService {
     });
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
-    return result;
+    // Re-fetch con relations (operator/patient/appointment/services/...)
+    // per il return GraphQL: il TreatmentDetails fragment del frontend
+    // legge `operator` non-nullable + altri sotto-campi, e il `treatment`
+    // della transazione qui sopra ha solo le colonne dirette.
+    return this.requireFullTreatment(result.id);
   }
 
   /**
@@ -1704,7 +1710,7 @@ export class TreatmentService {
    * la dismiss è puramente UI-local.
    */
   async dismissReturnFromAccountingBanner(id: string): Promise<Treatment> {
-    return this.dataSource.transaction(async (manager: EntityManager) => {
+    await this.dataSource.transaction(async (manager: EntityManager) => {
       const treatmentRepo = manager.getRepository(Treatment);
       const treatment = await treatmentRepo.findOne({ where: { id } });
       if (!treatment) {
@@ -1717,8 +1723,24 @@ export class TreatmentService {
       }
       treatment.returnedFromAccountingDismissedAt = new Date();
       await treatmentRepo.save(treatment);
-      return treatment;
     });
+    return this.requireFullTreatment(id);
+  }
+
+  /**
+   * Helper: rilegge un Treatment con tutte le relations necessarie al
+   * TreatmentDetails fragment GraphQL (operator, patient, appointment,
+   * services, instruments). Usato dai metodi che fanno UPDATE in
+   * transazione e devono ritornare l'entità completa al resolver
+   * (altrimenti GraphQL fallisce con "Cannot return null for
+   * non-nullable field Treatment.operator").
+   */
+  private async requireFullTreatment(id: string): Promise<Treatment> {
+    const full = await this.findById(id);
+    if (!full) {
+      throw new NotFoundException(`Trattamento ${id} non trovato dopo update`);
+    }
+    return full;
   }
 
   /**
