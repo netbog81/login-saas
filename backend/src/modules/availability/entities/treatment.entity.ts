@@ -353,6 +353,58 @@ export class Treatment {
   @Column('timestamptz', { name: 'billingAlertDismissedAt', nullable: true })
   billingAlertDismissedAt?: Date;
 
+  // ==================== RECALL / RETURN-TO-CLINICAL (sessione 7) ====================
+
+  /**
+   * EventId del `treatment.recall-requested` in volo (UUID v4). Popolato
+   * quando l'operatore clicca "Richiama indietro"; usato dal consumer per
+   * correlare `billable.recall-accepted/rejected` arrivati dopo. Null sia
+   * prima della richiesta che dopo la risposta accept/reject.
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'recallRequestId', length: 36, nullable: true })
+  recallRequestId?: string;
+
+  /** Timestamp del recall in volo. Usato dalla UI per il timeout (~30s) dello spinner. */
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'recallRequestedAt', nullable: true })
+  recallRequestedAt?: Date;
+
+  /**
+   * Messaggio user-friendly dell'ultimo `billable.recall-rejected` (italiano,
+   * arriva già formattato da accounting). Mostrato in UI come banner finché
+   * non c'è un nuovo recall request.
+   */
+  @Field({ nullable: true })
+  @Column('text', { name: 'lastRecallRejectionMessage', nullable: true })
+  lastRecallRejectionMessage?: string;
+
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'lastRecallRejectionAt', nullable: true })
+  lastRecallRejectionAt?: Date;
+
+  /**
+   * Motivo della restituzione one-way da operatore accounting
+   * (`billable.returned-to-clinical`). Visibile come banner persistente
+   * finché non dismissato.
+   */
+  @Field({ nullable: true })
+  @Column('text', { name: 'returnedFromAccountingReason', nullable: true })
+  returnedFromAccountingReason?: string;
+
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'returnedFromAccountingAt', nullable: true })
+  returnedFromAccountingAt?: Date;
+
+  /** Email operatore accounting che ha restituito (audit, per UI). */
+  @Field({ nullable: true })
+  @Column({ name: 'returnedFromAccountingByEmail', length: 255, nullable: true })
+  returnedFromAccountingByEmail?: string;
+
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'returnedFromAccountingDismissedAt', nullable: true })
+  returnedFromAccountingDismissedAt?: Date;
+
   // ==================== CANCELLATION AUDIT (sessione 6 Step 7.4) ====================
 
   /**

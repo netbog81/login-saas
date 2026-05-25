@@ -190,7 +190,10 @@ export type AccountingInboundEventType =
   | 'billable.refunded'
   | 'billable.partially-refunded'
   | 'billable.reissued'
-  | 'billable.cancellation-rejected';
+  | 'billable.cancellation-rejected'
+  | 'billable.recall-accepted'
+  | 'billable.recall-rejected'
+  | 'billable.returned-to-clinical';
 
 export interface BillableReceivedPayload {
   billableEventId: string;
@@ -260,6 +263,56 @@ export interface BillableReissuedPayload {
   newInvoiceNumber: string;
   reissuedAt: string;
   reason?: string | null;
+}
+
+/**
+ * Risposta positiva al `treatment.recall-requested`: accounting ha cancellato
+ * il billable (e l'eventuale fattura DRAFT collegata). Il clinico può
+ * riaprire il trattamento per modifiche.
+ *
+ * `requestId` (= eventId del recall-requested originario) consente la
+ * correlazione richiesta↔risposta lato clinico.
+ */
+export interface BillableRecallAcceptedPayload {
+  requestId: string;
+  billableEventId: string;
+  treatmentId: string;
+  cancelledDraftDocumentId?: string;
+  cancelledDraftDocumentNumber?: string;
+  acceptedAt: string;
+  reason?: string;
+}
+
+/**
+ * Risposta negativa al `treatment.recall-requested`: esiste già un documento
+ * fiscale emesso. Il clinico mostra `message` all'utente.
+ */
+export interface BillableRecallRejectedPayload {
+  requestId: string;
+  billableEventId: string;
+  treatmentId: string;
+  reason: 'invoice_issued' | 'credit_note_pending' | 'not_found' | 'not_eligible';
+  blockingDocumentNumber?: string;
+  blockingDocumentType?: 'INVOICE' | 'RECEIPT' | 'CREDIT_NOTE';
+  blockingDocumentStatus?: string;
+  rejectedAt: string;
+  message: string;
+}
+
+/**
+ * Restituzione one-way iniziata dall'operatore amministrativo accounting.
+ * Il clinico riapre il trattamento e mostra il `reason` all'utente.
+ */
+export interface BillableReturnedToClinicalPayload {
+  billableEventId: string;
+  treatmentId?: string;
+  saleId?: string;
+  cancelledDraftDocumentId?: string;
+  cancelledDraftDocumentNumber?: string;
+  returnedAt: string;
+  reason: string;
+  returnedByUserId?: string;
+  returnedByEmail?: string;
 }
 
 export interface BillableCancellationRejectedPayload {

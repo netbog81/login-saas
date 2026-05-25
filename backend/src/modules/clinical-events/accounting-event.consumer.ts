@@ -21,17 +21,21 @@ import {
   BillableInvoicedPayload,
   BillablePartiallyRefundedPayload,
   BillableReceivedPayload,
+  BillableRecallAcceptedPayload,
+  BillableRecallRejectedPayload,
   BillableRefundedPayload,
   BillableReissuedPayload,
+  BillableReturnedToClinicalPayload,
   BillableUninvoicedPayload,
   CurandisEvent,
 } from './clinical-events.types';
 
 /**
  * Consumer RabbitMQ degli eventi pubblicati dall'accounting su
- * `ex.accounting.events` (binding `billable.*.<tenant>`, 7 routing key una
+ * `ex.accounting.events` (binding `billable.*.<tenant>`, 10 routing key una
  * per evento). Aggiorna `Treatment.billingStatus` + colonne `accounting*` /
- * `billingAlert*` in base allo stato della fattura.
+ * `billingAlert*` / `recall*` / `returnedFromAccounting*` in base allo
+ * stato della fattura e all'esito dei recall.
  *
  * INFRASTRUTTURA:
  *   - Coda dedicata: `q.clinical.accounting-feedback` (durable, NON
@@ -39,10 +43,12 @@ import {
  *   - DLQ: `q.clinical.accounting-feedback.dlq` legata a `ex.dlq` (topic).
  *     I messaggi nack-ati con `noRequeue=true` vengono routati nella DLQ.
  *   - Prefetch: 10 (config-driven).
- *   - 7 binding key sull'exchange `ex.accounting.events`:
+ *   - 10 binding key sull'exchange `ex.accounting.events`:
  *       billable.received.*, billable.invoiced.*, billable.uninvoiced.*,
  *       billable.refunded.*, billable.partially-refunded.*,
- *       billable.reissued.*, billable.cancellation-rejected.*
+ *       billable.reissued.*, billable.cancellation-rejected.*,
+ *       billable.recall-accepted.*, billable.recall-rejected.*,
+ *       billable.returned-to-clinical.*
  *
  * IDEMPOTENCY:
  *   1. Parse JSON. Se malformato → reject DLQ.
@@ -88,6 +94,9 @@ export class AccountingEventConsumer
     'billable.partially-refunded.*',
     'billable.reissued.*',
     'billable.cancellation-rejected.*',
+    'billable.recall-accepted.*',
+    'billable.recall-rejected.*',
+    'billable.returned-to-clinical.*',
   ];
 
   constructor(
@@ -352,7 +361,10 @@ export class AccountingEventConsumer
       eventType === 'billable.refunded' ||
       eventType === 'billable.partially-refunded' ||
       eventType === 'billable.reissued' ||
-      eventType === 'billable.cancellation-rejected'
+      eventType === 'billable.cancellation-rejected' ||
+      eventType === 'billable.recall-accepted' ||
+      eventType === 'billable.recall-rejected' ||
+      eventType === 'billable.returned-to-clinical'
     );
   }
 
@@ -396,6 +408,21 @@ export class AccountingEventConsumer
           event as CurandisEvent<BillableCancellationRejectedPayload>,
           manager,
         );
+      case 'billable.recall-accepted':
+        return this.handleRecallAccepted(
+          event as CurandisEvent<BillableRecallAcceptedPayload>,
+          manager,
+        );
+      case 'billable.recall-rejected':
+        return this.handleRecallRejected(
+          event as CurandisEvent<BillableRecallRejectedPayload>,
+          manager,
+        );
+      case 'billable.returned-to-clinical':
+        return this.handleReturnedToClinical(
+          event as CurandisEvent<BillableReturnedToClinicalPayload>,
+          manager,
+        );
     }
   }
 
@@ -434,6 +461,21 @@ export class AccountingEventConsumer
 
     const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
     if (!treatment) return;
+
+    // Anti-stale: se il treatment ha già un accountingBillableEventId valorizzato
+    // e diverso da quello dell'evento, significa che un recall-accepted o un
+    // returned-to-clinical ha azzerato il riferimento (o ne ha creato uno nuovo
+    // via re-closure). Evento riferito a un billable obsoleto → scarta.
+    if (
+      treatment.accountingBillableEventId &&
+      treatment.accountingBillableEventId !== p.billableEventId
+    ) {
+      this.logger.warn(
+        `billable.invoiced stale: treatment.accountingBillableEventId=` +
+          `${treatment.accountingBillableEventId} ≠ payload=${p.billableEventId}. Skip.`,
+      );
+      return;
+    }
 
     treatment.billingStatus = TreatmentBillingStatus.INVOICED;
     treatment.accountingBillableEventId = p.billableEventId;
@@ -562,6 +604,146 @@ export class AccountingEventConsumer
     treatment.billingAlertAt = new Date(p.rejectedAt);
     treatment.billingAlertDismissedAt = undefined; // riapre se era stato dismissato
     await manager.save(Treatment, treatment);
+  }
+
+  private async handleRecallAccepted(
+    event: CurandisEvent<BillableRecallAcceptedPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    // Anti-stale: ignora accept di un recall non corrispondente al request
+    // attualmente in volo (es. utente ha lanciato un nuovo recall mentre il
+    // primo era in coda). Senza questo check, una vecchia accept potrebbe
+    // sovrascrivere uno stato già evoluto.
+    if (treatment.recallRequestId && treatment.recallRequestId !== p.requestId) {
+      this.logger.warn(
+        `recall-accepted stale: treatment.recallRequestId=${treatment.recallRequestId} ` +
+          `≠ payload.requestId=${p.requestId}. Skip.`,
+      );
+      return;
+    }
+
+    // Treatment torna modificabile: NOT_READY (= "mai inviato"). Azzero anche
+    // accountingBillableEventId così eventuali billable.invoiced "vecchi"
+    // riferiti al billable appena cancellato lato accounting vengono scartati
+    // dall'anti-stale check in handleBillableInvoiced.
+    treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+    treatment.accountingBillableEventId = undefined;
+    treatment.accountingInvoiceUrl = undefined;
+    treatment.accountingInvoiceIssuedAt = undefined;
+    treatment.accountingDocumentType = undefined;
+    treatment.accountingCreditNoteNumber = undefined;
+    treatment.accountingCreditNoteIssuedAt = undefined;
+    treatment.accountingRefundReason = undefined;
+    treatment.billingAlertMessage = undefined;
+    treatment.billingAlertAt = undefined;
+    treatment.billingAlertDismissedAt = undefined;
+    treatment.patientInvoiceNumber = undefined;
+    treatment.isInvoicedToPatient = false;
+    treatment.invoicedToPatientAt = undefined;
+
+    // Chiudo il recall in volo + pulisco eventuale rejection precedente.
+    treatment.recallRequestId = undefined;
+    treatment.recallRequestedAt = undefined;
+    treatment.lastRecallRejectionMessage = undefined;
+    treatment.lastRecallRejectionAt = undefined;
+
+    await manager.save(Treatment, treatment);
+
+    this.logger.log(
+      `Recall accettato per treatment ${p.treatmentId}` +
+        (p.cancelledDraftDocumentNumber
+          ? ` (fattura DRAFT ${p.cancelledDraftDocumentNumber} cancellata)`
+          : ''),
+    );
+  }
+
+  private async handleRecallRejected(
+    event: CurandisEvent<BillableRecallRejectedPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    if (treatment.recallRequestId && treatment.recallRequestId !== p.requestId) {
+      this.logger.warn(
+        `recall-rejected stale: treatment.recallRequestId=${treatment.recallRequestId} ` +
+          `≠ payload.requestId=${p.requestId}. Skip.`,
+      );
+      return;
+    }
+
+    // Lo stato del treatment NON cambia (resta INVOICED o quel che era).
+    // Salviamo il messaggio user-friendly per il banner UI e chiudiamo
+    // il recall in volo.
+    treatment.lastRecallRejectionMessage = p.message;
+    treatment.lastRecallRejectionAt = new Date(p.rejectedAt);
+    treatment.recallRequestId = undefined;
+    treatment.recallRequestedAt = undefined;
+
+    await manager.save(Treatment, treatment);
+
+    this.logger.log(
+      `Recall rifiutato per treatment ${p.treatmentId}: reason=${p.reason}` +
+        (p.blockingDocumentNumber ? ` (doc bloccante ${p.blockingDocumentNumber})` : ''),
+    );
+  }
+
+  private async handleReturnedToClinical(
+    event: CurandisEvent<BillableReturnedToClinicalPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    if (!p.treatmentId) {
+      // sale standalone: il clinico non ha billingStatus per i sales, skip.
+      this.logger.debug(
+        `billable.returned-to-clinical senza treatmentId (sale standalone): ack senza update`,
+      );
+      return;
+    }
+
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    // Restituzione one-way: stesso effetto di recall-accepted sullo snapshot
+    // accounting (treatment torna NOT_READY, riferimenti azzerati) + salva
+    // il motivo per il banner UI dismissibile.
+    treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+    treatment.accountingBillableEventId = undefined;
+    treatment.accountingInvoiceUrl = undefined;
+    treatment.accountingInvoiceIssuedAt = undefined;
+    treatment.accountingDocumentType = undefined;
+    treatment.accountingCreditNoteNumber = undefined;
+    treatment.accountingCreditNoteIssuedAt = undefined;
+    treatment.accountingRefundReason = undefined;
+    treatment.billingAlertMessage = undefined;
+    treatment.billingAlertAt = undefined;
+    treatment.billingAlertDismissedAt = undefined;
+    treatment.patientInvoiceNumber = undefined;
+    treatment.isInvoicedToPatient = false;
+    treatment.invoicedToPatientAt = undefined;
+
+    treatment.returnedFromAccountingReason = p.reason;
+    treatment.returnedFromAccountingAt = new Date(p.returnedAt);
+    treatment.returnedFromAccountingByEmail = p.returnedByEmail ?? undefined;
+    treatment.returnedFromAccountingDismissedAt = undefined; // riapre se era stato dismissato
+
+    // Se per qualche motivo c'era un recall in volo, lo chiudiamo
+    // (returned-to-clinical raggiunge l'effetto desiderato del recall).
+    treatment.recallRequestId = undefined;
+    treatment.recallRequestedAt = undefined;
+
+    await manager.save(Treatment, treatment);
+
+    this.logger.log(
+      `Treatment ${p.treatmentId} restituito da accounting` +
+        (p.returnedByEmail ? ` (operatore=${p.returnedByEmail})` : '') +
+        `: ${p.reason}`,
+    );
   }
 
   // ============================================================================

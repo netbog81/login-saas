@@ -57,7 +57,7 @@ Pubblicazione **publish-after-commit** (Step 7.1):
   tenant=... err=...` per investigation post-incident. Outbox pattern
   resiliente è roadmap post-MVP
 
-### 7 eventi consumati dal clinico
+### 10 eventi consumati dal clinico
 
 | Evento | Effetto su Treatment |
 |---|---|
@@ -68,6 +68,9 @@ Pubblicazione **publish-after-commit** (Step 7.1):
 | `billable.partially-refunded` | `billingStatus = PARTIALLY_REFUNDED` + creditNote* |
 | `billable.reissued` | `billingStatus = INVOICED` con nuovo numero, vecchio salvato |
 | `billable.cancellation-rejected` | rollback `CANCELLED → INVOICED` + popola `billingAlertMessage` (race condition: clinico cancella mentre accounting fattura) |
+| `billable.recall-accepted` | (sessione 7) `billingStatus = NOT_READY` + azzera snapshot + chiude recall in volo. Risposta positiva al `treatment.recall-requested` |
+| `billable.recall-rejected` | (sessione 7) stato invariato + popola `lastRecallRejectionMessage` per banner UI. Risposta negativa al recall (doc fiscale già emesso) |
+| `billable.returned-to-clinical` | (sessione 7) `billingStatus = NOT_READY` + azzera snapshot + popola `returnedFromAccountingReason/At/ByEmail` per banner dismissibile. Restituzione one-way dall'operatore accounting |
 
 NOTA — distinzione `uninvoiced` vs `refunded`: `uninvoiced` arriva quando
 accounting cancella un documento (INVOICE/RECEIPT) NON ancora trasmesso
@@ -75,6 +78,21 @@ fiscalmente — il billable torna disponibile per nuova fatturazione, niente
 nota credito. `refunded` è il vero rimborso post-trasmissione, con NC.
 Confondere i due porterebbe a mostrare "Rimborsato" su una situazione che è
 semplicemente "da rifatturare".
+
+NOTA — protocollo recall (sessione 7): bidirezionale.
+1. Clinico publish `treatment.recall-requested` (Fase 2, non ancora
+   implementato — solo consumer Fase 1 attivo). Setta `recallRequestId` +
+   `recallRequestedAt` sul treatment, lo stato NON cambia ancora.
+2. Accounting risponde con `recall-accepted` (treatment → NOT_READY,
+   modificabile) o `recall-rejected` (stato invariato, message in UI).
+3. Variante one-way `returned-to-clinical` iniziata da operatore accounting,
+   stesso effetto di accept ma con motivazione operatore.
+
+Anti-stale check (sessione 7): `handleBillableInvoiced` ignora eventi con
+`billableEventId` diverso da quello memorizzato sul treatment (può capitare
+se un `billable.invoiced` arriva dopo un recall-accepted che ha azzerato
+il riferimento). Stesso pattern in `recall-accepted/rejected` via
+`requestId` per scartare risposte a recall non più correnti.
 
 Consumer:
 - Coda dedicata `q.clinical.accounting-feedback` (durable, no exclusive)
@@ -111,6 +129,7 @@ Implementato in [`treatment-billing-status.enum.ts`](src/modules/availability/en
 | `1783000000000-BillingIntegrationStep1` | Step 1 | Crea entity `Site` + `Product`, estende `Treatment` con `siteId`+`billingStatus`+10 col accounting/alert, estende `Service.serviceCode` UNIQUE, crea `processed_clinical_events`, bootstrap "Studio principale" |
 | `1784000000000-AddTreatmentAmendmentRevision` | Step 7.2 | colonna `Treatment.amendmentRevision int NOT NULL DEFAULT 0` per increment atomico |
 | `1785000000000-AddTreatmentCancellationAudit` | Step 7.4 | 3 colonne dedicate `cancelledAt`, `cancelledByUserId`, `cancellationReason` (NON riusare `deletedByUserId`/`accountingRefundReason`) |
+| `1786000000000-AddTreatmentRecallAndReturnFields` | Sessione 7 | 8 colonne per protocollo recall: `recallRequestId`/`At`, `lastRecallRejectionMessage`/`At`, `returnedFromAccountingReason`/`At`/`ByEmail`/`DismissedAt` |
 
 Tutte applicate solo su `t_4701c4aaba73713294696ae7ae46d21b` (tenant `bdq`).
 Guard interna alla migration rifiuta esecuzione su altri schemi.
