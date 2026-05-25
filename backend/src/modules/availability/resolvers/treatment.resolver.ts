@@ -474,6 +474,24 @@ export class TreatmentResolver {
   }
 
   /**
+   * Mutation: Sessione 7 — Forza re-invio di un treatment ad accounting.
+   * Disponibile solo per treatment in stato SENT con readyForBillingAt
+   * > 5 min fa (vedi service method per dettagli sul vincolo smart).
+   */
+  @Mutation(() => Treatment, { name: 'resendTreatmentToAccounting' })
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @RequirePermissions('treatment_update_own')
+  @RequireOwnership({
+    resource: 'treatment',
+    bypassPermission: 'treatment_update_any',
+  })
+  async resendTreatmentToAccounting(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.resendTreatmentToAccounting(id);
+  }
+
+  /**
    * Mutation: Sessione 7 — Chiude il banner "Restituito dall'amministrazione"
    * sul treatment. Setta `returnedFromAccountingDismissedAt = NOW`.
    */

@@ -40,6 +40,28 @@
     </div>
   </div>
 
+  <!-- Sessione 7 — Banner warning SENT prolungato. Compare se accounting
+       non ha confermato la ricezione entro 30s (soft) o 5min (hard). -->
+  <div *ngIf="showSentWarning"
+       class="billing-alert"
+       [class.billing-alert--sent-soft]="sentWarningLevel === 'soft'"
+       [class.billing-alert--sent-hard]="sentWarningLevel === 'hard'">
+    <div class="billing-alert__icon" aria-hidden="true">
+      {{ sentWarningLevel === 'hard' ? '⚠️' : '⏳' }}
+    </div>
+    <div class="billing-alert__content">
+      <p class="billing-alert__message">{{ sentWarningMessage }}</p>
+    </div>
+    <button *ngIf="resendVisible"
+            type="button"
+            class="btn btn-sm btn-warning"
+            [disabled]="resendDisabled"
+            [title]="resendDisabled ? (resendDisabledReason || '') : 'Ripubblica il messaggio ad accounting (operazione sicura: non duplica fatture)'"
+            (click)="onResendToAccounting()">
+      Forza re-invio
+    </button>
+  </div>
+
   <!-- Sessione 7 — Banner "Restituito dall'amministrazione" (one-way da
        billable.returned-to-clinical). Dismissibile: setta
        returnedFromAccountingDismissedAt. -->

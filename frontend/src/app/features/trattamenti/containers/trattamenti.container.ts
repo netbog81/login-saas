@@ -14,7 +14,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject, Subscription, combineLatest, interval } from 'rxjs';
+import { Subject, combineLatest } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { TrattamentiService } from '../services/trattamenti.service';
@@ -224,15 +224,6 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
-  /**
-   * Polling attivo (sessione 7): quando almeno un treatment della lista
-   * ha `recallRequestId != null`, polling ogni 3s che fa reload() per
-   * vedere arrivare la response accounting. Si auto-spegne quando nessun
-   * treatment è più in volo.
-   */
-  private recallPollingSub: Subscription | null = null;
-  private static readonly RECALL_POLL_INTERVAL_MS = 3000;
-
   constructor(
     public state: TrattamentiStateService,
     private service: TrattamentiService,
@@ -300,31 +291,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
         const filtered = this.applyClientFilters(treatments, filters);
         this.flatTreatments = filtered;
         this.groupedTreatments = this.buildGroups(filtered, mode);
-        // Auto-attiva/spegne il polling recall in base ai treatments
-        // attualmente visibili. Polling solo se almeno uno ha recall in volo.
-        this.maybeStartRecallPolling(treatments);
       });
-  }
-
-  /**
-   * Sessione 7 — Gestisce il ciclo del polling per i recall in volo.
-   * Se in lista c'è almeno un treatment con `recallRequestId != null`,
-   * attiva polling ogni 3s (idempotente: non duplica). Se nessun
-   * treatment è più in volo, ferma il polling. Cleanup automatico al
-   * destroy del container.
-   */
-  private maybeStartRecallPolling(treatments: Trattamento[]): void {
-    const hasRecallInFlight = treatments.some(t => !!t.recallRequestId);
-    if (hasRecallInFlight && !this.recallPollingSub) {
-      this.recallPollingSub = interval(
-        TrattamentiContainer.RECALL_POLL_INTERVAL_MS,
-      )
-        .pipe(takeUntil(this.destroy$))
-        .subscribe(() => this.reload());
-    } else if (!hasRecallInFlight && this.recallPollingSub) {
-      this.recallPollingSub.unsubscribe();
-      this.recallPollingSub = null;
-    }
   }
 
   /**
@@ -583,6 +550,11 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       ref.componentInstance.billingRecallDisabled = flags.recallDisabled;
       ref.componentInstance.billingRecallDisabledReason = flags.recallDisabledReason;
       ref.componentInstance.billingRecallInFlight = flags.recallInFlight;
+      ref.componentInstance.billingSentWarningLevel = flags.sentWarningLevel;
+      ref.componentInstance.billingSentWarningMessage = flags.sentWarningMessage;
+      ref.componentInstance.billingResendVisible = flags.resendVisible;
+      ref.componentInstance.billingResendDisabled = flags.resendDisabled;
+      ref.componentInstance.billingResendDisabledReason = flags.resendDisabledReason;
     };
 
     // Sessione 7 — Sync dialog ↔ state: quando reload() (anche da polling
@@ -914,6 +886,32 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       });
     });
 
+    // Sessione 7 — "Forza re-invio ad accounting" (escape hatch).
+    // Confermo prima perché ri-pubblica un messaggio: con il fix idempotency
+    // accounting non duplica billable, ma l'operatore deve sapere cosa fa.
+    inst.resendToAccounting.subscribe((id: string) => {
+      const ok = window.confirm(
+        'Forzare il re-invio del trattamento ad accounting?\n\n' +
+          'Verrà ripubblicato il messaggio: se accounting non aveva ricevuto ' +
+          "il primo invio (es. incident), questo lo risolve. Se invece l'invio " +
+          'era arrivato, nessun doppio billable viene creato.',
+      );
+      if (!ok) return;
+      this.service.resendToAccounting(id).subscribe({
+        next: (updated) => {
+          this.state.updateTreatment(updated);
+          ref.componentInstance.treatment = updated;
+          applyBillingFlagsToInst(updated);
+          this.snackBar.open(
+            "Re-invio ad accounting effettuato. Attendi qualche secondo per la conferma.",
+            'OK',
+            { duration: 3000 },
+          );
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
     // Dopo la chiusura del dialog, garantiamo che la lista sia sincronizzata:
     // l'utente potrebbe aver chiuso senza applicare tutte le nostre
     // ottimizzazioni ottimistiche (es. mutation pending).
@@ -946,6 +944,12 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     recallDisabled: boolean;
     recallDisabledReason: string | null;
     recallInFlight: boolean;
+    // Sessione 7: warning SENT prolungato + bottone "Forza re-invio"
+    sentWarningLevel: 'none' | 'soft' | 'hard';
+    sentWarningMessage: string | null;
+    resendVisible: boolean;
+    resendDisabled: boolean;
+    resendDisabledReason: string | null;
   } {
     const status = treatment.billingStatus;
 
@@ -1011,6 +1015,34 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       ? "Disponibile solo per trattamenti inviati ad accounting."
       : null;
 
+    // Sessione 7 — Warning + bottone "Forza re-invio" per SENT prolungato.
+    // Solo SENT trigger il warning: PENDING significa che accounting ha
+    // già confermato ricezione, anche se non ha ancora fatturato.
+    let sentWarningLevel: 'none' | 'soft' | 'hard' = 'none';
+    let sentWarningMessage: string | null = null;
+    let resendVisible = false;
+    let resendDisabled = true;
+    let resendDisabledReason: string | null =
+      "Disponibile solo se l'invio ad accounting non viene confermato entro 5 minuti.";
+
+    if (status === TreatmentBillingStatus.Sent && treatment.readyForBillingAt) {
+      const sentAtMs = new Date(treatment.readyForBillingAt).getTime();
+      const elapsedSec = (Date.now() - sentAtMs) / 1000;
+      if (elapsedSec >= 300) {
+        sentWarningLevel = 'hard';
+        sentWarningMessage =
+          'Accounting non ha confermato la ricezione del trattamento. ' +
+          'Possibile problema di comunicazione: puoi forzare il re-invio.';
+        resendVisible = true;
+        resendDisabled = false;
+        resendDisabledReason = null;
+      } else if (elapsedSec >= 30) {
+        sentWarningLevel = 'soft';
+        sentWarningMessage =
+          "Invio in corso, in attesa di conferma da accounting.";
+      }
+    }
+
     return {
       cancelDisabled,
       cancelDisabledReason,
@@ -1021,6 +1053,11 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       recallDisabled,
       recallDisabledReason,
       recallInFlight,
+      sentWarningLevel,
+      sentWarningMessage,
+      resendVisible,
+      resendDisabled,
+      resendDisabledReason,
     };
   }
 

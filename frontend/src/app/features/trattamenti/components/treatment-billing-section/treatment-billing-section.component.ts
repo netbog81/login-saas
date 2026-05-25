@@ -66,6 +66,13 @@ export class TreatmentBillingSectionComponent {
    */
   @Input() recallInFlight = false;
 
+  // Sessione 7 — Warning SENT prolungato + bottone "Forza re-invio"
+  @Input() sentWarningLevel: 'none' | 'soft' | 'hard' = 'none';
+  @Input() sentWarningMessage: string | null = null;
+  @Input() resendVisible = false;
+  @Input() resendDisabled = true;
+  @Input() resendDisabledReason: string | null = null;
+
   // ────────── Output ──────────
   @Output() dismissAlert = new EventEmitter<string>(); // emette treatmentId
   @Output() cancelTreatment = new EventEmitter<string>(); // emette treatmentId
@@ -74,6 +81,8 @@ export class TreatmentBillingSectionComponent {
   // Sessione 7 — Recall outputs
   @Output() requestRecall = new EventEmitter<string>();
   @Output() dismissReturnBanner = new EventEmitter<string>();
+  // Sessione 7 — "Forza re-invio ad accounting"
+  @Output() resendToAccounting = new EventEmitter<string>();
 
   // Esposto al template per ngSwitch / classi CSS.
   readonly Status = TreatmentBillingStatus;
@@ -157,6 +166,16 @@ export class TreatmentBillingSectionComponent {
 
   onDismissReturnBanner(): void {
     this.dismissReturnBanner.emit(this.treatment.id);
+  }
+
+  onResendToAccounting(): void {
+    if (this.resendDisabled) return;
+    this.resendToAccounting.emit(this.treatment.id);
+  }
+
+  /** True se va mostrato il banner warning SENT prolungato. */
+  get showSentWarning(): boolean {
+    return this.sentWarningLevel !== 'none' && !!this.sentWarningMessage;
   }
 }
 

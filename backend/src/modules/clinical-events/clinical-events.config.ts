@@ -7,6 +7,10 @@ import { ConfigService } from '@nestjs/config';
  *
  * .env:
  *   RABBITMQ_URL=amqp://curandis-clinico-svc:clinico_dev_2024@localhost:5676/curandis
+ *   RABBITMQ_MANAGEMENT_URL=http://localhost:15672    (HTTP API per DLQ monitor)
+ *   RABBITMQ_MANAGEMENT_USER=admin                    (default: stesso user AMQP)
+ *   RABBITMQ_MANAGEMENT_PASS=...                      (default: stesso pass AMQP)
+ *   RABBITMQ_MANAGEMENT_VHOST=curandis                (default: stesso vhost AMQP)
  *   RABBITMQ_CLINICAL_EXCHANGE=ex.clinical.events
  *   RABBITMQ_ACCOUNTING_EXCHANGE=ex.accounting.events
  *   RABBITMQ_QUEUE_ACCOUNTING_FEEDBACK=q.clinical.accounting-feedback
@@ -31,6 +35,11 @@ export class ClinicalEventsConfig {
   readonly billableBindingPattern: string;
   readonly prefetch: number;
   readonly producerVersion: string;
+  // Sessione 7 — RabbitMQ Management API (HTTP) per DLQ monitor.
+  readonly managementUrl: string;
+  readonly managementUser: string;
+  readonly managementPass: string;
+  readonly managementVhost: string;
 
   constructor(config: ConfigService) {
     this.enabled =
@@ -70,12 +79,51 @@ export class ClinicalEventsConfig {
     }
     this.producerVersion = config.get<string>('PRODUCER_VERSION', pkgVersion);
 
+    // Sessione 7 — Management API: deriva default da RABBITMQ_URL parsato.
+    // .env può overridare esplicitamente (es. management su host diverso).
+    const parsedAmqp = this.tryParseAmqpUrl(this.url);
+    this.managementUrl = config.get<string>(
+      'RABBITMQ_MANAGEMENT_URL',
+      parsedAmqp ? `http://${parsedAmqp.host}:15672` : 'http://localhost:15672',
+    );
+    this.managementUser = config.get<string>(
+      'RABBITMQ_MANAGEMENT_USER',
+      parsedAmqp?.user ?? 'guest',
+    );
+    this.managementPass = config.get<string>(
+      'RABBITMQ_MANAGEMENT_PASS',
+      parsedAmqp?.pass ?? 'guest',
+    );
+    this.managementVhost = config.get<string>(
+      'RABBITMQ_MANAGEMENT_VHOST',
+      parsedAmqp?.vhost ?? '/',
+    );
+
     this.logger.log(
       `ClinicalEvents config: enabled=${this.enabled}, ` +
         `clinicalExchange="${this.clinicalExchange}", ` +
         `accountingExchange="${this.accountingExchange}", ` +
         `feedbackQueue="${this.accountingFeedbackQueue}", ` +
-        `producerVersion="${this.producerVersion}"`,
+        `producerVersion="${this.producerVersion}", ` +
+        `managementUrl="${this.managementUrl}"`,
     );
+  }
+
+  /** Parsa amqp://user:pass@host:port/vhost (ritorna null se malformato). */
+  private tryParseAmqpUrl(
+    url: string,
+  ): { user: string; pass: string; host: string; vhost: string } | null {
+    try {
+      const u = new URL(url);
+      const vhost = u.pathname && u.pathname !== '/' ? u.pathname.slice(1) : '/';
+      return {
+        user: decodeURIComponent(u.username),
+        pass: decodeURIComponent(u.password),
+        host: u.hostname,
+        vhost: decodeURIComponent(vhost),
+      };
+    } catch {
+      return null;
+    }
   }
 }

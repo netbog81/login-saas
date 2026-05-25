@@ -30,6 +30,7 @@ import {
   DISMISS_BILLING_ALERT,
   REQUEST_TREATMENT_RECALL,
   DISMISS_RETURN_FROM_ACCOUNTING_BANNER,
+  RESEND_TREATMENT_TO_ACCOUNTING,
 } from '../graphql/trattamenti.operations';
 
 /**
@@ -175,6 +176,17 @@ export class TrattamentiService extends BaseGraphQLService {
       REQUEST_TREATMENT_RECALL,
       { id, reason: reason ?? null },
     ).pipe(map(r => flattenPatient(r.requestTreatmentRecall)));
+  }
+
+  /**
+   * Sessione 7 — Forza re-invio di un treatment ad accounting (escape hatch).
+   * Backend rifiuta con 400 se non in SENT o se readyForBillingAt < 5min fa.
+   */
+  resendToAccounting(id: string): Observable<Trattamento> {
+    return this.mutate<{ resendTreatmentToAccounting: Trattamento }>(
+      RESEND_TREATMENT_TO_ACCOUNTING,
+      { id },
+    ).pipe(map(r => flattenPatient(r.resendTreatmentToAccounting)));
   }
 
   /**

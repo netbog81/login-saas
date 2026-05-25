@@ -98,6 +98,20 @@
     .billing-alert__message { color: #01579b; }
     .billing-alert__timestamp { color: #0277bd; }
   }
+
+  // Sessione 7 — SENT prolungato soft (30s-5min: ambra leggero)
+  &--sent-soft {
+    background: #fff8e1;
+    border-color: #ffe082;
+    .billing-alert__message { color: #6d4c41; }
+  }
+
+  // Sessione 7 — SENT prolungato hard (>5min: rosso warning + bottone resend)
+  &--sent-hard {
+    background: #ffebee;
+    border-color: #ef9a9a;
+    .billing-alert__message { color: #c62828; font-weight: 500; }
+  }
 }
 
 // Sessione 7 — Spinner "Richiamo in corso..." inline nelle azioni

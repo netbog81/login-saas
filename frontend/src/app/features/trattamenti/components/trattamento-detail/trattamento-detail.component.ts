@@ -411,12 +411,18 @@ export interface DetailDialogData {
               [recallDisabled]="billingRecallDisabled"
               [recallDisabledReason]="billingRecallDisabledReason"
               [recallInFlight]="billingRecallInFlight"
+              [sentWarningLevel]="billingSentWarningLevel"
+              [sentWarningMessage]="billingSentWarningMessage"
+              [resendVisible]="billingResendVisible"
+              [resendDisabled]="billingResendDisabled"
+              [resendDisabledReason]="billingResendDisabledReason"
               (dismissAlert)="dismissBillingAlert.emit($event)"
               (cancelTreatment)="cancelTreatmentBilling.emit($event)"
               (reopenTreatment)="reopenTreatmentBilling.emit($event)"
               (immediateInvoice)="immediateInvoiceBilling.emit($event)"
               (requestRecall)="requestTreatmentRecall.emit($event)"
-              (dismissReturnBanner)="dismissReturnFromAccountingBanner.emit($event)">
+              (dismissReturnBanner)="dismissReturnFromAccountingBanner.emit($event)"
+              (resendToAccounting)="resendToAccounting.emit($event)">
             </app-treatment-billing-section>
 
             <!-- READY FOR BILLING -->
@@ -808,6 +814,12 @@ export class TrattamentoDetailComponent {
   @Input() billingRecallDisabled = true;
   @Input() billingRecallDisabledReason: string | null = null;
   @Input() billingRecallInFlight = false;
+  // Sessione 7 — Warning SENT prolungato + Forza re-invio
+  @Input() billingSentWarningLevel: 'none' | 'soft' | 'hard' = 'none';
+  @Input() billingSentWarningMessage: string | null = null;
+  @Input() billingResendVisible = false;
+  @Input() billingResendDisabled = true;
+  @Input() billingResendDisabledReason: string | null = null;
 
   // Output dalla BillingSection (sessione 6 — clinico ↔ accounting).
   // Emettono treatmentId; il container gestisce le mutation reali.
@@ -818,6 +830,8 @@ export class TrattamentoDetailComponent {
   // Sessione 7 — recall outputs
   @Output() requestTreatmentRecall = new EventEmitter<string>();
   @Output() dismissReturnFromAccountingBanner = new EventEmitter<string>();
+  // Sessione 7 — Forza re-invio ad accounting
+  @Output() resendToAccounting = new EventEmitter<string>();
   @Output() reopenTreatment = new EventEmitter<void>();
   /** Emette la richiesta di force-close (segreteria/admin). */
   @Output() forceCloseTreatment = new EventEmitter<void>();

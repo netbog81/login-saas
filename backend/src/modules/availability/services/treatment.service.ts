@@ -1977,6 +1977,99 @@ export class TreatmentService {
     return updated;
   }
 
+  /**
+   * Sessione 7 — Forza re-invio di un treatment ad accounting.
+   *
+   * Use case: il treatment è in `SENT` da minuti senza che accounting lo
+   * passi a `PENDING` (= `billable.received` mai arrivato). Tipicamente
+   * succede dopo incident accounting (Vault rotation, DB-pool esaurito,
+   * registry 401 propagato come errore permanente → DLQ) e il messaggio
+   * originale è perso.
+   *
+   * Vincoli:
+   *  - billingStatus DEVE essere SENT. Altri stati: 400 (non c'è nulla da
+   *    re-inviare se NOT_READY/READY_FOR_BILLING; se PENDING+ accounting
+   *    sta già processando).
+   *  - readyForBillingAt DEVE essere > 5 min fa (smart guard: niente
+   *    re-invio finché l'invio originale ha ancora chance di essere
+   *    processato normalmente).
+   *
+   * Effetto: ripubblica `treatment.closed.<tenant>` con un nuovo eventId.
+   * Lato accounting, il fix idempotency (createFromClinicalEvent ignora
+   * billable in stato CANCELLED + check sourceOperationalSnapshotId)
+   * garantisce che:
+   *  - se nessun billable esisteva → ne viene creato uno (caso happy)
+   *  - se esisteva già un PENDING → no-op idempotente (caso edge)
+   *
+   * Aggiorna `readyForBillingAt = NOW` come segnale "ho appena ri-inviato",
+   * così il warning UI sparisce e non scatta subito un altro forza-re-invio.
+   */
+  async resendTreatmentToAccounting(id: string): Promise<Treatment> {
+    const RESEND_GUARD_MINUTES = 5;
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id } });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      if (treatment.billingStatus !== TreatmentBillingStatus.SENT) {
+        throw new BadRequestException(
+          `Trattamento ${id} non re-inviabile (billingStatus=${treatment.billingStatus}). ` +
+            `Re-invio disponibile solo per trattamenti in stato "Inviato ad accounting" ` +
+            `che non hanno ricevuto conferma.`,
+        );
+      }
+
+      // Smart guard: l'utente deve aver atteso almeno 5 minuti dall'invio
+      // originale. Evita re-invii inutili (accounting normalmente risponde
+      // in <1s) e protegge da doppio-click impaziente.
+      const sentAt = treatment.readyForBillingAt;
+      if (sentAt) {
+        const elapsedMs = Date.now() - sentAt.getTime();
+        const guardMs = RESEND_GUARD_MINUTES * 60 * 1000;
+        if (elapsedMs < guardMs) {
+          const waitSec = Math.ceil((guardMs - elapsedMs) / 1000);
+          throw new BadRequestException(
+            `Re-invio non ancora disponibile. Attendi ancora ~${Math.ceil(waitSec / 60)} minuti ` +
+              `(accounting potrebbe rispondere a breve all'invio originale).`,
+          );
+        }
+      }
+
+      if (!tenantAlias) {
+        throw new Error(
+          'resendTreatmentToAccounting chiamato fuori da contesto tenant.',
+        );
+      }
+
+      // Marca il nuovo invio così il warning UI sparisce.
+      treatment.readyForBillingAt = new Date();
+      await treatmentRepo.save(treatment);
+
+      // Ricostruisci e bufferizza payload (publish-after-commit).
+      const payload = await this.treatmentEventMapper.mapTreatmentClosed(
+        treatment.id,
+        manager,
+        { requestImmediateInvoice: false },
+      );
+      this.eventBuffer.add({
+        eventType: 'treatment.closed',
+        payload,
+        tenantAlias,
+        correlationId,
+      });
+
+      return treatment;
+    });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    return this.requireFullTreatment(result.id);
+  }
+
   // ==================== INVOICE LINE DESCRIPTIONS ====================
 
   /**

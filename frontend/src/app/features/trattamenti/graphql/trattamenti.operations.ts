@@ -274,6 +274,18 @@ export const REQUEST_TREATMENT_RECALL = gql`
   ${TREATMENT_DETAILS_FRAGMENT}
 `;
 
+// Sessione 7 — Forza re-invio ad accounting (escape hatch quando un treatment
+// in SENT non riceve conferma da accounting per >5 minuti, es. dopo incident
+// che ha causato DLQ silenziosa).
+export const RESEND_TREATMENT_TO_ACCOUNTING = gql`
+  mutation ResendTreatmentToAccounting($id: ID!) {
+    resendTreatmentToAccounting(id: $id) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
 // Sessione 7 — Chiude il banner "Restituito dall'amministrazione"
 // (popolato da billable.returned-to-clinical). Setta
 // returnedFromAccountingDismissedAt = now. UI-only, nessun evento publish.

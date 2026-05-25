@@ -10,6 +10,8 @@ import { AccountingEventConsumer } from './accounting-event.consumer';
 import { ProcessedClinicalEvent } from './processed-clinical-event.entity';
 import { TreatmentEventMapper } from './mappers/treatment-event.mapper';
 import { CatalogEventMapper } from './mappers/catalog-event.mapper';
+import { DlqMonitorService } from './dlq-monitor.service';
+import { DlqMonitorResolver } from './dlq-monitor.resolver';
 
 /**
  * Modulo eventi clinici:
@@ -39,6 +41,8 @@ import { CatalogEventMapper } from './mappers/catalog-event.mapper';
     AccountingEventConsumer,
     TreatmentEventMapper,
     CatalogEventMapper,
+    DlqMonitorService,
+    DlqMonitorResolver,
   ],
   exports: [
     ClinicalEventPublisher,
