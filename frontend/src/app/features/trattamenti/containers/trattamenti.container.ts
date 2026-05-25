@@ -14,7 +14,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject, combineLatest } from 'rxjs';
+import { Subject, Subscription, combineLatest, interval } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { TrattamentiService } from '../services/trattamenti.service';
@@ -219,6 +219,15 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
+  /**
+   * Polling attivo (sessione 7): quando almeno un treatment della lista
+   * ha `recallRequestId != null`, polling ogni 3s che fa reload() per
+   * vedere arrivare la response accounting. Si auto-spegne quando nessun
+   * treatment è più in volo.
+   */
+  private recallPollingSub: Subscription | null = null;
+  private static readonly RECALL_POLL_INTERVAL_MS = 3000;
+
   constructor(
     public state: TrattamentiStateService,
     private service: TrattamentiService,
@@ -286,7 +295,31 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
         const filtered = this.applyClientFilters(treatments, filters);
         this.flatTreatments = filtered;
         this.groupedTreatments = this.buildGroups(filtered, mode);
+        // Auto-attiva/spegne il polling recall in base ai treatments
+        // attualmente visibili. Polling solo se almeno uno ha recall in volo.
+        this.maybeStartRecallPolling(treatments);
       });
+  }
+
+  /**
+   * Sessione 7 — Gestisce il ciclo del polling per i recall in volo.
+   * Se in lista c'è almeno un treatment con `recallRequestId != null`,
+   * attiva polling ogni 3s (idempotente: non duplica). Se nessun
+   * treatment è più in volo, ferma il polling. Cleanup automatico al
+   * destroy del container.
+   */
+  private maybeStartRecallPolling(treatments: Trattamento[]): void {
+    const hasRecallInFlight = treatments.some(t => !!t.recallRequestId);
+    if (hasRecallInFlight && !this.recallPollingSub) {
+      this.recallPollingSub = interval(
+        TrattamentiContainer.RECALL_POLL_INTERVAL_MS,
+      )
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(() => this.reload());
+    } else if (!hasRecallInFlight && this.recallPollingSub) {
+      this.recallPollingSub.unsubscribe();
+      this.recallPollingSub = null;
+    }
   }
 
   /**
@@ -532,6 +565,47 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     const inst = ref.componentInstance;
     inst.canForceCloseTreatment = canForceCloseTreatment;
 
+    // Helper definito qui sopra (vs in basso) per essere referenziabile
+    // dalla subscription state.treatments$ → fresh update.
+    const applyBillingFlagsToInst = (t: Trattamento): void => {
+      const flags = this.computeBillingFlags(t);
+      ref.componentInstance.billingCancelDisabled = flags.cancelDisabled;
+      ref.componentInstance.billingCancelDisabledReason = flags.cancelDisabledReason;
+      ref.componentInstance.billingReopenDisabled = flags.reopenDisabled;
+      ref.componentInstance.billingReopenDisabledReason = flags.reopenDisabledReason;
+      ref.componentInstance.billingImmediateInvoiceDisabled = flags.immediateInvoiceDisabled;
+      ref.componentInstance.billingImmediateInvoiceDisabledReason = flags.immediateInvoiceDisabledReason;
+      ref.componentInstance.billingRecallDisabled = flags.recallDisabled;
+      ref.componentInstance.billingRecallDisabledReason = flags.recallDisabledReason;
+      ref.componentInstance.billingRecallInFlight = flags.recallInFlight;
+    };
+
+    // Sessione 7 — Sync dialog ↔ state: quando reload() (anche da polling
+    // recall in volo) rinfresca la lista, propaga la nuova versione del
+    // treatment corrente al dialog. Senza, l'operatore con dialog aperto
+    // resta a guardare uno spinner "Richiamo in corso" anche dopo che
+    // accounting ha risposto. Subscription chiusa al dialog close.
+    this.state.treatments$
+      .pipe(takeUntil(ref.afterClosed()))
+      .subscribe((list) => {
+        const fresh = list.find((t) => t.id === treatment.id);
+        if (!fresh) return;
+        const current = ref.componentInstance.treatment;
+        // Aggiorna solo se i campi rilevanti sono cambiati (evita
+        // re-render inutili). Confronto su billingStatus + recall fields:
+        // sono i soli che cambiano via consumer async.
+        if (
+          fresh.billingStatus !== current.billingStatus ||
+          fresh.recallRequestId !== current.recallRequestId ||
+          fresh.lastRecallRejectionAt !== current.lastRecallRejectionAt ||
+          fresh.returnedFromAccountingAt !== current.returnedFromAccountingAt ||
+          fresh.accountingInvoiceUrl !== current.accountingInvoiceUrl
+        ) {
+          ref.componentInstance.treatment = fresh;
+          applyBillingFlagsToInst(fresh);
+        }
+      });
+
     inst.updateServiceDescription.subscribe((p: DetailUpdateServiceDescriptionPayload) => {
       this.service.updateServiceInvoiceDescription(p).subscribe({
         next: (updatedTs) => {
@@ -684,21 +758,8 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     });
 
     // ────────── BillingSection (sessione 6 Step 6.5) ──────────
-    // Cabla i 3 flag disabled basandosi su billingStatus + handler 4 events.
-    // Helper: ricalcola i flag per il treatment correntemente nel dialog.
-    const applyBillingFlagsToInst = (t: Trattamento): void => {
-      const flags = this.computeBillingFlags(t);
-      ref.componentInstance.billingCancelDisabled = flags.cancelDisabled;
-      ref.componentInstance.billingCancelDisabledReason = flags.cancelDisabledReason;
-      ref.componentInstance.billingReopenDisabled = flags.reopenDisabled;
-      ref.componentInstance.billingReopenDisabledReason = flags.reopenDisabledReason;
-      ref.componentInstance.billingImmediateInvoiceDisabled = flags.immediateInvoiceDisabled;
-      ref.componentInstance.billingImmediateInvoiceDisabledReason = flags.immediateInvoiceDisabledReason;
-      ref.componentInstance.billingRecallDisabled = flags.recallDisabled;
-      ref.componentInstance.billingRecallDisabledReason = flags.recallDisabledReason;
-      ref.componentInstance.billingRecallInFlight = flags.recallInFlight;
-    };
-    // Inizializza i flag con il treatment iniziale.
+    // applyBillingFlagsToInst è dichiarata sopra (per uso anche nella
+    // subscription state.treatments$). Qui solo inizializzazione.
     applyBillingFlagsToInst(treatment);
 
     // Cancel: dialog conferma con reason obbligatoria.

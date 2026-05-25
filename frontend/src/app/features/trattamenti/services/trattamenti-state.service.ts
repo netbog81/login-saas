@@ -12,16 +12,35 @@ import {
  * Layer 3 - State service per la feature Trattamenti.
  * Contiene filtri, modalità di vista e selezione multipla.
  * Non chiama mai il backend: quella è responsabilità di TrattamentiService.
+ *
+ * Filtri persistiti su localStorage (sessione 7): default include
+ * IN_PROGRESS + OPERATOR_COMPLETED + CLOSED. Reset filtri ripristina il
+ * default e cancella la cache.
  */
 @Injectable({ providedIn: 'root' })
 export class TrattamentiStateService {
   // ==================== STATE ====================
 
-  private readonly filtersSubject = new BehaviorSubject<TrattamentiFilters>({
-    statuses: [TreatmentStatus.IN_PROGRESS, TreatmentStatus.OPERATOR_COMPLETED],
-  });
+  /** Default filtri quando localStorage è vuoto o resetFilters() viene chiamato. */
+  private static readonly DEFAULT_FILTERS: TrattamentiFilters = {
+    statuses: [
+      TreatmentStatus.IN_PROGRESS,
+      TreatmentStatus.OPERATOR_COMPLETED,
+      TreatmentStatus.CLOSED,
+    ],
+  };
 
-  private readonly viewModeSubject = new BehaviorSubject<TrattamentiViewMode>('flat');
+  /** Chiavi localStorage. Versionate per consentire migration future. */
+  private static readonly LS_FILTERS_KEY = 'trattamenti.filters.v1';
+  private static readonly LS_VIEWMODE_KEY = 'trattamenti.viewMode.v1';
+
+  private readonly filtersSubject = new BehaviorSubject<TrattamentiFilters>(
+    this.loadFiltersFromStorage(),
+  );
+
+  private readonly viewModeSubject = new BehaviorSubject<TrattamentiViewMode>(
+    this.loadViewModeFromStorage(),
+  );
 
   private readonly treatmentsSubject = new BehaviorSubject<Trattamento[]>([]);
 
@@ -72,20 +91,22 @@ export class TrattamentiStateService {
   // ==================== MUTATIONS ====================
 
   setFilters(partial: Partial<TrattamentiFilters>): void {
-    this.filtersSubject.next({ ...this.filtersSubject.value, ...partial });
+    const next = { ...this.filtersSubject.value, ...partial };
+    this.filtersSubject.next(next);
+    this.persistFilters(next);
     // Se cambiano i filtri, svuota la selezione (potrebbero non essere più visibili)
     this.clearSelection();
   }
 
   resetFilters(): void {
-    this.filtersSubject.next({
-      statuses: [TreatmentStatus.IN_PROGRESS, TreatmentStatus.OPERATOR_COMPLETED],
-    });
+    this.filtersSubject.next({ ...TrattamentiStateService.DEFAULT_FILTERS });
+    this.clearFiltersFromStorage();
     this.clearSelection();
   }
 
   setViewMode(mode: TrattamentiViewMode): void {
     this.viewModeSubject.next(mode);
+    this.persistViewMode(mode);
   }
 
   setTreatments(treatments: Trattamento[]): void {
@@ -164,5 +185,57 @@ export class TrattamentiStateService {
 
   isSelected(id: string): boolean {
     return this.selectedIdsSubject.value.has(id);
+  }
+
+  // ==================== PERSISTENCE (localStorage) ====================
+
+  private loadFiltersFromStorage(): TrattamentiFilters {
+    try {
+      const raw = localStorage.getItem(TrattamentiStateService.LS_FILTERS_KEY);
+      if (!raw) return { ...TrattamentiStateService.DEFAULT_FILTERS };
+      const parsed = JSON.parse(raw) as Partial<TrattamentiFilters>;
+      // Merge col default per essere robusti a chiavi mancanti (es. dopo
+      // aggiornamenti del modello filtri non ancora migrate).
+      return { ...TrattamentiStateService.DEFAULT_FILTERS, ...parsed };
+    } catch {
+      return { ...TrattamentiStateService.DEFAULT_FILTERS };
+    }
+  }
+
+  private loadViewModeFromStorage(): TrattamentiViewMode {
+    try {
+      const raw = localStorage.getItem(TrattamentiStateService.LS_VIEWMODE_KEY);
+      if (raw === 'flat' || raw === 'by-patient' || raw === 'by-operator') return raw;
+      return 'flat';
+    } catch {
+      return 'flat';
+    }
+  }
+
+  private persistFilters(f: TrattamentiFilters): void {
+    try {
+      localStorage.setItem(
+        TrattamentiStateService.LS_FILTERS_KEY,
+        JSON.stringify(f),
+      );
+    } catch {
+      /* localStorage non disponibile (private mode, quota piena): ignora */
+    }
+  }
+
+  private persistViewMode(m: TrattamentiViewMode): void {
+    try {
+      localStorage.setItem(TrattamentiStateService.LS_VIEWMODE_KEY, m);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private clearFiltersFromStorage(): void {
+    try {
+      localStorage.removeItem(TrattamentiStateService.LS_FILTERS_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 }
