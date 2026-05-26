@@ -237,6 +237,19 @@ export const SET_TREATMENTS_READY_FOR_BILLING = gql`
 
 // Cancel treatment (sessione 6 Step 7.4 backend). Triggera publish
 // `treatment.cancelled.<tenant>` SOLO se billingStatus era SENT/PENDING.
+// Sessione 7 — Query singolo treatment by id, usata dal refetch mirato
+// scatenato da eventi SSE `treatment_status_changed`. Restituisce un
+// Treatment completo (TreatmentDetails fragment) per aggiornare in modo
+// chirurgico la riga in lista senza ricaricare tutto.
+export const TREATMENT_BY_ID = gql`
+  query TreatmentById($id: ID!) {
+    treatment(id: $id) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
 // Vincolo backend: rifiuta se status post-INVOICED.
 export const CANCEL_TREATMENT_BILLING = gql`
   mutation CancelTreatmentBilling($id: ID!, $reason: String!) {

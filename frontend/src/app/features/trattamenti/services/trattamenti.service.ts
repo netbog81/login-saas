@@ -31,6 +31,7 @@ import {
   REQUEST_TREATMENT_RECALL,
   DISMISS_RETURN_FROM_ACCOUNTING_BANNER,
   RESEND_TREATMENT_TO_ACCOUNTING,
+  TREATMENT_BY_ID,
 } from '../graphql/trattamenti.operations';
 
 /**
@@ -74,6 +75,18 @@ export class TrattamentiService extends BaseGraphQLService {
       TREATMENTS_FOR_SECRETARY,
       this.sanitizeFilters(filters),
     ).pipe(map(r => (r?.treatmentsForSecretary ?? []).map(flattenPatient)));
+  }
+
+  /**
+   * Sessione 7 — Refetch mirato di UN singolo treatment by id. Usato dai
+   * subscriber SSE (treatment_status_changed) per aggiornare la riga in
+   * lista senza ricaricare tutta la query pesante TREATMENTS_FOR_SECRETARY.
+   */
+  getById(id: string): Observable<Trattamento | null> {
+    return this.query<{ treatment: Trattamento | null }>(
+      TREATMENT_BY_ID,
+      { id },
+    ).pipe(map(r => (r?.treatment ? flattenPatient(r.treatment) : null)));
   }
 
   /**

@@ -692,6 +692,24 @@ type DeleteOperatorResult {
   hardDeleted: Boolean!
 }
 
+"""Stato di una singola coda DLQ monitorata."""
+type DlqQueueStatusGql {
+  errorMessage: String
+  messageCount: Float!
+  name: String!
+  reachable: Boolean!
+}
+
+"""
+Snapshot stato delle DLQ accounting↔clinico per widget admin. healthy=true significa zero messaggi pending e tutte le code raggiungibili.
+"""
+type DlqStatusGql {
+  checkedAt: DateTime!
+  healthy: Boolean!
+  queues: [DlqQueueStatusGql!]!
+  totalMessages: Float!
+}
+
 """Category of attached document"""
 enum DocumentCategory {
   CONSENT
@@ -1249,6 +1267,7 @@ type Mutation {
   reopenTreatmentBySecretary(id: ID!): Treatment!
   reorderWaitingList(input: ReorderWaitingListInput!): [WaitingListEntry!]!
   requestTreatmentRecall(id: ID!, reason: String): Treatment!
+  resendTreatmentToAccounting(id: ID!): Treatment!
   resetKeycloakPassword(input: ResetKeycloakPasswordInput!): Boolean!
   resetTestEvaluation(testId: ID!): EvaluationTest!
   resolveAppointmentConflict(action: ConflictResolutionAction!, appointmentId: ID!, newDate: String, newEndTime: String, newStartTime: String, notes: String, resolvedBy: ID!): AvailabilityAppointment!
@@ -1776,6 +1795,7 @@ type Query {
   conflictedAppointmentsCount: Int!
   currentGymPatternGroup(gymRoomId: ID!): GymPatternGroup
   currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
+  dlqStatus: DlqStatusGql!
   documentsByPath(pathId: ID!): [PathDocument!]!
   documentsByPathAndCategory(category: DocumentCategory!, pathId: ID!): [PathDocument!]!
   evaluationByPath(pathId: ID!): PatientEvaluation

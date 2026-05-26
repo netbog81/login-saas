@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   EventEmitter,
+  HostListener,
   Input,
   OnDestroy,
   OnInit,
@@ -46,6 +47,7 @@ import {
 
 import { OperatorService } from '../../../services/operator.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { SseService, CalendarEvent } from '../../../services/sse.service';
 
 const SECRETARY_ROLES = ['admin', 'amministratore', 'superadmin', 'segreteria'];
 
@@ -231,6 +233,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     private auth: AuthService,
     private dialog: MatDialog,
     private snackBar: MatSnackBar,
+    private sse: SseService,
   ) {}
 
   ngOnInit(): void {
@@ -256,21 +259,37 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
           }
           this.loadOperatorsOptions();
           this.subscribeToReload();
+          this.subscribeToSse();
         },
         error: () => {
           this.loadOperatorsOptions();
           this.subscribeToReload();
+          this.subscribeToSse();
         },
       });
     } else {
       this.loadOperatorsOptions();
       this.subscribeToReload();
+      this.subscribeToSse();
     }
   }
 
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  /**
+   * Sessione 7 — Safety net: se l'utente torna alla tab del browser dopo
+   * un periodo di assenza (es. è andato su accounting, ha emesso fattura,
+   * torna su clinico) → reload completo. Cope il caso edge in cui la SSE
+   * connection si è interrotta e non si è auto-riconnessa.
+   */
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    if (document.visibilityState === 'visible') {
+      this.reload();
+    }
   }
 
   /**
@@ -291,6 +310,52 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
         const filtered = this.applyClientFilters(treatments, filters);
         this.flatTreatments = filtered;
         this.groupedTreatments = this.buildGroups(filtered, mode);
+      });
+  }
+
+  /**
+   * Sessione 7 — Sottoscrive al canale SSE `/events/appointments` per
+   * ricevere eventi `treatment_status_changed` (+ created/deleted).
+   * Sostituisce il polling rimosso in commit 81190cf: real-time push,
+   * niente flickering, banda zero.
+   *
+   * Strategia di refetch:
+   *  - `treatment_status_changed` con `treatmentId` presente in lista →
+   *    refetch MIRATO del singolo treatment (TREATMENT_BY_ID). Aggiorna
+   *    riga + propaga al dialog aperto via state.treatments$.
+   *  - `treatment_created` / `treatment_deleted` → reload completo
+   *    (creazione/cancellazione può aggiungere/togliere righe). Rari.
+   *  - `heartbeat` → ignora.
+   *  - Eventi per treatment NON in lista (es. operatore Y mentre vedo
+   *    operatore X) → ignora.
+   *
+   * Cleanup: takeUntil(destroy$) chiude la subscription al destroy del
+   * container; SseService chiude EventSource al unsubscribe.
+   */
+  private subscribeToSse(): void {
+    this.sse.getAppointmentEvents()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (event: CalendarEvent) => {
+          if (event.type === 'heartbeat') return;
+
+          if (event.type === 'treatment_status_changed' && event.treatmentId) {
+            // Refetch mirato: aggiorna solo se il treatment è in lista.
+            const inList = this.state.treatments.some(t => t.id === event.treatmentId);
+            if (!inList) return;
+            this.service.getById(event.treatmentId).subscribe({
+              next: (fresh) => {
+                if (fresh) this.state.updateTreatment(fresh);
+              },
+              error: () => { /* ignora — il prossimo evento ritenta */ },
+            });
+            return;
+          }
+
+          if (event.type === 'treatment_created' || event.type === 'treatment_deleted') {
+            this.reload();
+          }
+        },
       });
   }
 

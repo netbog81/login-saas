@@ -170,6 +170,25 @@ consumer. Pre-requisito: treatment fresco in `READY_FOR_BILLING`.
 `npm run smoke:2-cascade -- --tenant bdq --sale-test --productId <uuid>
 --purchaserSubjectId <uuid>` per testare `sale.completed`.
 
+### Notifiche SSE post-update (sessione 7)
+
+Ogni handler del `AccountingEventConsumer` che modifica un treatment
+emette `treatment_status_changed` via `EventsService.emit()` dopo il
+save. Idem per le mutation user-action: `cancelTreatment`,
+`requestTreatmentRecall`, `dismissReturnFromAccountingBanner`,
+`resendTreatmentToAccounting`.
+
+Canale SSE: `GET /events/appointments` (riusato, payload include
+`treatmentId`). Frontend si iscrive nel container `/trattamenti`
+e fa refetch mirato del singolo treatment via `TREATMENT_BY_ID`
+(nessun reload lista completo per status change).
+
+**TODO post-MVP**: `SseService` frontend ha un `EventSource` singleton
+per istanza service → due container aperti contemporaneamente
+(calendar-v3 + trattamenti) potrebbero condividere la stessa
+connection (Angular @Injectable providedIn: 'root'). OK in pratica,
+ma se servisse isolamento, splittarli in due endpoint backend dedicati.
+
 ### Bootstrap iniziale catalogo (Step 5)
 
 `npm run sync:services -- --tenant bdq` pubblica `service.upserted` per

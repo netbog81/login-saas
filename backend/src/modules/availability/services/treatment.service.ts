@@ -1612,6 +1612,14 @@ export class TreatmentService {
     });
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    // SSE: notifica UI aperte del cambio billingStatus (cancel → NOT_READY).
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.billingStatus,
+      timestamp: new Date(),
+    });
     // Re-fetch con relations per il return GraphQL (vedi nota su
     // requireFullTreatment in requestTreatmentRecall).
     return this.requireFullTreatment(result.id);
@@ -1701,6 +1709,16 @@ export class TreatmentService {
     });
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    // SSE: notifica UI dello stato recall in volo (recallRequestId valorizzato).
+    // Il billingStatus NON cambia (aspetta response accounting), ma serve
+    // notificare il frontend per mostrare subito lo spinner "Richiamo in corso".
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.billingStatus,
+      timestamp: new Date(),
+    });
     // Re-fetch con relations (operator/patient/appointment/services/...)
     // per il return GraphQL: il TreatmentDetails fragment del frontend
     // legge `operator` non-nullable + altri sotto-campi, e il `treatment`
@@ -1729,7 +1747,16 @@ export class TreatmentService {
       treatment.returnedFromAccountingDismissedAt = new Date();
       await treatmentRepo.save(treatment);
     });
-    return this.requireFullTreatment(id);
+    const fresh = await this.requireFullTreatment(id);
+    // SSE: notifica UI per nascondere il banner "Restituito da amministrazione".
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: fresh.id,
+      operatorId: fresh.operatorId,
+      newStatus: fresh.billingStatus,
+      timestamp: new Date(),
+    });
+    return fresh;
   }
 
   /**
@@ -2067,6 +2094,15 @@ export class TreatmentService {
     });
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    // SSE: notifica UI per aggiornare readyForBillingAt (timer warning UI
+    // riparte da zero post-resend).
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.billingStatus,
+      timestamp: new Date(),
+    });
     return this.requireFullTreatment(result.id);
   }
 

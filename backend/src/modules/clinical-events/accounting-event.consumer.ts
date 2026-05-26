@@ -15,6 +15,7 @@ import { TenantSchemaContextService } from '../../database/tenant-schema-context
 import { TenantOpenbaoResolverService } from '../../database/tenant-openbao-resolver.service';
 import { Treatment } from '../availability/entities/treatment.entity';
 import { TreatmentBillingStatus } from '../availability/entities/treatment-billing-status.enum';
+import { EventsService } from '../events/events.service';
 import {
   AccountingInboundEventType,
   BillableCancellationRejectedPayload,
@@ -106,7 +107,25 @@ export class AccountingEventConsumer
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(ProcessedClinicalEvent)
     private readonly processedRepo: Repository<ProcessedClinicalEvent>,
+    private readonly eventsService: EventsService,
   ) {}
+
+  /**
+   * Sessione 7 — Emette SSE `treatment_status_changed` per notificare i
+   * client UI aperti del cambio billingStatus / campi accounting. Chiamato
+   * da tutti gli handler dopo `manager.save(Treatment, ...)`. Il payload
+   * minimo (treatmentId + newStatus) è sufficiente perché il frontend
+   * faccia un refetch mirato del singolo treatment.
+   */
+  private emitTreatmentChanged(treatment: Treatment): void {
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: treatment.id,
+      operatorId: treatment.operatorId,
+      newStatus: treatment.billingStatus,
+      timestamp: new Date(),
+    });
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     if (!this.config.enabled) {
@@ -447,6 +466,7 @@ export class AccountingEventConsumer
     treatment.billingStatus = TreatmentBillingStatus.PENDING;
     treatment.accountingBillableEventId = billableEventId;
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleBillableInvoiced(
@@ -486,6 +506,7 @@ export class AccountingEventConsumer
     treatment.isInvoicedToPatient = true;
     treatment.invoicedToPatientAt = new Date(p.issuedAt);
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleBillableUninvoiced(
@@ -522,6 +543,7 @@ export class AccountingEventConsumer
     treatment.isInvoicedToPatient = false;
     treatment.invoicedToPatientAt = null as any;
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleBillableRefunded(
@@ -539,6 +561,7 @@ export class AccountingEventConsumer
     treatment.accountingCreditNoteIssuedAt = new Date(p.refundedAt);
     treatment.accountingRefundReason = p.reason ?? undefined;
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleBillablePartiallyRefunded(
@@ -556,6 +579,7 @@ export class AccountingEventConsumer
     treatment.accountingCreditNoteIssuedAt = new Date(p.refundedAt);
     treatment.accountingRefundReason = p.reason ?? undefined;
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleBillableReissued(
@@ -581,6 +605,7 @@ export class AccountingEventConsumer
     treatment.isInvoicedToPatient = true;
     treatment.invoicedToPatientAt = new Date(p.reissuedAt);
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleCancellationRejected(
@@ -606,6 +631,7 @@ export class AccountingEventConsumer
     treatment.billingAlertAt = new Date(p.rejectedAt);
     treatment.billingAlertDismissedAt = null as any; // riapre se era stato dismissato
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
   }
 
   private async handleRecallAccepted(
@@ -657,6 +683,7 @@ export class AccountingEventConsumer
     treatment.lastRecallRejectionAt = null as any;
 
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
 
     this.logger.log(
       `Recall accettato per treatment ${p.treatmentId}` +
@@ -693,6 +720,7 @@ export class AccountingEventConsumer
     treatment.recallRequestedAt = null as any;
 
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
 
     this.logger.log(
       `Recall rifiutato per treatment ${p.treatmentId}: reason=${p.reason}` +
@@ -745,6 +773,7 @@ export class AccountingEventConsumer
     treatment.recallRequestedAt = null as any;
 
     await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
 
     this.logger.log(
       `Treatment ${p.treatmentId} restituito da accounting` +
