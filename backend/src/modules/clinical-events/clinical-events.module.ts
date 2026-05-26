@@ -12,6 +12,7 @@ import { TreatmentEventMapper } from './mappers/treatment-event.mapper';
 import { CatalogEventMapper } from './mappers/catalog-event.mapper';
 import { DlqMonitorService } from './dlq-monitor.service';
 import { DlqMonitorResolver } from './dlq-monitor.resolver';
+import { AppUsersModule } from '../users/app-users.module';
 
 /**
  * Modulo eventi clinici:
@@ -32,6 +33,9 @@ import { DlqMonitorResolver } from './dlq-monitor.resolver';
   imports: [
     ConfigModule,
     TypeOrmModule.forFeature([ProcessedClinicalEvent]),
+    // AppUsersModule serve a DlqMonitorResolver per il guard AuthorizationGuard
+    // (che inietta AppUserService). Aggiunto sessione 7 col widget admin DLQ.
+    AppUsersModule,
   ],
   providers: [
     ClinicalEventsConfig,
