@@ -239,6 +239,28 @@ export class AppModule implements NestModule {
           migrationsRun: true,
           migrations: [__dirname + '/migrations/*.{ts,js}'],
           migrationsTableName: 'migrations',
+          // Sessione 7 — Hardening pool node-postgres. Default era max=10,
+          // connectionTimeoutMillis=0 (infinito). Incident 26/05: pgAdmin
+          // sature Postgres (~30 conn), clinico/accounting non riuscivano
+          // ad aprire connessioni e i consumer RabbitMQ andavano in DLQ.
+          //
+          // Configurabili via .env in caso di sistemi più grandi:
+          //   DB_POOL_MAX (default 20)
+          //   DB_POOL_IDLE_TIMEOUT_MS (default 10000)
+          //   DB_POOL_CONNECTION_TIMEOUT_MS (default 5000) — KEY: fail-fast
+          //     se Postgres satura, invece di appendere richieste HTTP
+          //     indefinitamente. L'errore arriva subito al client.
+          extra: {
+            max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+            idleTimeoutMillis: parseInt(
+              process.env.DB_POOL_IDLE_TIMEOUT_MS || '10000',
+              10,
+            ),
+            connectionTimeoutMillis: parseInt(
+              process.env.DB_POOL_CONNECTION_TIMEOUT_MS || '5000',
+              10,
+            ),
+          },
         }),
         RegistryModule,
         RegistryEventsModule,
