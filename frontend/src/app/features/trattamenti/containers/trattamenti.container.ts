@@ -1,5 +1,6 @@
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   EventEmitter,
   HostListener,
@@ -234,6 +235,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private snackBar: MatSnackBar,
     private sse: SseService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -310,6 +312,10 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
         const filtered = this.applyClientFilters(treatments, filters);
         this.flatTreatments = filtered;
         this.groupedTreatments = this.buildGroups(filtered, mode);
+        // OnPush: subscription async non triggera CD da sola. markForCheck
+        // garantisce che il refresh SSE → state.updateTreatment → questa
+        // emission re-renderizzi la lista.
+        this.cdr.markForCheck();
       });
   }
 
@@ -345,7 +351,12 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
             if (!inList) return;
             this.service.getById(event.treatmentId).subscribe({
               next: (fresh) => {
-                if (fresh) this.state.updateTreatment(fresh);
+                if (fresh) {
+                  this.state.updateTreatment(fresh);
+                  // OnPush safety: dovrebbe già scattare dal combineLatest
+                  // upstream, ma non costa nulla forzare.
+                  this.cdr.markForCheck();
+                }
               },
               error: () => { /* ignora — il prossimo evento ritenta */ },
             });
