@@ -80,11 +80,18 @@ export class ClinicalEventsConfig {
     this.producerVersion = config.get<string>('PRODUCER_VERSION', pkgVersion);
 
     // Sessione 7 — Management API: deriva default da RABBITMQ_URL parsato.
-    // .env può overridare esplicitamente (es. management su host diverso).
+    // CONVENZIONE PORTE: RabbitMQ Management è esposto sulla porta AMQP+10000
+    // (es. AMQP 5672 → Mgmt 15672; AMQP 5676 → Mgmt 15676). Questo evita
+    // hardcoding di 15672 che non funziona quando docker compose remappa
+    // (vedi incident 2026-05-26: porta AMQP 5676, Management 15676).
+    // .env può comunque overridare con RABBITMQ_MANAGEMENT_URL esplicito.
     const parsedAmqp = this.tryParseAmqpUrl(this.url);
+    const defaultMgmtPort = parsedAmqp?.port ? parsedAmqp.port + 10000 : 15672;
     this.managementUrl = config.get<string>(
       'RABBITMQ_MANAGEMENT_URL',
-      parsedAmqp ? `http://${parsedAmqp.host}:15672` : 'http://localhost:15672',
+      parsedAmqp
+        ? `http://${parsedAmqp.host}:${defaultMgmtPort}`
+        : 'http://localhost:15672',
     );
     this.managementUser = config.get<string>(
       'RABBITMQ_MANAGEMENT_USER',
@@ -112,14 +119,22 @@ export class ClinicalEventsConfig {
   /** Parsa amqp://user:pass@host:port/vhost (ritorna null se malformato). */
   private tryParseAmqpUrl(
     url: string,
-  ): { user: string; pass: string; host: string; vhost: string } | null {
+  ): {
+    user: string;
+    pass: string;
+    host: string;
+    port: number | null;
+    vhost: string;
+  } | null {
     try {
       const u = new URL(url);
       const vhost = u.pathname && u.pathname !== '/' ? u.pathname.slice(1) : '/';
+      const port = u.port ? parseInt(u.port, 10) : null;
       return {
         user: decodeURIComponent(u.username),
         pass: decodeURIComponent(u.password),
         host: u.hostname,
+        port: Number.isFinite(port) ? port : null,
         vhost: decodeURIComponent(vhost),
       };
     } catch {
