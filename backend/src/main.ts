@@ -42,9 +42,12 @@ async function bootstrap() {
       config: {
         endpoint: process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200',
         agentMode: isAgentMode,
+        agentTokenPath: isAgentMode ? process.env.OPENBAO_AGENT_TOKEN_PATH : undefined,
         roleId: isAgentMode ? undefined : process.env.CURANDIS_OPENBAO_ROLE_ID,
         secretId: isAgentMode ? undefined : process.env.CURANDIS_OPENBAO_SECRET_ID,
         envFilePath: isAgentMode ? undefined : envFilePath,
+        enableProxyHealthCheck: true,
+        proxyHealthCheckIntervalMs: 60 * 1000,
       },
       credentialSources: [
         {

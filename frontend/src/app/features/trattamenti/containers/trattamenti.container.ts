@@ -339,26 +339,45 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
    * container; SseService chiude EventSource al unsubscribe.
    */
   private subscribeToSse(): void {
+    // eslint-disable-next-line no-console
+    console.log('[TrattamentiContainer] subscribeToSse() called');
     this.sse.getAppointmentEvents()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (event: CalendarEvent) => {
+          // eslint-disable-next-line no-console
+          console.log('[TrattamentiContainer] SSE event received', event);
           if (event.type === 'heartbeat') return;
 
           if (event.type === 'treatment_status_changed' && event.treatmentId) {
-            // Refetch mirato: aggiorna solo se il treatment è in lista.
-            const inList = this.state.treatments.some(t => t.id === event.treatmentId);
-            if (!inList) return;
-            this.service.getById(event.treatmentId).subscribe({
+            const targetId = event.treatmentId;
+            const inList = this.state.treatments.some(t => t.id === targetId);
+            // eslint-disable-next-line no-console
+            console.log('[SSE-handler]', { targetId, inList, listSize: this.state.treatments.length });
+            if (!inList) {
+              // Treatment non in lista corrente: potrebbe essere appena creato
+              // o appena passato a uno status filtrato. Reload completo per
+              // gestire il caso.
+              this.reload();
+              return;
+            }
+            this.service.getById(targetId).subscribe({
               next: (fresh) => {
+                // eslint-disable-next-line no-console
+                console.log('[SSE-handler] refetch result', {
+                  targetId,
+                  hasResult: !!fresh,
+                  newStatus: fresh?.billingStatus,
+                });
                 if (fresh) {
                   this.state.updateTreatment(fresh);
-                  // OnPush safety: dovrebbe già scattare dal combineLatest
-                  // upstream, ma non costa nulla forzare.
                   this.cdr.markForCheck();
                 }
               },
-              error: () => { /* ignora — il prossimo evento ritenta */ },
+              error: (e) => {
+                // eslint-disable-next-line no-console
+                console.error('[SSE-handler] refetch error', e);
+              },
             });
             return;
           }
