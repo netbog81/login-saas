@@ -28,9 +28,8 @@ function getLocalIp(): string {
 
 async function bootstrap() {
   const isAgentMode = process.env.OPENBAO_AGENT_MODE === 'true';
-  const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // 1. Ottieni credenziali DB da OpenBao (con fallback development)
+  // 1. Ottieni credenziali DB da OpenBao
   console.log(`[Bootstrap] Modalita' OpenBao: ${isAgentMode ? 'Agent proxy' : 'AppRole diretto'}`);
 
   let openbaoService: OpenbaoBaseService | null = null;
@@ -65,22 +64,46 @@ async function bootstrap() {
     mainDbCreds = result.credentials['main-db'];
     console.log(`[Bootstrap] Credenziali DB da OpenBao (user: ${mainDbCreds.username})`);
   } catch (error) {
-    if (isDevelopment) {
-      // In development, fallback a credenziali dal .env
-      const fbUser = process.env.MAIN_DB_USERNAME;
-      const fbPass = process.env.MAIN_DB_PASSWORD;
-      if (fbUser && fbPass) {
-        console.warn('[Bootstrap] OpenBao non disponibile, uso credenziali fallback dal .env');
-        mainDbCreds = { username: fbUser, password: fbPass };
-        credentialSource = 'env-fallback';
-      } else {
-        console.error('[Bootstrap] OpenBao non disponibile e nessuna credenziale fallback nel .env');
-        throw error;
-      }
-    } else {
-      // In produzione, OpenBao e' obbligatorio
+    // Fallback dev locale: SOLO se esplicitamente abilitato via env
+    // `ALLOW_DEV_FALLBACK=true`. Il vecchio comportamento "fallback
+    // automatico se NODE_ENV=development" è stato rimosso il 2026-06-01
+    // dopo un incidente: l'Agent OpenBao era momentaneamente irraggiungibile
+    // al boot, il backend è caduto silenziosamente sulle credenziali
+    // `postgres/postgres` del .env, e tutte le richieste tenant sono
+    // andate in loop 28P01 per ore senza che fosse evidente cosa stesse
+    // succedendo (sintomo confuso con il bug del token stale OpenBao,
+    // che era una cosa diversa). Fail-fast > start azzoppato.
+    const allowDevFallback = process.env.ALLOW_DEV_FALLBACK === 'true';
+    const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200';
+    const errMsg = (error as Error)?.message ?? String(error);
+
+    if (!allowDevFallback) {
+      console.error(
+        `[Bootstrap] OpenBao non raggiungibile su ${endpoint}: ${errMsg}\n` +
+        `[Bootstrap] Il backend NON parte senza credenziali OpenBao valide. Verifiche:\n` +
+        `  - Agent OpenBao attivo:  systemctl status openbao-agent-main.service\n` +
+        `  - Endpoint raggiungibile: curl -s ${endpoint}/v1/sys/health\n` +
+        `  - Policy del role abilita la lettura di database/static-creds/postgres-main-service-account\n` +
+        `[Bootstrap] Per dev locale senza OpenBao: export ALLOW_DEV_FALLBACK=true (richiede MAIN_DB_USERNAME/PASSWORD nel .env).`,
+      );
       throw error;
     }
+
+    // Fallback esplicito (dev locale): richiede entrambe le env vars.
+    const fbUser = process.env.MAIN_DB_USERNAME;
+    const fbPass = process.env.MAIN_DB_PASSWORD;
+    if (!fbUser || !fbPass) {
+      console.error(
+        `[Bootstrap] ALLOW_DEV_FALLBACK=true ma MAIN_DB_USERNAME/MAIN_DB_PASSWORD non valorizzati nel .env. Fail.`,
+      );
+      throw error;
+    }
+    console.warn(
+      `[Bootstrap] ALLOW_DEV_FALLBACK=true → uso credenziali fallback dal .env (user="${fbUser}"). ` +
+      `NON USARE IN PRODUZIONE: ogni 28P01 successivo NON è recuperabile via force-refresh.`,
+    );
+    mainDbCreds = { username: fbUser, password: fbPass };
+    credentialSource = 'env-fallback';
   }
 
   // 2. Crea l'app NestJS con le credenziali

@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseCredentialManagerBase, OpenbaoBaseService } from '@curandis/openbao-core';
+import { CredentialSourceTracker } from '../health/credential-source-tracker.service';
 
 const EXPECTED_DATABASE = process.env.DB_DATABASE || 'calendar_db';
 
@@ -29,6 +30,7 @@ export class MainDbCredentialManager extends DatabaseCredentialManagerBase {
     @InjectDataSource() mainDataSource: DataSource,
     eventEmitter: EventEmitter2,
     private readonly openbaoService: OpenbaoBaseService,
+    @Optional() private readonly credentialSourceTracker?: CredentialSourceTracker,
   ) {
     super(mainDataSource, eventEmitter, {
       dataSourceName: 'main',
@@ -89,8 +91,22 @@ export class MainDbCredentialManager extends DatabaseCredentialManagerBase {
     } catch (err) {
       if (!isPostgresAuthError(err)) throw err;
 
+      // Disambigua il caso "credenziali OpenBao stale" (recuperabile via
+      // force-refresh) vs "credenziali fasulle dal .env" (NON recuperabile,
+      // richiede riavvio con OpenBao raggiungibile). I sintomi al log
+      // erano identici prima del 2026-06-02 e generavano confusione coi
+      // bug del token stale OpenBao.
+      if (this.credentialSourceTracker && !this.credentialSourceTracker.isUsingOpenbao()) {
+        this.dbLogger.error(
+          `28P01 con credenziali da .env (ALLOW_DEV_FALLBACK). Non c'è force-refresh che possa risolverlo: ` +
+          `riavvia il backend con OpenBao raggiungibile per ottenere credenziali valide.`,
+        );
+        throw err;
+      }
+
       this.dbLogger.warn(
-        `Query fallita con auth error 28P01: tento recovery via forceRefresh OpenBao`,
+        `Query fallita con auth error 28P01 (credenziali OpenBao probabilmente stale): ` +
+        `tento recovery via forceRefresh`,
       );
       await this.recoverFromAuthError();
 
