@@ -325,14 +325,14 @@ export class AppModule implements NestModule {
     // (l'ordine importa solo per la pulizia logica del flusso).
     consumer
       .apply(ClinicalEventBufferMiddleware)
-      .exclude('health/status', 'events/(.*)', 'api/webhooks/(.*)')
+      .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
 
     // Applica TenantContextMiddleware a tutte le rotte operative
     // Escludi: health check, graphql playground, rotte SSE
     consumer
       .apply(TenantContextMiddleware)
-      .exclude('health/status', 'events/(.*)', 'api/webhooks/(.*)')
+      .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
   }
 }
