@@ -45,8 +45,16 @@ export interface ServiceUpsertedPayload {
   serviceCode: string;
   name: string;
   description?: string | null;
-  defaultPrice: string;     // numeric come string
+  defaultPrice: string;     // numeric come string — somma autoritativa fatturata
   discountFE?: string | null;
+  // Scomposizione introdotta 2026-06-05: tariffa servizio (base provvigione)
+  // + extra studio (manutenzione strumenti, fuori provvigione). Somma =
+  // defaultPrice / discountFE. Null per servizi creati prima del backfill
+  // o quando il client non manda la breakdown.
+  serviceFee?: string | null;
+  studioExtra?: string | null;
+  serviceFeeFE?: string | null;
+  studioExtraFE?: string | null;
   macroCategory?: string | null;
   isActive: boolean;
 }

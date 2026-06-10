@@ -26,7 +26,14 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
 
   // Form state
   showServiceForm = false;
-  editingService: Partial<CreateServiceInput> & { subcategoryId?: string | null; discountFE?: number | null } = {
+  editingService: Partial<CreateServiceInput> & {
+    subcategoryId?: string | null;
+    discountFE?: number | null;
+    serviceFee?: number | null;
+    studioExtra?: number | null;
+    serviceFeeFE?: number | null;
+    studioExtraFE?: number | null;
+  } = {
     name: '',
     serviceCode: '',
     description: '',
@@ -38,7 +45,11 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
     color: '#007bff',
     macroCategory: OperatorMacroCategory.Other,
     subcategoryId: null,
-    discountFE: null
+    discountFE: null,
+    serviceFee: 0,
+    studioExtra: 0,
+    serviceFeeFE: null,
+    studioExtraFE: null
   };
 
   // Filter and search
@@ -127,6 +138,34 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ngModel su input number tipa il binding come `number | null` (null quando
+  // l'input è vuoto). La coercion qui evita `null + number = NaN` nel totale
+  // mostrato a video e replica esattamente il calcolo che fa il backend.
+  private toAmount(v: number | null | undefined): number {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  get defaultPriceComputed(): number {
+    return this.toAmount(this.editingService.serviceFee) +
+           this.toAmount(this.editingService.studioExtra);
+  }
+
+  get discountFEComputed(): number {
+    return this.toAmount(this.editingService.serviceFeeFE) +
+           this.toAmount(this.editingService.studioExtraFE);
+  }
+
+  // True se l'operatore ha valorizzato almeno una delle due voci FE
+  // (la sezione "Sconto FE" è opzionale; lasciandole entrambe vuote, il
+  // servizio non avrà uno sconto FE).
+  get hasFEBreakdown(): boolean {
+    const fee = this.editingService.serviceFeeFE;
+    const extra = this.editingService.studioExtraFE;
+    return (fee !== null && fee !== undefined && fee !== ('' as any)) ||
+           (extra !== null && extra !== undefined && extra !== ('' as any));
+  }
+
   selectService(service: Service) {
     this.ngZone.run(() => {
       this.selectedService = service;
@@ -137,9 +176,17 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
     this.ngZone.run(() => {
       if (service) {
         this.selectedService = service;
+        const s = service as any;
+        // Fallback breakdown: per i servizi non ancora editati la migration
+        // di backfill ha già messo serviceFee=defaultPrice e studioExtra=0,
+        // ma per sicurezza (es. record creati prima della migration o letti
+        // da cache stale) ricalcoliamo lato client.
+        const serviceFee = s.serviceFee ?? service.defaultPrice ?? 0;
+        const studioExtra = s.studioExtra ?? 0;
+        const hasDiscountFE = s.discountFE !== null && s.discountFE !== undefined;
         this.editingService = {
           name: service.name,
-          serviceCode: (service as any).serviceCode ?? '',
+          serviceCode: s.serviceCode ?? '',
           description: service.description,
           defaultDuration: service.defaultDuration,
           defaultPrice: service.defaultPrice,
@@ -148,8 +195,12 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
           isActive: service.isActive,
           color: service.color || '#007bff',
           macroCategory: service.macroCategory || OperatorMacroCategory.Other,
-          subcategoryId: (service as any).subcategoryId || null,
-          discountFE: (service as any).discountFE || null
+          subcategoryId: s.subcategoryId || null,
+          discountFE: s.discountFE ?? null,
+          serviceFee,
+          studioExtra,
+          serviceFeeFE: s.serviceFeeFE ?? (hasDiscountFE ? s.discountFE : null),
+          studioExtraFE: s.studioExtraFE ?? (hasDiscountFE ? 0 : null)
         };
         this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
       } else {
@@ -166,7 +217,11 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
           color: '#007bff',
           macroCategory: OperatorMacroCategory.Other,
           subcategoryId: null,
-          discountFE: null
+          discountFE: null,
+          serviceFee: 0,
+          studioExtra: 0,
+          serviceFeeFE: null,
+          studioExtraFE: null
         };
         this.filterSubcategoriesByMacroCategory(OperatorMacroCategory.Other);
       }
@@ -217,13 +272,18 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         color: '#007bff',
         macroCategory: OperatorMacroCategory.Other,
         subcategoryId: null,
-        discountFE: null
+        discountFE: null,
+        serviceFee: 0,
+        studioExtra: 0,
+        serviceFeeFE: null,
+        studioExtraFE: null
       };
       this.filteredSubcategories = [];
     });
   }
 
   saveService() {
+    this.error = null;
     if (!this.editingService.name || !this.editingService.defaultDuration) {
       this.error = 'Nome e durata sono obbligatori';
       return;
@@ -239,22 +299,46 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
 
     this.loading = true;
 
+    // Coercion null/empty → 0 sulle voci breakdown normali (sempre presenti).
+    // La breakdown FE è opzionale: se entrambe le voci FE sono vuote, mando
+    // tutto null così il backend lascia discountFE invariato/null e il
+    // servizio resta senza tariffa FE.
+    const serviceFee = this.toAmount(this.editingService.serviceFee);
+    const studioExtra = this.toAmount(this.editingService.studioExtra);
+    const defaultPriceComputed = serviceFee + studioExtra;
+
+    const hasFE = this.hasFEBreakdown;
+    const serviceFeeFE = hasFE ? this.toAmount(this.editingService.serviceFeeFE) : null;
+    const studioExtraFE = hasFE ? this.toAmount(this.editingService.studioExtraFE) : null;
+    const discountFEComputed = hasFE ? (serviceFeeFE! + studioExtraFE!) : null;
+
     if (this.selectedService) {
       // Update existing service
-      const input: UpdateServiceInput & { subcategoryId?: string | null; discountFE?: number | null } = {
+      const input: UpdateServiceInput & {
+        subcategoryId?: string | null;
+        discountFE?: number | null;
+        serviceFee?: number | null;
+        studioExtra?: number | null;
+        serviceFeeFE?: number | null;
+        studioExtraFE?: number | null;
+      } = {
         id: this.selectedService.id,
         name: this.editingService.name,
         serviceCode: this.editingService.serviceCode!.trim(),
         description: this.editingService.description,
         defaultDuration: this.editingService.defaultDuration!,
-        defaultPrice: this.editingService.defaultPrice!,
+        defaultPrice: defaultPriceComputed,
         bufferTimeBefore: this.editingService.bufferTimeBefore,
         bufferTimeAfter: this.editingService.bufferTimeAfter,
         isActive: this.editingService.isActive,
         color: this.editingService.color,
         macroCategory: this.editingService.macroCategory,
         subcategoryId: this.editingService.subcategoryId,
-        discountFE: this.editingService.discountFE
+        discountFE: discountFEComputed,
+        serviceFee,
+        studioExtra,
+        serviceFeeFE,
+        studioExtraFE
       };
 
       this.serviceService.updateService(this.selectedService.id, input as any)
@@ -275,6 +359,14 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
       const input: CreateServiceInput = {
         ...(this.editingService as CreateServiceInput),
         serviceCode: this.editingService.serviceCode!.trim(),
+        defaultPrice: defaultPriceComputed,
+        ...({
+          discountFE: discountFEComputed,
+          serviceFee,
+          studioExtra,
+          serviceFeeFE,
+          studioExtraFE,
+        } as any),
       };
 
       console.log('Creating service with input:', input);
@@ -335,6 +427,8 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   duplicateService(service: Service) {
     this.ngZone.run(() => {
       this.openServiceForm();
+      const s = service as any;
+      const hasDiscountFE = s.discountFE !== null && s.discountFE !== undefined;
       this.editingService = {
         name: `${service.name} (copia)`,
         description: service.description,
@@ -345,8 +439,12 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
         isActive: service.isActive,
         color: service.color,
         macroCategory: service.macroCategory || OperatorMacroCategory.Other,
-        subcategoryId: (service as any).subcategoryId || null,
-        discountFE: (service as any).discountFE || null
+        subcategoryId: s.subcategoryId || null,
+        discountFE: s.discountFE ?? null,
+        serviceFee: s.serviceFee ?? service.defaultPrice ?? 0,
+        studioExtra: s.studioExtra ?? 0,
+        serviceFeeFE: s.serviceFeeFE ?? (hasDiscountFE ? s.discountFE : null),
+        studioExtraFE: s.studioExtraFE ?? (hasDiscountFE ? 0 : null)
       };
       this.filterSubcategoriesByMacroCategory(this.editingService.macroCategory!);
     });

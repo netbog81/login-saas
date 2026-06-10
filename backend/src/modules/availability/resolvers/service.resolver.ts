@@ -78,6 +78,66 @@ export class ServiceResolver {
   // Mutations
   // ============================================================================
 
+  /**
+   * Normalizza la scomposizione prezzo (tariffa + extra studio) e ricalcola
+   * la somma autoritativa lato server.
+   *
+   * Regole:
+   *  - `null/undefined` su qualsiasi componente della breakdown → 0 (per
+   *    evitare `null + number = NaN` nelle somme).
+   *  - Se almeno una delle due componenti normali è presente nell'input
+   *    → `defaultPrice` viene riscritto come `serviceFee + studioExtra`
+   *    (la breakdown è autoritativa e sovrascrive `defaultPrice` ricevuto).
+   *  - Se entrambe assenti → si rispetta il `defaultPrice` ricevuto
+   *    (retrocompat: vecchio client che non manda la breakdown).
+   *  - Stessa logica per la coppia FE → `discountFE`.
+   *
+   * Ritorna l'oggetto patch da spalmare in `repo.create()` / `repo.update()`.
+   */
+  private applyPriceBreakdown(input: {
+    defaultPrice?: number | null;
+    discountFE?: number | null;
+    serviceFee?: number | null;
+    studioExtra?: number | null;
+    serviceFeeFE?: number | null;
+    studioExtraFE?: number | null;
+  }): {
+    defaultPrice?: number;
+    discountFE?: number | null;
+    serviceFee?: number;
+    studioExtra?: number;
+    serviceFeeFE?: number | null;
+    studioExtraFE?: number | null;
+  } {
+    const out: ReturnType<ServiceResolver['applyPriceBreakdown']> = {};
+
+    const hasNormalBreakdown =
+      input.serviceFee !== undefined || input.studioExtra !== undefined;
+    if (hasNormalBreakdown) {
+      const fee = Number(input.serviceFee ?? 0);
+      const extra = Number(input.studioExtra ?? 0);
+      out.serviceFee = fee;
+      out.studioExtra = extra;
+      out.defaultPrice = fee + extra;
+    } else if (input.defaultPrice !== undefined) {
+      out.defaultPrice = Number(input.defaultPrice ?? 0);
+    }
+
+    const hasFEBreakdown =
+      input.serviceFeeFE !== undefined || input.studioExtraFE !== undefined;
+    if (hasFEBreakdown) {
+      const feeFE = Number(input.serviceFeeFE ?? 0);
+      const extraFE = Number(input.studioExtraFE ?? 0);
+      out.serviceFeeFE = feeFE;
+      out.studioExtraFE = extraFE;
+      out.discountFE = feeFE + extraFE;
+    } else if (input.discountFE !== undefined) {
+      out.discountFE = input.discountFE === null ? null : Number(input.discountFE);
+    }
+
+    return out;
+  }
+
   @Mutation(() => Service, { name: 'createService' })
   async createService(
     @Args('name') name: string,
@@ -95,6 +155,10 @@ export class ServiceResolver {
     @Args('instrumentOrderMatters', { nullable: true }) instrumentOrderMatters?: boolean,
     @Args('subcategoryId', { type: () => ID, nullable: true }) subcategoryId?: string,
     @Args('discountFE', { nullable: true }) discountFE?: number,
+    @Args('serviceFee', { nullable: true }) serviceFee?: number,
+    @Args('studioExtra', { nullable: true }) studioExtra?: number,
+    @Args('serviceFeeFE', { nullable: true }) serviceFeeFE?: number,
+    @Args('studioExtraFE', { nullable: true }) studioExtraFE?: number,
   ): Promise<Service> {
     if (!serviceCode || serviceCode.trim().length === 0) {
       throw new BadRequestException('serviceCode è obbligatorio.');
@@ -103,6 +167,15 @@ export class ServiceResolver {
     const tenantAlias = this.tenantContext.getTenantAlias();
     const correlationId = this.tenantContext.getContext()?.requestId;
 
+    const priceFields = this.applyPriceBreakdown({
+      defaultPrice,
+      discountFE,
+      serviceFee,
+      studioExtra,
+      serviceFeeFE,
+      studioExtraFE,
+    });
+
     const saved = await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Service);
       const service = repo.create({
@@ -110,7 +183,7 @@ export class ServiceResolver {
         serviceCode: serviceCode.trim(),
         description,
         defaultDuration,
-        defaultPrice: defaultPrice || 0,
+        defaultPrice: priceFields.defaultPrice ?? 0,
         bufferTimeBefore: bufferTimeBefore || 0,
         bufferTimeAfter: bufferTimeAfter || 0,
         color,
@@ -119,7 +192,11 @@ export class ServiceResolver {
         preferredDuration,
         instrumentOrderMatters: instrumentOrderMatters || false,
         subcategoryId,
-        discountFE,
+        discountFE: priceFields.discountFE ?? undefined,
+        serviceFee: priceFields.serviceFee,
+        studioExtra: priceFields.studioExtra,
+        serviceFeeFE: priceFields.serviceFeeFE ?? undefined,
+        studioExtraFE: priceFields.studioExtraFE ?? undefined,
       });
       const result = await repo.save(service);
 
@@ -157,9 +234,22 @@ export class ServiceResolver {
     @Args('instrumentOrderMatters', { nullable: true }) instrumentOrderMatters?: boolean,
     @Args('subcategoryId', { type: () => ID, nullable: true }) subcategoryId?: string,
     @Args('discountFE', { nullable: true }) discountFE?: number,
+    @Args('serviceFee', { nullable: true }) serviceFee?: number,
+    @Args('studioExtra', { nullable: true }) studioExtra?: number,
+    @Args('serviceFeeFE', { nullable: true }) serviceFeeFE?: number,
+    @Args('studioExtraFE', { nullable: true }) studioExtraFE?: number,
   ): Promise<Service> {
     const tenantAlias = this.tenantContext.getTenantAlias();
     const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const priceFields = this.applyPriceBreakdown({
+      defaultPrice,
+      discountFE,
+      serviceFee,
+      studioExtra,
+      serviceFeeFE,
+      studioExtraFE,
+    });
 
     const updated = await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Service);
@@ -173,7 +263,7 @@ export class ServiceResolver {
         ...(serviceCode !== undefined && { serviceCode: serviceCode.trim() }),
         ...(description !== undefined && { description }),
         ...(defaultDuration !== undefined && { defaultDuration }),
-        ...(defaultPrice !== undefined && { defaultPrice }),
+        ...(priceFields.defaultPrice !== undefined && { defaultPrice: priceFields.defaultPrice }),
         ...(bufferTimeBefore !== undefined && { bufferTimeBefore }),
         ...(bufferTimeAfter !== undefined && { bufferTimeAfter }),
         ...(color !== undefined && { color }),
@@ -182,7 +272,11 @@ export class ServiceResolver {
         ...(preferredDuration !== undefined && { preferredDuration }),
         ...(instrumentOrderMatters !== undefined && { instrumentOrderMatters }),
         ...(subcategoryId !== undefined && { subcategoryId }),
-        ...(discountFE !== undefined && { discountFE }),
+        ...(priceFields.discountFE !== undefined && { discountFE: priceFields.discountFE }),
+        ...(priceFields.serviceFee !== undefined && { serviceFee: priceFields.serviceFee }),
+        ...(priceFields.studioExtra !== undefined && { studioExtra: priceFields.studioExtra }),
+        ...(priceFields.serviceFeeFE !== undefined && { serviceFeeFE: priceFields.serviceFeeFE }),
+        ...(priceFields.studioExtraFE !== undefined && { studioExtraFE: priceFields.studioExtraFE }),
       });
 
       const reloaded = await repo.findOne({

@@ -74,7 +74,11 @@ export class ServiceService extends BaseGraphQLService {
       isActive: input.isActive,
       macroCategory: input.macroCategory,
       subcategoryId: (input as any).subcategoryId,
-      discountFE: (input as any).discountFE
+      discountFE: (input as any).discountFE,
+      serviceFee: (input as any).serviceFee,
+      studioExtra: (input as any).studioExtra,
+      serviceFeeFE: (input as any).serviceFeeFE,
+      studioExtraFE: (input as any).studioExtraFE
     };
 
     console.log('ServiceService.createService - sending variables:', variables);
@@ -110,7 +114,11 @@ export class ServiceService extends BaseGraphQLService {
         isActive: input.isActive,
         macroCategory: input.macroCategory,
         subcategoryId: (input as any).subcategoryId,
-        discountFE: (input as any).discountFE
+        discountFE: (input as any).discountFE,
+        serviceFee: (input as any).serviceFee,
+        studioExtra: (input as any).studioExtra,
+        serviceFeeFE: (input as any).serviceFeeFE,
+        studioExtraFE: (input as any).studioExtraFE
       },
       [
         { query: GET_SERVICES },

@@ -83,6 +83,28 @@ export class Service {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   discountFE?: number; // Prezzo alternativo "Sconto FE"
 
+  // Scomposizione di `defaultPrice` in tariffa-servizio + extra-studio.
+  // `defaultPrice = serviceFee + studioExtra` (somma calcolata server-side).
+  // `serviceFee` è la base per le provvigioni fisioterapisti; `studioExtra`
+  // copre la manutenzione strumenti e NON entra nella provvigione.
+  @Field({ nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  serviceFee?: number;
+
+  @Field({ nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, default: 0 })
+  studioExtra?: number;
+
+  // Scomposizione di `discountFE` analoga a sopra (può essere null se il
+  // servizio non ha tariffa FE).
+  @Field({ nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  serviceFeeFE?: number;
+
+  @Field({ nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, default: 0 })
+  studioExtraFE?: number;
+
   @Field(() => ServiceSubcategory, { nullable: true })
   @ManyToOne(() => ServiceSubcategory, { nullable: true })
   @JoinColumn({ name: 'subcategoryId' })

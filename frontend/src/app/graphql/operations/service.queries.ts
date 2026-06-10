@@ -14,6 +14,10 @@ export const GET_SERVICES = gql`
       isActive
       macroCategory
       discountFE
+      serviceFee
+      studioExtra
+      serviceFeeFE
+      studioExtraFE
       subcategoryId
       subcategory {
         id
@@ -39,6 +43,10 @@ export const GET_SERVICE = gql`
       isActive
       macroCategory
       discountFE
+      serviceFee
+      studioExtra
+      serviceFeeFE
+      studioExtraFE
       subcategoryId
       subcategory {
         id

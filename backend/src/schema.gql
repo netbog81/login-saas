@@ -1177,7 +1177,7 @@ type Mutation {
   createRole(description: String, name: String!): Role!
   createRoom(capacity: Int, color: String, name: String!): Room!
   createSecretary(input: CreateSecretaryInput!): Secretary!
-  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, serviceCode: String!, subcategoryId: ID): Service!
+  createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, serviceCode: String!, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
   createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTaskMessage(input: CreateTaskMessageInput!): TaskMessageResult!
@@ -1315,7 +1315,7 @@ type Mutation {
   updateProduct(category: String, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String, productCode: String): Product!
   updateRecycleBinSettings(retentionDays: Int): RecycleBinSettings!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
-  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, serviceCode: String, subcategoryId: ID): Service!
+  updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, serviceCode: String, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
   updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
   updateTaskMessage(input: UpdateTaskMessageInput!, messageId: String!): Boolean!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
@@ -2267,6 +2267,10 @@ type Service {
   requiredInstruments: [ServiceInstrument!]
   reverseInstrumentOrder: Boolean
   serviceCode: String!
+  serviceFee: Float
+  serviceFeeFE: Float
+  studioExtra: Float
+  studioExtraFE: Float
   subcategory: ServiceSubcategory
   subcategoryId: ID
   updatedAt: DateTime!

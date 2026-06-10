@@ -32,10 +32,11 @@ export class CatalogEventMapper {
       name: service.name,
       description: service.description ?? null,
       defaultPrice: this.toDecimalString(service.defaultPrice),
-      discountFE:
-        service.discountFE !== null && service.discountFE !== undefined
-          ? this.toDecimalString(service.discountFE)
-          : null,
+      discountFE: this.toDecimalStringOrNull(service.discountFE),
+      serviceFee: this.toDecimalStringOrNull(service.serviceFee),
+      studioExtra: this.toDecimalStringOrNull(service.studioExtra),
+      serviceFeeFE: this.toDecimalStringOrNull(service.serviceFeeFE),
+      studioExtraFE: this.toDecimalStringOrNull(service.studioExtraFE),
       macroCategory: service.macroCategory ?? null,
       isActive: service.isActive,
     };
@@ -69,5 +70,9 @@ export class CatalogEventMapper {
 
   private toDecimalString(v: number | string): string {
     return new Decimal(v).toFixed(2);
+  }
+
+  private toDecimalStringOrNull(v: number | string | null | undefined): string | null {
+    return v === null || v === undefined ? null : new Decimal(v).toFixed(2);
   }
 }

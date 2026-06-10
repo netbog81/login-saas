@@ -388,3 +388,28 @@ code {
 .form-group-full {
   flex: 1 1 100%;
 }
+
+.price-breakdown {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 12px 16px 4px;
+  margin-bottom: 16px;
+
+  legend {
+    padding: 0 8px;
+    font-size: 0.95em;
+    font-weight: 600;
+    color: #495057;
+  }
+
+  .legend-hint {
+    font-weight: 400;
+    color: #6c757d;
+    font-size: 0.9em;
+  }
+
+  input[readonly] {
+    background-color: #f8f9fa;
+    font-weight: 600;
+  }
+}

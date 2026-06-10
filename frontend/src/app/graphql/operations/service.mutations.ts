@@ -14,6 +14,10 @@ export const CREATE_SERVICE = gql`
     $macroCategory: OperatorMacroCategory
     $subcategoryId: ID
     $discountFE: Float
+    $serviceFee: Float
+    $studioExtra: Float
+    $serviceFeeFE: Float
+    $studioExtraFE: Float
   ) {
     createService(
       name: $name
@@ -28,6 +32,10 @@ export const CREATE_SERVICE = gql`
       macroCategory: $macroCategory
       subcategoryId: $subcategoryId
       discountFE: $discountFE
+      serviceFee: $serviceFee
+      studioExtra: $studioExtra
+      serviceFeeFE: $serviceFeeFE
+      studioExtraFE: $studioExtraFE
     ) {
       id
       name
@@ -41,6 +49,10 @@ export const CREATE_SERVICE = gql`
       isActive
       macroCategory
       discountFE
+      serviceFee
+      studioExtra
+      serviceFeeFE
+      studioExtraFE
       subcategoryId
       subcategory {
         id
@@ -67,6 +79,10 @@ export const UPDATE_SERVICE = gql`
     $macroCategory: OperatorMacroCategory
     $subcategoryId: ID
     $discountFE: Float
+    $serviceFee: Float
+    $studioExtra: Float
+    $serviceFeeFE: Float
+    $studioExtraFE: Float
   ) {
     updateService(
       id: $id
@@ -82,6 +98,10 @@ export const UPDATE_SERVICE = gql`
       macroCategory: $macroCategory
       subcategoryId: $subcategoryId
       discountFE: $discountFE
+      serviceFee: $serviceFee
+      studioExtra: $studioExtra
+      serviceFeeFE: $serviceFeeFE
+      studioExtraFE: $studioExtraFE
     ) {
       id
       name
@@ -95,6 +115,10 @@ export const UPDATE_SERVICE = gql`
       isActive
       macroCategory
       discountFE
+      serviceFee
+      studioExtra
+      serviceFeeFE
+      studioExtraFE
       subcategoryId
       subcategory {
         id
