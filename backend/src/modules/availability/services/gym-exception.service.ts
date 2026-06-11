@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
+import { DataSource, Between, In, IsNull, Not } from 'typeorm';
 import { GymException, GymExceptionType, AbsenceTypeSnapshot } from '../entities/gym-exception.entity';
 import { GymExceptionSubstitute } from '../entities/gym-exception-substitute.entity';
 import { GymRoom } from '../entities/gym-room.entity';
@@ -12,6 +11,7 @@ import { OperatorAbsenceTypeService } from './operator-absence-type.service';
 import { GymPatternGroupService } from './gym-pattern-group.service';
 import { AppointmentConflictService } from './appointment-conflict.service';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 /**
  * Input per slot sostituzione
  */
@@ -68,23 +68,30 @@ export interface EffectiveOperatorResult {
 @Injectable()
 export class GymExceptionService {
   constructor(
-    @InjectRepository(GymException)
-    private exceptionRepo: Repository<GymException>,
-    @InjectRepository(GymExceptionSubstitute)
-    private substituteRepo: Repository<GymExceptionSubstitute>,
-    @InjectRepository(GymRoom)
-    private gymRoomRepo: Repository<GymRoom>,
-    @InjectRepository(Operator)
-    private operatorRepo: Repository<Operator>,
-    @InjectRepository(GymTemplatePattern)
-    private templatePatternRepo: Repository<GymTemplatePattern>,
-    @InjectRepository(AvailabilityException)
-    private availabilityExceptionRepo: Repository<AvailabilityException>,
+    private readonly tenantContext: TenantContextService,
     private absenceTypeService: OperatorAbsenceTypeService,
     private patternGroupService: GymPatternGroupService,
     private appointmentConflictService: AppointmentConflictService,
-    private dataSource: DataSource,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get exceptionRepo() { return this.dataSource.getRepository(GymException); }
+
+  private get substituteRepo() { return this.dataSource.getRepository(GymExceptionSubstitute); }
+
+  private get gymRoomRepo() { return this.dataSource.getRepository(GymRoom); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
+
+  private get templatePatternRepo() { return this.dataSource.getRepository(GymTemplatePattern); }
+
+  private get availabilityExceptionRepo() { return this.dataSource.getRepository(AvailabilityException); }
 
   // ==================== FIND / QUERY ====================
 

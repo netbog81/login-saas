@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 // Entities
 import { AppUser } from './entities/app-user.entity';
 import { Role } from './entities/role.entity';
@@ -29,17 +28,6 @@ import { AuthorizationGuard } from './guards/authorization.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      AppUser,
-      Role,
-      Permission,
-      UserRole,
-      RolePermission,
-      Secretary,
-      PrivacyOfficer,
-      ItManager,
-      Operator,
-    ]),
   ],
   providers: [
     // Services
@@ -57,8 +45,7 @@ import { AuthorizationGuard } from './guards/authorization.guard';
     PrivacyOfficerResolver,
     ItManagerResolver,
     // Guards
-    AuthorizationGuard,
-  ],
+    AuthorizationGuard],
   exports: [
     AppUserService,
     RoleService,
@@ -67,8 +54,6 @@ import { AuthorizationGuard } from './guards/authorization.guard';
     SecretaryService,
     PrivacyOfficerService,
     ItManagerService,
-    AuthorizationGuard,
-    TypeOrmModule,
-  ],
+    AuthorizationGuard],
 })
 export class AppUsersModule {}

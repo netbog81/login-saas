@@ -1,15 +1,22 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Instrument } from '../entities/instrument.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class InstrumentService {
   constructor(
-    @InjectRepository(Instrument)
-    private instrumentRepo: Repository<Instrument>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get instrumentRepo() { return this.dataSource.getRepository(Instrument); }
 
   async findAll(categoryId?: string, status?: InstrumentStatus): Promise<Instrument[]> {
     const where: any = {};

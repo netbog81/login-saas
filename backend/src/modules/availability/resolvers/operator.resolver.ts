@@ -1,7 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID, Context, ObjectType, Field, Int } from '@nestjs/graphql';
 import { Logger, UseGuards } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import {
@@ -20,6 +18,7 @@ import {
   CurrentUserContext,
 } from '../../users/decorators/current-user.decorator';
 import { AppUserService } from '../../users/services/app-user.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Conteggio dipendenze esposto via GraphQL per il dialog di conferma
@@ -54,11 +53,19 @@ export class OperatorResolver {
   private readonly logger = new Logger(OperatorResolver.name);
 
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly operatorService: OperatorService,
     private readonly appUserService: AppUserService,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   /**
    * Risolve l'AppUserId del chiamante dal sub Keycloak. Usato per

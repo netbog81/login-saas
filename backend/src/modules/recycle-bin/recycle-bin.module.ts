@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { AvailabilityModule } from '../availability/availability.module';
 import { AppUsersModule } from '../users/app-users.module';
 import { Treatment } from '../availability/entities/treatment.entity';
@@ -13,16 +12,8 @@ import { RecycleBinResolver } from './resolvers/recycle-bin.resolver';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Treatment,
-      TherapeuticPath,
-      PatientEvaluation,
-      Operator,
-      RecycleBinSettings,
-    ]),
     AvailabilityModule,
-    AppUsersModule,
-  ],
+    AppUsersModule],
   providers: [RecycleBinService, RecycleBinCleanupJob, RecycleBinResolver],
   exports: [RecycleBinService],
 })

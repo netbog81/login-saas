@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, In } from 'typeorm';
+import { Not, In } from 'typeorm';
 import { GymPatternGroup } from '../entities/gym-pattern-group.entity';
 import { GymTemplatePattern } from '../entities/gym-template-pattern.entity';
 import { GymRoom } from '../entities/gym-room.entity';
 import { Operator } from '../entities/operator.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 export interface CreateGymPatternGroupInput {
   gymRoomId: string;
@@ -39,15 +39,23 @@ export interface UpdateGymPatternGroupInput {
 @Injectable()
 export class GymPatternGroupService {
   constructor(
-    @InjectRepository(GymPatternGroup)
-    private patternGroupRepo: Repository<GymPatternGroup>,
-    @InjectRepository(GymTemplatePattern)
-    private patternRepo: Repository<GymTemplatePattern>,
-    @InjectRepository(GymRoom)
-    private gymRoomRepo: Repository<GymRoom>,
-    @InjectRepository(Operator)
-    private operatorRepo: Repository<Operator>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get patternGroupRepo() { return this.dataSource.getRepository(GymPatternGroup); }
+
+  private get patternRepo() { return this.dataSource.getRepository(GymTemplatePattern); }
+
+  private get gymRoomRepo() { return this.dataSource.getRepository(GymRoom); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
 
   /**
    * Trova tutti i template di una palestra

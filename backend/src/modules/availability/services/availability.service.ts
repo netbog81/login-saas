@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not, In, DataSource } from 'typeorm';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
@@ -16,29 +15,37 @@ import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operato
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
 import { OperatorAvailabilityV3, DayAvailabilityV3, TimeBlockV3 } from '../dto/operator-availability-v3.type';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 @Injectable()
 export class AvailabilityService {
   constructor(
-    @InjectRepository(AvailabilityTemplate)
-    private templateRepo: Repository<AvailabilityTemplate>,
-    @InjectRepository(TemplatePattern)
-    private patternRepo: Repository<TemplatePattern>,
-    @InjectRepository(PatternGroup)
-    private patternGroupRepo: Repository<PatternGroup>,
-    @InjectRepository(TemplateAssignment)
-    private assignmentRepo: Repository<TemplateAssignment>,
-    @InjectRepository(AvailabilityException)
-    private exceptionRepo: Repository<AvailabilityException>,
-    @InjectRepository(AvailabilityCache)
-    private cacheRepo: Repository<AvailabilityCache>,
-    @InjectRepository(Operator)
-    private operatorRepo: Repository<Operator>,
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
-    @InjectRepository(GroupException)
-    private groupExceptionRepo: Repository<GroupException>,
-    private dataSource: DataSource,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get templateRepo() { return this.dataSource.getRepository(AvailabilityTemplate); }
+
+  private get patternRepo() { return this.dataSource.getRepository(TemplatePattern); }
+
+  private get patternGroupRepo() { return this.dataSource.getRepository(PatternGroup); }
+
+  private get assignmentRepo() { return this.dataSource.getRepository(TemplateAssignment); }
+
+  private get exceptionRepo() { return this.dataSource.getRepository(AvailabilityException); }
+
+  private get cacheRepo() { return this.dataSource.getRepository(AvailabilityCache); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+
+  private get groupExceptionRepo() { return this.dataSource.getRepository(GroupException); }
 
   async getTemplates(operatorId: string, onlyCurrent: boolean = true): Promise<AvailabilityTemplate[]> {
     const query = this.templateRepo.createQueryBuilder('template')

@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { In } from 'typeorm';
 import {
   AvailabilityAppointment,
   BookingStatus,
@@ -8,6 +7,7 @@ import {
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymExceptionService } from './gym-exception.service';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 const SETTINGS_KEY = 'conflicts.lastRevalidationAt';
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 ore
@@ -40,11 +40,19 @@ export class ConflictRevalidationService {
   private readonly logger = new Logger(ConflictRevalidationService.name);
 
   constructor(
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
+    private readonly tenantContext: TenantContextService,
     private gymExceptionService: GymExceptionService,
     private settingsService: GeneralSettingsService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
 
   /**
    * Esegue la revalidazione solo se sono passate ≥ COOLDOWN_MS dall'ultima.

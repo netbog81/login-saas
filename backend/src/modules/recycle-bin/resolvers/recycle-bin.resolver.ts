@@ -23,27 +23,35 @@ import {
   CurrentUserContext,
 } from '../../users/decorators/current-user.decorator';
 import { AppUserService } from '../../users/services/app-user.service';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not } from 'typeorm';
+import { IsNull, Not } from 'typeorm';
 import { Treatment } from '../../availability/entities/treatment.entity';
 import { TherapeuticPath } from '../../availability/entities/therapeutic-path.entity';
 import { PatientEvaluation } from '../../availability/entities/patient-evaluation.entity';
 import { Operator } from '../../availability/entities/operator.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 @Resolver()
 export class RecycleBinResolver {
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly recycleBinService: RecycleBinService,
     private readonly appUserService: AppUserService,
-    @InjectRepository(Treatment)
-    private readonly treatmentRepo: Repository<Treatment>,
-    @InjectRepository(TherapeuticPath)
-    private readonly pathRepo: Repository<TherapeuticPath>,
-    @InjectRepository(PatientEvaluation)
-    private readonly evaluationRepo: Repository<PatientEvaluation>,
-    @InjectRepository(Operator)
-    private readonly operatorRepo: Repository<Operator>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
+
+  private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
+
+  private get evaluationRepo() { return this.dataSource.getRepository(PatientEvaluation); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
 
   /**
    * Restituisce la lista degli elementi nel cestino visibili al chiamante.

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In } from 'typeorm';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 import { ClinicalSubjectIndex } from '../entities/clinical-subject-index.entity';
 import { RegistrySubjectResponse } from '../../modules/registry/registry.types';
@@ -17,10 +17,15 @@ import { RegistrySubjectResponse } from '../../modules/registry/registry.types';
 export class ClinicalSubjectIndexService {
   private readonly logger = new Logger(ClinicalSubjectIndexService.name);
 
-  constructor(
-    @InjectRepository(ClinicalSubjectIndex)
-    private readonly indexRepo: Repository<ClinicalSubjectIndex>,
-  ) {}
+  constructor(private readonly tenantContext: TenantContextService) {}
+
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get indexRepo() { return this.dataSource.getRepository(ClinicalSubjectIndex); }
 
   async findOne(subjectId: string): Promise<ClinicalSubjectIndex | null> {
     return this.indexRepo.findOne({ where: { subjectId } });

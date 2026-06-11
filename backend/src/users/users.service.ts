@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get usersRepository() { return this.dataSource.getRepository(User); }
 
   findAll(): Promise<User[]> {
     return this.usersRepository.find({

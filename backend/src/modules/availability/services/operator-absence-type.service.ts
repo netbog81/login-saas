@@ -1,18 +1,26 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { ILike } from 'typeorm';
 import { OperatorAbsenceType } from '../entities/operator-absence-type.entity';
 import {
   CreateOperatorAbsenceTypeInput,
   UpdateOperatorAbsenceTypeInput,
 } from '../dto/operator-absence-type.input';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class OperatorAbsenceTypeService {
   constructor(
-    @InjectRepository(OperatorAbsenceType)
-    private absenceTypeRepo: Repository<OperatorAbsenceType>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get absenceTypeRepo() { return this.dataSource.getRepository(OperatorAbsenceType); }
 
   async findAll(onlyActive?: boolean): Promise<OperatorAbsenceType[]> {
     const where = onlyActive ? { isActive: true } : {};

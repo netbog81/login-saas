@@ -9,12 +9,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AppUserService } from '../../users/services/app-user.service';
 import { Treatment } from '../entities/treatment.entity';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
 import { Operator } from '../entities/operator.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 export type OwnedResourceType = 'treatment' | 'therapeutic_path';
 
@@ -56,13 +55,21 @@ export class OwnershipGuard implements CanActivate {
   private readonly logger = new Logger(OwnershipGuard.name);
 
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly reflector: Reflector,
     private readonly appUserService: AppUserService,
-    @InjectRepository(Treatment)
-    private readonly treatmentRepo: Repository<Treatment>,
-    @InjectRepository(TherapeuticPath)
-    private readonly pathRepo: Repository<TherapeuticPath>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
+
+  private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const opts = this.reflector.getAllAndOverride<RequireOwnershipOptions>(

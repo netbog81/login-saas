@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, Repository } from 'typeorm';
+import { In, LessThan } from 'typeorm';
 import { WhatsappMessageLog } from '../entities/whatsapp-message-log.entity';
 import {
   WhatsappLogFilterInput,
@@ -12,6 +11,7 @@ import {
   WhatsappMessageType,
 } from '../../enums/whatsapp-enums';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 export interface CreateLogData {
   appointmentId?: string;
   appointmentIds?: string[];
@@ -39,9 +39,17 @@ export class WhatsappLogService {
   private readonly logger = new Logger(WhatsappLogService.name);
 
   constructor(
-    @InjectRepository(WhatsappMessageLog)
-    private readonly logRepo: Repository<WhatsappMessageLog>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get logRepo() { return this.dataSource.getRepository(WhatsappMessageLog); }
 
   async createLog(data: CreateLogData): Promise<WhatsappMessageLog> {
     const log = this.logRepo.create({

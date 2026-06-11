@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { WhatsappMessageTemplate } from '../entities/whatsapp-message-template.entity';
 import { WhatsappTemplateInput } from '../dto/whatsapp-template.input';
 import { WhatsappTemplateType } from '../../enums/whatsapp-enums';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 const DEFAULT_TEMPLATES: Record<WhatsappTemplateType, string> = {
   [WhatsappTemplateType.RECAP_SINGLE]:
     'Gentile {name}, confermiamo il suo appuntamento per il {date} alle {time}.',
@@ -21,9 +20,17 @@ export class WhatsappTemplateService {
   private readonly logger = new Logger(WhatsappTemplateService.name);
 
   constructor(
-    @InjectRepository(WhatsappMessageTemplate)
-    private readonly templateRepo: Repository<WhatsappMessageTemplate>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get templateRepo() { return this.dataSource.getRepository(WhatsappMessageTemplate); }
 
   async findAll(): Promise<WhatsappMessageTemplate[]> {
     return this.templateRepo.find({ order: { templateType: 'ASC' } });

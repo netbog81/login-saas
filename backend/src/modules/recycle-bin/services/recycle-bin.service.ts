@@ -4,8 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { Treatment } from '../../availability/entities/treatment.entity';
 import { TherapeuticPath } from '../../availability/entities/therapeutic-path.entity';
 import { PatientEvaluation } from '../../availability/entities/patient-evaluation.entity';
@@ -18,6 +17,7 @@ import {
 import { RecycleBinFilterInput } from '../dto/recycle-bin-filter.input';
 import { RecycleBinSettings } from '../../availability/entities/recycle-bin-settings.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 interface RawDeletedRow {
   id: string;
   entityType: RecycleBinEntityType;
@@ -44,18 +44,25 @@ export class RecycleBinService {
   private readonly logger = new Logger(RecycleBinService.name);
 
   constructor(
-    private readonly dataSource: DataSource,
-    @InjectRepository(Treatment)
-    private readonly treatmentRepo: Repository<Treatment>,
-    @InjectRepository(TherapeuticPath)
-    private readonly pathRepo: Repository<TherapeuticPath>,
-    @InjectRepository(PatientEvaluation)
-    private readonly evaluationRepo: Repository<PatientEvaluation>,
-    @InjectRepository(RecycleBinSettings)
-    private readonly settingsRepo: Repository<RecycleBinSettings>,
+    private readonly tenantContext: TenantContextService,
     private readonly treatmentService: TreatmentService,
     private readonly pathService: TherapeuticPathService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
+
+  private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
+
+  private get evaluationRepo() { return this.dataSource.getRepository(PatientEvaluation); }
+
+  private get settingsRepo() { return this.dataSource.getRepository(RecycleBinSettings); }
 
   // ==================== SETTINGS ====================
 

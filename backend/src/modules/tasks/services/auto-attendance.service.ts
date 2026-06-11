@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AvailabilityAppointment, BookingStatus } from '../../availability/entities/availability-appointment.entity';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { EventsService } from '../../events/events.service';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 /**
  * Service per il cambio automatico dello stato appuntamento da SCHEDULED/CONFIRMED a ATTENDED
  * quando scatta l'ora di inizio (con offset configurabile).
@@ -21,11 +20,19 @@ export class AutoAttendanceService {
   private readonly logger = new Logger(AutoAttendanceService.name);
 
   constructor(
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
+    private readonly tenantContext: TenantContextService,
     private settingsService: GeneralSettingsService,
     private eventsService: EventsService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
 
   /**
    * Cron job eseguito ogni minuto per controllare e aggiornare

@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { SettingsModule } from '../settings/settings.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AppUsersModule } from '../users/app-users.module';
@@ -119,58 +118,7 @@ import { PazientiModule } from '../../patients/patients.module';
     SettingsModule,
     AppUsersModule,
     forwardRef(() => WhatsappModule),
-    PazientiModule,
-    TypeOrmModule.forFeature([
-      AppUser,
-      Operator,
-      OperatorCategory,
-      Service,
-      OperatorService,
-      AvailabilityTemplate,
-      PatternGroup,
-      TemplatePattern,
-      TemplateAssignment,
-      AvailabilityException,
-      GroupException,
-      AvailabilityCache,
-      InstrumentCategory,
-      Instrument,
-      GymRoom,
-      GymSchedule,
-      GymPatternGroup,
-      GymTemplatePattern,
-      GymException,
-      GymExceptionSubstitute,
-      OperatorAbsenceType,
-      Room,
-      ServiceInstrument,
-      AppointmentInstrument,
-      AppointmentService,       // Junction table - PRIMA del parent per evitare circular dependency
-      TreatmentServiceEntity,   // Junction table - PRIMA del parent per evitare circular dependency
-      TreatmentInstrument,
-      TreatmentInvoiceLine,
-      ServiceInvoicePrefix,
-      AppointmentLog,
-      ClinicalSubjectIndex,
-      // Parent entities DOPO le junction tables
-      AvailabilityAppointment,
-      Treatment,
-      ServiceSubcategory,
-      TherapeuticPath,
-      PathDocument,
-      PatientEvaluation,
-      EvaluationObjective,
-      EvaluationTest,
-      EvaluationExam,
-      ObjectiveProgressHistory,
-      TestEvaluationHistory,
-      PatientAnamnesis,
-      WaitingListEntry,
-      // Billing integration step 1 (sessione 6)
-      Site,
-      Product,
-    ]),
-  ],
+    PazientiModule],
   providers: [
     // Services
     AvailabilityService,
@@ -230,8 +178,7 @@ import { PazientiModule } from '../../patients/patients.module';
     PatientAnamnesisResolver,
     WaitingListResolver,
     ServiceInvoicePrefixResolver,
-    TreatmentServiceResolver,
-  ],
+    TreatmentServiceResolver],
   exports: [
     AvailabilityService,
     OperatorBusinessService,
@@ -259,7 +206,6 @@ import { PazientiModule } from '../../patients/patients.module';
     PatientEvaluationService,
     PatientAnamnesisService,
     WaitingListService,
-    TypeOrmModule, // Export TypeORM features for use in other modules
   ],
 })
 export class AvailabilityModule {}

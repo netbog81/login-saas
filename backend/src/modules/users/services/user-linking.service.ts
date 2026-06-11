@@ -1,16 +1,23 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AppUser } from '../entities/app-user.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class UserLinkingService {
   private readonly logger = new Logger(UserLinkingService.name);
 
   constructor(
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   async linkToKeycloak(
     appUserId: string,

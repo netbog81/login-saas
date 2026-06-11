@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, MoreThanOrEqual } from 'typeorm';
+import { In, MoreThanOrEqual } from 'typeorm';
 import { AvailabilityAppointment, BookingStatus, ConflictReason } from '../entities/availability-appointment.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { AppointmentLog, AppointmentLogEventType } from '../entities/appointment-log.entity';
@@ -9,6 +8,7 @@ import { AvailabilityCache } from '../entities/availability-cache.entity';
 import { ExceptionType } from '../entities/availability-exception.entity';
 import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
 import { AttendanceEventType } from '../../../patients/entities/clinical-attendance-log.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Risultato della verifica conflitti
@@ -41,16 +41,24 @@ export interface ConflictStats {
 @Injectable()
 export class AppointmentConflictService {
   constructor(
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
-    @InjectRepository(AppointmentLog)
-    private logRepo: Repository<AppointmentLog>,
-    @InjectRepository(TemplateAssignment)
-    private assignmentRepo: Repository<TemplateAssignment>,
-    @InjectRepository(AvailabilityCache)
-    private cacheRepo: Repository<AvailabilityCache>,
+    private readonly tenantContext: TenantContextService,
     private attendanceService: ClinicalAttendanceService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+
+  private get logRepo() { return this.dataSource.getRepository(AppointmentLog); }
+
+  private get assignmentRepo() { return this.dataSource.getRepository(TemplateAssignment); }
+
+  private get cacheRepo() { return this.dataSource.getRepository(AvailabilityCache); }
 
   // ==================== CONFLICT DETECTION ====================
 

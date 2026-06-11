@@ -1,19 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { PrivacyOfficer } from '../entities/privacy-officer.entity';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { CreatePrivacyOfficerInput } from '../dto/create-privacy-officer.input';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class PrivacyOfficerService {
   constructor(
-    @InjectRepository(PrivacyOfficer)
-    private readonly poRepo: Repository<PrivacyOfficer>,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get poRepo() { return this.dataSource.getRepository(PrivacyOfficer); }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   async findAll(): Promise<PrivacyOfficer[]> {
     return this.poRepo.find({ relations: ['appUser'] });

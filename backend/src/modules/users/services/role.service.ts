@@ -1,23 +1,30 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Role } from '../entities/role.entity';
 import { Permission } from '../entities/permission.entity';
 import { UserRole } from '../entities/user-role.entity';
 import { RolePermission } from '../entities/role-permission.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class RoleService {
   constructor(
-    @InjectRepository(Role)
-    private readonly roleRepo: Repository<Role>,
-    @InjectRepository(Permission)
-    private readonly permissionRepo: Repository<Permission>,
-    @InjectRepository(UserRole)
-    private readonly userRoleRepo: Repository<UserRole>,
-    @InjectRepository(RolePermission)
-    private readonly rolePermRepo: Repository<RolePermission>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get roleRepo() { return this.dataSource.getRepository(Role); }
+
+  private get permissionRepo() { return this.dataSource.getRepository(Permission); }
+
+  private get userRoleRepo() { return this.dataSource.getRepository(UserRole); }
+
+  private get rolePermRepo() { return this.dataSource.getRepository(RolePermission); }
 
   async findAll(): Promise<Role[]> {
     return this.roleRepo.find({

@@ -1,15 +1,22 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ServiceSubcategory } from '../entities/service-subcategory.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Resolver(() => ServiceSubcategory)
 export class ServiceSubcategoryResolver {
   constructor(
-    @InjectRepository(ServiceSubcategory)
-    private subcategoryRepo: Repository<ServiceSubcategory>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get subcategoryRepo() { return this.dataSource.getRepository(ServiceSubcategory); }
 
   // Queries
   @Query(() => [ServiceSubcategory], { name: 'serviceSubcategories' })

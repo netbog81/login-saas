@@ -4,11 +4,13 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import * as amqp from 'amqp-connection-manager';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 
+import {
+  TenantContextService,
+  TenantDataSourceManager,
+} from '@curandis/tenant-datasource';
 import { RegistryEventsConfig } from './registry-events.config';
 import { RegistryEvent, SubjectEventPayload } from './registry-events.types';
 import { ProcessedRegistryEvent } from './processed-event.entity';
@@ -38,8 +40,8 @@ export class RegistrySubjectsConsumer implements OnApplicationBootstrap, OnModul
 
   constructor(
     private readonly config: RegistryEventsConfig,
-    @InjectRepository(ProcessedRegistryEvent)
-    private readonly processedRepo: Repository<ProcessedRegistryEvent>,
+    private readonly tenantContext: TenantContextService,
+    private readonly tenantDsManager: TenantDataSourceManager,
     private readonly indexService: ClinicalSubjectIndexService,
   ) {}
 
@@ -104,9 +106,24 @@ export class RegistrySubjectsConsumer implements OnApplicationBootstrap, OnModul
       return;
     }
 
+    // Risolve il DataSource del tenant dal pool. Tenant non onboarded → DLQ.
+    let ds: import('typeorm').DataSource;
     try {
+      ds = await this.tenantDsManager.getDataSource(event.tenantAlias);
+    } catch (err) {
+      const message = (err as Error).message;
+      this.logger.warn(
+        `Tenant non risolvibile alias="${event.tenantAlias}" (${message}). DLQ.`,
+      );
+      channel.nack(msg, false, false);
+      return;
+    }
+
+    try {
+      const processedRepo = ds.getRepository(ProcessedRegistryEvent);
+
       // Idempotency: INSERT ON CONFLICT DO NOTHING.
-      const inserted = await this.processedRepo
+      const inserted = await processedRepo
         .createQueryBuilder()
         .insert()
         .into(ProcessedRegistryEvent)
@@ -125,7 +142,23 @@ export class RegistrySubjectsConsumer implements OnApplicationBootstrap, OnModul
         return;
       }
 
-      await this.dispatch(event, routingKey);
+      // Run il dispatch dentro AsyncLocalStorage del tenant context così
+      // l'indexService (e altri service downstream) trovano il DataSource giusto.
+      await new Promise<void>((resolve, reject) => {
+        this.tenantContext.run(
+          {
+            dataSource: ds,
+            tenantAlias: event!.tenantAlias,
+            dbName: (ds.options as { database?: string }).database || '',
+            requestId: event!.eventId,
+          },
+          () => {
+            this.dispatch(event!, routingKey)
+              .then(() => resolve())
+              .catch((err) => reject(err));
+          },
+        );
+      });
       channel.ack(msg);
     } catch (err) {
       this.logger.error(

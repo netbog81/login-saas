@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { AvailabilityAppointment } from '../availability/entities/availability-appointment.entity';
 import { AutoAttendanceService } from './services/auto-attendance.service';
 import { SettingsModule } from '../settings/settings.module';
@@ -12,9 +11,7 @@ import { SettingsModule } from '../settings/settings.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AvailabilityAppointment]),
-    SettingsModule,
-  ],
+    SettingsModule],
   providers: [AutoAttendanceService],
   exports: [AutoAttendanceService],
 })

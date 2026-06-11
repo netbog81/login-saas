@@ -1,14 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Between } from 'typeorm';
 import { Availability } from '../entities/availability.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class AvailabilitiesService {
   constructor(
-    @InjectRepository(Availability)
-    private availabilitiesRepository: Repository<Availability>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get availabilitiesRepository() { return this.dataSource.getRepository(Availability); }
 
   async findByDateRange(
     startDate: string,

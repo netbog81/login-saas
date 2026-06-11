@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { Product } from '../availability/entities/product.entity';
 import { Site } from '../availability/entities/site.entity';
@@ -19,9 +18,7 @@ import { SaleResolver } from './sale.resolver';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Product, Site, AppUser]),
-    AppUsersModule,
-  ],
+    AppUsersModule],
   providers: [SaleService, SaleResolver],
   exports: [SaleService],
 })

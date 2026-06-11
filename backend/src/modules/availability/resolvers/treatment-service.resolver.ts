@@ -1,12 +1,11 @@
 import { Resolver, ResolveField, Parent } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { TreatmentService } from '../entities/treatment-service.entity';
 import { Treatment } from '../entities/treatment.entity';
 import { Operator } from '../entities/operator.entity';
 import { Service } from '../entities/service.entity';
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
 import { ServiceInvoicePrefixService } from '../services/service-invoice-prefix.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Resolver per campi virtuali di TreatmentService.
@@ -18,16 +17,24 @@ import { ServiceInvoicePrefixService } from '../services/service-invoice-prefix.
 @Resolver(() => TreatmentService)
 export class TreatmentServiceResolver {
   constructor(
-    @InjectRepository(Treatment)
-    private readonly treatmentRepo: Repository<Treatment>,
-    @InjectRepository(Operator)
-    private readonly operatorRepo: Repository<Operator>,
-    @InjectRepository(Service)
-    private readonly serviceRepo: Repository<Service>,
-    @InjectRepository(TreatmentInstrument)
-    private readonly treatmentInstrumentRepo: Repository<TreatmentInstrument>,
+    private readonly tenantContext: TenantContextService,
     private readonly prefixService: ServiceInvoicePrefixService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
+
+  private get serviceRepo() { return this.dataSource.getRepository(Service); }
+
+  private get treatmentInstrumentRepo() { return this.dataSource.getRepository(TreatmentInstrument); }
 
   @ResolveField(() => String, { nullable: true })
   async invoiceLineDescriptionAuto(

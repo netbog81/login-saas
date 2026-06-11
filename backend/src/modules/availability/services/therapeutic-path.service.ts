@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { TherapeuticPath, TherapeuticPathStatus } from '../entities/therapeutic-path.entity';
 import { PathDocument, DocumentType, DocumentCategory } from '../entities/path-document.entity';
 import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
@@ -8,6 +7,7 @@ import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 // ==================== INPUT INTERFACES ====================
 
 export interface CreateTherapeuticPathInput {
@@ -52,14 +52,21 @@ export interface CreateDocumentInput {
 @Injectable()
 export class TherapeuticPathService {
   constructor(
-    @InjectRepository(TherapeuticPath)
-    private pathRepo: Repository<TherapeuticPath>,
-    @InjectRepository(PathDocument)
-    private documentRepo: Repository<PathDocument>,
-    @InjectRepository(ClinicalSubjectIndex)
-    private subjectIndexRepo: Repository<ClinicalSubjectIndex>,
-    private dataSource: DataSource,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
+
+  private get documentRepo() { return this.dataSource.getRepository(PathDocument); }
+
+  private get subjectIndexRepo() { return this.dataSource.getRepository(ClinicalSubjectIndex); }
 
   // ==================== THERAPEUTIC PATH CRUD ====================
 

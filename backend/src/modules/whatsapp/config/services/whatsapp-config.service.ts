@@ -1,10 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { WhatsappTenantConfig } from '../entities/whatsapp-tenant-config.entity';
 import { WhatsappConfigInput } from '../dto/whatsapp-config.input';
 import { CryptoService } from '../../crypto/crypto.service';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 const MIN_SECRET_LENGTH = 16;
 
 @Injectable()
@@ -12,10 +11,18 @@ export class WhatsappConfigService {
   private readonly logger = new Logger(WhatsappConfigService.name);
 
   constructor(
-    @InjectRepository(WhatsappTenantConfig)
-    private readonly configRepo: Repository<WhatsappTenantConfig>,
+    private readonly tenantContext: TenantContextService,
     private readonly cryptoService: CryptoService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get configRepo() { return this.dataSource.getRepository(WhatsappTenantConfig); }
 
   async getConfig(): Promise<WhatsappTenantConfig | null> {
     const config = await this.configRepo.findOne({ where: {} });

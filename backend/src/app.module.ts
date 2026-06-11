@@ -284,7 +284,11 @@ export class AppModule implements NestModule {
           imports: [RegistryModule],
           inject: [RegistryClient],
           useFactory: (registryClient: RegistryClient) => ({
-            autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+            // In container l'utente non-root non scrive in /app/src.
+            // Usa /tmp che è sempre writable.
+            autoSchemaFile: process.env.NODE_ENV === 'production'
+              ? '/tmp/schema.gql'
+              : join(process.cwd(), 'src/schema.gql'),
             sortSchema: true,
             playground: true,
             introspection: true,

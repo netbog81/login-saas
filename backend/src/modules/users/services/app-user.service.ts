@@ -1,20 +1,27 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { CreateAppUserInput } from '../dto/create-app-user.input';
 import { UpdateAppUserInput } from '../dto/update-app-user.input';
 import { Operator } from '../../availability/entities/operator.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class AppUserService {
   constructor(
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-    @InjectRepository(Operator)
-    private readonly operatorRepo: Repository<Operator>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
 
   async findAll(filters?: {
     userType?: AppUserType;

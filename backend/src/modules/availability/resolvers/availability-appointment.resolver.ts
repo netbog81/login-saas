@@ -1,6 +1,4 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
@@ -10,15 +8,24 @@ import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
 import { GymAvailabilityService } from '../services/gym-availability.service';
 import { RecurringSeriesScope } from '../dto/recurring-series.input';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Resolver(() => AvailabilityAppointment)
 export class AvailabilityAppointmentResolver {
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly appointmentService: AvailabilityAppointmentService,
     private readonly gymAvailabilityService: GymAvailabilityService,
-    @InjectRepository(AppointmentServiceEntity)
-    private readonly appointmentServiceRepo: Repository<AppointmentServiceEntity>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appointmentServiceRepo() { return this.dataSource.getRepository(AppointmentServiceEntity); }
 
   /**
    * ResolveField: Risolve appointmentServices per un appuntamento

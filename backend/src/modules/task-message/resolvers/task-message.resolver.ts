@@ -9,8 +9,6 @@ import {
   Int,
 } from '@nestjs/graphql';
 import { Logger, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { TaskMessage } from '../entities/task-message.entity';
 import { TaskMessagePage } from '../dto/task-message-page.type';
 import { TaskMessageResult } from '../dto/task-message-result.type';
@@ -19,15 +17,24 @@ import { UpdateTaskMessageInput } from '../dto/update-task-message.input';
 import { TaskMessageService } from '../services/task-message.service';
 import { AppUser } from '../../users/entities/app-user.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 @Resolver(() => TaskMessage)
 export class TaskMessageResolver {
   private readonly logger = new Logger(TaskMessageResolver.name);
 
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly taskMessageService: TaskMessageService,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   // ─── Queries ──────────────────────────────────────────────────
 

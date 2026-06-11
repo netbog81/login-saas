@@ -1,6 +1,4 @@
 import { Resolver, Query, Mutation, Args, ID, Context, ObjectType, Field } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { AppUserService } from '../services/app-user.service';
@@ -34,16 +32,25 @@ import { CreateKeycloakUserInput } from '../dto/create-keycloak-user.input';
 import { UpdateKeycloakUserInput } from '../dto/update-keycloak-user.input';
 import { ResetKeycloakPasswordInput } from '../dto/reset-keycloak-password.input';
 import { KeycloakOrgMember, KeycloakRealmRoleType } from '../dto/keycloak-types';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Resolver(() => AppUser)
 export class AppUserResolver {
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly appUserService: AppUserService,
     private readonly userLinkingService: UserLinkingService,
     private readonly keycloakAdminService: KeycloakAdminService,
-    @InjectRepository(Operator)
-    private readonly operatorRepo: Repository<Operator>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
 
   // ─── Existing Queries ──────────────────────────────────────────
 

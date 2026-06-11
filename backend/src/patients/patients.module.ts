@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 
 // Entità locali nuove
 import { ClinicalSubjectIndex } from './entities/clinical-subject-index.entity';
@@ -21,12 +20,6 @@ import { PatientResolver } from './resolvers/patient.resolver';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      ClinicalSubjectIndex,
-      ClinicalAttendanceLog,
-      ClinicalRelationshipExtension,
-      PatientAnamnesis,
-    ]),
   ],
   providers: [
     ClinicalSubjectIndexService,
@@ -34,14 +27,12 @@ import { PatientResolver } from './resolvers/patient.resolver';
     PatientRelationshipService,
     PatientAnamnesisService,
     RegistryPatientService,
-    PatientResolver,
-  ],
+    PatientResolver],
   exports: [
     ClinicalSubjectIndexService,
     ClinicalAttendanceService,
     PatientRelationshipService,
     PatientAnamnesisService,
-    RegistryPatientService,
-  ],
+    RegistryPatientService],
 })
 export class PazientiModule {}

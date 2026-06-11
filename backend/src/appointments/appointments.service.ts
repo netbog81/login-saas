@@ -1,15 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Between } from 'typeorm';
 import { Appointment } from '../entities/appointment.entity';
 import { v4 as uuidv4 } from 'uuid';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class AppointmentsService {
   constructor(
-    @InjectRepository(Appointment)
-    private appointmentsRepository: Repository<Appointment>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appointmentsRepository() { return this.dataSource.getRepository(Appointment); }
 
   async findByDateRange(startDate: string, endDate: string, operatorId?: string): Promise<Appointment[]> {
     const where: any = {

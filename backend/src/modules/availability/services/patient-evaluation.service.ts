@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, MoreThan } from 'typeorm';
+import { DataSource, MoreThan } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { PatientEvaluation } from '../entities/patient-evaluation.entity';
 import { EvaluationObjective } from '../entities/evaluation-objective.entity';
@@ -22,27 +21,35 @@ import {
   AddTestEvaluationInput
 } from '../dto/patient-evaluation.input';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 @Injectable()
 export class PatientEvaluationService {
   constructor(
-    @InjectRepository(PatientEvaluation)
-    private evaluationRepo: Repository<PatientEvaluation>,
-    @InjectRepository(EvaluationObjective)
-    private objectiveRepo: Repository<EvaluationObjective>,
-    @InjectRepository(EvaluationTest)
-    private testRepo: Repository<EvaluationTest>,
-    @InjectRepository(EvaluationExam)
-    private examRepo: Repository<EvaluationExam>,
-    @InjectRepository(TherapeuticPath)
-    private pathRepo: Repository<TherapeuticPath>,
-    @InjectRepository(ObjectiveProgressHistory)
-    private objectiveProgressHistoryRepo: Repository<ObjectiveProgressHistory>,
-    @InjectRepository(TestEvaluationHistory)
-    private testEvaluationHistoryRepo: Repository<TestEvaluationHistory>,
-    @InjectRepository(Treatment)
-    private treatmentRepo: Repository<Treatment>,
-    private dataSource: DataSource,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get evaluationRepo() { return this.dataSource.getRepository(PatientEvaluation); }
+
+  private get objectiveRepo() { return this.dataSource.getRepository(EvaluationObjective); }
+
+  private get testRepo() { return this.dataSource.getRepository(EvaluationTest); }
+
+  private get examRepo() { return this.dataSource.getRepository(EvaluationExam); }
+
+  private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
+
+  private get objectiveProgressHistoryRepo() { return this.dataSource.getRepository(ObjectiveProgressHistory); }
+
+  private get testEvaluationHistoryRepo() { return this.dataSource.getRepository(TestEvaluationHistory); }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
 
   // ==================== HELPERS ====================
 

@@ -1,19 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ItManager } from '../entities/it-manager.entity';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { CreateItManagerInput } from '../dto/create-it-manager.input';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class ItManagerService {
   constructor(
-    @InjectRepository(ItManager)
-    private readonly itManagerRepo: Repository<ItManager>,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get itManagerRepo() { return this.dataSource.getRepository(ItManager); }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   async findAll(): Promise<ItManager[]> {
     return this.itManagerRepo.find({ relations: ['appUser'] });

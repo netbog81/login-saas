@@ -1,6 +1,4 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent, registerEnumType } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { UseGuards } from '@nestjs/common';
 import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
@@ -28,6 +26,7 @@ import {
   CurrentUserContext,
 } from '../../users/decorators/current-user.decorator';
 import { OwnershipGuard, RequireOwnership } from '../guards/ownership.guard';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Ruolo del chiamante per le mutation soggette ad autorizzazione
@@ -44,11 +43,19 @@ registerEnumType(TreatmentCallerRole, { name: 'TreatmentCallerRole' });
 @Resolver(() => Treatment)
 export class TreatmentResolver {
   constructor(
+    private readonly tenantContext: TenantContextService,
     private readonly treatmentService: TreatmentService,
     private readonly appUserService: AppUserService,
-    @InjectRepository(TreatmentServiceEntity)
-    private readonly treatmentServiceRepo: Repository<TreatmentServiceEntity>,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentServiceRepo() { return this.dataSource.getRepository(TreatmentServiceEntity); }
 
   /**
    * Risolve l'id `AppUser` (owner del record) dal keycloak sub nel

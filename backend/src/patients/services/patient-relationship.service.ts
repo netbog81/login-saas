@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In } from 'typeorm';
 
 import { ClinicalRelationshipExtension } from '../entities/clinical-relationship-extension.entity';
 import { RegistryClient } from '../../modules/registry/registry.client';
@@ -12,6 +11,7 @@ import {
 import { CurrentUserContext } from '../../modules/users/decorators/current-user.decorator';
 import { buildRegistryCtx } from '../../modules/registry/utils/build-registry-context';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 /**
  * Composizione del modello PatientRelationship: prende le relazioni dal
  * registry (autoritativo per il tipo + i due estremi), e fa LEFT JOIN
@@ -20,10 +20,18 @@ import { buildRegistryCtx } from '../../modules/registry/utils/build-registry-co
 @Injectable()
 export class PatientRelationshipService {
   constructor(
-    @InjectRepository(ClinicalRelationshipExtension)
-    private readonly extRepo: Repository<ClinicalRelationshipExtension>,
+    private readonly tenantContext: TenantContextService,
     private readonly registry: RegistryClient,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get extRepo() { return this.dataSource.getRepository(ClinicalRelationshipExtension); }
 
   /**
    * Costruisce le relazioni di un paziente partendo da un SubjectResponse

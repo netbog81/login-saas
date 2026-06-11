@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { LessThan } from 'typeorm';
 import { Treatment } from '../entities/treatment.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Sessione 7 — Server-side cleanup dei recall "stuck".
@@ -36,9 +36,17 @@ export class TreatmentRecallCleanupJob {
   private static readonly RECALL_TIMEOUT_MINUTES = 5;
 
   constructor(
-    @InjectRepository(Treatment)
-    private readonly treatmentRepo: Repository<Treatment>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
 
   @Cron(CronExpression.EVERY_5_MINUTES, { name: 'treatmentRecallCleanup' })
   async handleCleanup(): Promise<void> {

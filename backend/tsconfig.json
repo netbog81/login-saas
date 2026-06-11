@@ -24,6 +24,7 @@
     "dist",
     "test",
     "**/*spec.ts",
-    "src/scripts/**"
+    "src/scripts/**",
+    "scripts/**"
   ]
 }

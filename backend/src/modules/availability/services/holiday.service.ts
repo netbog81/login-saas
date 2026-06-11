@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Between } from 'typeorm';
 import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
 import { Operator } from '../entities/operator.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 export interface Holiday {
   date: Date;
@@ -12,11 +12,19 @@ export interface Holiday {
 @Injectable()
 export class HolidayService {
   constructor(
-    @InjectRepository(AvailabilityException)
-    private exceptionRepo: Repository<AvailabilityException>,
-    @InjectRepository(Operator)
-    private operatorRepo: Repository<Operator>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get exceptionRepo() { return this.dataSource.getRepository(AvailabilityException); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
 
   /**
    * Calculate Easter Sunday using the Anonymous Gregorian algorithm

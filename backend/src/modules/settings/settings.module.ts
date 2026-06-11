@@ -1,29 +1,20 @@
-import { Module, OnModuleInit } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { GeneralSettings } from './entities/general-settings.entity';
+import { Module } from '@nestjs/common';
 import { GeneralSettingsService } from './services/general-settings.service';
 import { GeneralSettingsResolver } from './resolvers/general-settings.resolver';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GeneralSettings]),
   ],
   providers: [
     GeneralSettingsService,
-    GeneralSettingsResolver,
-  ],
+    GeneralSettingsResolver],
   exports: [
-    GeneralSettingsService,
-    TypeOrmModule,
-  ],
+    GeneralSettingsService],
 })
-export class SettingsModule implements OnModuleInit {
-  constructor(private readonly settingsService: GeneralSettingsService) {}
-
-  async onModuleInit(): Promise<void> {
-    // Inizializza le impostazioni predefinite all'avvio del modulo
-    // Se esistono già, non vengono sovrascritte
-    await this.settingsService.initializeDefaults();
-    console.log('[SettingsModule] Default settings initialized');
-  }
+export class SettingsModule {
+  // NOTA containerization-2026-06-11: rimosso `onModuleInit` che chiamava
+  // `initializeDefaults()` al boot. In architettura DB-per-tenant non
+  // esiste un tenant "predefinito" al bootstrap (nessun AsyncLocalStorage
+  // context disponibile). I default vanno inizializzati per-tenant al
+  // provisioning (vedi TMS) o lazy alla prima request.
 }

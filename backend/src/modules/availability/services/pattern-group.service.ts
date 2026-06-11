@@ -1,12 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { PatternGroup } from '../entities/pattern-group.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
 import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
 import { AppointmentConflictService, ConflictCheckResult } from './appointment-conflict.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Risultato dell'update con informazioni sui conflitti
@@ -19,15 +18,23 @@ export interface PatternGroupUpdateResult {
 @Injectable()
 export class PatternGroupService {
   constructor(
-    @InjectRepository(PatternGroup)
-    private patternGroupRepo: Repository<PatternGroup>,
-    @InjectRepository(TemplatePattern)
-    private patternRepo: Repository<TemplatePattern>,
-    @InjectRepository(TemplateAssignment)
-    private assignmentRepo: Repository<TemplateAssignment>,
+    private readonly tenantContext: TenantContextService,
     @Inject(forwardRef(() => AppointmentConflictService))
     private conflictService: AppointmentConflictService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get patternGroupRepo() { return this.dataSource.getRepository(PatternGroup); }
+
+  private get patternRepo() { return this.dataSource.getRepository(TemplatePattern); }
+
+  private get assignmentRepo() { return this.dataSource.getRepository(TemplateAssignment); }
 
   async findAll(): Promise<PatternGroup[]> {
     return this.patternGroupRepo.find({

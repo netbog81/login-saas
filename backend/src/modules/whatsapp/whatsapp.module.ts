@@ -1,5 +1,4 @@
-import { Module, OnModuleInit, Logger, forwardRef } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { Module, forwardRef } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 
 // Entities
@@ -33,15 +32,8 @@ import { TaskMessageModule } from '../task-message/task-message.module';
 @Module({
   imports: [
     HttpModule,
-    TypeOrmModule.forFeature([
-      WhatsappTenantConfig,
-      WhatsappMessageTemplate,
-      WhatsappMessageLog,
-      WhatsappWebhookEvent,
-    ]),
     forwardRef(() => AvailabilityModule),
-    forwardRef(() => TaskMessageModule),
-  ],
+    forwardRef(() => TaskMessageModule)],
   controllers: [WhatsappWebhookController],
   providers: [
     CryptoService,
@@ -53,24 +45,14 @@ import { TaskMessageModule } from '../task-message/task-message.module';
     WhatsappConfigResolver,
     WhatsappTemplateResolver,
     WhatsappLogResolver,
-    WhatsappLogManagementResolver,
-  ],
+    WhatsappLogManagementResolver],
   exports: [
     WhatsappGatewayService,
-    WhatsappConfigService,
-  ],
+    WhatsappConfigService],
 })
-export class WhatsappModule implements OnModuleInit {
-  private readonly logger = new Logger(WhatsappModule.name);
-
-  constructor(private readonly templateService: WhatsappTemplateService) {}
-
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.templateService.initializeDefaults();
-      this.logger.log('Default WhatsApp templates initialized');
-    } catch (error: any) {
-      this.logger.warn(`Could not initialize default templates: ${error?.message}`);
-    }
-  }
+export class WhatsappModule {
+  // NOTA containerization-2026-06-11: rimosso `onModuleInit` che chiamava
+  // `templateService.initializeDefaults()` al boot. In architettura
+  // DB-per-tenant non c'è un AsyncLocalStorage context disponibile al boot.
+  // I default Whatsapp vanno inizializzati per-tenant via TMS o lazy.
 }

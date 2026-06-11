@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, IsNull, Not, DataSource } from 'typeorm';
+import { ILike, IsNull, Not, DataSource } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { CreateOperatorInput } from '../dto/create-operator.input';
@@ -17,6 +16,7 @@ import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { WaitingListEntry } from '../entities/waiting-list-entry.entity';
 import { AvailabilityTemplate } from '../entities/availability-template.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 /**
  * Esito dell'eliminazione di un operatore: il chiamante può sapere se è
  * stato archiviato (soft) o eliminato definitivamente (hard).
@@ -45,12 +45,19 @@ export class OperatorService {
   private readonly logger = new Logger(OperatorService.name);
 
   constructor(
-    @InjectRepository(Operator)
-    private readonly operatorRepo: Repository<Operator>,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-    private readonly dataSource: DataSource,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   /**
    * Trova operatori con nome simile (case-insensitive)

@@ -1,6 +1,5 @@
 import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Not } from 'typeorm';
+import { In, Not } from 'typeorm';
 import { TaskMessage } from '../entities/task-message.entity';
 import { TaskMessageStatus } from '../enums/task-message-status.enum';
 import { TaskMessageGatewayService } from './task-message-gateway.service';
@@ -10,17 +9,26 @@ import { TaskMessageResult } from '../dto/task-message-result.type';
 import { TaskMessagePage } from '../dto/task-message-page.type';
 import { AppUser } from '../../users/entities/app-user.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 @Injectable()
 export class TaskMessageService {
   private readonly logger = new Logger(TaskMessageService.name);
 
   constructor(
-    @InjectRepository(TaskMessage)
-    private readonly taskMessageRepo: Repository<TaskMessage>,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
+    private readonly tenantContext: TenantContextService,
     private readonly gatewayService: TaskMessageGatewayService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get taskMessageRepo() { return this.dataSource.getRepository(TaskMessage); }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   // ─── Mutations (delegate to gateway) ────────────────────────────
 

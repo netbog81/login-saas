@@ -1,20 +1,27 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { OperatorService } from '../entities/operator-service.entity';
 import { Operator } from '../entities/operator.entity';
 import { Service } from '../entities/service.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class OperatorServiceService {
   constructor(
-    @InjectRepository(OperatorService)
-    private operatorServiceRepo: Repository<OperatorService>,
-    @InjectRepository(Operator)
-    private operatorRepo: Repository<Operator>,
-    @InjectRepository(Service)
-    private serviceRepo: Repository<Service>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get operatorServiceRepo() { return this.dataSource.getRepository(OperatorService); }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
+
+  private get serviceRepo() { return this.dataSource.getRepository(Service); }
 
   async assignServiceToOperator(
     operatorId: string,

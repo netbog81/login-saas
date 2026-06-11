@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { TaskMessage } from '../entities/task-message.entity';
 import { TaskMessageWebhookEvent } from '../entities/task-message-webhook-event.entity';
 import { TaskMessageStatus } from '../enums/task-message-status.enum';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 interface TaskMessageGatewayMetadata {
   source: string;
   event: string;
@@ -25,11 +24,19 @@ export class TaskMessageWebhookService {
   private readonly logger = new Logger(TaskMessageWebhookService.name);
 
   constructor(
-    @InjectRepository(TaskMessage)
-    private readonly taskMessageRepo: Repository<TaskMessage>,
-    @InjectRepository(TaskMessageWebhookEvent)
-    private readonly webhookEventRepo: Repository<TaskMessageWebhookEvent>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get taskMessageRepo() { return this.dataSource.getRepository(TaskMessage); }
+
+  private get webhookEventRepo() { return this.dataSource.getRepository(TaskMessageWebhookEvent); }
 
   /**
    * Processes an incoming webhook event from the task-message gateway.

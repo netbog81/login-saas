@@ -1,23 +1,31 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { Availability } from '../entities/availability.entity';
 
+import { TenantContextService } from '@curandis/tenant-datasource';
 @Injectable()
 export class SeedService implements OnModuleInit {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
-    @InjectRepository(Availability)
-    private availabilitiesRepository: Repository<Availability>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
 
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get usersRepository() { return this.dataSource.getRepository(User); }
+
+  private get availabilitiesRepository() { return this.dataSource.getRepository(Availability); }
+
+  // NOTA containerization-2026-06-11: rimosso `onModuleInit` che chiamava
+  // seedUsers/seedAvailabilities. In architettura DB-per-tenant non c'è
+  // un AsyncLocalStorage context al boot. Seed va fatto per-tenant al
+  // provisioning o via script CLI standalone. Per bdq i dati sono già in DB.
   async onModuleInit() {
-    await this.seedUsers();
-    // Niente seedPatients: l'anagrafica vive nel registry, popolata via UI registry
-    // o tramite import bulk dal legacy MySQL.
-    await this.seedAvailabilities();
+    // no-op
   }
 
   private async seedUsers() {

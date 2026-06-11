@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 
 // Entities
@@ -21,15 +20,12 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 @Module({
   imports: [
     HttpModule,
-    TypeOrmModule.forFeature([TaskMessage, TaskMessageWebhookEvent, AppUser]),
-    forwardRef(() => WhatsappModule),
-  ],
+    forwardRef(() => WhatsappModule)],
   providers: [
     TaskMessageGatewayService,
     TaskMessageService,
     TaskMessageWebhookService,
-    TaskMessageResolver,
-  ],
+    TaskMessageResolver],
   exports: [TaskMessageWebhookService],
 })
 export class TaskMessageModule {}

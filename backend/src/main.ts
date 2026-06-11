@@ -9,8 +9,17 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 
-// __dirname a runtime e' dist/src/, quindi risaliamo di 2 livelli per arrivare a backend/.env
-const envFilePath = path.resolve(__dirname, '../../.env');
+// __dirname varia tra host (dist/src/) e container (dist/). Provo entrambi i
+// path possibili per il .env locale. In container il .env tipicamente NON
+// esiste (le env vars arrivano dal compose), quindi dotenv non trova nulla
+// e va bene così (default silenzioso).
+const envCandidates = [
+  path.resolve(__dirname, '../.env'),     // container: __dirname = /app/dist
+  path.resolve(__dirname, '../../.env'),  // host dev: __dirname = backend/dist/src
+];
+const envFilePath = envCandidates.find((p) => {
+  try { return require('fs').existsSync(p); } catch { return false; }
+}) ?? envCandidates[1];
 dotenv.config({ path: envFilePath });
 
 /**

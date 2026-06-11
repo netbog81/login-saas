@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { In } from 'typeorm';
 import { GymRoom } from '../entities/gym-room.entity';
 import { GymSchedule } from '../entities/gym-schedule.entity';
 import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
@@ -9,6 +8,7 @@ import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymPatternGroupService } from './gym-pattern-group.service';
 import { GymExceptionService } from './gym-exception.service';
 import { GymTemplatePattern } from '../entities/gym-template-pattern.entity';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 export interface GymSlot {
   startTime: Date;
@@ -54,17 +54,25 @@ export interface GymAvailabilityResult {
 @Injectable()
 export class GymAvailabilityService {
   constructor(
-    @InjectRepository(GymRoom)
-    private roomRepo: Repository<GymRoom>,
-    @InjectRepository(GymSchedule)
-    private scheduleRepo: Repository<GymSchedule>,
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
-    @InjectRepository(AvailabilityException)
-    private exceptionRepo: Repository<AvailabilityException>,
+    private readonly tenantContext: TenantContextService,
     private gymPatternGroupService: GymPatternGroupService,
     private gymExceptionService: GymExceptionService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get roomRepo() { return this.dataSource.getRepository(GymRoom); }
+
+  private get scheduleRepo() { return this.dataSource.getRepository(GymSchedule); }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+
+  private get exceptionRepo() { return this.dataSource.getRepository(AvailabilityException); }
 
   /**
    * Check if a gym slot is available - usando il nuovo sistema di template

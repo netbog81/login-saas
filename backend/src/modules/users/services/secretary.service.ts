@@ -1,19 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Secretary } from '../entities/secretary.entity';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { CreateSecretaryInput } from '../dto/create-secretary.input';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Injectable()
 export class SecretaryService {
   constructor(
-    @InjectRepository(Secretary)
-    private readonly secretaryRepo: Repository<Secretary>,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
-  ) {}
+    private readonly tenantContext: TenantContextService,
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get secretaryRepo() { return this.dataSource.getRepository(Secretary); }
+
+  private get appUserRepo() { return this.dataSource.getRepository(AppUser); }
 
   async findAll(): Promise<Secretary[]> {
     return this.secretaryRepo.find({ relations: ['appUser'] });

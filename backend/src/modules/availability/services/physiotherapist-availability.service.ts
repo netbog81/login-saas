@@ -1,6 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
@@ -12,6 +11,7 @@ import { Service } from '../entities/service.entity';
 import { ServiceInstrument } from '../entities/service-instrument.entity';
 import { HolidayService } from './holiday.service';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 export interface InstrumentSlot {
   instrumentCategoryId: string;
@@ -47,25 +47,33 @@ export interface AvailabilityResult {
 @Injectable()
 export class PhysiotherapistAvailabilityService {
   constructor(
-    @InjectRepository(Operator)
-    private operatorRepo: Repository<Operator>,
-    @InjectRepository(AvailabilityException)
-    private exceptionRepo: Repository<AvailabilityException>,
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
-    @InjectRepository(TemplateAssignment)
-    private assignmentRepo: Repository<TemplateAssignment>,
-    @InjectRepository(Instrument)
-    private instrumentRepo: Repository<Instrument>,
-    @InjectRepository(AppointmentInstrument)
-    private appointmentInstrumentRepo: Repository<AppointmentInstrument>,
-    @InjectRepository(Service)
-    private serviceRepo: Repository<Service>,
-    @InjectRepository(ServiceInstrument)
-    private serviceInstrumentRepo: Repository<ServiceInstrument>,
+    private readonly tenantContext: TenantContextService,
     private holidayService: HolidayService,
     private settingsService: GeneralSettingsService,
-  ) {}
+  ){}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get operatorRepo() { return this.dataSource.getRepository(Operator); }
+
+  private get exceptionRepo() { return this.dataSource.getRepository(AvailabilityException); }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+
+  private get assignmentRepo() { return this.dataSource.getRepository(TemplateAssignment); }
+
+  private get instrumentRepo() { return this.dataSource.getRepository(Instrument); }
+
+  private get appointmentInstrumentRepo() { return this.dataSource.getRepository(AppointmentInstrument); }
+
+  private get serviceRepo() { return this.dataSource.getRepository(Service); }
+
+  private get serviceInstrumentRepo() { return this.dataSource.getRepository(ServiceInstrument); }
 
   /**
    * Check if an operator is available at a specific time
