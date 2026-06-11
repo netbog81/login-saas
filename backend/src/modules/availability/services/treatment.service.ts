@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull, Not, DataSource, EntityManager } from 'typeorm';
+import { In, IsNull, Not, EntityManager } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import { Treatment, TreatmentStatus, PaymentMethod } from '../entities/treatment.entity';
@@ -20,7 +19,7 @@ import { TreatmentServiceInputItem } from '../dto/treatment.input';
 import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
 import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
 import { TreatmentEventMapper } from '../../clinical-events/mappers/treatment-event.mapper';
-import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 import { AppUser } from '../../users/entities/app-user.entity';
 
 // ==================== INPUT INTERFACES ====================
@@ -92,27 +91,27 @@ export interface UpdateTreatmentInput {
 @Injectable()
 export class TreatmentService {
   constructor(
-    @InjectRepository(Treatment)
-    private treatmentRepo: Repository<Treatment>,
-    @InjectRepository(TreatmentInstrument)
-    private treatmentInstrumentRepo: Repository<TreatmentInstrument>,
-    @InjectRepository(TreatmentServiceEntity)
-    private treatmentServiceRepo: Repository<TreatmentServiceEntity>,
-    @InjectRepository(TreatmentInvoiceLine)
-    private treatmentInvoiceLineRepo: Repository<TreatmentInvoiceLine>,
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
-    @InjectRepository(AppointmentInstrument)
-    private appointmentInstrumentRepo: Repository<AppointmentInstrument>,
-    @InjectRepository(TherapeuticPath)
-    private pathRepo: Repository<TherapeuticPath>,
-    private dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
     private eventsService: EventsService,
     private readonly eventBuffer: ClinicalEventBuffer,
     private readonly eventEmitter: EventEmitter2,
     private readonly treatmentEventMapper: TreatmentEventMapper,
-    private readonly tenantContext: TenantSchemaContextService,
   ) {}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
+  private get treatmentInstrumentRepo() { return this.dataSource.getRepository(TreatmentInstrument); }
+  private get treatmentServiceRepo() { return this.dataSource.getRepository(TreatmentServiceEntity); }
+  private get treatmentInvoiceLineRepo() { return this.dataSource.getRepository(TreatmentInvoiceLine); }
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+  private get appointmentInstrumentRepo() { return this.dataSource.getRepository(AppointmentInstrument); }
+  private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
 
   // ==================== CRUD ====================
 
@@ -1461,7 +1460,7 @@ export class TreatmentService {
         }
         if (!tenantAlias) {
           throw new Error(
-            'updateBySecretary chiamato fuori da contesto tenant. Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+            'updateBySecretary chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
           );
         }
 
@@ -1585,7 +1584,7 @@ export class TreatmentService {
       if (shouldPublish) {
         if (!tenantAlias) {
           throw new Error(
-            'cancelTreatment chiamato fuori da contesto tenant. Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+            'cancelTreatment chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
           );
         }
         // Risolvo il keycloakSub del cancelledBy (consistente con altri payload).
@@ -1687,7 +1686,7 @@ export class TreatmentService {
 
       if (!tenantAlias) {
         throw new Error(
-          'requestTreatmentRecall chiamato fuori da contesto tenant. Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+          'requestTreatmentRecall chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
         );
       }
 
@@ -1990,7 +1989,7 @@ export class TreatmentService {
         // anche lo scope ALS del buffer): meglio fail rumoroso.
         throw new Error(
           'setReadyForBilling chiamato fuori da contesto tenant (tenantAlias mancante). ' +
-            'Per chiamate non-HTTP, wrappare in TenantSchemaContextService.run(...) + eventBuffer.runInScope(...).',
+            'Per chiamate non-HTTP, wrappare in TenantContextService.run(...) + eventBuffer.runInScope(...).',
         );
       }
 

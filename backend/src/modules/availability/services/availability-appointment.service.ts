@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef, Optional, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Not, Between, LessThanOrEqual, MoreThanOrEqual, DataSource, EntityManager } from 'typeorm';
+import { In, Not, Between, LessThanOrEqual, MoreThanOrEqual, EntityManager } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
 import { AppointmentInstrument } from '../entities/appointment-instrument.entity';
@@ -22,7 +21,7 @@ import { AttendanceEventType } from '../../../patients/entities/clinical-attenda
 import { WhatsappGatewayService, WhatsappPatientContact } from '../../whatsapp/gateway/whatsapp-gateway.service';
 import { RegistryClient } from '../../registry/registry.client';
 import { RegistrySubjectResponse } from '../../registry/registry.types';
-import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { AvailabilityService } from './availability.service';
 
@@ -92,29 +91,12 @@ export class AvailabilityAppointmentService {
   private readonly logger = new Logger(AvailabilityAppointmentService.name);
 
   constructor(
-    @InjectRepository(AvailabilityAppointment)
-    private appointmentRepo: Repository<AvailabilityAppointment>,
-    @InjectRepository(AppointmentInstrument)
-    private appointmentInstrumentRepo: Repository<AppointmentInstrument>,
-    @InjectRepository(AppointmentServiceEntity)
-    private appointmentServiceRepo: Repository<AppointmentServiceEntity>,
-    @InjectRepository(Instrument)
-    private instrumentRepo: Repository<Instrument>,
-    @InjectRepository(InstrumentCategory)
-    private instrumentCategoryRepo: Repository<InstrumentCategory>,
-    @InjectRepository(GymRoom)
-    private gymRoomRepo: Repository<GymRoom>,
-    @InjectRepository(Site)
-    private siteRepo: Repository<Site>,
-    @InjectRepository(ClinicalSubjectIndex)
-    private subjectIndexRepo: Repository<ClinicalSubjectIndex>,
-    private dataSource: DataSource,
+    private tenantSchemaContext: TenantContextService,
     @Inject(forwardRef(() => GymPatternGroupService))
     private gymPatternGroupService: GymPatternGroupService,
     @Inject(forwardRef(() => GymExceptionService))
     private gymExceptionService: GymExceptionService,
     private registryClient: RegistryClient,
-    private tenantSchemaContext: TenantSchemaContextService,
     private attendanceService: ClinicalAttendanceService,
     private generalSettingsService: GeneralSettingsService,
     @Inject(forwardRef(() => AvailabilityService))
@@ -122,6 +104,22 @@ export class AvailabilityAppointmentService {
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
   ) {}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantSchemaContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+  private get appointmentInstrumentRepo() { return this.dataSource.getRepository(AppointmentInstrument); }
+  private get appointmentServiceRepo() { return this.dataSource.getRepository(AppointmentServiceEntity); }
+  private get instrumentRepo() { return this.dataSource.getRepository(Instrument); }
+  private get instrumentCategoryRepo() { return this.dataSource.getRepository(InstrumentCategory); }
+  private get gymRoomRepo() { return this.dataSource.getRepository(GymRoom); }
+  private get siteRepo() { return this.dataSource.getRepository(Site); }
+  private get subjectIndexRepo() { return this.dataSource.getRepository(ClinicalSubjectIndex); }
 
   /**
    * Restituisce l'id della sede default attiva del tenant.

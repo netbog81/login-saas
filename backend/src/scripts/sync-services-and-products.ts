@@ -48,6 +48,8 @@ import {
   ProductUpsertedPayload,
   ServiceUpsertedPayload,
 } from '../modules/clinical-events/clinical-events.types';
+// TODO containerization-2026-06-11: script CLI escluso dal build (tsconfig.json:exclude).
+// Migrare a TenantContextService di @curandis/tenant-datasource prima di rieseguirlo.
 import { TenantSchemaContextService } from '../database/tenant-schema-context.service';
 import { TenantOpenbaoResolverService } from '../database/tenant-openbao-resolver.service';
 

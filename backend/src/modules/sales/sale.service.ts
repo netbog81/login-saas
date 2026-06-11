@@ -4,8 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import Decimal from 'decimal.js';
@@ -20,7 +19,7 @@ import {
   SaleLineProduct,
   TreatmentPayment,
 } from '../clinical-events/clinical-events.types';
-import { TenantSchemaContextService } from '../../database/tenant-schema-context.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 import {
   RecordProductSaleInput,
   SaleCompletedResult,
@@ -52,16 +51,29 @@ export class SaleService {
   private readonly logger = new Logger(SaleService.name);
 
   constructor(
-    @InjectRepository(Product)
-    private readonly productRepo: Repository<Product>,
-    @InjectRepository(Site)
-    private readonly siteRepo: Repository<Site>,
-    @InjectRepository(AppUser)
-    private readonly appUserRepo: Repository<AppUser>,
+    private readonly tenantContext: TenantContextService,
     private readonly eventBuffer: ClinicalEventBuffer,
     private readonly eventEmitter: EventEmitter2,
-    private readonly tenantContext: TenantSchemaContextService,
   ) {}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  private get productRepo() {
+    return this.dataSource.getRepository(Product);
+  }
+
+  private get siteRepo() {
+    return this.dataSource.getRepository(Site);
+  }
+
+  private get appUserRepo() {
+    return this.dataSource.getRepository(AppUser);
+  }
 
   /**
    * Registra una vendita rapida prodotto + pubblica `sale.completed.<tenant>`.
@@ -78,7 +90,7 @@ export class SaleService {
     if (!tenantAlias) {
       throw new Error(
         'recordProductSale chiamato fuori da contesto tenant. ' +
-          'Wrappare in TenantSchemaContextService.run + eventBuffer.runInScope.',
+          'Wrappare in TenantContextService.run + eventBuffer.runInScope.',
       );
     }
     const correlationId = this.tenantContext.getContext()?.requestId;

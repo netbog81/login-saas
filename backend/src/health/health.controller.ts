@@ -1,69 +1,75 @@
 import { Controller, Get, HttpCode, HttpStatus, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { OpenbaoBaseService } from '@curandis/openbao-core';
-import { CredentialSourceTracker } from './credential-source-tracker.service';
 import { HealthAdminGuard } from './health-admin.guard';
-import { MainDbCredentialManager } from '../database/main-db-credential-manager.service';
+
+const VAULT_HEALTH_TIMEOUT_MS = 3000;
+
+interface VaultHealthStatus {
+  reachable: boolean;
+  httpStatus?: number;
+  sealed?: boolean;
+  standby?: boolean;
+  error?: string;
+}
+
+async function probeVaultEndpoint(endpoint: string): Promise<VaultHealthStatus> {
+  const url = `${endpoint.replace(/\/$/, '')}/v1/sys/health`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), VAULT_HEALTH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: 'GET', signal: ac.signal });
+    let body: { sealed?: boolean; standby?: boolean } = {};
+    try {
+      body = (await res.json()) as { sealed?: boolean; standby?: boolean };
+    } catch {
+      // /v1/sys/health può rispondere senza body in alcuni casi
+    }
+    return {
+      reachable: true,
+      httpStatus: res.status,
+      sealed: body.sealed,
+      standby: body.standby,
+    };
+  } catch (err) {
+    return { reachable: false, error: (err as Error).message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 @Controller('health')
 export class HealthController {
-  constructor(
-    private readonly tracker: CredentialSourceTracker,
-    private readonly openbaoService: OpenbaoBaseService,
-    private readonly mainDbManager: MainDbCredentialManager,
-    @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  constructor(private readonly openbaoService: OpenbaoBaseService) {}
 
   /**
    * GET /health/status
    * Endpoint pubblico (no auth): destinato a monitoring esterno
    * (Uptime Kuma, Healthchecks.io, load balancer).
    *
-   * Risponde 200 OK se tutto a posto, 503 se vault o DB sono giù.
-   * Payload minimale: niente username, niente errori esposti.
-   * Per debug umano usare /health/openbao e /health/db-credentials
-   * (autenticati, ricchi di dettagli).
+   * Risponde 200 OK se l'agent OpenBao è raggiungibile e unsealed, 503 altrimenti.
    *
-   * Il check DB è un SELECT 1 secco sul DataSource (non safeQuery):
-   * vogliamo che il monitoring veda "503" quando ci sono credenziali
-   * stale, così l'incident è visibile invece di essere mascherato
-   * da un force-refresh innescato dall'health probe.
+   * Architettura DB-per-tenant: NON include check DB qui (non c'è un main DB
+   * globale, ogni tenant ha il suo). Il check DB tenant-specifico potrebbe
+   * essere fatto solo a fronte di una request autenticata che porta un
+   * tenantAlias — non adatto a monitoring esterno anonimo.
    */
   @Get('status')
-  async checkStatus(@Res({ passthrough: true }) res: Response) {
-    let vaultOk = false;
-    try {
-      // getCachedDatabaseCredentials è puro (no chiamata HTTP a OpenBao):
-      // se manca, vuol dire che il bootstrap o il refresh periodico non
-      // ha mai avuto successo → vault non utilizzabile.
-      vaultOk = !!this.openbaoService.getCachedDatabaseCredentials('main-db');
-    } catch {
-      vaultOk = false;
-    }
+  async getStatus(@Res({ passthrough: true }) res: Response) {
+    const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8203';
+    const vault = await probeVaultEndpoint(endpoint);
 
-    let dbOk = false;
-    try {
-      await this.dataSource.query('SELECT 1');
-      dbOk = true;
-    } catch {
-      dbOk = false;
-    }
+    const vaultOk = vault.reachable && vault.sealed === false;
 
-    const credentialsOk = this.tracker.isUsingOpenbao();
-    const allOk = vaultOk && dbOk && credentialsOk;
-
-    if (!allOk) {
+    if (!vaultOk) {
       res.status(HttpStatus.SERVICE_UNAVAILABLE);
     }
 
     return {
-      status: allOk ? 'ok' : 'degraded',
+      status: vaultOk ? 'ok' : 'degraded',
+      service: 'curandis-clinico',
       checks: {
         vault: vaultOk ? 'ok' : 'error',
-        database: dbOk ? 'ok' : 'error',
-        credentials: credentialsOk ? 'ok' : 'fallback',
       },
       timestamp: new Date().toISOString(),
     };
@@ -71,10 +77,8 @@ export class HealthController {
 
   /**
    * GET /health/live
-   * Liveness probe: ritorna sempre 200 finché il processo node è in vita
-   * e Nest gira. Niente check esterni. Adatto a Docker HEALTHCHECK o
-   * Kubernetes livenessProbe (devono dire "il container è da killare?",
-   * non "i suoi dipendenti sono ok?").
+   * Liveness probe: ritorna sempre 200 finché il processo node è in vita.
+   * Adatto a Docker HEALTHCHECK / Kubernetes livenessProbe.
    */
   @Get('live')
   @HttpCode(HttpStatus.OK)
@@ -85,74 +89,21 @@ export class HealthController {
   /**
    * GET /health/openbao
    * Protetto: richiede autenticazione + ruolo admin.
-   * Verifica se l'agent proxy OpenBao e' raggiungibile.
+   * Diagnostica più dettagliata dello stato OpenBao.
    */
   @Get('openbao')
   @UseGuards(HealthAdminGuard)
   async checkOpenbao() {
-    try {
-      const creds = await this.openbaoService.getDatabaseCredentials('main-db');
-      return {
-        status: 'ok',
-        agentProxy: process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200',
-        reachable: true,
-        currentUser: creds?.username ?? null,
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        agentProxy: process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200',
-        reachable: false,
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * GET /health/db-credentials
-   * Protetto: richiede autenticazione + ruolo admin.
-   * Mostra la fonte delle credenziali DB e verifica la connessione.
-   */
-  @Get('db-credentials')
-  @UseGuards(HealthAdminGuard)
-  async checkDbCredentials() {
-    const source = this.tracker.getSource();
-    const username = this.tracker.getUsername();
-    const bootstrapTime = this.tracker.getBootstrapTime();
-
-    // Verifica connessione DB reale
-    let dbConnected = false;
-    let dbCurrentUser: string | null = null;
-    let dbName: string | null = null;
-    try {
-      // safeQuery: recovery automatico se 28P01 (vedi commento in /health/status).
-      const result = await this.mainDbManager.safeQuery<Array<{ user: string; database: string }>>(
-        'SELECT current_user AS user, current_database() AS database',
-      );
-      dbConnected = true;
-      dbCurrentUser = result[0]?.user ?? null;
-      dbName = result[0]?.database ?? null;
-    } catch {
-      dbConnected = false;
-    }
-
-    // Confronta l'utente del bootstrap con quello attivo sulla connessione
-    const credentialsMatch = dbCurrentUser === username;
-
+    const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8203';
+    const vault = await probeVaultEndpoint(endpoint);
     return {
-      status: dbConnected ? 'ok' : 'error',
-      credentialSource: source,
-      usingOpenbao: source === 'openbao',
-      bootstrap: {
-        username,
-        time: bootstrapTime.toISOString(),
-      },
-      database: {
-        connected: dbConnected,
-        currentUser: dbCurrentUser,
-        name: dbName,
-        credentialsMatch,
-      },
+      status: vault.reachable && vault.sealed === false ? 'ok' : 'error',
+      agentProxy: endpoint,
+      reachable: vault.reachable,
+      sealed: vault.sealed,
+      standby: vault.standby,
+      httpStatus: vault.httpStatus,
+      error: vault.error,
     };
   }
 }

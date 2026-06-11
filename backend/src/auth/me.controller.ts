@@ -7,19 +7,23 @@ export interface UserMeResponse {
   name: string;
   /** UUID organizzazione Keycloak. `null` per service-account (raro su /api/me). */
   orgId: string | null;
-  schemaName: string;
-  tenantStatus: string;
+  /** Alias del tenant (es. "bdq"). */
+  tenantAlias: string;
   roles: string[];
 }
 
 /**
  * Endpoint GET /api/me
  *
- * Restituisce le informazioni dell'utente corrente estratte dal TenantContext.
- * Usato dal frontend dopo il callback OIDC Keycloak per ottenere
- * schemaName e tenantStatus (non presenti nel JWT Keycloak, risolti da OpenBao).
+ * Restituisce le informazioni dell'utente corrente estratte dal CurandisTenantContext
+ * (popolato da @curandis/auth-core CurandisTenantContextMiddleware).
  *
- * Il TenantContextMiddleware ha già validato il JWT e popolato req.tenantContext.
+ * Usato dal frontend dopo il callback OIDC Keycloak per leggere identità +
+ * tenant + ruoli. Il middleware ha già validato il JWT.
+ *
+ * NOTA: il vecchio campo `schemaName` non esiste più (architettura DB-per-tenant
+ * post-containerizzazione 2026-06-11). Frontend che lo leggeva → ora usa
+ * `tenantAlias`.
  */
 @Controller('api')
 export class MeController {
@@ -35,8 +39,7 @@ export class MeController {
       email: ctx.email,
       name: ctx.name,
       orgId: ctx.orgId,
-      schemaName: ctx.schemaName,
-      tenantStatus: ctx.tenantStatus,
+      tenantAlias: ctx.tenantAlias,
       roles: ctx.roles,
     };
   }

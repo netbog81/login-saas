@@ -1,3 +1,10 @@
+/* eslint-disable */
+// TODO containerization-2026-06-11: questo smoke script CLI è escluso dal
+// build TS (vedi tsconfig.json: "exclude": ["src/scripts/**"]) perché ancora
+// usa TenantSchemaContextService custom + un default DataSource globale che
+// nel mondo container-DB-per-tenant non esistono più. Va riscritto con
+// TenantContextService + TenantDataSourceManager di @curandis/tenant-datasource
+// prima di rieseguirlo. È un test tool, non runtime: niente impatto sul deploy.
 /**
  * Smoke #2 — End-to-end del flusso billing reale (sessione 6 Step 7.7).
  *

@@ -10,7 +10,7 @@ import * as amqp from 'amqp-connection-manager';
 import type { ConfirmChannel } from 'amqplib';
 
 import { ClinicalEventsConfig } from './clinical-events.config';
-import { TenantSchemaContextService } from '../../database/tenant-schema-context.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 import {
   ClinicalOutboundEventType,
   CurandisEvent,
@@ -69,7 +69,7 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
 
   constructor(
     private readonly config: ClinicalEventsConfig,
-    private readonly tenantContext: TenantSchemaContextService,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -232,7 +232,7 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
   /**
    * Risolve il tenantAlias per il payload. Precedenza:
    *   1. parametro esplicito (smoke test, bootstrap CLI)
-   *   2. TenantSchemaContextService (request HTTP attiva)
+   *   2. TenantContextService (request HTTP attiva, AsyncLocalStorage)
    *   3. errore
    */
   private resolveTenantAlias(explicit?: string): string {

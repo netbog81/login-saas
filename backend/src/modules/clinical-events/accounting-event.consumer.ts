@@ -4,15 +4,16 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import * as amqp from 'amqp-connection-manager';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 
+import {
+  TenantContextService,
+  TenantDataSourceManager,
+} from '@curandis/tenant-datasource';
 import { ClinicalEventsConfig } from './clinical-events.config';
 import { ProcessedClinicalEvent } from './processed-clinical-event.entity';
-import { TenantSchemaContextService } from '../../database/tenant-schema-context.service';
-import { TenantOpenbaoResolverService } from '../../database/tenant-openbao-resolver.service';
 import { Treatment } from '../availability/entities/treatment.entity';
 import { TreatmentBillingStatus } from '../availability/entities/treatment-billing-status.enum';
 import { EventsService } from '../events/events.service';
@@ -53,17 +54,17 @@ import {
  *
  * IDEMPOTENCY:
  *   1. Parse JSON. Se malformato → reject DLQ.
- *   2. Validazione tenant: alias dal routing key → resolveTenant (OpenBao)
- *      → verifica schemaName esiste in information_schema.schemata.
- *      Se schema sconosciuto → reject DLQ + warn.
- *   3. `tenantSchemaContext.run({ schemaName, ... }, async () =>`
- *      transazione con:
+ *   2. Risoluzione DataSource tenant via TenantDataSourceManager (legge
+ *      kv/tenant-clinico-db/<alias> + static-cred postgres-clinico_*_svc).
+ *      Tenant non configurato → reject DLQ + warn.
+ *   3. `tenantContext.run({ dataSource, tenantAlias, ... }, async () =>`
+ *      ds.transaction:
  *        a) INSERT INTO processed_clinical_events ON CONFLICT DO NOTHING
  *        b) Se conflict (riga già esiste) → ack senza azione
  *        c) Altrimenti → handler-specifico (`UPDATE treatments ...`)
  *
  * ERRORI:
- *   - permanenti (parse, schema sconosciuto, eventType non gestito):
+ *   - permanenti (parse, tenant non onboarded/suspended, eventType non gestito):
  *     `nack(msg, false, false)` → DLQ.
  *   - transitori (DB giù, OpenBao giù): `nack(msg, false, true)` → requeue.
  *
@@ -73,7 +74,7 @@ import {
 /**
  * Convenzione cross-modulo per consumer S2S: prefisso `system:` + nome consumer.
  * Aiuta il grep nei log audit (es. `system:registry-consumer`,
- * `system:gdpr-consumer`). Valore SOLO per popolare `TenantSchemaContextData.userId`,
+ * `system:gdpr-consumer`). Valore SOLO per popolare `TenantContextData.userId`,
  * MAI usato come FK app_users.
  */
 export const SYSTEM_USER_ID = 'system:accounting-consumer';
@@ -102,11 +103,8 @@ export class AccountingEventConsumer
 
   constructor(
     private readonly config: ClinicalEventsConfig,
-    private readonly tenantContext: TenantSchemaContextService,
-    private readonly tenantResolver: TenantOpenbaoResolverService,
-    @InjectDataSource() private readonly dataSource: DataSource,
-    @InjectRepository(ProcessedClinicalEvent)
-    private readonly processedRepo: Repository<ProcessedClinicalEvent>,
+    private readonly tenantContext: TenantContextService,
+    private readonly tenantDsManager: TenantDataSourceManager,
     private readonly eventsService: EventsService,
   ) {}
 
@@ -251,43 +249,24 @@ export class AccountingEventConsumer
 
     const logCtx = this.buildLogContext(event, routingKey);
 
-    // 2) Validazione tenant: alias → schemaName via OpenBao → schema esiste.
-    let schemaName: string;
+    // 2) Risolve il DataSource del tenant via @curandis/tenant-datasource.
+    // La lib internamente legge kv/tenant-clinico-db/<alias> + static-cred
+    // postgres-clinico_<alias>_svc e ritorna un DataSource cached per pool.
+    // - 404 KV → "Tenant not configured" (permanente, DLQ)
+    // - errore connessione (DB / OpenBao) → transitorio, requeue
+    let ds: import('typeorm').DataSource;
     try {
-      const tenantInfo = await this.tenantResolver.resolveTenant(event.tenantAlias);
-      if (!tenantInfo) {
-        this.logger.warn(
-          `${logCtx} tenant alias non trovato in OpenBao. DLQ.`,
-        );
-        channel.nack(msg, false, false);
-        return;
-      }
-      if (tenantInfo.status === 'suspended' || tenantInfo.status === 'deleted') {
-        this.logger.warn(
-          `${logCtx} tenant status="${tenantInfo.status}". DLQ.`,
-        );
-        channel.nack(msg, false, false);
-        return;
-      }
-      schemaName = tenantInfo.schemaName;
-
-      const exists = await this.dataSource.query(
-        `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1 LIMIT 1`,
-        [schemaName],
-      );
-      if (!exists || exists.length === 0) {
-        this.logger.warn(
-          `${logCtx} schema "${schemaName}" non installato sul clinico. DLQ.`,
-        );
-        channel.nack(msg, false, false);
-        return;
-      }
+      ds = await this.tenantDsManager.getDataSource(event.tenantAlias);
     } catch (err) {
-      // Errore transitorio (OpenBao giù, network) → requeue.
-      this.logger.error(
-        `${logCtx} errore validazione tenant (transitorio): ${(err as Error).message}. Requeue.`,
-      );
-      channel.nack(msg, false, true);
+      const message = (err as Error).message;
+      const isPermanent = /not configured|status.*suspended|status.*deleted/i.test(message);
+      if (isPermanent) {
+        this.logger.warn(`${logCtx} tenant non risolvibile (${message}). DLQ.`);
+        channel.nack(msg, false, false);
+      } else {
+        this.logger.error(`${logCtx} errore resolve tenant (transitorio): ${message}. Requeue.`);
+        channel.nack(msg, false, true);
+      }
       return;
     }
 
@@ -298,49 +277,49 @@ export class AccountingEventConsumer
       return;
     }
 
-    // 4) Run dentro contesto tenant (search_path) + transazione.
+    // 4) Run dentro contesto tenant (DataSource per-tenant) + transazione.
     try {
-      await this.tenantContext.run(
-        {
-          schemaName,
-          // Placeholder INTENZIONALE: il consumer S2S non ha un "tenantId numerico"
-          // — l'alias è già un identificatore univoco e il TenantSchemaSubscriber
-          // lo usa solo per logging verbose. NON sostituirlo con un lookup
-          // (sarebbe overkill, aggiungerebbe latenza al consume e nessun
-          // beneficio real-world).
-          tenantId: event.tenantAlias,
-          tenantAlias: event.tenantAlias,
-          userId: SYSTEM_USER_ID,
-          requestId: event.eventId,
-        },
-        async () => {
-          await this.dataSource.transaction(async (manager) => {
-            // 4a) Idempotency: INSERT processed_clinical_events ON CONFLICT DO NOTHING.
-            const inserted = await manager
-              .createQueryBuilder()
-              .insert()
-              .into(ProcessedClinicalEvent)
-              .values({
-                eventId: event!.eventId,
-                eventType: event!.eventType,
-                tenantAlias: event!.tenantAlias,
-                treatmentId: this.extractTreatmentId(event!),
-                billableEventId: this.extractBillableEventId(event!),
+      await new Promise<void>((resolve, reject) => {
+        this.tenantContext.run(
+          {
+            dataSource: ds,
+            tenantAlias: event!.tenantAlias,
+            dbName: (ds.options as { database?: string }).database || '',
+            userId: SYSTEM_USER_ID,
+            requestId: event!.eventId,
+          },
+          () => {
+            ds
+              .transaction(async (manager) => {
+                // 4a) Idempotency: INSERT processed_clinical_events ON CONFLICT DO NOTHING.
+                const inserted = await manager
+                  .createQueryBuilder()
+                  .insert()
+                  .into(ProcessedClinicalEvent)
+                  .values({
+                    eventId: event!.eventId,
+                    eventType: event!.eventType,
+                    tenantAlias: event!.tenantAlias,
+                    treatmentId: this.extractTreatmentId(event!),
+                    billableEventId: this.extractBillableEventId(event!),
+                  })
+                  .orIgnore()
+                  .execute();
+
+                const isDuplicate = (inserted.identifiers || []).length === 0;
+                if (isDuplicate) {
+                  this.logger.debug(`${logCtx} duplicato (skip).`);
+                  return;
+                }
+
+                // 4b) Dispatch a handler specifico.
+                await this.dispatch(event!, manager);
               })
-              .orIgnore()
-              .execute();
-
-            const isDuplicate = (inserted.identifiers || []).length === 0;
-            if (isDuplicate) {
-              this.logger.debug(`${logCtx} duplicato (skip).`);
-              return;
-            }
-
-            // 4b) Dispatch a handler specifico.
-            await this.dispatch(event!, manager);
-          });
-        },
-      );
+              .then(() => resolve())
+              .catch((err) => reject(err));
+          },
+        );
+      });
 
       channel.ack(msg);
     } catch (err) {

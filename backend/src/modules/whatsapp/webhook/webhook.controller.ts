@@ -16,8 +16,10 @@ import { randomUUID } from 'crypto';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappConfigService } from '../config/services/whatsapp-config.service';
-import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
-import { TenantOpenbaoResolverService } from '../../../database/tenant-openbao-resolver.service';
+import {
+  TenantContextService,
+  TenantDataSourceManager,
+} from '@curandis/tenant-datasource';
 import { TaskMessageWebhookService } from '../../task-message/webhook/task-message-webhook.service';
 
 @Controller('api/webhooks')
@@ -27,8 +29,8 @@ export class WhatsappWebhookController {
   constructor(
     private readonly webhookService: WhatsappWebhookService,
     private readonly configService: WhatsappConfigService,
-    private readonly tenantSchemaContext: TenantSchemaContextService,
-    private readonly tenantResolver: TenantOpenbaoResolverService,
+    private readonly tenantContext: TenantContextService,
+    private readonly tenantDsManager: TenantDataSourceManager,
     @Optional() @Inject(forwardRef(() => TaskMessageWebhookService))
     private readonly taskMessageWebhookService?: TaskMessageWebhookService,
   ) {}
@@ -58,9 +60,10 @@ export class WhatsappWebhookController {
         }
       }
 
-      // Resolve tenant schema from OpenBao using x-tenant-id header
+      // Resolve tenant DataSource via @curandis/tenant-datasource.
+      // Webhook esterni NON passano dal middleware (sono in exclude api/webhooks/*),
+      // quindi qui dobbiamo costruire manualmente il contesto tenant.
       const tenantAlias = tenantId || 'unknown';
-      const tenantInfo = await this.tenantResolver.resolveTenant(tenantAlias);
 
       // Determine which service should process this webhook
       const isTaskMessage = body?.gateway_metadata?.source === 'task-message-service';
@@ -68,34 +71,36 @@ export class WhatsappWebhookController {
         this.logger.log(`[WA-WEBHOOK] Routing to TaskMessage webhook service`);
       }
 
-      if (!tenantInfo || !tenantInfo.schemaName || tenantInfo.schemaName === 'pending') {
-        // Tenant non riconosciuto (es. istanza gateway esterna non mappata a un
-        // tenant Curandis: webhook personali di test/debug, ecc.). Non blocca
-        // ma non ha senso processarlo: niente schema valido = scrittura su
-        // public che non vogliamo. Logghiamo a debug e droppiamo il payload.
+      let ds: import('typeorm').DataSource;
+      try {
+        ds = await this.tenantDsManager.getDataSource(tenantAlias);
+      } catch (err) {
+        // Tenant non riconosciuto (es. istanza gateway esterna non onboardata,
+        // webhook personali di test/debug). Niente DataSource = nessuna scrittura.
+        // Log a debug e drop del payload, ma 200 al gateway per non far ritry.
         this.logger.debug(
-          `[WA-WEBHOOK] Skip: instance "${tenantAlias}" non mappata a un tenant Curandis`,
+          `[WA-WEBHOOK] Skip: tenant "${tenantAlias}" non onboarded (${(err as Error).message})`,
         );
         return { received: true };
-      } else {
-        this.logger.log(
-          `[WA-WEBHOOK] Resolved tenant "${tenantAlias}" → schema="${tenantInfo.schemaName}"`,
-        );
-
-        // Run processing inside tenant schema context so TypeORM uses correct search_path
-        this.tenantSchemaContext.run(
-          {
-            schemaName: tenantInfo.schemaName,
-            tenantId: tenantAlias,
-            tenantAlias,
-            userId: 'webhook',
-            requestId: randomUUID(),
-          },
-          () => {
-            this.routeWebhook(isTaskMessage, tenantAlias, body);
-          },
-        );
       }
+
+      this.logger.log(
+        `[WA-WEBHOOK] Resolved tenant "${tenantAlias}" → db="${(ds.options as { database?: string }).database}"`,
+      );
+
+      // Run processing inside tenant context AsyncLocalStorage.
+      this.tenantContext.run(
+        {
+          dataSource: ds,
+          tenantAlias,
+          dbName: (ds.options as { database?: string }).database || '',
+          userId: 'webhook',
+          requestId: randomUUID(),
+        },
+        () => {
+          this.routeWebhook(isTaskMessage, tenantAlias, body);
+        },
+      );
     } catch (error: any) {
       this.logger.error(`[WA-WEBHOOK] Handler error: ${error?.message}`);
     }

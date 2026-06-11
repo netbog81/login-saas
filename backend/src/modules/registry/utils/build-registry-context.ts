@@ -1,19 +1,24 @@
-import { CurrentUserContext } from '../../users/decorators/current-user.decorator';
+import { CurandisTenantContext } from '@curandis/auth-core';
 import { RegistryRequestContext } from '../registry.types';
 
 /**
  * Costruisce il contesto richiesto dal RegistryClient a partire dal
- * CurrentUserContext popolato dal TenantContextMiddleware.
+ * CurandisTenantContext popolato dal CurandisTenantContextMiddleware.
  *
- * La preferenza è orgAlias (es. "bdq") perché il registry usa il
- * subdomain del tenant come X-Tenant-Alias.
+ * `tenantAlias` (es. "bdq") è quello che il registry si aspetta come
+ * X-Tenant-Alias. `rawToken` viene passato esplicitamente (estratto da
+ * req.headers.authorization in `buildGraphqlContext`).
  */
-export function buildRegistryCtx(user: CurrentUserContext): RegistryRequestContext {
+export function buildRegistryCtx(
+  user: CurandisTenantContext,
+  rawToken: string,
+): RegistryRequestContext {
   return {
-    rawToken: user.rawToken,
-    tenantAlias: user.orgAlias,
-    // orgId può essere null (service-account); il RegistryClient omette
-    // l'header X-Org-Id quando è null e il registry risolve via X-Tenant-Alias.
+    rawToken,
+    tenantAlias: user.tenantAlias,
+    // orgId può essere null (service-account senza keycloak_org_id nel KV);
+    // il RegistryClient omette l'header X-Org-Id quando è null e il registry
+    // risolve via X-Tenant-Alias.
     orgId: user.orgId,
     requestId: user.requestId,
   };

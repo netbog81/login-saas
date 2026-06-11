@@ -50,7 +50,7 @@ export interface PendingClinicalEvent {
  *      sul bus EventEmitter2; il `ClinicalEventPublisher` ha un
  *      `@OnEvent('clinical.publish-pending')` che invoca `publish()` reale.
  *
- * SCOPE: AsyncLocalStorage (consistente con `TenantSchemaContextService`).
+ * SCOPE: AsyncLocalStorage (consistente con `TenantContextService` di tenant-datasource).
  * Niente request-scoped DI di NestJS che forzerebbe tutto il chain a essere
  * request-scoped.
  *

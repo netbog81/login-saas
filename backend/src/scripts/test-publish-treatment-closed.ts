@@ -45,6 +45,8 @@ import * as dotenv from 'dotenv';
 import { ClinicalEventsConfig } from '../modules/clinical-events/clinical-events.config';
 import { ClinicalEventPublisher } from '../modules/clinical-events/clinical-event.publisher';
 import { TreatmentClosedPayload } from '../modules/clinical-events/clinical-events.types';
+// TODO containerization-2026-06-11: script CLI escluso dal build (tsconfig.json:exclude).
+// Migrare a TenantContextService di @curandis/tenant-datasource prima di rieseguirlo.
 import { TenantSchemaContextService } from '../database/tenant-schema-context.service';
 
 // ============================================================================

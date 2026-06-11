@@ -1,5 +1,4 @@
 import { Module, DynamicModule, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
@@ -11,18 +10,6 @@ import { OpenbaoBaseModule, OpenbaoBaseService } from '@curandis/openbao-core';
 import { TenantDataSourceModule } from '@curandis/tenant-datasource';
 import { AuthCoreModule, CurandisTenantContextMiddleware } from '@curandis/auth-core';
 import { HealthController } from './health/health.controller';
-// Service custom temporaneamente mantenuti in providers — saranno rimossi in 4.5
-// dopo che i 13 file consumer saranno migrati a TenantDataSourceManager (4.4).
-import { CredentialSourceTracker } from './health/credential-source-tracker.service';
-import { MainDbCredentialManager } from './database/main-db-credential-manager.service';
-import { TenantSchemaService } from './database/tenant-schema.service';
-import { TenantSchemaContextService } from './database/tenant-schema-context.service';
-import { TenantSchemaSubscriber } from './database/tenant-schema.subscriber';
-import { TenantAuditService } from './database/tenant-audit.service';
-import { TenantAdminResolver } from './database/tenant-admin.resolver';
-import { TenantOpenbaoResolverService } from './database/tenant-openbao-resolver.service';
-import { TenantContextMiddleware } from './middleware/tenant-context.middleware';
-import { TenantContextInterceptor } from './middleware/tenant-context.interceptor';
 import { RegistryModule } from './modules/registry/registry.module';
 import { RegistryClient } from './modules/registry/registry.client';
 import { buildGraphqlContext } from './modules/registry/utils/build-graphql-context';
@@ -30,7 +17,6 @@ import { RegistryEventsModule } from './modules/registry-events/registry-events.
 import { ClinicalEventsModule } from './modules/clinical-events/clinical-events.module';
 import { ClinicalEventBufferMiddleware } from './modules/clinical-events/clinical-event-buffer.middleware';
 import { SalesModule } from './modules/sales/sales.module';
-import { JwksService } from './auth/jwks.service';
 import { MeController } from './auth/me.controller';
 import { UsersModule } from './users/users.module';
 import { PazientiModule } from './patients/patients.module';
@@ -320,28 +306,8 @@ export class AppModule implements NestModule {
         RecycleBinModule,
       ],
       controllers: [MeController, HealthController],
-      providers: [
-        // ⚠️ WIP 4.3: i provider sotto restano finché i 13 file consumer non
-        // sono migrati a TenantDataSourceManager (4.4). Saranno rimossi in 4.5.
-        // MainDbCredentialManager: rimosso (niente più main DB). Stesso per
-        // CredentialSourceTracker (era per il main).
-        TenantSchemaService,
-        TenantSchemaContextService,
-        TenantSchemaSubscriber,
-        TenantAuditService,
-        TenantAdminResolver,
-        TenantOpenbaoResolverService,
-        TenantContextMiddleware,
-        JwksService,
-        {
-          provide: APP_INTERCEPTOR,
-          useClass: TenantContextInterceptor,
-        },
-      ],
-      exports: [
-        TenantSchemaContextService,
-        TenantOpenbaoResolverService,
-      ],
+      providers: [],
+      exports: [],
     };
   }
 
@@ -354,12 +320,13 @@ export class AppModule implements NestModule {
       .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
 
-    // CurandisTenantContextMiddleware (auth-core): sostituirà il
-    // TenantContextMiddleware custom nel 4.4. Per ora applichiamo
-    // ENTRAMBI in catena — auth-core risolve ctx.tenantAlias/orgId,
-    // il custom popola il search_path legacy finché i service business
-    // non sono migrati. L'ordine conta: auth-core PRIMA (decora req),
-    // custom DOPO (legge req.tenantContext da auth-core o cade su flow legacy).
+    // CurandisTenantContextMiddleware (auth-core): valida JWT, risolve
+    // tenantAlias da header/subdomain/JWT, ottiene il DataSource del
+    // tenant dal pool TenantDataSourceManager, popola req.tenantContext
+    // e fa partire next() dentro l'AsyncLocalStorage del TenantContextService.
+    //
+    // Le rotte escluse non hanno tenant scope (webhook esterni si
+    // costruiscono il contesto a mano via tenantDsManager.getDataSource).
     consumer
       .apply(CurandisTenantContextMiddleware)
       .exclude(
@@ -368,11 +335,6 @@ export class AppModule implements NestModule {
         { path: 'events/(.*)', method: RequestMethod.ALL },
         { path: 'api/webhooks/(.*)', method: RequestMethod.ALL },
       )
-      .forRoutes('*');
-
-    consumer
-      .apply(TenantContextMiddleware)
-      .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
   }
 }

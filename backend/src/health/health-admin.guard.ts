@@ -2,8 +2,8 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 
 /**
  * Guard REST per gli endpoint health protetti.
- * Verifica che il tenantContext (iniettato dal TenantContextMiddleware)
- * contenga il ruolo 'admin' nei ruoli Keycloak.
+ * Verifica che il tenantContext (popolato da CurandisTenantContextMiddleware
+ * di @curandis/auth-core) contenga il ruolo 'admin' nei ruoli Keycloak.
  */
 @Injectable()
 export class HealthAdminGuard implements CanActivate {

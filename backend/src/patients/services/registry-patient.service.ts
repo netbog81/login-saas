@@ -34,11 +34,11 @@ export class RegistryPatientService {
     subjectId: string,
     user: CurrentUserContext,
   ): Promise<RegistrySubjectResponse | null> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     const subject = await this.registry.getSubject(subjectId, ctx);
     if (subject) {
       // Aggiorna best-effort la cache locale; errori non bloccano la lettura.
-      await this.indexService.syncFromSubject(subject, user.orgId ?? user.orgAlias).catch((err) => {
+      await this.indexService.syncFromSubject(subject, user.orgId ?? user.tenantAlias).catch((err) => {
         this.logger.warn(
           `Sync index fallita per ${subjectId}: ${(err as Error).message}`,
         );
@@ -57,11 +57,11 @@ export class RegistryPatientService {
     pageSize: number;
     totalPages: number;
   }> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     const res = await this.registry.globalSearch(req, ctx);
     // Sync best-effort di tutti i subject che torniamo (riempie la cache).
     await Promise.allSettled(
-      res.data.map((s) => this.indexService.syncFromSubject(s, user.orgId ?? user.orgAlias)),
+      res.data.map((s) => this.indexService.syncFromSubject(s, user.orgId ?? user.tenantAlias)),
     );
     return res;
   }
@@ -72,9 +72,9 @@ export class RegistryPatientService {
     dto: CreateIndividualDto,
     user: CurrentUserContext,
   ): Promise<RegistrySubjectResponse> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     const subject = await this.registry.createIndividual(dto, ctx);
-    await this.indexService.syncFromSubject(subject, user.orgId ?? user.orgAlias);
+    await this.indexService.syncFromSubject(subject, user.orgId ?? user.tenantAlias);
     return subject;
   }
 
@@ -83,9 +83,9 @@ export class RegistryPatientService {
     dto: UpdateIndividualDto,
     user: CurrentUserContext,
   ): Promise<RegistrySubjectResponse> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     const subject = await this.registry.updateIndividual(subjectId, dto, ctx);
-    await this.indexService.syncFromSubject(subject, user.orgId ?? user.orgAlias);
+    await this.indexService.syncFromSubject(subject, user.orgId ?? user.tenantAlias);
     return subject;
   }
 
@@ -105,12 +105,12 @@ export class RegistryPatientService {
     dto: UpdatePrivacyConsentDto,
     user: CurrentUserContext,
   ) {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     const consent = await this.registry.updatePrivacyConsent(subjectId, 'general', dto, ctx);
     // Refresh cache (il consenso non cambia display_name ma sblocca workflow)
     const fresh = await this.registry.getSubject(subjectId, ctx);
     if (fresh) {
-      await this.indexService.syncFromSubject(fresh, user.orgId ?? user.orgAlias);
+      await this.indexService.syncFromSubject(fresh, user.orgId ?? user.tenantAlias);
     } else {
       throw new NotFoundException(`Subject ${subjectId} non trovato dopo update consenso`);
     }

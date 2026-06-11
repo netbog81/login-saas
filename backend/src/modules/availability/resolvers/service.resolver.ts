@@ -1,7 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Service } from '../entities/service.entity';
@@ -9,7 +7,7 @@ import { OperatorMacroCategory } from '../entities/operator-macro-category.enum'
 import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
 import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
 import { CatalogEventMapper } from '../../clinical-events/mappers/catalog-event.mapper';
-import { TenantSchemaContextService } from '../../../database/tenant-schema-context.service';
+import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Resolver del catalogo Service.
@@ -32,15 +30,23 @@ export class ServiceResolver {
   private readonly logger = new Logger(ServiceResolver.name);
 
   constructor(
-    @InjectRepository(Service)
-    private serviceRepo: Repository<Service>,
-    @InjectDataSource()
-    private dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
     private readonly eventBuffer: ClinicalEventBuffer,
     private readonly eventEmitter: EventEmitter2,
     private readonly catalogMapper: CatalogEventMapper,
-    private readonly tenantContext: TenantSchemaContextService,
   ) {}
+
+  /** DataSource del tenant corrente (AsyncLocalStorage). */
+  private get dataSource() {
+    const ds = this.tenantContext.getDataSource();
+    if (!ds) throw new Error('No tenant DataSource in current request context');
+    return ds;
+  }
+
+  /** Repository Service del tenant corrente. */
+  private get serviceRepo() {
+    return this.dataSource.getRepository(Service);
+  }
 
   // ============================================================================
   // Queries (invariate)

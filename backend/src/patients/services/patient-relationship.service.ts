@@ -75,7 +75,7 @@ export class PatientRelationshipService {
       !subject.outgoingRelationships &&
       !subject.incomingRelationships
     ) {
-      const ctx = buildRegistryCtx(user);
+      const ctx = buildRegistryCtx(user, user.rawToken);
       const list = await this.registry.getSubjectRelationships(subject.id, ctx);
       for (const r of list) {
         const otherSubjectId = r.fromSubjectId === subject.id ? r.toSubjectId : r.fromSubjectId;
@@ -107,7 +107,7 @@ export class PatientRelationshipService {
     dto: CreateRelationshipDto,
     user: CurrentUserContext,
   ): Promise<RegistryRelationshipResponse> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     return this.registry.createRelationship(dto, ctx);
   }
 
@@ -116,12 +116,12 @@ export class PatientRelationshipService {
     validTo: string,
     user: CurrentUserContext,
   ): Promise<RegistryRelationshipResponse> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     return this.registry.closeRelationship(relationshipId, validTo, ctx);
   }
 
   async deleteRelationship(relationshipId: string, user: CurrentUserContext): Promise<void> {
-    const ctx = buildRegistryCtx(user);
+    const ctx = buildRegistryCtx(user, user.rawToken);
     await this.registry.deleteRelationship(relationshipId, ctx);
     // Cleanup extension locale (se presente)
     await this.extRepo.delete({ registryRelationshipId: relationshipId });
