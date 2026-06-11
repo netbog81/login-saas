@@ -10,6 +10,7 @@ import { OpenbaoBaseModule, OpenbaoBaseService } from '@curandis/openbao-core';
 import { TenantDataSourceModule } from '@curandis/tenant-datasource';
 import { AuthCoreModule, CurandisTenantContextMiddleware } from '@curandis/auth-core';
 import { HealthController } from './health/health.controller';
+import { TenantAdminResolver } from './database/tenant-admin.resolver';
 import { RegistryModule } from './modules/registry/registry.module';
 import { RegistryClient } from './modules/registry/registry.client';
 import { buildGraphqlContext } from './modules/registry/utils/build-graphql-context';
@@ -310,7 +311,7 @@ export class AppModule implements NestModule {
         RecycleBinModule,
       ],
       controllers: [MeController, HealthController],
-      providers: [],
+      providers: [TenantAdminResolver],
       exports: [],
     };
   }

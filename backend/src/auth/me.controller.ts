@@ -10,6 +10,20 @@ export interface UserMeResponse {
   /** Alias del tenant (es. "bdq"). */
   tenantAlias: string;
   roles: string[];
+  /**
+   * Campi deprecati ma mantenuti per retro-compatibilità con il frontend
+   * pre-containerization. Nel mondo DB-per-tenant non hanno più senso:
+   *  - schemaName è sempre "" (non c'è più uno schema dedicato per tenant
+   *    nel sottostante DB unico — ogni tenant ha il proprio DB).
+   *  - tenantStatus è sempre "active": se il caller arriva fin qui, il
+   *    middleware auth-core ha già verificato che il tenant esista in
+   *    kv/tenant-clinico-db/<alias>. I valori legacy "pending_schema",
+   *    "suspended", "deleted" non vengono più emessi.
+   * Il frontend dovrebbe usare `tenantAlias`; questi due saranno rimossi
+   * dopo che il dashboard admin/Database sarà dismesso.
+   */
+  schemaName: string;
+  tenantStatus: 'active';
 }
 
 /**
@@ -41,6 +55,8 @@ export class MeController {
       orgId: ctx.orgId,
       tenantAlias: ctx.tenantAlias,
       roles: ctx.roles,
+      schemaName: '',
+      tenantStatus: 'active',
     };
   }
 }
