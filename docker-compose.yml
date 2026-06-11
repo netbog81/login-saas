@@ -1,0 +1,118 @@
+# Curandis Clinico — backend NestJS + frontend Angular dietro nginx.
+#
+# Containerizzato il 2026-06-11 a partire dal vecchio modulo login-saas
+# (schema-per-tenant + nest start locale) → architettura DB-per-tenant
+# allineata a registry/accounting:
+#   - DB-per-tenant via OpenBao KV `tenant-clinico-db/<alias>`
+#   - Static-cred Postgres rotated 24h `postgres-clinico_<alias>_svc`
+#   - RabbitMQ creds da KV `clinico/rabbitmq`
+#   - Keycloak service-account / admin da KV `keycloak/*`
+#   - Whatsapp encryption key da KV `whatsapp/*`
+#
+# OpenBao Agent gira sull'host (porta 8203) con sink token in
+# /run/openbao-agent-clinico/clinico-token (perm 0640 root:openbao-agent).
+# Il backend container monta quella dir read-only e gira come membro
+# del gruppo openbao-agent (vedi build-arg OPENBAO_AGENT_GID nel Dockerfile).
+#
+# Network curandis_network è esterno (lo crea curandis-common-services con
+# RabbitMQ e Redis condivisi). Network evolution_net è esterno (gateway
+# 172.19.0.1 per raggiungere openbao-agent-clinico sull'host).
+#
+# Vars principali in .env (vedi .env.docker.example):
+#   OPENBAO_AGENT_GID, KEYCLOAK_URL, REGISTRY_BASE_URL_PATTERN, ...
+
+services:
+  clinico-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        OPENBAO_AGENT_GID: ${OPENBAO_AGENT_GID:-986}
+    image: curandis/clinico-backend:latest
+    container_name: curandis-clinico-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      # OpenBao Agent gira sull'host. 172.19.0.1 è il gateway del network
+      # evolution_net (allineato al pattern accounting).
+      OPENBAO_ADDR: ${OPENBAO_ADDR:-http://172.19.0.1:8203}
+      OPENBAO_AGENT_MODE: "true"
+      OPENBAO_AGENT_TOKEN_PATH: /var/run/openbao-agent-clinico/clinico-token
+      # Keycloak OIDC
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-curandis}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-curandis-app-angular}
+      # Tenant Management System
+      TMS_URL: ${TMS_URL:-https://api.curandis.cloud}
+      # Registry — anagrafica condivisa
+      REGISTRY_BASE_URL_PATTERN: ${REGISTRY_BASE_URL_PATTERN:-https://registry.{tenant}.curandis.cloud/api/v1/registry}
+      REGISTRY_DEFAULT_TENANT: ${REGISTRY_DEFAULT_TENANT:-bdq}
+      REGISTRY_HTTP_TIMEOUT_MS: ${REGISTRY_HTTP_TIMEOUT_MS:-7000}
+      REGISTRY_HTTP_RETRY_COUNT: ${REGISTRY_HTTP_RETRY_COUNT:-2}
+      # RabbitMQ — config statica (host/port/user/password/vhost arrivano
+      # da OpenBao kv/clinico/rabbitmq al bootstrap, vedi main.ts).
+      RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
+      RABBITMQ_REGISTRY_EXCHANGE: ${RABBITMQ_REGISTRY_EXCHANGE:-ex.registry.events}
+      RABBITMQ_QUEUE_SUBJECTS: ${RABBITMQ_QUEUE_SUBJECTS:-q.clinico.subjects}
+      RABBITMQ_BINDING_PATTERN: ${RABBITMQ_BINDING_PATTERN:-subject.*.*}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+    volumes:
+      # Sink del token OpenBao Agent. Read-only: il container non scrive,
+      # legge solo. Bind mount preserva i permessi 0640 root:openbao-agent;
+      # il container è membro del gruppo openbao-agent (Dockerfile) → OK.
+      - /run/openbao-agent-clinico:/var/run/openbao-agent-clinico:ro
+    extra_hosts:
+      # Permette al container di raggiungere host services per nome
+      # (utile per debug / connessioni dirette a postgres-agenda dell'host).
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${CLINICO_BACKEND_PORT:-3000}:3000"
+    networks:
+      - clinico_network
+      - curandis_network    # broker condiviso curandis-rabbitmq
+      - evolution_net       # OpenBao agent host (172.19.0.1)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  clinico-frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: curandis/clinico-frontend:latest
+    container_name: curandis-clinico-frontend
+    restart: unless-stopped
+    depends_on:
+      clinico-backend:
+        condition: service_healthy
+    ports:
+      - "${CLINICO_FRONTEND_PORT:-4200}:80"
+    networks:
+      - clinico_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  # Network locale per la coppia clinico-backend ↔ clinico-frontend.
+  clinico_network:
+    driver: bridge
+
+  # Network condiviso platform: per parlare con curandis-rabbitmq
+  # (e in futuro curandis-redis se lo condividiamo).
+  curandis_network:
+    external: true
+    name: curandis-common-services_curandis_network
+
+  # Rete Evolution Manager — usata per raggiungere l'OpenBao Agent
+  # sull'host via 172.19.0.1 (stesso pattern di accounting).
+  evolution_net:
+    external: true
+    name: evolution-net
