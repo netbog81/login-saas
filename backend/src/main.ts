@@ -3,16 +3,65 @@ import { ValidationPipe } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createOpenbaoService, OpenbaoBaseService } from '@curandis/openbao-core';
 import { AppModule } from './app.module';
-import { CredentialSourceTracker } from './health/credential-source-tracker.service';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as os from 'os';
 
-// Carica .env prima di tutto (necessario per le variabili di configurazione)
 // __dirname a runtime e' dist/src/, quindi risaliamo di 2 livelli per arrivare a backend/.env
 const envFilePath = path.resolve(__dirname, '../../.env');
 dotenv.config({ path: envFilePath });
+
+/**
+ * Legge un payload KV v2 da OpenBao via REST diretto (no Vault SDK qui per
+ * mantenere il bootstrap leggero). Path atteso: `kv/<namespace>/<key>`.
+ * Throws se 403/404/connessione fallita: i secret bootstrap sono critici.
+ */
+async function readKvSecret(
+  endpoint: string,
+  kvPath: string,
+  token: string,
+): Promise<Record<string, string>> {
+  const trimmed = kvPath.replace(/^\/+|\/+$/g, '');
+  const [mount, ...rest] = trimmed.split('/');
+  if (!mount || rest.length === 0) {
+    throw new Error(`Path KV malformato: "${kvPath}". Atteso "<mount>/<path>"`);
+  }
+  const url = `${endpoint}/v1/${mount}/data/${rest.join('/')}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { 'X-Vault-Token': token },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`OpenBao KV read fallito (${res.status}) per "${kvPath}": ${body}`);
+  }
+  const json = (await res.json()) as { data?: { data?: Record<string, string> } };
+  const data = json?.data?.data;
+  if (!data) {
+    throw new Error(`KV vuoto per "${kvPath}"`);
+  }
+  return data;
+}
+
+/** Estrae il token corrente da Agent sink o da env (AppRole mode). */
+function resolveOpenbaoToken(isAgentMode: boolean): string {
+  if (isAgentMode) {
+    const sinkPath = process.env.OPENBAO_AGENT_TOKEN_PATH;
+    if (!sinkPath) {
+      throw new Error('OPENBAO_AGENT_MODE=true ma OPENBAO_AGENT_TOKEN_PATH non impostato');
+    }
+    return fs.readFileSync(sinkPath, 'utf8').trim();
+  }
+  const directToken = process.env.OPENBAO_TOKEN || '';
+  if (!directToken) {
+    throw new Error(
+      'AppRole mode in bootstrap: serve OPENBAO_TOKEN o passare a OPENBAO_AGENT_MODE=true',
+    );
+  }
+  return directToken;
+}
 
 function getLocalIp(): string {
   const interfaces = os.networkInterfaces();
@@ -28,13 +77,11 @@ function getLocalIp(): string {
 
 async function bootstrap() {
   const isAgentMode = process.env.OPENBAO_AGENT_MODE === 'true';
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // 1. Ottieni credenziali DB da OpenBao
   console.log(`[Bootstrap] Modalita' OpenBao: ${isAgentMode ? 'Agent proxy' : 'AppRole diretto'}`);
 
-  let openbaoService: OpenbaoBaseService | null = null;
-  let mainDbCreds: { username: string; password: string };
-  let credentialSource: 'openbao' | 'env-fallback' = 'openbao';
+  let openbaoService: OpenbaoBaseService;
 
   try {
     const result = await createOpenbaoService({
@@ -48,107 +95,69 @@ async function bootstrap() {
         enableProxyHealthCheck: true,
         proxyHealthCheckIntervalMs: 60 * 1000,
       },
-      credentialSources: [
-        {
-          name: 'main-db',
-          staticCredsPath: 'database/static-creds/postgres-main-service-account',
-          rotationEventName: 'credentials.main-db.rotated',
-          credentialRefreshIntervalMs: 6 * 60 * 60 * 1000, // 6h
-          fallbackEnvUsername: 'MAIN_DB_USERNAME',
-          fallbackEnvPassword: 'MAIN_DB_PASSWORD',
-        },
-      ],
+      credentialSources: [],
     });
-
     openbaoService = result.service;
-    mainDbCreds = result.credentials['main-db'];
-    console.log(`[Bootstrap] Credenziali DB da OpenBao (user: ${mainDbCreds.username})`);
+    console.log('[Bootstrap] OpenBao autenticato');
   } catch (error) {
-    // Fallback dev locale: SOLO se esplicitamente abilitato via env
-    // `ALLOW_DEV_FALLBACK=true`. Il vecchio comportamento "fallback
-    // automatico se NODE_ENV=development" è stato rimosso il 2026-06-01
-    // dopo un incidente: l'Agent OpenBao era momentaneamente irraggiungibile
-    // al boot, il backend è caduto silenziosamente sulle credenziali
-    // `postgres/postgres` del .env, e tutte le richieste tenant sono
-    // andate in loop 28P01 per ore senza che fosse evidente cosa stesse
-    // succedendo (sintomo confuso con il bug del token stale OpenBao,
-    // che era una cosa diversa). Fail-fast > start azzoppato.
-    const allowDevFallback = process.env.ALLOW_DEV_FALLBACK === 'true';
-    const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200';
-    const errMsg = (error as Error)?.message ?? String(error);
-
-    if (!allowDevFallback) {
+    if (!isDevelopment) {
+      const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200';
       console.error(
-        `[Bootstrap] OpenBao non raggiungibile su ${endpoint}: ${errMsg}\n` +
-        `[Bootstrap] Il backend NON parte senza credenziali OpenBao valide. Verifiche:\n` +
-        `  - Agent OpenBao attivo:  systemctl status openbao-agent-main.service\n` +
-        `  - Endpoint raggiungibile: curl -s ${endpoint}/v1/sys/health\n` +
-        `  - Policy del role abilita la lettura di database/static-creds/postgres-main-service-account\n` +
-        `[Bootstrap] Per dev locale senza OpenBao: export ALLOW_DEV_FALLBACK=true (richiede MAIN_DB_USERNAME/PASSWORD nel .env).`,
+        `[Bootstrap] OpenBao non raggiungibile su ${endpoint}: ${(error as Error).message}\n` +
+        `[Bootstrap] Il backend NON parte senza OpenBao valido. Verifiche:\n` +
+        `  - Agent OpenBao attivo:  systemctl status openbao-agent-clinico.service\n` +
+        `  - Endpoint raggiungibile: curl -s ${endpoint}/v1/sys/health\n`,
       );
       throw error;
     }
-
-    // Fallback esplicito (dev locale): richiede entrambe le env vars.
-    const fbUser = process.env.MAIN_DB_USERNAME;
-    const fbPass = process.env.MAIN_DB_PASSWORD;
-    if (!fbUser || !fbPass) {
-      console.error(
-        `[Bootstrap] ALLOW_DEV_FALLBACK=true ma MAIN_DB_USERNAME/MAIN_DB_PASSWORD non valorizzati nel .env. Fail.`,
-      );
-      throw error;
-    }
-    console.warn(
-      `[Bootstrap] ALLOW_DEV_FALLBACK=true → uso credenziali fallback dal .env (user="${fbUser}"). ` +
-      `NON USARE IN PRODUZIONE: ogni 28P01 successivo NON è recuperabile via force-refresh.`,
-    );
-    mainDbCreds = { username: fbUser, password: fbPass };
-    credentialSource = 'env-fallback';
-  }
-
-  // 2. Crea l'app NestJS con le credenziali
-  // Se openbaoService e' null (fallback development), crea un servizio dummy
-  if (!openbaoService) {
+    console.warn('[Bootstrap] OpenBao non disponibile, avvio in modalita\' sviluppo');
     openbaoService = new OpenbaoBaseService({
       endpoint: 'http://127.0.0.1:8200',
-      agentMode: true, // dummy mode, nessuna operazione reale
+      agentMode: true,
     });
   }
 
-  console.log(`[Bootstrap] Credenziali DB ottenute (user: ${mainDbCreds.username})`);
-
-  const app = await NestFactory.create(
-    AppModule.forRootAsync({ mainDbCredentials: mainDbCreds, openbaoService }),
-  );
-
-  // 3. Registra la fonte delle credenziali nel tracker
-  const tracker = app.get(CredentialSourceTracker);
-  tracker.setSource(credentialSource, mainDbCreds.username);
-
-  // 3b. Verifica il database effettivo all'avvio
-  const expectedDb = process.env.DB_DATABASE || 'calendar_db';
+  // ─────────────────────────────────────────────────────────────────
+  // Bootstrap secret loading da OpenBao KV
+  // RabbitMQ: kv/clinico/rabbitmq { host, port, user, password, vhost }
+  // Iniettato come process.env per i config service che leggono RABBITMQ_URL.
+  // ─────────────────────────────────────────────────────────────────
   try {
-    const { DataSource } = await import('typeorm');
-    const ds = app.get(DataSource);
-    const [row] = await ds.query('SELECT current_database() AS db');
-    const actualDb = row?.db;
-    if (actualDb !== expectedDb) {
-      console.error(`[Bootstrap] ATTENZIONE: database effettivo="${actualDb}", atteso="${expectedDb}"!`);
-    } else {
-      console.log(`[Bootstrap] Database effettivo verificato: ${actualDb}`);
+    const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200';
+    const token = resolveOpenbaoToken(isAgentMode);
+
+    try {
+      const rmq = await readKvSecret(endpoint, 'kv/clinico/rabbitmq', token);
+      process.env.RABBITMQ_HOST = rmq.host;
+      process.env.RABBITMQ_PORT = rmq.port;
+      process.env.RABBITMQ_USER = rmq.user;
+      process.env.RABBITMQ_PASSWORD = rmq.password;
+      process.env.RABBITMQ_VHOST = rmq.vhost;
+      // I config esistenti (registry-events, clinical-events, smoke scripts)
+      // leggono RABBITMQ_URL come singola stringa: la ricostruiamo qui
+      // dal KV per non dover rifattorizzare quei file.
+      process.env.RABBITMQ_URL =
+        `amqp://${rmq.user}:${rmq.password}@${rmq.host}:${rmq.port}/${rmq.vhost}`;
+      console.log(`[Bootstrap] RabbitMQ creds caricate da KV (host=${rmq.host}, vhost=${rmq.vhost})`);
+    } catch (e) {
+      if (!isDevelopment) throw e;
+      console.warn(`[Bootstrap] KV kv/clinico/rabbitmq non disponibile (dev): ${(e as Error).message}`);
     }
-  } catch (err: any) {
-    console.warn(`[Bootstrap] Impossibile verificare database effettivo: ${err?.message}`);
+  } catch (error) {
+    console.error(`[Bootstrap] Secret loading fallito: ${(error as Error).message}`);
+    throw error;
   }
 
-  // 4. Attach EventEmitter per eventi di rotazione credenziali
+  const app = await NestFactory.create(
+    AppModule.forRootAsync({ openbaoService }),
+  );
+
+  // EventEmitter per eventi di rotazione credenziali (gestiti da tenant-datasource)
   const eventEmitter = app.get(EventEmitter2);
   openbaoService.setEventEmitter(eventEmitter);
 
-  // 4. Cookie parser per gestione cookie HttpOnly (auth)
   app.use(cookieParser());
 
-  // 5. CORS
   app.enableCors({
     origin: [
       'http://localhost:4200',
@@ -160,7 +169,6 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // 6. Validation pipe globale
   // NOTA: whitelist disabilitato per compatibilita' con GraphQL InputTypes
   // che non hanno decoratori class-validator ma solo @Field()
   app.useGlobalPipes(new ValidationPipe({
@@ -182,17 +190,12 @@ async function bootstrap() {
   console.log(`   Localhost:  http://localhost:${port}`);
   console.log(`   LAN:        http://${localIp}:${port}`);
   console.log('');
-  console.log('Database:');
-  console.log(`   DB atteso:  ${expectedDb}`);
-  console.log(`   DB user:    ${mainDbCreds.username}`);
-  console.log('');
   console.log('OpenBao:');
   console.log(`   Modalita':  ${isAgentMode ? 'Agent proxy' : 'AppRole diretto'}`);
   console.log(`   Endpoint:   ${process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200'}`);
   console.log('');
   console.log('CORS configurato per:');
   console.log('   http://localhost:4200 (sviluppo locale)');
-  console.log('   http://*.*.*.* :4200 (sviluppo LAN)');
   console.log('   https://*.curandis.cloud (produzione)');
   console.log('');
 }

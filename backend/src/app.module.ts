@@ -1,6 +1,5 @@
-import { Module, DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { Module, DynamicModule, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
@@ -9,8 +8,12 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { HttpModule } from '@nestjs/axios';
 import { join } from 'path';
 import { OpenbaoBaseModule, OpenbaoBaseService } from '@curandis/openbao-core';
-import { CredentialSourceTracker } from './health/credential-source-tracker.service';
+import { TenantDataSourceModule } from '@curandis/tenant-datasource';
+import { AuthCoreModule, CurandisTenantContextMiddleware } from '@curandis/auth-core';
 import { HealthController } from './health/health.controller';
+// Service custom temporaneamente mantenuti in providers — saranno rimossi in 4.5
+// dopo che i 13 file consumer saranno migrati a TenantDataSourceManager (4.4).
+import { CredentialSourceTracker } from './health/credential-source-tracker.service';
 import { MainDbCredentialManager } from './database/main-db-credential-manager.service';
 import { TenantSchemaService } from './database/tenant-schema.service';
 import { TenantSchemaContextService } from './database/tenant-schema-context.service';
@@ -204,17 +207,27 @@ const ALL_ENTITIES = [
 ];
 
 interface AppModuleOptions {
-  mainDbCredentials: { username: string; password: string };
   openbaoService: OpenbaoBaseService;
 }
 
 @Module({})
 export class AppModule implements NestModule {
   /**
-   * Bootstrap dinamico con credenziali DB da OpenBao.
-   * Chiamato da main.ts dopo aver ottenuto le credenziali.
-   * Quando OpenBao ruota le credenziali, MainDbCredentialManager
-   * esegue il hot-swap del DataSource automaticamente.
+   * Bootstrap dinamico via OpenBao + DB-per-tenant.
+   *
+   * Architettura (post-containerizzazione 2026-06-11):
+   *  - No "main DB": il calendar_db schema-per-tenant è morto, ogni tenant
+   *    ha il proprio database `clinico_<hash>`.
+   *  - TenantDataSourceModule (lib @curandis/tenant-datasource): risolve
+   *    tenantAlias → DataSource via OpenBao KV `tenant-clinico-db/<alias>`
+   *    e static-creds `database/static-creds/postgres-clinico_*_svc`.
+   *  - AuthCoreModule (lib @curandis/auth-core): rimpiazza JwksService +
+   *    TenantContextMiddleware/Interceptor custom.
+   *
+   * NOTA WIP 4.3: alcuni provider custom (MainDbCredentialManager,
+   * TenantSchemaService, TenantSchemaContextService, TenantContextMiddleware,
+   * ecc.) sono ancora qui perché 13 file consumer li importano. Saranno
+   * rimossi in 4.4 (refactor consumer) + 4.5 (cleanup providers).
    */
   static forRootAsync(options: AppModuleOptions): DynamicModule {
     return {
@@ -225,43 +238,57 @@ export class AppModule implements NestModule {
         EventEmitterModule.forRoot(),
         ScheduleModule.forRoot(),
         HttpModule,
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          host: process.env.DB_HOST || 'localhost',
-          port: parseInt(process.env.DB_PORT || '5432', 10),
-          username: options.mainDbCredentials.username,
-          password: options.mainDbCredentials.password,
-          database: process.env.DB_DATABASE || 'calendar_db',
+
+        // OpenBao — registra il service creato in bootstrap
+        OpenbaoBaseModule.forRoot(options.openbaoService),
+
+        // Tenant DataSource — DB-per-tenant via OpenBao
+        TenantDataSourceModule.forRoot({
+          openbaoKvPath: 'tenant-clinico-db',
+          openbaoStaticCredsPathPattern: 'database/static-creds/postgres-{username}',
           entities: ALL_ENTITIES,
-          autoLoadEntities: false,
-          synchronize: false,
-          logging: process.env.NODE_ENV === 'development',
-          migrationsRun: true,
-          migrations: [__dirname + '/migrations/*.{ts,js}'],
-          migrationsTableName: 'migrations',
-          // Sessione 7 — Hardening pool node-postgres. Default era max=10,
-          // connectionTimeoutMillis=0 (infinito). Incident 26/05: pgAdmin
-          // sature Postgres (~30 conn), clinico/accounting non riuscivano
-          // ad aprire connessioni e i consumer RabbitMQ andavano in DLQ.
-          //
-          // Configurabili via .env in caso di sistemi più grandi:
-          //   DB_POOL_MAX (default 20)
-          //   DB_POOL_IDLE_TIMEOUT_MS (default 10000)
-          //   DB_POOL_CONNECTION_TIMEOUT_MS (default 5000) — KEY: fail-fast
-          //     se Postgres satura, invece di appendere richieste HTTP
-          //     indefinitamente. L'errore arriva subito al client.
-          extra: {
-            max: parseInt(process.env.DB_POOL_MAX || '20', 10),
-            idleTimeoutMillis: parseInt(
-              process.env.DB_POOL_IDLE_TIMEOUT_MS || '10000',
-              10,
-            ),
-            connectionTimeoutMillis: parseInt(
-              process.env.DB_POOL_CONNECTION_TIMEOUT_MS || '5000',
-              10,
-            ),
+          idleTimeoutMs: 10 * 60 * 1000,
+          tenantInfoTtlMs: 5 * 60 * 1000,
+          extraTypeOrmOptions: {
+            synchronize: false,
+            // migrationsRun: false — il restore 2026-06-10 ha già popolato
+            // public.migrations con tutte le 79 entry. Le migrazioni nuove
+            // si applicheranno via `npm run migration:run` esplicito.
+            migrationsRun: false,
+            migrations: [__dirname + '/migrations/*.{ts,js}'],
+            migrationsTableName: 'migrations',
+            logging: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+            // Pool node-postgres — hardening 2026-05-26 post-incident
+            // saturazione Postgres.
+            extra: {
+              max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+              idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '10000', 10),
+              connectionTimeoutMillis: parseInt(
+                process.env.DB_POOL_CONNECTION_TIMEOUT_MS || '5000',
+                10,
+              ),
+            },
           },
         }),
+
+        // Auth — sostituisce JwksService custom + TenantContextMiddleware
+        AuthCoreModule.forRoot({
+          keycloakUrl: process.env.KEYCLOAK_URL,
+          keycloakRealm: process.env.KEYCLOAK_REALM || 'curandis',
+          keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'curandis-app-angular',
+          tenantResolver: {
+            fromHeader: 'x-tenant-alias',
+            fromSubdomainPatterns: [
+              /^clinico\.([^.]+)\.curandis\.cloud$/,
+              /^agenda\.([^.]+)\.curandis\.cloud$/,
+            ],
+            fromJwtClaim: 'organization',
+            fromJwtOrgIdClaim: 'org_id',
+            nonTenantSubdomains: ['api', 'auth', 'tenants', 'my', 'www', 'registry', 'accounting', 'clinico', 'agenda'],
+          },
+          serviceAccountClientIds: [],
+        }),
+
         RegistryModule,
         RegistryEventsModule,
         ClinicalEventsModule,
@@ -278,7 +305,6 @@ export class AppModule implements NestModule {
             context: ({ req }) => buildGraphqlContext(req, registryClient),
           }),
         }),
-        OpenbaoBaseModule.forRoot(options.openbaoService),
         UsersModule,
         PazientiModule,
         AppointmentsModule,
@@ -295,8 +321,10 @@ export class AppModule implements NestModule {
       ],
       controllers: [MeController, HealthController],
       providers: [
-        CredentialSourceTracker,
-        MainDbCredentialManager,
+        // ⚠️ WIP 4.3: i provider sotto restano finché i 13 file consumer non
+        // sono migrati a TenantDataSourceManager (4.4). Saranno rimossi in 4.5.
+        // MainDbCredentialManager: rimosso (niente più main DB). Stesso per
+        // CredentialSourceTracker (era per il main).
         TenantSchemaService,
         TenantSchemaContextService,
         TenantSchemaSubscriber,
@@ -320,16 +348,28 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // ClinicalEventBufferMiddleware: wrappa OGNI request HTTP in
     // eventBuffer.runInScope(...) così i service business possono fare
-    // eventBuffer.add() senza preoccuparsi di setup ALS. Va applicato
-    // PRIMA del TenantContextMiddleware, ma entrambi sono safe-by-design
-    // (l'ordine importa solo per la pulizia logica del flusso).
+    // eventBuffer.add() senza preoccuparsi di setup ALS.
     consumer
       .apply(ClinicalEventBufferMiddleware)
       .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
       .forRoutes('*');
 
-    // Applica TenantContextMiddleware a tutte le rotte operative
-    // Escludi: health check, graphql playground, rotte SSE
+    // CurandisTenantContextMiddleware (auth-core): sostituirà il
+    // TenantContextMiddleware custom nel 4.4. Per ora applichiamo
+    // ENTRAMBI in catena — auth-core risolve ctx.tenantAlias/orgId,
+    // il custom popola il search_path legacy finché i service business
+    // non sono migrati. L'ordine conta: auth-core PRIMA (decora req),
+    // custom DOPO (legge req.tenantContext da auth-core o cade su flow legacy).
+    consumer
+      .apply(CurandisTenantContextMiddleware)
+      .exclude(
+        { path: 'health/status', method: RequestMethod.ALL },
+        { path: 'health/live', method: RequestMethod.ALL },
+        { path: 'events/(.*)', method: RequestMethod.ALL },
+        { path: 'api/webhooks/(.*)', method: RequestMethod.ALL },
+      )
+      .forRoutes('*');
+
     consumer
       .apply(TenantContextMiddleware)
       .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
