@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { DataSource } from 'typeorm';
 import { AvailabilityAppointment, BookingStatus } from '../../availability/entities/availability-appointment.entity';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { EventsService } from '../../events/events.service';
+import { TreatmentCascadeService } from '../../availability/services/treatment-cascade.service';
+import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
 
-import { TenantContextService } from '@curandis/tenant-datasource';
+import { TenantContextService, TenantDataSourceManager } from '@curandis/tenant-datasource';
 /**
  * Service per il cambio automatico dello stato appuntamento da SCHEDULED/CONFIRMED a ATTENDED
  * quando scatta l'ora di inizio (con offset configurabile).
@@ -14,6 +17,11 @@ import { TenantContextService } from '@curandis/tenant-datasource';
  * - Configurabile via impostazioni (abilitato/disabilitato, offset minuti)
  * - Flag autoStatusChanged per evitare loop (cambiato automaticamente solo una volta)
  * - La segreteria può sempre cambiare lo stato manualmente
+ *
+ * DB-per-tenant: il cron job NON ha un tenant nel contesto (gira fuori da
+ * una request). Itera tutti i tenant configurati in OpenBao KV e per ogni
+ * tenant esegue la logica dentro `TenantContextService.run()` così i
+ * servizi business che leggono `getDataSource()` trovano il giusto DS.
  */
 @Injectable()
 export class AutoAttendanceService {
@@ -21,18 +29,16 @@ export class AutoAttendanceService {
 
   constructor(
     private readonly tenantContext: TenantContextService,
+    private readonly tenantDsManager: TenantDataSourceManager,
     private settingsService: GeneralSettingsService,
     private eventsService: EventsService,
+    private treatmentCascade: TreatmentCascadeService,
+    private eventBuffer: ClinicalEventBuffer,
   ){}
 
-  /** DataSource del tenant corrente (AsyncLocalStorage). */
-  private get dataSource() {
-    const ds = this.tenantContext.getDataSource();
-    if (!ds) throw new Error('No tenant DataSource in current request context');
-    return ds;
+  private appointmentRepoFor(ds: DataSource) {
+    return ds.getRepository(AvailabilityAppointment);
   }
-
-  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
 
   /**
    * Cron job eseguito ogni minuto per controllare e aggiornare
@@ -40,72 +46,101 @@ export class AutoAttendanceService {
    */
   @Cron(CronExpression.EVERY_MINUTE)
   async handleAutoAttendance(): Promise<void> {
+    let aliases: string[];
     try {
-      // 1. Verifica se la feature è abilitata
-      const settings = await this.settingsService.getAutoAttendanceSettings();
-
-      if (!settings.enabled) {
-        return;
-      }
-
-      // 2. Calcola l'ora target considerando l'offset
-      const now = new Date();
-      const targetTime = new Date(now.getTime() - settings.offsetMinutes * 60 * 1000);
-
-      // Formatta per il confronto con il database
-      const targetDate = this.formatDate(targetTime);
-      const targetTimeStr = this.formatTime(targetTime);
-      this.logger.log(`Marco Auto attendance check at ${this.formatTime(now)} (target: ${targetDate} ${targetTimeStr})`);
-      // 3. Trova gli appuntamenti da aggiornare
-      // Esclude gli appuntamenti non retribuiti (pausa pranzo, rappresentante, ecc.)
-      const appointmentsToUpdate = await this.appointmentRepo
-        .createQueryBuilder('apt')
-        .where('apt.bookingStatus IN (:...statuses)', {
-          statuses: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED]
-        })
-        .andWhere('apt.autoStatusChanged = false')
-        .andWhere('apt.nonRetribuito = false')
-        .andWhere(`
-          (apt.appointmentDate < :targetDate) OR
-          (apt.appointmentDate = :targetDate AND apt.startTime <= :targetTime)
-        `, { targetDate, targetTime: targetTimeStr })
-        .getMany();
-
-      if (appointmentsToUpdate.length === 0) {
-        return;
-      }
-
-      // 4. Aggiorna gli appuntamenti
-      this.logger.log(
-        `Auto-attendance: Aggiornamento ${appointmentsToUpdate.length} appuntamenti a ATTENDED ` +
-        `(target: ${targetDate} ${targetTimeStr}, offset: ${settings.offsetMinutes} min)`
-      );
-
-      for (const appointment of appointmentsToUpdate) {
-        appointment.bookingStatus = BookingStatus.ATTENDED;
-        appointment.autoStatusChanged = true;
-        await this.appointmentRepo.save(appointment);
-
-        this.logger.debug(
-          `Appuntamento ${appointment.id} aggiornato automaticamente a ATTENDED ` +
-          `(data: ${appointment.appointmentDate}, ora: ${appointment.startTime})`
-        );
-      }
-
-      this.logger.log(`Auto-attendance: ${appointmentsToUpdate.length} appuntamenti aggiornati con successo`);
-
-      // Emetti evento SSE per notificare il frontend
-      const updatedIds = appointmentsToUpdate.map(apt => apt.id);
-      this.eventsService.emit({
-        type: 'appointment_status_changed',
-        appointmentIds: updatedIds,
-        newStatus: BookingStatus.ATTENDED,
-        timestamp: new Date(),
-      });
-      this.logger.debug(`Evento SSE emesso per ${updatedIds.length} appuntamenti`);
+      aliases = await this.tenantDsManager.listKnownTenantAliases();
     } catch (error) {
-      this.logger.error('Errore durante auto-attendance cron job', error);
+      this.logger.error('Auto-attendance: impossibile elencare i tenant', error as Error);
+      return;
     }
+
+    if (aliases.length === 0) {
+      return;
+    }
+
+    for (const alias of aliases) {
+      try {
+        await this.processTenant(alias);
+      } catch (error) {
+        // Errori del singolo tenant non devono bloccare gli altri.
+        this.logger.error(`Auto-attendance: errore sul tenant="${alias}"`, error as Error);
+      }
+    }
+  }
+
+  /**
+   * Esegue il cambio di stato per un singolo tenant dentro un
+   * AsyncLocalStorage scope, così i service che leggono il context
+   * (settingsService, eventsService scoped, ecc.) trovano il tenant giusto.
+   */
+  private async processTenant(tenantAlias: string): Promise<void> {
+    const ds = await this.tenantDsManager.getDataSource(tenantAlias);
+
+    await this.tenantContext.run(
+      { tenantAlias, dataSource: ds, dbName: ds.options.database as string },
+      async () => {
+        // 1. Verifica se la feature è abilitata per questo tenant
+        const settings = await this.settingsService.getAutoAttendanceSettings();
+        if (!settings.enabled) {
+          return;
+        }
+
+        // 2. Calcola l'ora target considerando l'offset
+        const now = new Date();
+        const targetTime = new Date(now.getTime() - settings.offsetMinutes * 60 * 1000);
+        const targetDate = this.formatDate(targetTime);
+        const targetTimeStr = this.formatTime(targetTime);
+
+        // 3. Trova gli appuntamenti da aggiornare
+        // Esclude gli appuntamenti non retribuiti (pausa pranzo, rappresentante, ecc.)
+        const appointmentRepo = this.appointmentRepoFor(ds);
+        const appointmentsToUpdate = await appointmentRepo
+          .createQueryBuilder('apt')
+          .where('apt.bookingStatus IN (:...statuses)', {
+            statuses: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED],
+          })
+          .andWhere('apt.autoStatusChanged = false')
+          .andWhere('apt.nonRetribuito = false')
+          .andWhere(
+            `(apt.appointmentDate < :targetDate) OR
+             (apt.appointmentDate = :targetDate AND apt.startTime <= :targetTime)`,
+            { targetDate, targetTime: targetTimeStr },
+          )
+          .getMany();
+
+        if (appointmentsToUpdate.length === 0) {
+          return;
+        }
+
+        this.logger.log(
+          `Auto-attendance [tenant=${tenantAlias}]: ` +
+          `${appointmentsToUpdate.length} appuntamenti → ATTENDED ` +
+          `(target: ${targetDate} ${targetTimeStr}, offset: ${settings.offsetMinutes} min)`,
+        );
+
+        for (const appointment of appointmentsToUpdate) {
+          appointment.bookingStatus = BookingStatus.ATTENDED;
+          appointment.autoStatusChanged = true;
+          await appointmentRepo.save(appointment);
+        }
+
+        // Emetti evento SSE per notificare il frontend
+        const updatedIds = appointmentsToUpdate.map((apt) => apt.id);
+        this.eventsService.emit({
+          type: 'appointment_status_changed',
+          appointmentIds: updatedIds,
+          newStatus: BookingStatus.ATTENDED,
+          timestamp: new Date(),
+        });
+
+        // Cascata: auto-start trattamento (fromCron=true → limitata all'orario
+        // clinica). Best-effort: il cascade ingoia i propri errori e non
+        // blocca il cron.
+        for (const appointment of appointmentsToUpdate) {
+          await this.treatmentCascade.onAppointmentAttended(appointment, true);
+        }
+      },
+    );
   }
 
   /**

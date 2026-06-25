@@ -22,6 +22,8 @@ import {
 import { CommonModule } from '@angular/common';
 import { Subject, combineLatest, forkJoin, firstValueFrom } from 'rxjs';
 import { takeUntil, debounceTime } from 'rxjs/operators';
+import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
 
 // Angular Material
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -37,7 +39,9 @@ import { OperatorGridV3Component } from '../components/operator-grid/operator-gr
 
 // Componenti riusati da calendar-v2 (Layer 1 - Dumb)
 import { CalendarV2SidebarComponent } from '../../calendar-v2/components/calendar-sidebar/calendar-v2-sidebar.component';
-import { GymGridComponent, GymRoom } from '../../calendar-v2/components/gym-grid/gym-grid.component';
+import { GymGridComponent, GymRoom, GymSlotClickEvent } from '../../calendar-v2/components/gym-grid/gym-grid.component';
+import { GymRoomService, GymAppointment } from '../../../services/gym-room.service';
+import { GymSlotSummaryV3Component, GymSlotSummaryV3Action } from '../components/gym-slot-summary/gym-slot-summary-v3.component';
 
 // Dialog Material esistenti
 import { MatDialog } from '@angular/material/dialog';
@@ -224,6 +228,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private appointmentService = inject(AvailabilityAppointmentService);
   private sseService = inject(SseService);
   private instrumentService = inject(InstrumentService);
+  private gymRoomService = inject(GymRoomService);
+  private overlay = inject(Overlay);
 
   // State
   loading = false;
@@ -270,6 +276,13 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   gymSlotsData: Map<string, Map<string, any[]>> = new Map();
   gymAppointmentsData: Map<string, Map<string, any[]>> = new Map();
 
+  // Gym slot summary overlay (doppio click) + debounce per distinguere
+  // dal click singolo (prenotazione). Vedi onGymSlotClick/onGymSlotDblClick.
+  private gymSlotClickTimer: ReturnType<typeof setTimeout> | null = null;
+  private gymSummaryOverlayRef: OverlayRef | null = null;
+  private gymSummaryEvent: GymSlotClickEvent | null = null;
+  private static readonly GYM_CLICK_DEBOUNCE_MS = 250;
+
   ngOnInit(): void {
     this.loadInitialData();
     this.subscribeToState();
@@ -281,6 +294,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     if (this.currentTimeInterval) clearInterval(this.currentTimeInterval);
+    if (this.gymSlotClickTimer) clearTimeout(this.gymSlotClickTimer);
+    this.closeGymSummary();
   }
 
   // ==================== INITIALIZATION ====================
@@ -1009,19 +1024,48 @@ export class CalendarV3Container implements OnInit, OnDestroy {
 
   // ==================== GYM INTERACTIONS ====================
 
-  onGymSlotClick(event: any): void {
-    this.openGymAppointmentDialog(event);
+  /**
+   * Click singolo su uno slot palestra = PRENOTA.
+   * Debounce per evitare lo scatto se l'utente sta facendo doppio click
+   * (che invece apre il riquadro riassunto).
+   */
+  onGymSlotClick(event: GymSlotClickEvent): void {
+    // Discriminazione singolo/doppio click sul SOLO stream `slotClick`, che la
+    // griglia emette per QUALSIASI slot (anche pieno/non disponibile). Lo stream
+    // `slotDblClick` invece e' filtrato dalla griglia (`!isAvailable`), quindi
+    // non scatterebbe sugli slot pieni: per questo non lo usiamo.
+    //   - secondo click entro la finestra di debounce  → doppio click = riepilogo
+    //   - nessun secondo click                         → singolo click = prenota
+    if (this.gymSlotClickTimer) {
+      clearTimeout(this.gymSlotClickTimer);
+      this.gymSlotClickTimer = null;
+      this.openGymSlotSummaryOverlay(event);
+      return;
+    }
+    this.gymSlotClickTimer = setTimeout(() => {
+      this.gymSlotClickTimer = null;
+      this.openGymAppointmentDialog(event);
+    }, CalendarV3Container.GYM_CLICK_DEBOUNCE_MS);
   }
 
-  onGymSlotDblClick(event: any): void {
-    this.openGymAppointmentDialog(event);
+  /**
+   * No-op intenzionale: la discriminazione singolo/doppio click avviene in
+   * `onGymSlotClick` sul solo stream `slotClick` (vedi commento li'). `slotDblClick`
+   * non e' affidabile perche' la griglia non lo emette per gli slot pieni.
+   */
+  onGymSlotDblClick(_event: GymSlotClickEvent): void {
+    /* vedi onGymSlotClick */
   }
 
   onGymAppointmentClick(event: any): void {
     console.log('[CalendarV3] Gym appointment click:', event.appointment?.id);
   }
 
-  private openGymAppointmentDialog(event: any): void {
+  /**
+   * Apre il dialog Material per creare (o, se `appointment` valorizzato,
+   * modificare) un appuntamento palestra.
+   */
+  private openGymAppointmentDialog(event: GymSlotClickEvent, appointment?: GymAppointment): void {
     const dialogRef = this.dialog.open(GymAppointmentMatDialogComponent, {
       width: '600px',
       disableClose: false,
@@ -1032,6 +1076,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         endTime: event.endTime,
         slotInfo: event.slotInfo,
         patients: this.patients,
+        appointment,
       } as GymAppointmentMatDialogData,
     });
 
@@ -1040,6 +1085,124 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         this.reloadCurrentView();
       }
     });
+  }
+
+  /**
+   * Appuntamenti che insistono sullo slot cliccato (stessa room, overlap
+   * orario), ricavati dai dati gia' caricati per la griglia.
+   */
+  private getAppointmentsForSlot(event: GymSlotClickEvent): GymAppointment[] {
+    // Match sullo startTime dello slot, normalizzato a HH:MM: gli appuntamenti
+    // arrivano dal backend come "HH:MM:SS" mentre lo slot e' "HH:MM", quindi un
+    // confronto stretto fallirebbe. Il match sullo START (non sull'overlap)
+    // evita di includere gli appuntamenti degli slot adiacenti.
+    const hhmm = (t: string | undefined): string => (t ?? '').slice(0, 5);
+    const slotStart = hhmm(event.startTime);
+    const roomApts = (this.gymAppointmentsData.get(event.date)?.get(event.gymRoom.id) ?? []) as GymAppointment[];
+    return roomApts.filter((a) => hhmm(a.startTime) === slotStart);
+  }
+
+  /**
+   * Crea e mostra l'overlay CDK con il riquadro riassunto (Layer 1 dumb).
+   */
+  private openGymSlotSummaryOverlay(event: GymSlotClickEvent): void {
+    this.closeGymSummary();
+    this.gymSummaryEvent = event;
+
+    const origin = { x: event.mouseEvent.clientX, y: event.mouseEvent.clientY };
+    const positionStrategy = this.overlay
+      .position()
+      .flexibleConnectedTo(origin)
+      .withFlexibleDimensions(false)
+      .withPush(true)
+      .withPositions([
+        { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 8 },
+        { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -8 },
+        { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 8 },
+        { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
+      ]);
+
+    const overlayRef = this.overlay.create({
+      positionStrategy,
+      scrollStrategy: this.overlay.scrollStrategies.reposition(),
+      hasBackdrop: true,
+      backdropClass: 'cdk-overlay-transparent-backdrop',
+    });
+    this.gymSummaryOverlayRef = overlayRef;
+
+    overlayRef.backdropClick().pipe(takeUntil(this.destroy$)).subscribe(() => this.closeGymSummary());
+    overlayRef.keydownEvents().pipe(takeUntil(this.destroy$)).subscribe((e) => {
+      if (e.key === 'Escape') this.closeGymSummary();
+    });
+
+    const ref = overlayRef.attach(new ComponentPortal(GymSlotSummaryV3Component));
+    ref.instance.gymRoom = event.gymRoom;
+    ref.instance.slotInfo = event.slotInfo;
+    ref.instance.date = event.date;
+    ref.instance.appointments = this.getAppointmentsForSlot(event);
+    ref.instance.action
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((action) => this.handleGymSummaryAction(action));
+    ref.changeDetectorRef.detectChanges();
+  }
+
+  /** Gestisce le azioni emesse dal riquadro riassunto. */
+  private handleGymSummaryAction(action: GymSlotSummaryV3Action): void {
+    const event = this.gymSummaryEvent;
+    switch (action.type) {
+      case 'add':
+        this.closeGymSummary();
+        if (event) this.openGymAppointmentDialog(event);
+        break;
+      case 'edit':
+        this.closeGymSummary();
+        if (event && action.appointment) {
+          this.openGymAppointmentDialog(event, action.appointment);
+        }
+        break;
+      case 'delete':
+        this.closeGymSummary();
+        if (action.appointment) this.confirmDeleteGymAppointment(action.appointment);
+        break;
+      case 'close':
+        this.closeGymSummary();
+        break;
+    }
+  }
+
+  /** Conferma + elimina una prenotazione palestra. */
+  private confirmDeleteGymAppointment(appointment: GymAppointment): void {
+    const ref = this.dialog.open(ConfirmMatDialogComponent, {
+      width: '400px',
+      data: {
+        title: 'Elimina prenotazione',
+        message: `Confermi l'eliminazione della prenotazione di ${appointment.clientName || 'questo paziente'}?`,
+        confirmText: 'Elimina',
+        cancelText: 'Annulla',
+        confirmColor: 'warn',
+        icon: 'delete',
+      } as ConfirmMatDialogData,
+    });
+
+    ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(async (confirmed) => {
+      if (!confirmed) return;
+      try {
+        await firstValueFrom(this.gymRoomService.deleteAppointment(appointment.id));
+        this.reloadCurrentView();
+      } catch (err: any) {
+        console.error('[CalendarV3] Error deleting gym appointment:', err);
+        alert(err?.message || "Errore durante l'eliminazione della prenotazione");
+      }
+    });
+  }
+
+  /** Chiude e distrugge l'overlay del riquadro riassunto. */
+  private closeGymSummary(): void {
+    if (this.gymSummaryOverlayRef) {
+      this.gymSummaryOverlayRef.dispose();
+      this.gymSummaryOverlayRef = null;
+    }
+    this.gymSummaryEvent = null;
   }
 
   // ==================== GRID INTERACTIONS ====================
@@ -1204,9 +1367,40 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         } catch (err: any) {
           alert(err?.graphQLErrors?.[0]?.message || 'Errore nell\'eliminazione');
         }
+      } else if (result.action === 'mark-attended' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.markAsAttended(result.appointmentId!),
+          'segnare come presentato',
+        );
+      } else if (result.action === 'mark-no-show' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.markAsNoShow(result.appointmentId!),
+          'segnare come non presentato',
+        );
+      } else if (result.action === 'revert-attended' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.revertAttended(result.appointmentId!),
+          'annullare lo stato presentato',
+        );
+      } else if (result.action === 'cancel-with-notice' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria', 'secretary'),
+          'disdire l\'appuntamento',
+        );
       }
       this.reloadCurrentView();
     });
+  }
+
+  private async handleStatusAction(
+    op: () => import('rxjs').Observable<unknown>,
+    azione: string,
+  ): Promise<void> {
+    try {
+      await firstValueFrom(op());
+    } catch (err: any) {
+      alert(err?.graphQLErrors?.[0]?.message || `Errore nel ${azione}`);
+    }
   }
 
   private async saveAppointment(result: EventMatDialogResult): Promise<void> {
@@ -1330,7 +1524,9 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     }
 
     const pxPerMinute = this.operatorGridData.slotHeightPx / slotDuration;
-    this.currentTimeTop = (currentMinutes - firstSlotMinutes) * pxPerMinute + 44;
+    // La linea ora vive dentro .grid-body (scrolla col contenuto), stesso
+    // sistema di coordinate degli event-chip: nessun offset header.
+    this.currentTimeTop = (currentMinutes - firstSlotMinutes) * pxPerMinute;
   }
 
   private timeToMinutes(time: string): number {

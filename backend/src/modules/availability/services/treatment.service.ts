@@ -129,11 +129,42 @@ export class TreatmentService {
       const appointmentRepo = manager.getRepository(AvailabilityAppointment);
       const pathRepo = manager.getRepository(TherapeuticPath);
 
-      // Verifica che l'appuntamento esista
+      // Verifica che l'appuntamento esista. Usiamo `withDeleted` perché la
+      // delete() del trattamento soft-deleta a cascata anche l'appuntamento
+      // collegato 1-1: se l'operatore cestina un trattamento e poi riavvia il
+      // trattamento dallo stesso appuntamento, qui lo troveremmo soft-deleted.
+      // In quel caso facciamo "cancella e ricrea pulito" (vedi sotto).
       const appointment = await appointmentRepo.findOne({
         where: { id: appointmentId },
-        relations: ['instruments', 'operator', 'service']
+        relations: ['instruments', 'operator', 'service'],
+        withDeleted: true,
       });
+
+      if (!appointment) {
+        throw new NotFoundException(`Appuntamento ${appointmentId} non trovato`);
+      }
+
+      // Se l'appuntamento è soft-deleted (residuo di un trattamento cestinato),
+      // lo riattiviamo e purghiamo definitivamente il vecchio trattamento
+      // soft-deleted (+ figli via CASCADE DB) così da ripartire da zero senza
+      // duplicati né record orfani nel cestino.
+      if (appointment.deletedAt) {
+        const staleTreatments = await treatmentRepo.find({
+          where: { appointmentId },
+          withDeleted: true,
+        });
+        for (const stale of staleTreatments) {
+          await treatmentRepo.delete(stale.id);
+        }
+
+        await manager
+          .createQueryBuilder()
+          .update(AvailabilityAppointment)
+          .set({ deletedAt: null, deletedByUserId: null } as any)
+          .where('id = :aid', { aid: appointmentId })
+          .execute();
+        appointment.deletedAt = null;
+      }
 
       // Carica appointmentServices separatamente (relazione unidirezionale)
       const appointmentServiceRepo = manager.getRepository(AppointmentServiceEntity);
@@ -142,10 +173,6 @@ export class TreatmentService {
         relations: ['service'],
         order: { orderPosition: 'ASC' }
       });
-
-      if (!appointment) {
-        throw new NotFoundException(`Appuntamento ${appointmentId} non trovato`);
-      }
 
       // Verifica che il percorso terapeutico esista
       const path = await pathRepo.findOne({
@@ -163,7 +190,8 @@ export class TreatmentService {
         );
       }
 
-      // Verifica che non esista già un trattamento per questo appuntamento
+      // Verifica che non esista già un trattamento VIVO per questo appuntamento
+      // (gli eventuali soft-deleted sono già stati purgati sopra).
       const existingTreatment = await treatmentRepo.findOne({
         where: { appointmentId }
       });
@@ -1245,21 +1273,11 @@ export class TreatmentService {
         .where('id = :id', { id })
         .execute();
 
-      // L'appuntamento ha relazione 1-1 col trattamento (il trattamento nasce
-      // dall'appuntamento). Lo soft-deletiamo insieme.
-      if (treatment.appointmentId) {
-        await manager
-          .createQueryBuilder()
-          .update(AvailabilityAppointment)
-          .set({
-            deletedAt: now,
-            deletedByUserId: deletedByUserId ?? null,
-          } as any)
-          .where('id = :aid AND "deletedAt" IS NULL', {
-            aid: treatment.appointmentId,
-          })
-          .execute();
-      }
+      // NB: l'appuntamento NON viene più soft-deletato insieme al trattamento.
+      // L'appuntamento è un'entità indipendente (esiste in calendario a
+      // prescindere dal trattamento, e con l'auto-start possono nascere
+      // trattamenti che non "possiedono" l'appuntamento). Cestinare un
+      // trattamento non deve far sparire l'appuntamento dal calendario.
     });
 
     this.eventsService.emit({
@@ -1294,8 +1312,6 @@ export class TreatmentService {
       );
     }
 
-    const deletedAt = treatment.deletedAt;
-
     await this.dataSource.transaction(async manager => {
       await manager
         .createQueryBuilder()
@@ -1311,22 +1327,8 @@ export class TreatmentService {
         .where('"treatmentId" = :id', { id })
         .execute();
 
-      if (treatment.appointmentId) {
-        const toleranceMs = 5000;
-        await manager
-          .createQueryBuilder()
-          .update(AvailabilityAppointment)
-          .set({ deletedAt: null, deletedByUserId: null } as any)
-          .where(
-            'id = :aid AND "deletedAt" BETWEEN :from AND :to',
-            {
-              aid: treatment.appointmentId,
-              from: new Date(deletedAt.getTime() - toleranceMs),
-              to: new Date(deletedAt.getTime() + toleranceMs),
-            },
-          )
-          .execute();
-      }
+      // NB: l'appuntamento non viene più toccato (né soft-deletato dal delete
+      // né ripristinato qui): è un'entità indipendente.
     });
 
     const restored = await this.treatmentRepo.findOne({ where: { id } });
@@ -1621,6 +1623,50 @@ export class TreatmentService {
     });
     // Re-fetch con relations per il return GraphQL (vedi nota su
     // requireFullTreatment in requestTreatmentRecall).
+    return this.requireFullTreatment(result.id);
+  }
+
+  /**
+   * Riapre un trattamento precedentemente annullato (cascata appuntamento):
+   * azzera i campi di cancellazione e lo riporta IN_PROGRESS. Usato nel caso
+   * "ritardatario": l'appuntamento era passato a NO_SHOW (annullando il
+   * trattamento), poi il paziente arriva e viene rimesso ATTENDED.
+   *
+   * Idempotente sul piano logico: se il trattamento non è annullato, lo lascia
+   * invariato. Non tocca la fatturazione oltre a riportare lo snapshot a
+   * "fresco" (è già NOT_READY dopo il cancel). Pensato per essere chiamato dal
+   * TreatmentCascadeService, dentro un contesto tenant + eventBuffer scope.
+   */
+  async reopenCancelledTreatment(id: string): Promise<Treatment> {
+    const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id } });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      // Se non è annullato non facciamo nulla (evita di "riaprire" trattamenti
+      // chiusi/fatturati legittimamente).
+      if (!treatment.cancelledAt) {
+        return treatment;
+      }
+
+      treatment.cancelledAt = null as any;
+      treatment.cancelledByUserId = null as any;
+      treatment.cancellationReason = null as any;
+      treatment.status = TreatmentStatus.IN_PROGRESS;
+      treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+      await treatmentRepo.save(treatment);
+      return treatment;
+    });
+
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.billingStatus,
+      timestamp: new Date(),
+    });
     return this.requireFullTreatment(result.id);
   }
 

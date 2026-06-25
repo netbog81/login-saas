@@ -33,6 +33,13 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     // Non retribuito
     nonRetribuito: aa.nonRetribuito || false,
 
+    // Ricorrenza
+    isRecurring: aa.isRecurring ?? undefined,
+    recurringGroupId: aa.recurringGroupId ?? undefined,
+    isMaster: aa.isMaster ?? undefined,
+    masterAppointmentId: aa.masterAppointmentId ?? undefined,
+    repeatConfig: (aa.repeatConfig ?? undefined) as Appointment['repeatConfig'],
+
     // Timestamps
     createdAt: aa.createdAt ? new Date(aa.createdAt) : undefined,
     updatedAt: aa.updatedAt ? new Date(aa.updatedAt) : undefined,

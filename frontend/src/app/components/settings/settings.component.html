@@ -283,6 +283,58 @@
       </div>
     </section>
 
+    <!-- Auto Start Treatment Section -->
+    <section class="settings-section">
+      <h2>Avvio Automatico Trattamento</h2>
+      <p class="section-description">
+        Quando un paziente viene segnato "Presentato", apre automaticamente il trattamento (stato "in corso").
+      </p>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="autoStartTreatmentEnabled"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Avvia automaticamente il trattamento alla presa in carico</span>
+        </label>
+        <small class="hint">
+          Se abilitato, alla presa in carico (paziente presentato) il trattamento parte da solo,
+          <strong>ma solo se il paziente ha un unico percorso terapeutico attivo</strong>. Con nessuno o
+          più percorsi attivi resta il flusso manuale "Inizia trattamento". I dati clinici si compilano
+          alla chiusura del trattamento.
+        </small>
+      </div>
+
+      <div class="form-group checkbox-group" *ngIf="autoStartTreatmentEnabled">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="autoStartTreatmentOnlyToday"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Solo per appuntamenti di oggi</span>
+        </label>
+        <small class="hint">
+          Consigliato. Se attivo, l'avvio automatico riguarda solo gli appuntamenti la cui data è oggi.
+          Disattivalo per applicarlo anche ad appuntamenti passati (utile in fase di test).
+        </small>
+      </div>
+
+      <div class="info-box" *ngIf="autoStartTreatmentEnabled">
+        <span class="info-icon">i</span>
+        <div class="info-content">
+          <strong>Cascata stati:</strong>
+          <ul>
+            <li>Paziente "Presentato" + 1 percorso attivo → trattamento avviato automaticamente</li>
+            <li>Paziente "Non Presentato" → l'eventuale trattamento in corso (non fatturato) viene annullato</li>
+            <li>Ritardatario (rimesso "Presentato" dopo un no-show) → il trattamento annullato viene riaperto</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <!-- Actions -->
     <div class="settings-actions">
       <button

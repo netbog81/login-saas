@@ -47,7 +47,7 @@ import { PatientAnamnesisDialogContainer } from './patient-anamnesis-dialog.cont
 import { TestHistoryDialogContainer } from './test-history-dialog.container';
 import { PatientAnamnesisFormContainer } from './patient-anamnesis-form.container';
 import { ConfirmResetDialogComponent } from '../components/confirm-reset-dialog/confirm-reset-dialog.component';
-import { EvaluationComplete, Obiettivo, TestSpecifico, TestEvaluationHistoryEntry } from '../models/evaluation.model';
+import { EvaluationComplete, Obiettivo, TestSpecifico, TestEvaluationHistoryEntry, createEmptyEvaluation } from '../models/evaluation.model';
 import { PatientAnamnesis } from '../models/patient-anamnesis.model';
 import {
   PatientFolderUIState,
@@ -56,7 +56,6 @@ import {
 } from '../models/patient-folder-state.model';
 import {
   PathDialogData,
-  createNewPathDialogData,
   createEditPathDialogData
 } from '../models/path-dialog.model';
 import {
@@ -98,8 +97,10 @@ import {
         [pathsCount]="paths.length"
         [activePathsCount]="getActivePathsCount()"
         [totalTreatmentsCount]="getTotalTreatmentsCount()"
+        [anamnesisExists]="!!patientAnamnesis"
         (viewDetails)="onViewPatientDetails()"
-        (createPath)="onCreatePath()">
+        (createPath)="onCreatePath()"
+        (viewAnamnesis)="onExpandPatientAnamnesis()">
       </app-patient-header>
 
       @if (patient) {
@@ -211,16 +212,19 @@ import {
       (editTreatment)="onTreatmentEdit($event)">
     </app-treatment-detail-dialog-container>
 
-    <!-- Evaluation Form Dialog -->
+    <!-- Evaluation Form Dialog (modulo unificato: percorso + valutazione + anamnesi remota) -->
     @if (showEvaluationForm) {
       <div class="dialog-overlay">
         <app-evaluation-form-container
           [mode]="evaluationFormMode"
           [patient]="patient"
-          [path]="selectedPath"
+          [path]="evaluationCreatesNewPath ? null : selectedPath"
           [evaluation]="currentEvaluation"
+          [patientAnamnesis]="patientAnamnesis"
           [operatorId]="currentOperatorId || ''"
           (saved)="onEvaluationSaved($event)"
+          (pathSaved)="onPathSavedFromEvaluation($event)"
+          (anamnesisSaved)="onPatientAnamnesisSaved($event)"
           (close)="closeEvaluationForm()">
         </app-evaluation-form-container>
       </div>
@@ -232,6 +236,7 @@ import {
       [patient]="patient"
       [path]="selectedPath"
       [evaluationComplete]="currentEvaluation"
+      [patientAnamnesis]="patientAnamnesis"
       (edit)="onEditEvaluation()"
       (delete)="onDeleteEvaluation()"
       (close)="onEvaluationDialogClose()">
@@ -310,53 +315,6 @@ import {
       </div>
     }
 
-    <!-- Anamnesis Check Dialog -->
-    @if (showAnamnesisCheckDialog) {
-      <div class="dialog-overlay">
-        <div class="anamnesis-check-dialog">
-          @if (anamnesisCheckMode === 'missing') {
-            <!-- Caso 1: Anamnesi mancante -->
-            <div class="dialog-header warning">
-              <mat-icon>warning</mat-icon>
-              <h3>Anamnesi Mancante</h3>
-            </div>
-            <div class="dialog-content">
-              <p>Prima di creare un nuovo percorso terapeutico è necessario compilare l'anamnesi del paziente.</p>
-              <p class="subtitle">Vuoi compilarla adesso?</p>
-            </div>
-            <div class="dialog-actions">
-              <button mat-stroked-button (click)="onCancelAnamnesisCheck()">
-                Annulla
-              </button>
-              <button mat-flat-button color="primary" (click)="onCreateAnamnesisFromCheck()">
-                <mat-icon>edit_note</mat-icon>
-                Compila Anamnesi
-              </button>
-            </div>
-          } @else if (anamnesisCheckMode === 'exists') {
-            <!-- Caso 2: Anamnesi esistente -->
-            <div class="dialog-header info">
-              <mat-icon>info</mat-icon>
-              <h3>Anamnesi Presente</h3>
-            </div>
-            <div class="dialog-content">
-              <p>Anamnesi per il paziente già presente.</p>
-              <p class="subtitle">I dati sono da aggiornare?</p>
-            </div>
-            <div class="dialog-actions">
-              <button mat-stroked-button (click)="onUpdateAnamnesisFromCheck()">
-                <mat-icon>edit</mat-icon>
-                Aggiorna Anamnesi
-              </button>
-              <button mat-flat-button color="primary" (click)="onProceedWithPathCreation()">
-                <mat-icon>arrow_forward</mat-icon>
-                Prosegui Creazione Percorso
-              </button>
-            </div>
-          }
-        </div>
-      </div>
-    }
   `,
   styles: [`
     :host {
@@ -729,6 +687,13 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   showEvaluationForm = false;
   evaluationFormMode: 'create' | 'edit' = 'create';
   currentEvaluation: EvaluationComplete | null = null;
+  /**
+   * True solo per "Nuova Valutazione" dall'header (crea anche un nuovo
+   * percorso). False quando la valutazione si crea/modifica DENTRO un percorso
+   * esistente: in quel caso va agganciata a `selectedPath`, non se ne crea uno
+   * nuovo.
+   */
+  evaluationCreatesNewPath = false;
 
   // Objectives tracking state
   objectivesWithProgress: ObjectiveWithProgress[] = [];
@@ -742,15 +707,10 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   showConfirmResetDialog = false;
   selectedTestForReset: TestWithEvaluations | null = null;
 
-  // Patient Anamnesis state (nuova anamnesi legata al paziente)
+  // Patient Anamnesis state (anamnesi remota legata al paziente)
   patientAnamnesis: PatientAnamnesis | null = null;
   loadingPatientAnamnesis = false;
   showPatientAnamnesisForm = false;
-
-  // Anamnesis check dialog state (verifica prima di creare percorso)
-  showAnamnesisCheckDialog = false;
-  anamnesisCheckMode: 'missing' | 'exists' | null = null;
-  pendingPathCreation = false;
 
   constructor(
     private pathService: TherapeuticPathService,
@@ -912,76 +872,19 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     }
   }
 
+  /**
+   * "Nuova Valutazione": apre direttamente il modulo unificato in modalità
+   * create-with-path. Il modulo crea in un colpo solo percorso + valutazione
+   * + anamnesi remota, senza i passaggi-guardia ("manca l'anamnesi", "manca il
+   * percorso") che rendevano il flusso ripetitivo. L'eventuale anamnesi remota
+   * già esistente viene pre-compilata dentro al form.
+   */
   onCreatePath(): void {
     if (!this.patient) return;
-
-    // Verifica se esiste anamnesi prima di creare percorso
-    if (!this.patientAnamnesis) {
-      // Caso 1: Anamnesi non presente
-      this.anamnesisCheckMode = 'missing';
-      this.showAnamnesisCheckDialog = true;
-      this.cdr.markForCheck();
-    } else {
-      // Caso 2: Anamnesi già presente
-      this.anamnesisCheckMode = 'exists';
-      this.showAnamnesisCheckDialog = true;
-      this.cdr.markForCheck();
-    }
-  }
-
-  /**
-   * Helper per aprire il PathDialog
-   */
-  private openPathDialog(): void {
-    if (!this.patient) return;
-    this.pathDialogData = createNewPathDialogData(
-      this.patient.id,
-      this.currentOperatorId
-    );
-    this.showPathDialog = true;
-  }
-
-  // ==================== Anamnesis Check Dialog Handlers ====================
-
-  /**
-   * Caso 1: Anamnesi mancante - utente sceglie di crearla
-   */
-  onCreateAnamnesisFromCheck(): void {
-    this.showAnamnesisCheckDialog = false;
-    this.anamnesisCheckMode = null;
-    this.pendingPathCreation = true;
-    this.showPatientAnamnesisForm = true;
-    this.cdr.markForCheck();
-  }
-
-  /**
-   * Caso 1: Anamnesi mancante - utente annulla
-   */
-  onCancelAnamnesisCheck(): void {
-    this.showAnamnesisCheckDialog = false;
-    this.anamnesisCheckMode = null;
-    this.pendingPathCreation = false;
-    this.cdr.markForCheck();
-  }
-
-  /**
-   * Caso 2: Anamnesi esistente - utente vuole aggiornarla
-   */
-  onUpdateAnamnesisFromCheck(): void {
-    this.showAnamnesisCheckDialog = false;
-    this.anamnesisCheckMode = null;
-    this.pendingPathCreation = true;
-    this.showPatientAnamnesisForm = true;
-    this.cdr.markForCheck();
-  }
-
-  /**
-   * Caso 2: Anamnesi esistente - utente prosegue senza aggiornare
-   */
-  onProceedWithPathCreation(): void {
-    this.showAnamnesisCheckDialog = false;
-    this.anamnesisCheckMode = null;
-    this.openPathDialog();
+    this.currentEvaluation = null;
+    this.evaluationFormMode = 'create';
+    this.evaluationCreatesNewPath = true; // header → crea anche il percorso
+    this.showEvaluationForm = true;
     this.cdr.markForCheck();
   }
 
@@ -1020,6 +923,19 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     // Emetti evento al parent
     this.pathUpdated.emit(updatedPath);
     this.cdr.markForCheck();
+  }
+
+  /**
+   * Il modulo unificato di valutazione ha creato o aggiornato il percorso.
+   * Riallinea la lista percorsi (insert se nuovo, replace se esistente).
+   */
+  onPathSavedFromEvaluation(path: TherapeuticPath): void {
+    const exists = this.paths.some(p => p.id === path.id);
+    if (exists) {
+      this.onPathUpdated(path);
+    } else {
+      this.onPathCreated(path);
+    }
   }
 
   closePathDialog(): void {
@@ -1093,8 +1009,28 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   onEditEvaluation(): void {
-    console.log('[PatientFolderContainer] Edit anamnesis');
+    console.log('[PatientFolderContainer] Edit evaluation');
+    // Questo flusso parte SEMPRE da dentro un percorso esistente (tab
+    // valutazione del percorso selezionato): la valutazione va agganciata a
+    // quel percorso, mai crearne uno nuovo.
+    this.evaluationCreatesNewPath = false;
     this.evaluationFormMode = this.currentEvaluation ? 'edit' : 'create';
+
+    // I dati del percorso (nome/diagnosi/note) non arrivano dalla valutazione:
+    // li ricaviamo dal percorso selezionato così il "nome percorso"
+    // (obbligatorio) è già compilato — sia in modifica sia quando si ricrea una
+    // valutazione cancellata dentro lo stesso percorso.
+    if (this.selectedPath) {
+      const pathInfo = {
+        nome: this.selectedPath.name || '',
+        diagnosi: this.selectedPath.diagnosis ?? null,
+        note: this.selectedPath.notes ?? null,
+      };
+      this.currentEvaluation = this.currentEvaluation
+        ? { ...this.currentEvaluation, pathInfo }
+        : { ...createEmptyEvaluation(this.selectedPath.id), pathInfo } as EvaluationComplete;
+    }
+
     this.showEvaluationForm = true;
     this.cdr.markForCheck();
   }
@@ -1729,13 +1665,6 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     console.log('[PatientFolderContainer] Patient anamnesis saved:', anamnesis);
     this.patientAnamnesis = anamnesis;
     this.showPatientAnamnesisForm = false;
-
-    // Se c'era una creazione percorso in sospeso, aprila ora
-    if (this.pendingPathCreation) {
-      this.pendingPathCreation = false;
-      this.openPathDialog();
-    }
-
     this.cdr.markForCheck();
   }
 

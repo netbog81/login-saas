@@ -52,6 +52,7 @@ import {
   createEmptyAnamnesis
 } from '../../models/anamnesis.model';
 import { Patient } from '../../../../models/patient.model';
+import { PatientAnamnesis } from '../../models/patient-anamnesis.model';
 
 @Component({
   selector: 'app-anamnesis-form',
@@ -76,7 +77,7 @@ import { Patient } from '../../../../models/patient.model';
     <form [formGroup]="form" class="anamnesis-form">
       <mat-accordion multi>
         <!-- ================================================================ -->
-        <!-- SEZIONE 1: INFORMAZIONI GENERALI -->
+        <!-- SEZIONE 1: INFORMAZIONI GENERALI (+ dati percorso terapeutico) -->
         <!-- ================================================================ -->
         <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
@@ -85,6 +86,33 @@ import { Patient } from '../../../../models/patient.model';
               1. Informazioni Generali
             </mat-panel-title>
           </mat-expansion-panel-header>
+
+          <!-- Dati del percorso terapeutico (modulo unificato). Gli altri
+               campi del percorso sono nei "dettagli percorso". -->
+          <div class="section-content path-info-block" formGroupName="pathInfo">
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Nome percorso</mat-label>
+              <input matInput formControlName="nome" required
+                placeholder="Es: Lombalgia cronica, Riabilitazione post-operatoria...">
+              @if (form.get('pathInfo.nome')?.hasError('required') && form.get('pathInfo.nome')?.touched) {
+                <mat-error>Il nome del percorso è obbligatorio</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Diagnosi</mat-label>
+              <textarea matInput formControlName="diagnosi" rows="2"
+                placeholder="Diagnosi medica di riferimento..."></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Note percorso</mat-label>
+              <textarea matInput formControlName="note" rows="2"
+                placeholder="Note generali sul percorso terapeutico..."></textarea>
+            </mat-form-field>
+          </div>
+
+          <mat-divider></mat-divider>
 
           <div class="section-content" formGroupName="generalInfo">
             <div class="form-row three-cols">
@@ -175,62 +203,13 @@ import { Patient } from '../../../../models/patient.model';
         </mat-expansion-panel>
 
         <!-- ================================================================ -->
-        <!-- SEZIONE 3: ANAMNESI PATOLOGICA REMOTA -->
-        <!-- ================================================================ -->
-        <mat-expansion-panel expanded>
-          <mat-expansion-panel-header>
-            <mat-panel-title>
-              <mat-icon>history</mat-icon>
-              3. Anamnesi Patologica Remota
-            </mat-panel-title>
-          </mat-expansion-panel-header>
-
-          <div class="section-content" formGroupName="remoteHistory">
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Patologie pregresse</mat-label>
-              <textarea matInput formControlName="patologiePregresse" rows="3"
-                placeholder="Es: Ipertensione arteriosa, diabete tipo 2..."></textarea>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Interventi chirurgici</mat-label>
-              <textarea matInput formControlName="interventiChirurgici" rows="2"
-                placeholder="Es: Appendicectomia (2010), artroscopia ginocchio dx (2018)..."></textarea>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Traumi</mat-label>
-              <textarea matInput formControlName="traumi" rows="2"
-                placeholder="Es: Frattura clavicola sx (2015), distorsione caviglia dx (2020)..."></textarea>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="chip-field full-width">
-              <mat-label>Terapia farmacologica in atto</mat-label>
-              <mat-chip-grid #farmChipGrid>
-                @for (farmaco of terapiaFarmacologicaArray; track farmaco) {
-                  <mat-chip-row (removed)="removeChip('terapiaFarmacologica', farmaco)">
-                    {{ farmaco }}
-                    <button matChipRemove><mat-icon>cancel</mat-icon></button>
-                  </mat-chip-row>
-                }
-              </mat-chip-grid>
-              <input
-                placeholder="Es: Ramipril 5mg, Cardioaspirina..."
-                [matChipInputFor]="farmChipGrid"
-                [matChipInputSeparatorKeyCodes]="separatorKeyCodes"
-                (matChipInputTokenEnd)="addChip('terapiaFarmacologica', $event)">
-            </mat-form-field>
-          </div>
-        </mat-expansion-panel>
-
-        <!-- ================================================================ -->
-        <!-- SEZIONE 4: ANAMNESI PATOLOGICA PROSSIMA -->
+        <!-- SEZIONE 3: ANAMNESI PATOLOGICA PROSSIMA -->
         <!-- ================================================================ -->
         <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>report_problem</mat-icon>
-              4. Anamnesi Patologica Prossima
+              3. Anamnesi Patologica Prossima
             </mat-panel-title>
           </mat-expansion-panel-header>
 
@@ -300,13 +279,122 @@ import { Patient } from '../../../../models/patient.model';
         </mat-expansion-panel>
 
         <!-- ================================================================ -->
-        <!-- SEZIONE 5: ESAME OBIETTIVO -->
+        <!-- SEZIONE 4: ESAMI DIAGNOSTICI -->
+        <!-- ================================================================ -->
+        <mat-expansion-panel expanded>
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              <mat-icon>science</mat-icon>
+              4. Esami Diagnostici
+            </mat-panel-title>
+            <mat-panel-description>
+              {{ diagnosticExamsArray.length }} esami
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+
+          <div class="section-content">
+            <div class="subsection-header">
+              <button mat-stroked-button type="button" (click)="addDiagnosticExam()">
+                <mat-icon>add</mat-icon> Aggiungi Esame
+              </button>
+            </div>
+
+            @for (exam of diagnosticExamsArray.controls; track $index; let i = $index) {
+              <div class="exam-row" formArrayName="diagnosticExams">
+                <div [formGroupName]="i" class="exam-fields">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Nome esame</mat-label>
+                    <input matInput formControlName="nomeEsame" placeholder="Es: RX Rachide Lombare">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Data</mat-label>
+                    <input matInput [matDatepicker]="examDatePicker" formControlName="data">
+                    <mat-datepicker-toggle matSuffix [for]="examDatePicker"></mat-datepicker-toggle>
+                    <mat-datepicker #examDatePicker></mat-datepicker>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="flex-grow">
+                    <mat-label>Note</mat-label>
+                    <input matInput formControlName="note" placeholder="Es: Discopatia L4-L5">
+                  </mat-form-field>
+                  <button mat-icon-button color="warn" type="button" (click)="removeDiagnosticExam(i)">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </div>
+              </div>
+            }
+
+            @if (diagnosticExamsArray.length === 0) {
+              <p class="empty-message">Nessun esame diagnostico inserito</p>
+            }
+          </div>
+        </mat-expansion-panel>
+
+        <!-- ================================================================ -->
+        <!-- SEZIONE 5: ANAMNESI PATOLOGICA REMOTA -->
+        <!-- Dati del paziente (tabella PatientAnamnesis), pre-compilati se -->
+        <!-- già esistenti. Gli altri campi (allergie, storia familiare,    -->
+        <!-- gruppo sanguigno...) sono nei "dettagli anamnesi remota".      -->
+        <!-- ================================================================ -->
+        <mat-expansion-panel expanded>
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              <mat-icon>history</mat-icon>
+              5. Anamnesi Patologica Remota
+            </mat-panel-title>
+          </mat-expansion-panel-header>
+
+          <div class="section-content" formGroupName="remoteHistory">
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Patologie pregresse</mat-label>
+              <textarea matInput formControlName="patologiePregresse" rows="3"
+                placeholder="Es: Ipertensione arteriosa, diabete tipo 2..."></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Interventi chirurgici</mat-label>
+              <textarea matInput formControlName="interventiChirurgici" rows="2"
+                placeholder="Es: Appendicectomia (2010), artroscopia ginocchio dx (2018)..."></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Traumi</mat-label>
+              <textarea matInput formControlName="traumi" rows="2"
+                placeholder="Es: Frattura clavicola sx (2015), distorsione caviglia dx (2020)..."></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="chip-field full-width">
+              <mat-label>Terapia farmacologica in atto</mat-label>
+              <mat-chip-grid #farmChipGrid>
+                @for (farmaco of terapiaFarmacologicaArray; track farmaco) {
+                  <mat-chip-row (removed)="removeChip('terapiaFarmacologica', farmaco)">
+                    {{ farmaco }}
+                    <button matChipRemove><mat-icon>cancel</mat-icon></button>
+                  </mat-chip-row>
+                }
+              </mat-chip-grid>
+              <input
+                placeholder="Es: Ramipril 5mg, Cardioaspirina..."
+                [matChipInputFor]="farmChipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeyCodes"
+                (matChipInputTokenEnd)="addChip('terapiaFarmacologica', $event)">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Note anamnesi remota</mat-label>
+              <textarea matInput formControlName="note" rows="2"
+                placeholder="Note generali sull'anamnesi remota del paziente..."></textarea>
+            </mat-form-field>
+          </div>
+        </mat-expansion-panel>
+
+        <!-- ================================================================ -->
+        <!-- SEZIONE 6: ESAME OBIETTIVO -->
         <!-- ================================================================ -->
         <mat-expansion-panel expanded>
           <mat-expansion-panel-header>
             <mat-panel-title>
               <mat-icon>biotech</mat-icon>
-              5. Esame Obiettivo
+              6. Esame Obiettivo
             </mat-panel-title>
           </mat-expansion-panel-header>
 
@@ -418,57 +506,6 @@ import { Patient } from '../../../../models/patient.model';
               <textarea matInput formControlName="diagnosiFisioterapica" rows="3"
                 placeholder="Es: Lombalgia meccanica aspecifica con componente muscolare..."></textarea>
             </mat-form-field>
-          </div>
-        </mat-expansion-panel>
-
-        <!-- ================================================================ -->
-        <!-- SEZIONE 6: ESAMI DIAGNOSTICI -->
-        <!-- ================================================================ -->
-        <mat-expansion-panel expanded>
-          <mat-expansion-panel-header>
-            <mat-panel-title>
-              <mat-icon>science</mat-icon>
-              6. Esami Diagnostici
-            </mat-panel-title>
-            <mat-panel-description>
-              {{ diagnosticExamsArray.length }} esami
-            </mat-panel-description>
-          </mat-expansion-panel-header>
-
-          <div class="section-content">
-            <div class="subsection-header">
-              <button mat-stroked-button type="button" (click)="addDiagnosticExam()">
-                <mat-icon>add</mat-icon> Aggiungi Esame
-              </button>
-            </div>
-
-            @for (exam of diagnosticExamsArray.controls; track $index; let i = $index) {
-              <div class="exam-row" formArrayName="diagnosticExams">
-                <div [formGroupName]="i" class="exam-fields">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Nome esame</mat-label>
-                    <input matInput formControlName="nomeEsame" placeholder="Es: RX Rachide Lombare">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Data</mat-label>
-                    <input matInput [matDatepicker]="examDatePicker" formControlName="data">
-                    <mat-datepicker-toggle matSuffix [for]="examDatePicker"></mat-datepicker-toggle>
-                    <mat-datepicker #examDatePicker></mat-datepicker>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline" class="flex-grow">
-                    <mat-label>Note</mat-label>
-                    <input matInput formControlName="note" placeholder="Es: Discopatia L4-L5">
-                  </mat-form-field>
-                  <button mat-icon-button color="warn" type="button" (click)="removeDiagnosticExam(i)">
-                    <mat-icon>delete</mat-icon>
-                  </button>
-                </div>
-              </div>
-            }
-
-            @if (diagnosticExamsArray.length === 0) {
-              <p class="empty-message">Nessun esame diagnostico inserito</p>
-            }
           </div>
         </mat-expansion-panel>
 
@@ -795,6 +832,12 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
   @Input() anamnesis: AnamnesisComplete | null = null;
   @Input() patient: Patient | null = null;
   @Input() pathId: string = '';
+  /**
+   * Anamnesi remota già esistente del paziente: usata per pre-compilare la
+   * sezione "Anamnesi Patologica Remota" (e il suo campo note) quando si apre
+   * il modulo unificato. Indipendente dalla valutazione.
+   */
+  @Input() patientAnamnesis: PatientAnamnesis | null = null;
 
   @Output() formChange = new EventEmitter<AnamnesisComplete>();
   @Output() save = new EventEmitter<AnamnesisComplete>();
@@ -826,6 +869,9 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
     if (this.anamnesis) {
       this.patchFormData();
     }
+    // Pre-compila la sezione anamnesi remota dal dato paziente esistente
+    // (anche in create-with-path, dove non c'è una valutazione precedente).
+    this.patchRemoteAnamnesis();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -835,10 +881,39 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
     if (changes['patient'] && this.form && this.patient) {
       this.patchPatientData();
     }
+    if (changes['patientAnamnesis'] && this.form) {
+      this.patchRemoteAnamnesis();
+    }
+  }
+
+  /**
+   * Pre-compila la sezione "Anamnesi Patologica Remota" (e il campo note) con
+   * i dati dell'anamnesi del paziente, se presenti. Non sovrascrive valori già
+   * inseriti dall'operatore nel form (es. dopo un patchFormData in edit).
+   */
+  private patchRemoteAnamnesis(): void {
+    if (!this.form || !this.patientAnamnesis) return;
+    const remoteHistory = this.form.get('remoteHistory');
+    if (!remoteHistory) return;
+
+    remoteHistory.patchValue({
+      patologiePregresse: this.patientAnamnesis.patologiePregresse,
+      interventiChirurgici: this.patientAnamnesis.interventiChirurgici,
+      traumi: this.patientAnamnesis.traumi,
+      note: this.patientAnamnesis.note
+    });
+    this.terapiaFarmacologicaArray = [...(this.patientAnamnesis.terapiaFarmacologica || [])];
+    this.cdr.markForCheck();
   }
 
   private initForm(): void {
     this.form = this.fb.group({
+      // Dati percorso terapeutico (modulo unificato): nome obbligatorio
+      pathInfo: this.fb.group({
+        nome: ['', Validators.required],
+        diagnosi: [null],
+        note: [null]
+      }),
       generalInfo: this.fb.group({
         nome: [''],
         cognome: [''],
@@ -852,7 +927,8 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
         patologiePregresse: [null],
         interventiChirurgici: [null],
         traumi: [null],
-        terapiaFarmacologica: [[]]
+        terapiaFarmacologica: [[]],
+        note: [null]
       }),
       recentHistory: this.fb.group({
         motivoConsulto: [null],
@@ -911,6 +987,12 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
   private patchFormData(): void {
     if (!this.anamnesis || !this.form) return;
 
+    // Patch dati percorso terapeutico (modulo unificato)
+    const pathInfo = this.form.get('pathInfo');
+    if (pathInfo && this.anamnesis.pathInfo) {
+      pathInfo.patchValue(this.anamnesis.pathInfo);
+    }
+
     // Patch general info (keeping patient auto-filled data)
     const generalInfo = this.form.get('generalInfo');
     if (generalInfo && this.anamnesis.generalInfo) {
@@ -924,12 +1006,9 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
     // Body map
     this.bodyMapMarkers = [...(this.anamnesis.bodyMap?.markers || [])];
 
-    // Remote history
-    const remoteHistory = this.form.get('remoteHistory');
-    if (remoteHistory && this.anamnesis.remoteHistory) {
-      remoteHistory.patchValue(this.anamnesis.remoteHistory);
-      this.terapiaFarmacologicaArray = [...(this.anamnesis.remoteHistory.terapiaFarmacologica || [])];
-    }
+    // NB: l'anamnesi remota NON viene più patchata da qui: la sua fonte è
+    // patientAnamnesis (tabella PatientAnamnesis), gestita da
+    // patchRemoteAnamnesis(). Vedi modulo unificato.
 
     // Recent history
     const recentHistory = this.form.get('recentHistory');
@@ -1203,6 +1282,7 @@ export class AnamnesisFormComponent implements OnInit, OnChanges {
     return {
       id: this.anamnesis?.id || generateId(),
       pathId: this.pathId,
+      pathInfo: formValue.pathInfo,
       generalInfo: {
         ...formValue.generalInfo,
         sportPraticati: this.sportPraticatiArray

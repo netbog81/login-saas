@@ -75,6 +75,7 @@ import { AppointmentConflictService } from './services/appointment-conflict.serv
 import { ConflictRevalidationService } from './services/conflict-revalidation.service';
 import { AvailabilityAppointmentService } from './services/availability-appointment.service';
 import { TreatmentService } from './services/treatment.service';
+import { TreatmentCascadeService } from './services/treatment-cascade.service';
 import { TreatmentRecallCleanupJob } from './services/treatment-recall-cleanup.job';
 import { TherapeuticPathService } from './services/therapeutic-path.service';
 import { PatientEvaluationService } from './services/patient-evaluation.service';
@@ -144,6 +145,7 @@ import { PazientiModule } from '../../patients/patients.module';
     ConflictRevalidationService,
     AvailabilityAppointmentService,
     TreatmentService,
+    TreatmentCascadeService,
     TherapeuticPathService,
     PatientEvaluationService,
     PatientAnamnesisService,
@@ -202,6 +204,7 @@ import { PazientiModule } from '../../patients/patients.module';
     ConflictRevalidationService,
     AvailabilityAppointmentService,
     TreatmentService,
+    TreatmentCascadeService,
     TherapeuticPathService,
     PatientEvaluationService,
     PatientAnamnesisService,

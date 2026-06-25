@@ -29,6 +29,7 @@ import { EvaluationTabComponent } from '../components/evaluation-tab/evaluation-
 
 // Models
 import { EvaluationComplete, AnamnesisComplete } from '../models/evaluation.model';
+import { PatientAnamnesis } from '../models/patient-anamnesis.model';
 import { Anamnesis } from '../../../models/therapeutic-path.model';
 import { Patient } from '../../../models/patient.model';
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
@@ -72,6 +73,8 @@ import { TherapeuticPath } from '../../../models/therapeutic-path.model';
             <app-evaluation-tab
               [anamnesis]="anamnesis"
               [anamnesisComplete]="evaluationComplete"
+              [patientAnamnesis]="patientAnamnesis"
+              [path]="path"
               [loading]="false"
               (edit)="onEditClick()"
               (delete)="onDeleteClick()"
@@ -248,6 +251,7 @@ export class EvaluationDialogContainer {
   @Input() path: TherapeuticPath | null = null;
   @Input() anamnesis: Anamnesis | null = null;
   @Input() evaluationComplete: EvaluationComplete | null = null;
+  @Input() patientAnamnesis: PatientAnamnesis | null = null;
   // Backward compatibility alias
   @Input() set anamnesisComplete(value: AnamnesisComplete | null) {
     this.evaluationComplete = value;

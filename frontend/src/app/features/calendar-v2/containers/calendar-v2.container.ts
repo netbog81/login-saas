@@ -988,10 +988,41 @@ export class CalendarV2Container implements OnInit, OnDestroy {
         } catch (err: any) {
           alert(err?.graphQLErrors?.[0]?.message || 'Errore nell\'eliminazione');
         }
+      } else if (result.action === 'mark-attended' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.markAsAttended(result.appointmentId!),
+          'segnare come presentato',
+        );
+      } else if (result.action === 'mark-no-show' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.markAsNoShow(result.appointmentId!),
+          'segnare come non presentato',
+        );
+      } else if (result.action === 'revert-attended' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.revertAttended(result.appointmentId!),
+          'annullare lo stato presentato',
+        );
+      } else if (result.action === 'cancel-with-notice' && result.appointmentId) {
+        await this.handleStatusAction(
+          () => this.appointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria', 'secretary'),
+          'disdire l\'appuntamento',
+        );
       }
       // Ricarica per qualsiasi azione (save, delete, series-deleted)
       this.reloadCurrentView();
     });
+  }
+
+  private async handleStatusAction(
+    op: () => import('rxjs').Observable<unknown>,
+    azione: string,
+  ): Promise<void> {
+    try {
+      await firstValueFrom(op());
+    } catch (err: any) {
+      alert(err?.graphQLErrors?.[0]?.message || `Errore nel ${azione}`);
+    }
   }
 
   private async saveAppointment(result: EventMatDialogResult): Promise<void> {

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LessThan } from 'typeorm';
 import { Treatment } from '../entities/treatment.entity';
-import { TenantContextService } from '@curandis/tenant-datasource';
+import { TenantContextService, TenantDataSourceManager } from '@curandis/tenant-datasource';
 
 /**
  * Sessione 7 — Server-side cleanup dei recall "stuck".
@@ -37,54 +37,69 @@ export class TreatmentRecallCleanupJob {
 
   constructor(
     private readonly tenantContext: TenantContextService,
+    private readonly tenantDsManager: TenantDataSourceManager,
   ){}
-
-  /** DataSource del tenant corrente (AsyncLocalStorage). */
-  private get dataSource() {
-    const ds = this.tenantContext.getDataSource();
-    if (!ds) throw new Error('No tenant DataSource in current request context');
-    return ds;
-  }
-
-  private get treatmentRepo() { return this.dataSource.getRepository(Treatment); }
 
   @Cron(CronExpression.EVERY_5_MINUTES, { name: 'treatmentRecallCleanup' })
   async handleCleanup(): Promise<void> {
-    const threshold = new Date(
-      Date.now() - TreatmentRecallCleanupJob.RECALL_TIMEOUT_MINUTES * 60 * 1000,
-    );
-
+    let aliases: string[];
     try {
-      const stuck = await this.treatmentRepo.find({
-        where: {
-          recallRequestedAt: LessThan(threshold),
-        },
-        select: ['id', 'recallRequestId', 'recallRequestedAt'],
-      });
-
-      if (stuck.length === 0) return;
-
-      for (const t of stuck) {
-        this.logger.warn(
-          `Recall stuck per treatment ${t.id} (requestId=${t.recallRequestId}, ` +
-            `requestedAt=${t.recallRequestedAt?.toISOString()}). Azzero per consentire retry.`,
-        );
-        // NB: `repo.update()` con `null` esplicito è necessario per
-        // forzare la UPDATE a NULL. Setting `= undefined` + `save()` viene
-        // ignorato da TypeORM ("non includere il campo nell'UPDATE") —
-        // bug scoperto in produzione 2026-05-25.
-        await this.treatmentRepo.update(t.id, {
-          recallRequestId: null as unknown as string,
-          recallRequestedAt: null as unknown as Date,
-        });
-      }
-
-      this.logger.log(
-        `TreatmentRecallCleanup: ${stuck.length} recall stuck azzerati (timeout ` +
-          `${TreatmentRecallCleanupJob.RECALL_TIMEOUT_MINUTES} min).`,
-      );
+      aliases = await this.tenantDsManager.listKnownTenantAliases();
     } catch (err) {
-      this.logger.error('Errore durante TreatmentRecallCleanup cron', err);
+      this.logger.error('TreatmentRecallCleanup: impossibile elencare tenant', err as Error);
+      return;
     }
+
+    for (const alias of aliases) {
+      try {
+        await this.processTenant(alias);
+      } catch (err) {
+        this.logger.error(`TreatmentRecallCleanup: errore su tenant="${alias}"`, err as Error);
+      }
+    }
+  }
+
+  private async processTenant(tenantAlias: string): Promise<void> {
+    const ds = await this.tenantDsManager.getDataSource(tenantAlias);
+
+    await this.tenantContext.run(
+      { tenantAlias, dataSource: ds, dbName: ds.options.database as string },
+      async () => {
+        const threshold = new Date(
+          Date.now() - TreatmentRecallCleanupJob.RECALL_TIMEOUT_MINUTES * 60 * 1000,
+        );
+
+        const treatmentRepo = ds.getRepository(Treatment);
+        const stuck = await treatmentRepo.find({
+          where: {
+            recallRequestedAt: LessThan(threshold),
+          },
+          select: ['id', 'recallRequestId', 'recallRequestedAt'],
+        });
+
+        if (stuck.length === 0) return;
+
+        for (const t of stuck) {
+          this.logger.warn(
+            `[tenant=${tenantAlias}] Recall stuck per treatment ${t.id} ` +
+              `(requestId=${t.recallRequestId}, requestedAt=${t.recallRequestedAt?.toISOString()}). ` +
+              `Azzero per consentire retry.`,
+          );
+          // NB: `repo.update()` con `null` esplicito è necessario per
+          // forzare la UPDATE a NULL. Setting `= undefined` + `save()` viene
+          // ignorato da TypeORM ("non includere il campo nell'UPDATE") —
+          // bug scoperto in produzione 2026-05-25.
+          await treatmentRepo.update(t.id, {
+            recallRequestId: null as unknown as string,
+            recallRequestedAt: null as unknown as Date,
+          });
+        }
+
+        this.logger.log(
+          `TreatmentRecallCleanup [tenant=${tenantAlias}]: ${stuck.length} recall stuck ` +
+            `azzerati (timeout ${TreatmentRecallCleanupJob.RECALL_TIMEOUT_MINUTES} min).`,
+        );
+      },
+    );
   }
 }

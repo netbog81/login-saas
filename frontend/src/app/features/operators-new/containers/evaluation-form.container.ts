@@ -17,6 +17,7 @@ import {
   Output,
   EventEmitter,
   ViewChild,
+  HostListener,
   ChangeDetectionStrategy,
   ChangeDetectorRef
 } from '@angular/core';
@@ -29,16 +30,34 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
+// Angular CDK — drag del dialog
+import { DragDropModule } from '@angular/cdk/drag-drop';
+
 // Components - usa ancora il vecchio nome per ora (TODO: rinominare)
 import { AnamnesisFormComponent } from '../components/anamnesis-form/anamnesis-form.component';
 
+// RxJS
+import { Observable, of, throwError } from 'rxjs';
+import { switchMap, finalize } from 'rxjs/operators';
+
 // Models
 import { EvaluationComplete } from '../models/evaluation.model';
+import { PatientAnamnesis } from '../models/patient-anamnesis.model';
 import { Patient } from '../../../models/patient.model';
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
+import { UpdatePatientAnamnesisInput } from '../models/patient-anamnesis.model';
 
 // Services
-import { PatientEvaluationService } from '../../../services/patient-evaluation.service';
+import {
+  PatientEvaluationService,
+  CreateEvaluationInput,
+} from '../../../services/patient-evaluation.service';
+import {
+  TherapeuticPathService,
+  CreateTherapeuticPathInput,
+  UpdateTherapeuticPathInput,
+} from '../../../services/therapeutic-path.service';
+import { SimplePatientAnamnesisService } from '../../../services/simple-patient-anamnesis.service';
 
 export interface EvaluationFormDialogData {
   mode: 'create' | 'edit';
@@ -57,19 +76,23 @@ export interface EvaluationFormDialogData {
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    DragDropModule,
     AnamnesisFormComponent
   ],
   template: `
-    <div class="evaluation-form-dialog">
-      <!-- Header -->
-      <div class="dialog-header">
+    <div class="evaluation-form-dialog" cdkDrag cdkDragBoundary=".dialog-overlay">
+      <!-- Header (handle per il drag) -->
+      <div class="dialog-header" cdkDragHandle>
         <div class="header-title">
+          <mat-icon class="drag-indicator">drag_indicator</mat-icon>
           <mat-icon>{{ mode === 'create' ? 'add_circle' : 'edit' }}</mat-icon>
-          <h2>{{ mode === 'create' ? 'Compila Valutazione' : 'Modifica Valutazione' }}</h2>
+          <h2>{{ mode === 'create' ? 'Nuova Valutazione' : 'Modifica Valutazione' }}</h2>
         </div>
         <div class="header-info">
           <span class="patient-name">{{ patient?.nome }} {{ patient?.cognome }}</span>
-          <span class="path-name">{{ path?.name }}</span>
+          @if (mode === 'edit' && path?.name) {
+            <span class="path-name">{{ path?.name }}</span>
+          }
         </div>
         <button mat-icon-button (click)="onClose()" [disabled]="saving">
           <mat-icon>close</mat-icon>
@@ -82,6 +105,7 @@ export interface EvaluationFormDialogData {
           #evaluationForm
           [anamnesis]="evaluation"
           [patient]="patient"
+          [patientAnamnesis]="patientAnamnesis"
           [pathId]="path?.id || ''"
           (save)="onSave($event)"
           (cancel)="onClose()">
@@ -125,6 +149,11 @@ export interface EvaluationFormDialogData {
       overflow: hidden;
     }
 
+    /* Quando si trascina, il dialog resta sopra tutto e segue il cursore */
+    .evaluation-form-dialog.cdk-drag-dragging {
+      cursor: grabbing;
+    }
+
     .dialog-header {
       display: flex;
       align-items: center;
@@ -132,6 +161,13 @@ export interface EvaluationFormDialogData {
       padding: 16px 24px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
+      cursor: move;        /* indica che la barra è trascinabile */
+      user-select: none;
+
+      .drag-indicator {
+        opacity: 0.6;
+        cursor: grab;
+      }
 
       .header-title {
         display: flex;
@@ -239,11 +275,18 @@ export class EvaluationFormContainer {
 
   @Input() mode: 'create' | 'edit' = 'create';
   @Input() patient: Patient | null = null;
+  /** In edit è il percorso esistente; in create è null (lo crea il modulo). */
   @Input() path: TherapeuticPath | null = null;
   @Input() evaluation: EvaluationComplete | null = null;
+  /** Anamnesi remota esistente del paziente (per pre-compilare il form). */
+  @Input() patientAnamnesis: PatientAnamnesis | null = null;
   @Input() operatorId: string = '';
 
   @Output() saved = new EventEmitter<EvaluationComplete>();
+  /** Emesso quando il percorso viene creato o aggiornato dal modulo unificato. */
+  @Output() pathSaved = new EventEmitter<TherapeuticPath>();
+  /** Emesso quando l'anamnesi remota viene salvata. */
+  @Output() anamnesisSaved = new EventEmitter<PatientAnamnesis>();
   @Output() close = new EventEmitter<void>();
 
   saving = false;
@@ -251,87 +294,163 @@ export class EvaluationFormContainer {
   constructor(
     private snackBar: MatSnackBar,
     private evaluationService: PatientEvaluationService,
+    private pathService: TherapeuticPathService,
+    private anamnesisService: SimplePatientAnamnesisService,
     private cdr: ChangeDetectorRef
   ) {}
 
   onSaveClick(): void {
-    if (this.evaluationFormRef) {
-      const formValue = this.evaluationFormRef.getFormValue();
-      this.onSave(formValue);
+    if (!this.evaluationFormRef) return;
+    if (!this.evaluationFormRef.isValid()) {
+      this.evaluationFormRef.form.markAllAsTouched();
+      this.snackBar.open('Compila i campi obbligatori (es. nome percorso)', 'OK', { duration: 3000 });
+      return;
     }
+    this.onSave(this.evaluationFormRef.getFormValue());
   }
 
+  /**
+   * Salvataggio del modulo unificato. Orchestra in sequenza:
+   *  1. percorso terapeutico (create o update, dai campi pathInfo)
+   *  2. valutazione (create o update, sul percorso del passo 1)
+   *  3. anamnesi remota del paziente (upsert, dai campi remoteHistory)
+   * Ogni passo dipende dal precedente per l'id del percorso.
+   */
   onSave(evaluation: EvaluationComplete): void {
-    if (!this.path?.id) {
-      this.snackBar.open('Errore: Percorso terapeutico non selezionato', 'OK', { duration: 3000 });
+    if (!this.patient?.id) {
+      this.snackBar.open('Errore: paziente non selezionato', 'OK', { duration: 3000 });
+      return;
+    }
+    if (!evaluation.pathInfo?.nome?.trim()) {
+      this.snackBar.open('Il nome del percorso è obbligatorio', 'OK', { duration: 3000 });
       return;
     }
 
     this.saving = true;
     this.cdr.markForCheck();
 
-    // Prepara info paziente per il mapping response
-    const patientInfo = this.patient ? {
+    const patientInfo = {
       nome: this.patient.nome || '',
       cognome: this.patient.cognome || '',
       eta: this.patient.dataNascita ? this.calculateAge(this.patient.dataNascita) : null,
-      sesso: this.patient.genere || null
-    } : undefined;
+      sesso: this.patient.genere || null,
+    };
 
-    // Converti valutazione frontend in input backend
-    const input = this.evaluationService.mapFrontendToInput(evaluation);
+    // STEP 1 → percorso. Ritorna il TherapeuticPath salvato.
+    this.savePath$(evaluation)
+      .pipe(
+        // STEP 2 → valutazione sul percorso ottenuto
+        switchMap((savedPath) => {
+          this.pathSaved.emit(savedPath);
 
-    // Sovrascrivi operatorId e pathId per la creazione
-    input.operatorId = this.operatorId;
-    input.therapeuticPathId = this.path.id;
+          const input = this.evaluationService.mapFrontendToInput(evaluation);
+          input.operatorId = this.operatorId;
+          input.therapeuticPathId = savedPath.id;
 
-    if (this.mode === 'create') {
-      // Crea nuova valutazione
-      this.evaluationService.createEvaluation(input, patientInfo)
-        .subscribe({
-          next: (savedEvaluation) => {
-            this.saving = false;
-            this.saved.emit(savedEvaluation);
-            this.snackBar.open('Valutazione salvata con successo', 'OK', { duration: 3000 });
-            this.close.emit();
-            this.cdr.markForCheck();
-          },
-          error: (err) => {
-            console.error('[EvaluationFormContainer] Error creating evaluation:', err);
-            this.saving = false;
-            this.snackBar.open('Errore durante il salvataggio della valutazione', 'OK', { duration: 3000 });
-            this.cdr.markForCheck();
-          }
-        });
-    } else {
-      // Aggiorna valutazione esistente
-      if (!this.evaluation?.id) {
-        this.snackBar.open('Errore: Valutazione non trovata', 'OK', { duration: 3000 });
-        this.saving = false;
-        this.cdr.markForCheck();
-        return;
-      }
+          const eval$ = this.mode === 'edit' && this.evaluation?.id
+            ? this.updateEvaluation$(this.evaluation.id, input, patientInfo)
+            : this.evaluationService.createEvaluation(input, patientInfo);
 
-      // Rimuovi campi non aggiornabili dall'input
-      const { therapeuticPathId, operatorId, ...updateInput } = input;
+          return eval$.pipe(
+            // STEP 3 → upsert anamnesi remota (non blocca se vuota)
+            switchMap((savedEvaluation) =>
+              this.saveRemoteAnamnesis$(evaluation).pipe(
+                switchMap((savedAnamnesis) => {
+                  if (savedAnamnesis) this.anamnesisSaved.emit(savedAnamnesis);
+                  return of(savedEvaluation);
+                })
+              )
+            )
+          );
+        }),
+        finalize(() => {
+          this.saving = false;
+          this.cdr.markForCheck();
+        })
+      )
+      .subscribe({
+        next: (savedEvaluation) => {
+          this.saved.emit(savedEvaluation);
+          this.snackBar.open(
+            this.mode === 'create' ? 'Valutazione creata con successo' : 'Valutazione aggiornata con successo',
+            'OK',
+            { duration: 3000 }
+          );
+          this.close.emit();
+        },
+        error: (err) => {
+          console.error('[EvaluationFormContainer] Error saving unified evaluation:', err);
+          this.snackBar.open('Errore durante il salvataggio', 'OK', { duration: 4000 });
+        },
+      });
+  }
 
-      this.evaluationService.updateEvaluation(this.evaluation.id, updateInput, patientInfo)
-        .subscribe({
-          next: (updatedEvaluation) => {
-            this.saving = false;
-            this.saved.emit(updatedEvaluation);
-            this.snackBar.open('Valutazione aggiornata con successo', 'OK', { duration: 3000 });
-            this.close.emit();
-            this.cdr.markForCheck();
-          },
-          error: (err) => {
-            console.error('[EvaluationFormContainer] Error updating evaluation:', err);
-            this.saving = false;
-            this.snackBar.open('Errore durante l\'aggiornamento della valutazione', 'OK', { duration: 3000 });
-            this.cdr.markForCheck();
-          }
-        });
+  /**
+   * Crea o aggiorna il percorso terapeutico dai campi pathInfo del form.
+   * Criterio: se è stato passato un percorso esistente (`this.path`), la
+   * valutazione vi è agganciata e il percorso viene solo aggiornato — mai
+   * crearne uno nuovo. Si crea un nuovo percorso solo dal flusso "Nuova
+   * Valutazione" dell'header, dove `this.path` è null.
+   */
+  private savePath$(evaluation: EvaluationComplete): Observable<TherapeuticPath> {
+    const pathInfo = evaluation.pathInfo;
+
+    if (this.path?.id) {
+      const input: UpdateTherapeuticPathInput = {
+        name: pathInfo.nome,
+        diagnosis: pathInfo.diagnosi ?? undefined,
+        notes: pathInfo.note ?? undefined,
+      };
+      return this.pathService.updatePath(this.path.id, input);
     }
+
+    if (!this.operatorId) {
+      return throwError(() => new Error('Operatore non determinato per la creazione del percorso'));
+    }
+    const input: CreateTherapeuticPathInput = {
+      patientId: this.patient!.id,
+      primaryOperatorId: this.operatorId,
+      name: pathInfo.nome,
+      diagnosis: pathInfo.diagnosi ?? undefined,
+      notes: pathInfo.note ?? undefined,
+    };
+    return this.pathService.createPath(input);
+  }
+
+  private updateEvaluation$(
+    id: string,
+    input: CreateEvaluationInput,
+    patientInfo: { nome: string; cognome: string; eta: number | null; sesso: string | null }
+  ): Observable<EvaluationComplete> {
+    const { therapeuticPathId, operatorId, ...updateInput } = input;
+    return this.evaluationService.updateEvaluation(id, updateInput, patientInfo);
+  }
+
+  /**
+   * Upsert dell'anamnesi remota del paziente dai campi remoteHistory.
+   * Ritorna null (senza chiamare il backend) se la sezione è interamente vuota.
+   */
+  private saveRemoteAnamnesis$(evaluation: EvaluationComplete): Observable<PatientAnamnesis | null> {
+    const r = evaluation.remoteHistory;
+    const isEmpty =
+      !r.patologiePregresse &&
+      !r.interventiChirurgici &&
+      !r.traumi &&
+      (!r.terapiaFarmacologica || r.terapiaFarmacologica.length === 0) &&
+      !r.note;
+    if (isEmpty) {
+      return of(null);
+    }
+
+    const input: UpdatePatientAnamnesisInput = {
+      operatorId: this.operatorId || undefined,
+      patologiePregresse: r.patologiePregresse ?? undefined,
+      interventiChirurgici: r.interventiChirurgici ?? undefined,
+      traumi: r.traumi ?? undefined,
+      terapiaFarmacologica: r.terapiaFarmacologica,
+      note: r.note ?? undefined,
+    };
+    return this.anamnesisService.upsertAnamnesis(this.patient!.id, input);
   }
 
   /**
@@ -351,5 +470,11 @@ export class EvaluationFormContainer {
   onClose(): void {
     if (this.saving) return;
     this.close.emit();
+  }
+
+  /** ESC chiude il dialog come il tasto Annulla (se non si sta salvando). */
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.onClose();
   }
 }

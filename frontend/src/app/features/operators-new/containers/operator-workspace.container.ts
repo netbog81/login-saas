@@ -24,7 +24,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subject, combineLatest } from 'rxjs';
-import { takeUntil, filter, distinctUntilChanged } from 'rxjs/operators';
+import { takeUntil, filter, distinctUntilChanged, take } from 'rxjs/operators';
 
 import { Operator, AvailabilityAppointment } from '../../../graphql/generated/types';
 import { Patient } from '../../../models/patient.model';
@@ -44,6 +44,10 @@ import { EditTreatmentDialogContainerComponent } from './edit-treatment-dialog.c
 import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
+import { TherapeuticPath } from '../../../models/therapeutic-path.model';
+import { PermissionsService } from '../../../core/services/permissions.service';
+import { SseService, CalendarEvent } from '../../../services/sse.service';
 
 @Component({
   selector: 'app-operator-workspace-container',
@@ -164,6 +168,52 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
         (treatmentUpdated)="onTreatmentUpdated($event)"
         (cancel)="onEditTreatmentDialogCancel()">
       </app-edit-treatment-dialog-container>
+
+      <!-- Mini-dialog: scelta percorso (paziente con più percorsi attivi) -->
+      @if (showPathChooser) {
+        <div class="ws-overlay" (click)="onPathChooserCancel()">
+          <div class="ws-mini-dialog" (click)="$event.stopPropagation()">
+            <div class="ws-mini-header">
+              <mat-icon>route</mat-icon>
+              <h3>Scegli il percorso terapeutico</h3>
+            </div>
+            <p class="ws-mini-sub">
+              Il paziente ha più percorsi attivi. Seleziona quello su cui avviare il trattamento.
+            </p>
+            <div class="ws-path-list">
+              @for (p of pathChooserOptions; track p.id) {
+                <button class="ws-path-item" type="button" (click)="onPathChosen(p)">
+                  <mat-icon>arrow_forward</mat-icon>
+                  <span class="ws-path-name">{{ p.name }}</span>
+                </button>
+              }
+            </div>
+            <div class="ws-mini-actions">
+              <button mat-button (click)="onPathChooserCancel()">Annulla</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Avviso: nessun percorso attivo -->
+      @if (showNoPathNotice) {
+        <div class="ws-overlay" (click)="onNoPathNoticeClose()">
+          <div class="ws-mini-dialog" (click)="$event.stopPropagation()">
+            <div class="ws-mini-header warn">
+              <mat-icon>info</mat-icon>
+              <h3>Nessun percorso terapeutico attivo</h3>
+            </div>
+            <p class="ws-mini-sub">
+              Per avviare un trattamento serve un percorso terapeutico. Crea una
+              <strong>Nuova Valutazione</strong> dalla scheda paziente: verranno create automaticamente
+              valutazione, percorso e anamnesi. Poi riavvia il trattamento.
+            </p>
+            <div class="ws-mini-actions">
+              <button mat-flat-button color="primary" (click)="onNoPathNoticeClose()">Ho capito</button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -312,6 +362,79 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
         overflow: visible;  // Permette al contenuto di crescere in mobile
       }
     }
+
+    /* Mini-dialog scelta percorso / avviso */
+    .ws-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 24px;
+    }
+
+    .ws-mini-dialog {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 440px;
+      padding: 20px 24px;
+      box-shadow: 0 11px 15px -7px rgba(0,0,0,.2), 0 24px 38px 3px rgba(0,0,0,.14);
+    }
+
+    .ws-mini-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+
+      h3 { margin: 0; font-size: 1.1rem; color: #1e293b; }
+      mat-icon { color: #667eea; }
+      &.warn mat-icon { color: #f59e0b; }
+    }
+
+    .ws-mini-sub {
+      margin: 0 0 16px;
+      color: #64748b;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+
+    .ws-path-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .ws-path-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      transition: all 0.15s;
+
+      &:hover { background: #eef2ff; border-color: #667eea; }
+
+      mat-icon { color: #94a3b8; flex-shrink: 0; }
+      .ws-path-name { font-weight: 500; color: #1e293b; }
+    }
+
+    .ws-mini-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -334,17 +457,34 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   selectedPatient: Patient | null = null;
   currentTreatment: Treatment | null = null;  // Trattamento in corso
 
+  // Mini-dialog "scegli percorso" (quando il paziente ha più percorsi attivi).
+  showPathChooser = false;
+  pathChooserOptions: TherapeuticPath[] = [];
+  // Avviso "nessun percorso attivo".
+  showNoPathNotice = false;
+
   constructor(
     private stateService: OperatorWorkspaceStateService,
     private workspaceService: OperatorWorkspaceService,
     private treatmentService: TreatmentService,
     private appointmentService: AvailabilityAppointmentService,
+    private pathService: TherapeuticPathService,
+    private permissions: PermissionsService,
+    private sse: SseService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
     console.log('[OperatorWorkspaceContainer] Inizializzato');
+
+    // Garantisce che il profilo permessi sia caricato anche se si arriva qui
+    // con un reload diretto (senza ripassare dal callback di login). Senza
+    // questo, per l'admin i pulsanti azione sul trattamento restano disabilitati
+    // perché permissions() è vuoto → il bypass admin non scatta.
+    this.permissions.ensureLoaded()
+      .then(() => this.cdr.markForCheck())
+      .catch(() => null);
 
     // Sottoscrivi ai cambiamenti di operatore e data dal servizio condiviso
     combineLatest([
@@ -370,6 +510,15 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
           this.cdr.markForCheck();
         });
       });
+
+    // Realtime: il backend (cron/cascata o segreteria) può cambiare lo stato
+    // dell'appuntamento o creare/annullare il trattamento mentre l'operatore è
+    // sulla pagina. Senza ascoltare la SSE la pagina resterebbe su dati vecchi
+    // → conflitti (es. "esiste già un trattamento"). Aggiorniamo in automatico,
+    // in modo silenzioso.
+    this.sse.getAppointmentEvents()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((event: CalendarEvent) => this.handleSseEvent(event));
   }
 
   ngOnDestroy(): void {
@@ -445,6 +594,102 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
       });
   }
 
+  // ============ REALTIME (SSE) ============
+
+  /**
+   * Gestisce gli eventi SSE per tenere allineata la pagina operatori con lo
+   * stato lato server (cambi stato appuntamento + creazione/annullo trattamento
+   * fatti da cron/cascata o dalla segreteria su un altro client).
+   * Reagisce solo a ciò che riguarda l'appuntamento attualmente aperto.
+   */
+  private handleSseEvent(event: CalendarEvent): void {
+    if (!event || event.type === 'heartbeat') return;
+
+    const currentApptId = this.selectedAppointment?.id != null
+      ? String(this.selectedAppointment.id)
+      : null;
+
+    if (event.type === 'appointment_status_changed') {
+      // Aggiorna la sidebar (stato programmato → presentato, ecc.) ricaricando
+      // gli appuntamenti del giorno. Se l'evento riguarda l'appuntamento aperto,
+      // ricarica anche il suo trattamento.
+      const ids = (event.appointmentIds ?? []).map(String);
+      const touchesDay = ids.length > 0; // gli id sono del tenant; ricarico il giorno comunque
+      if (touchesDay) {
+        this.refreshAppointmentsKeepingSelection();
+      }
+      if (currentApptId && ids.includes(currentApptId)) {
+        this.reloadCurrentTreatment(currentApptId);
+      }
+      return;
+    }
+
+    if (
+      event.type === 'treatment_created' ||
+      event.type === 'treatment_status_changed' ||
+      event.type === 'treatment_deleted'
+    ) {
+      // Gli eventi trattamento non portano l'appointmentId: se ho un appuntamento
+      // aperto, ricarico il suo trattamento (query leggera) per riflettere
+      // eventuale auto-start/annullo. La scheda paziente si aggiorna da sé.
+      if (currentApptId) {
+        this.reloadCurrentTreatment(currentApptId);
+        // Se nel frattempo era aperto il mini-dialog "scegli percorso" o
+        // l'avviso "nessun percorso", li chiudo: il trattamento potrebbe essere
+        // appena nato lato server e la scelta non ha più senso.
+        if (event.type === 'treatment_created' && (this.showPathChooser || this.showNoPathNotice)) {
+          this.showPathChooser = false;
+          this.showNoPathNotice = false;
+          this.pathChooserOptions = [];
+        }
+      }
+      if (this.patientFolderContainer) {
+        this.patientFolderContainer.reloadTreatments();
+      }
+      return;
+    }
+  }
+
+  /** Ricarica il trattamento dell'appuntamento aperto senza resettare la UI. */
+  private reloadCurrentTreatment(appointmentId: string): void {
+    this.treatmentService.getTreatmentByAppointment(appointmentId)
+      .pipe(take(1), takeUntil(this.destroy$))
+      .subscribe({
+        next: (treatment) => {
+          this.ngZone.run(() => {
+            this.currentTreatment = treatment;
+            this.cdr.markForCheck();
+          });
+        },
+        error: () => { /* assenza trattamento = nessun cambiamento */ },
+      });
+  }
+
+  /**
+   * Ricarica gli appuntamenti del giorno mantenendo l'appuntamento selezionato
+   * (a differenza di loadAppointments() che deseleziona). Aggiorna gli stati in
+   * sidebar senza perdere il contesto dell'operatore.
+   */
+  private refreshAppointmentsKeepingSelection(): void {
+    if (!this.selectedOperator) return;
+    const keepId = this.selectedAppointment?.id != null ? String(this.selectedAppointment.id) : null;
+
+    this.workspaceService.loadAppointments(this.selectedOperator.id, this.selectedDate)
+      .pipe(take(1), takeUntil(this.destroy$))
+      .subscribe(result => {
+        this.ngZone.run(() => {
+          this.appointments = result.appointments;
+          // Riallinea il riferimento all'appuntamento selezionato all'oggetto
+          // aggiornato (nuovo bookingStatus), senza deselezionarlo.
+          if (keepId) {
+            const updated = this.appointments.find(a => String(a.id) === keepId);
+            if (updated) this.selectedAppointment = updated;
+          }
+          this.cdr.markForCheck();
+        });
+      });
+  }
+
   // ============ EVENT HANDLERS ============
 
   onAppointmentSelect(appointment: AvailabilityAppointment): void {
@@ -495,14 +740,137 @@ export class OperatorWorkspaceContainer implements OnInit, OnDestroy {
   }
 
   // Treatment handlers
+  /**
+   * "Inizia trattamento": NON apre più il modulo (che l'operatore compila a
+   * fine trattamento, in chiusura). Apre direttamente il trattamento:
+   *  - 1 solo percorso attivo  → crea subito il trattamento su quel percorso;
+   *  - 0 o >1 percorsi attivi  → apre il dialog per scegliere/creare il percorso
+   *    (caso ambiguo, serve l'input dell'operatore).
+   */
   onStartTreatment(): void {
     if (!this.selectedAppointment || !this.selectedPatient) {
       console.warn('[OperatorWorkspaceContainer] Cannot start treatment: no appointment or patient selected');
       return;
     }
 
-    console.log('[OperatorWorkspaceContainer] Opening start treatment dialog');
-    this.startTreatmentDialog.open();
+    const status = this.selectedAppointment.bookingStatus?.toString().toUpperCase();
+    if (status !== 'ATTENDED') {
+      // Stesso vincolo del dialog: serve paziente presentato.
+      this.startTreatmentDialog.open();
+      return;
+    }
+
+    this.pathService.getActivePathsByPatient(this.selectedPatient.id)
+      .pipe(take(1), takeUntil(this.destroy$))
+      .subscribe({
+        next: (activePaths) => {
+          this.ngZone.run(() => {
+            if (activePaths.length === 1) {
+              // Percorso unico → trattamento diretto, niente modulo.
+              this.createTreatmentDirect(activePaths[0].id);
+            } else if (activePaths.length === 0) {
+              // Nessun percorso → avviso: serve creare prima una valutazione
+              // (che crea percorso + anamnesi + valutazione).
+              this.showNoPathNotice = true;
+              this.cdr.markForCheck();
+            } else {
+              // Più percorsi → mini-dialog di sola scelta del percorso.
+              this.pathChooserOptions = activePaths;
+              this.showPathChooser = true;
+              this.cdr.markForCheck();
+            }
+          });
+        },
+        error: (err) => {
+          console.error('[OperatorWorkspaceContainer] Error loading active paths:', err);
+          this.ngZone.run(() => {
+            alert('Errore nel caricamento dei percorsi del paziente. Riprova.');
+            this.cdr.markForCheck();
+          });
+        }
+      });
+  }
+
+  /** Mini-dialog: percorso scelto → crea il trattamento e chiudi. */
+  onPathChosen(path: TherapeuticPath): void {
+    this.showPathChooser = false;
+    this.pathChooserOptions = [];
+    this.createTreatmentDirect(path.id);
+    this.cdr.markForCheck();
+  }
+
+  onPathChooserCancel(): void {
+    this.showPathChooser = false;
+    this.pathChooserOptions = [];
+    this.cdr.markForCheck();
+  }
+
+  onNoPathNoticeClose(): void {
+    this.showNoPathNotice = false;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Crea il trattamento direttamente (senza modulo) sul percorso dato e lo
+   * mette in corso. I dati clinici/economici si compilano dopo, in chiusura.
+   */
+  private createTreatmentDirect(pathId: string): void {
+    if (!this.selectedAppointment?.id) return;
+
+    this.treatmentService.createTreatment(
+      this.selectedAppointment.id.toString(),
+      pathId,
+      false,
+    )
+      .pipe(take(1), takeUntil(this.destroy$))
+      .subscribe({
+        next: (treatment) => {
+          this.ngZone.run(() => {
+            this.currentTreatment = treatment;
+            if (this.patientFolderContainer) {
+              this.patientFolderContainer.reloadTreatments();
+            }
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          // Race condition: nel frattempo il backend (cascata/cron) può aver già
+          // creato il trattamento per questo appuntamento → 409 "esiste già".
+          // Non è un vero errore: ricarichiamo il trattamento esistente.
+          if (this.isAlreadyExistsError(err)) {
+            console.warn('[OperatorWorkspaceContainer] Trattamento già esistente (race), ricarico.');
+            this.ngZone.run(() => {
+              if (this.selectedAppointment?.id) {
+                this.reloadCurrentTreatment(String(this.selectedAppointment.id));
+              }
+              if (this.patientFolderContainer) {
+                this.patientFolderContainer.reloadTreatments();
+              }
+              this.cdr.markForCheck();
+            });
+            return;
+          }
+          console.error('[OperatorWorkspaceContainer] Error creating treatment directly:', err);
+          this.ngZone.run(() => {
+            alert('Errore durante l\'avvio del trattamento. Riprova.');
+            this.cdr.markForCheck();
+          });
+        }
+      });
+  }
+
+  /**
+   * True se l'errore è il conflitto "esiste già un trattamento per
+   * l'appuntamento" (status 409). Robusto a diverse forme dell'errore Apollo.
+   */
+  private isAlreadyExistsError(err: any): boolean {
+    const status =
+      err?.graphQLErrors?.[0]?.extensions?.status ??
+      err?.graphQLErrors?.[0]?.extensions?.originalError?.statusCode;
+    if (status === 409) return true;
+    const msg: string =
+      err?.graphQLErrors?.[0]?.message ?? err?.message ?? '';
+    return /esiste gi[àa]/i.test(msg) || /already exists|conflict/i.test(msg);
   }
 
   onTreatmentStarted(result: StartTreatmentResult): void {

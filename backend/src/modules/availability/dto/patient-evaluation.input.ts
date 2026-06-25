@@ -191,31 +191,11 @@ export class CreateEvaluationInput {
   @Type(() => BodyMapMarkerInput)
   bodyMapMarkers?: BodyMapMarkerInput[];
 
-  // Sezione 3: Anamnesi Patologica Remota
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  patologiePregresse?: string;
+  // NOTA: l'anamnesi remota (patologiePregresse, interventiChirurgici, traumi,
+  // terapiaFarmacologica) NON fa più parte di questo input. È un dato del
+  // paziente, gestito tramite upsertPatientAnamnesis su PatientAnamnesis.
 
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  interventiChirurgici?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  traumi?: string;
-
-  @Field(() => [String], { nullable: true })
-  @IsOptional()
-  @IsArray()
-  terapiaFarmacologica?: string[];
-
-  // Sezione 4: Anamnesi Patologica Prossima
+  // Anamnesi Patologica Prossima
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
@@ -399,31 +379,11 @@ export class UpdateEvaluationInput {
   @Type(() => BodyMapMarkerInput)
   bodyMapMarkers?: BodyMapMarkerInput[];
 
-  // Sezione 3: Anamnesi Patologica Remota
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  patologiePregresse?: string;
+  // NOTA: l'anamnesi remota (patologiePregresse, interventiChirurgici, traumi,
+  // terapiaFarmacologica) NON fa più parte di questo input. È un dato del
+  // paziente, gestito tramite upsertPatientAnamnesis su PatientAnamnesis.
 
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  interventiChirurgici?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  traumi?: string;
-
-  @Field(() => [String], { nullable: true })
-  @IsOptional()
-  @IsArray()
-  terapiaFarmacologica?: string[];
-
-  // Sezione 4: Anamnesi Patologica Prossima
+  // Anamnesi Patologica Prossima
   @Field({ nullable: true })
   @IsOptional()
   @IsString()

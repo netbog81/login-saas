@@ -75,6 +75,18 @@ import { Patient } from '../../../../models/patient.model';
             <span class="value">{{ totalTreatmentsCount }}</span>
             <span class="label">Trattamenti</span>
           </div>
+          <!-- Anamnesi remota: riquadro cliccabile che apre la scheda anamnesi
+               sotto, indipendentemente dall'esistenza di percorsi. -->
+          <button
+            type="button"
+            class="stat stat-anamnesi"
+            [class.compiled]="anamnesisExists"
+            [matTooltip]="anamnesisExists ? 'Visualizza anamnesi remota' : 'Anamnesi remota non ancora compilata'"
+            (click)="onViewAnamnesis()">
+            <mat-icon>{{ anamnesisExists ? 'history_edu' : 'note_add' }}</mat-icon>
+            <span class="value">{{ anamnesisExists ? '✓' : '—' }}</span>
+            <span class="label">Anamnesi</span>
+          </button>
         </div>
 
         <!-- Actions -->
@@ -93,7 +105,7 @@ import { Patient } from '../../../../models/patient.model';
           }
           <button mat-flat-button color="primary" (click)="onCreatePath()">
             <mat-icon>add</mat-icon>
-            Nuovo Percorso
+            Nuova Valutazione
           </button>
         </div>
       }
@@ -250,6 +262,37 @@ import { Patient } from '../../../../models/patient.model';
       }
     }
 
+    /* Riquadro anamnesi: è un <button> resettato per apparire come .stat */
+    button.stat-anamnesi {
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+
+      &:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        transform: translateY(-1px);
+      }
+
+      &.compiled {
+        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+
+        mat-icon {
+          color: #2563eb;
+        }
+
+        .value {
+          color: #1e40af;
+        }
+      }
+
+      &:not(.compiled) {
+        .value {
+          color: #94a3b8;
+        }
+      }
+    }
+
     .patient-actions {
       display: flex;
       align-items: center;
@@ -303,9 +346,13 @@ export class PatientHeaderComponent {
   @Input() pathsCount = 0;
   @Input() activePathsCount = 0;
   @Input() totalTreatmentsCount = 0;
+  /** True se il paziente ha già un'anamnesi remota compilata. */
+  @Input() anamnesisExists = false;
 
   @Output() viewDetails = new EventEmitter<void>();
   @Output() createPath = new EventEmitter<void>();
+  /** Richiesta di visualizzare/aprire la scheda anamnesi remota. */
+  @Output() viewAnamnesis = new EventEmitter<void>();
 
   /**
    * URL per la modifica avanzata del subject nel frontend del registry.
@@ -335,6 +382,10 @@ export class PatientHeaderComponent {
 
   onCreatePath(): void {
     this.createPath.emit();
+  }
+
+  onViewAnamnesis(): void {
+    this.viewAnamnesis.emit();
   }
 
   getAge(): number | null {

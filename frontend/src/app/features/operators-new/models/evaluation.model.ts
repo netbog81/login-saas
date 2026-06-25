@@ -17,6 +17,10 @@ export interface EvaluationComplete {
   id: string;
   pathId: string;
 
+  // Dati del percorso terapeutico, editabili inline dal modulo unificato
+  // (gli altri campi del percorso vivono nei "dettagli percorso").
+  pathInfo: PathInfo;
+
   // Sez 1: Informazioni Generali
   generalInfo: GeneralInfo;
 
@@ -46,6 +50,16 @@ export interface EvaluationComplete {
   updatedAt: Date | string;
   createdBy: string;
   operatorName?: string;  // "Nome Cognome" dell'operatore che ha compilato
+}
+
+// ============================================================
+// DATI PERCORSO TERAPEUTICO (inline nel modulo unificato)
+// ============================================================
+
+export interface PathInfo {
+  nome: string;                 // obbligatorio (= TherapeuticPath.name)
+  diagnosi: string | null;      // = TherapeuticPath.diagnosis
+  note: string | null;          // = TherapeuticPath.notes
 }
 
 // ============================================================
@@ -81,11 +95,19 @@ export interface BodyMapMarker {
 // SEZIONE 3: ANAMNESI PATOLOGICA REMOTA
 // ============================================================
 
+/**
+ * Anamnesi Patologica Remota. NB: questi dati sono salvati/letti dalla
+ * tabella PatientAnamnesis (legata al paziente), NON dalla valutazione.
+ * Il campo `note` esiste solo su PatientAnamnesis ed è mostrato nel modulo
+ * unificato; gli altri campi anagrafico-sanitari (allergie, storia familiare,
+ * gruppo sanguigno, ecc.) restano nei "dettagli anamnesi".
+ */
 export interface RemoteHistory {
   patologiePregresse: string | null;
   interventiChirurgici: string | null;
   traumi: string | null;
   terapiaFarmacologica: string[];
+  note: string | null;
 }
 
 // ============================================================
@@ -244,6 +266,11 @@ export interface EvaluationUpdateInput extends Partial<EvaluationCreateInput> {
 export function createEmptyEvaluation(pathId: string): Omit<EvaluationComplete, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
   return {
     pathId,
+    pathInfo: {
+      nome: '',
+      diagnosi: null,
+      note: null
+    },
     generalInfo: {
       nome: '',
       cognome: '',
@@ -260,7 +287,8 @@ export function createEmptyEvaluation(pathId: string): Omit<EvaluationComplete, 
       patologiePregresse: null,
       interventiChirurgici: null,
       traumi: null,
-      terapiaFarmacologica: []
+      terapiaFarmacologica: [],
+      note: null
     },
     recentHistory: {
       motivoConsulto: null,

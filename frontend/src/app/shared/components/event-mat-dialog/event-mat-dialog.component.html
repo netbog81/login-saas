@@ -262,6 +262,15 @@
       <p class="status-description" *ngIf="bookingStatus === 'no_show'">
         Il paziente non si è presentato. Evento tracciato.
       </p>
+
+      <!-- Caso ritardatario: paziente segnato non presentato che poi arriva.
+           Permette di correggere lo stato (riapre il trattamento se annullato). -->
+      <div class="status-buttons" *ngIf="bookingStatus === 'no_show' && canMarkAttended">
+        <button mat-flat-button color="primary" type="button" (click)="onMarkAttended()">
+          <mat-icon>check</mat-icon>
+          Paziente Arrivato (in ritardo)
+        </button>
+      </div>
       <p class="status-description" *ngIf="bookingStatus === 'cancelled_early' || bookingStatus === 'cancelled_late'">
         L'appuntamento è stato disdetto.
       </p>
@@ -274,15 +283,15 @@
       </div>
 
       <div class="status-buttons" *ngIf="canShowStatusActions">
-        <button mat-flat-button color="primary" *ngIf="canMarkAttended" type="button">
+        <button mat-flat-button color="primary" *ngIf="canMarkAttended" type="button" (click)="onMarkAttended()">
           <mat-icon>check</mat-icon>
           Paziente Arrivato
         </button>
-        <button mat-stroked-button color="warn" *ngIf="canMarkNoShow" type="button">
+        <button mat-stroked-button color="warn" *ngIf="canMarkNoShow" type="button" (click)="onMarkNoShow()">
           <mat-icon>person_off</mat-icon>
           Non Presentato
         </button>
-        <button mat-stroked-button *ngIf="canCancel" type="button">
+        <button mat-stroked-button *ngIf="canCancel" type="button" (click)="onCancelWithNotice()">
           <mat-icon>event_busy</mat-icon>
           Disdici
         </button>

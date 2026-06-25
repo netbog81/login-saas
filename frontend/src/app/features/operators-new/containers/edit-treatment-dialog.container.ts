@@ -443,7 +443,13 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
           error: (err) => {
             console.error('[EditTreatmentDialogContainer] Error completing treatment:', err);
             this.isSaving = false;
-            alert('Errore durante il completamento del trattamento');
+            // Propaga il messaggio del backend (es. OwnershipGuard:
+            // "Operazione consentita solo al creatore del trattamento...")
+            // invece di un generico "Errore".
+            const errorMessage = err?.graphQLErrors?.[0]?.message
+              || err?.message
+              || 'Errore durante il completamento del trattamento';
+            alert(errorMessage);
             this.cdr.markForCheck();
           }
         });
@@ -480,7 +486,11 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
           console.error('[EditTreatmentDialogContainer] Error reopening treatment:', err);
           // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
           this.isSaving = false;
-          alert('Errore durante la riapertura del trattamento');
+          // Propaga il messaggio del backend (es. ownership) invece di un generico "Errore".
+          const errorMessage = err?.graphQLErrors?.[0]?.message
+            || err?.message
+            || 'Errore durante la riapertura del trattamento';
+          alert(errorMessage);
           this.cdr.markForCheck();
         }
       });

@@ -17,7 +17,7 @@ import { firstValueFrom, Observable, of, startWith, map, switchMap, debounceTime
 import { PatientService } from '../../../services/patient.service';
 import { RepeatConfig } from '../../../models/appointment.model';
 
-import { GymRoom, GymSlotInfo, GymRoomService, CreateGymAppointmentInput, GymAppointment } from '../../../services/gym-room.service';
+import { GymRoom, GymSlotInfo, GymRoomService, CreateGymAppointmentInput, UpdateGymAppointmentInput, GymAppointment } from '../../../services/gym-room.service';
 import { Patient } from '../../../models/patient.model';
 import { ServiceService } from '../../../services/service.service';
 import { Service } from '../../../graphql/generated/types';
@@ -34,6 +34,12 @@ export interface GymAppointmentMatDialogData {
   endTime: string;
   slotInfo: GymSlotInfo;
   patients: Patient[];
+  /**
+   * Se valorizzato, il dialog opera in modalita' MODIFICA dell'appuntamento
+   * indicato (prefill + updateAppointment). Se assente, modalita' CREAZIONE.
+   * Campo opzionale: i caller esistenti che non lo passano restano invariati.
+   */
+  appointment?: GymAppointment;
 }
 
 /**
@@ -83,7 +89,7 @@ export interface GymAppointmentMatDialogResult {
     ServiceMultiSelectComponent
   ],
   template: `
-    <h2 mat-dialog-title>Nuovo Appuntamento Palestra</h2>
+    <h2 mat-dialog-title>{{ isEditMode ? 'Modifica Appuntamento Palestra' : 'Nuovo Appuntamento Palestra' }}</h2>
 
     <mat-dialog-content>
       <!-- Info Slot (read-only) -->
@@ -166,8 +172,8 @@ export interface GymAppointmentMatDialogResult {
         </mat-form-field>
       </form>
 
-      <!-- Ricorrenza -->
-      <div class="recurring-section">
+      <!-- Ricorrenza (solo in creazione: l'update modifica la singola occorrenza) -->
+      <div class="recurring-section" *ngIf="!isEditMode">
         <mat-slide-toggle [(ngModel)]="repeatEnabled" (change)="onRepeatToggle()">
           <mat-icon>repeat</mat-icon>
           Appuntamento ricorrente
@@ -250,7 +256,7 @@ export interface GymAppointmentMatDialogResult {
       <button mat-flat-button color="primary" (click)="onSave()"
               [disabled]="saving || !form.get('patientId')?.value">
         <mat-spinner *ngIf="saving" diameter="20"></mat-spinner>
-        <span *ngIf="!saving">Crea Appuntamento</span>
+        <span *ngIf="!saving">{{ isEditMode ? 'Salva Modifiche' : 'Crea Appuntamento' }}</span>
       </button>
     </mat-dialog-actions>
   `,
@@ -498,6 +504,58 @@ export class GymAppointmentMatDialogComponent implements OnInit {
     this.loadOperatorServices();
     this.patients = this.data.patients || [];
     this.setupPatientFilter();
+
+    // Modalita' MODIFICA: prefill dei campi dall'appuntamento esistente.
+    if (this.isEditMode) {
+      this.prefillFromAppointment(this.data.appointment!);
+    }
+  }
+
+  /** True se il dialog opera in modalita' modifica di un appuntamento esistente. */
+  get isEditMode(): boolean {
+    return !!this.data.appointment;
+  }
+
+  /**
+   * Prefill del form a partire dall'appuntamento da modificare: paziente,
+   * note e servizi. La ricorrenza non e' modificabile in edit (single
+   * occurrence), quindi viene ignorata.
+   */
+  private prefillFromAppointment(apt: GymAppointment): void {
+    // Paziente: valorizza il control e il display dell'autocomplete.
+    if (apt.patientId) {
+      this.form.patchValue({ patientId: apt.patientId });
+      const existing = this.patients.find((p) => p.id == apt.patientId);
+      if (existing) {
+        this.patientSearchControl.setValue(this.displayPatient(existing));
+      } else if (apt.clientName) {
+        this.patientSearchControl.setValue(apt.clientName);
+      }
+    }
+
+    this.form.patchValue({ notes: apt.notes || '' });
+
+    // Servizi gia' associati all'appuntamento.
+    if (apt.appointmentServices?.length) {
+      this.selectedServices = apt.appointmentServices
+        .slice()
+        .sort((a, b) => a.orderPosition - b.orderPosition)
+        .map((as, idx) => ({
+          serviceId: as.serviceId,
+          customDuration: as.customDuration,
+          customPrice: as.customPrice,
+          service: as.service
+            ? {
+                id: as.service.id,
+                name: as.service.name,
+                defaultPrice: as.service.defaultPrice,
+                discountFE: as.service.discountFE ?? undefined,
+                defaultDuration: as.service.defaultDuration,
+              }
+            : { id: as.serviceId, name: '' },
+          orderPosition: idx,
+        }));
+    }
   }
 
   /**
@@ -808,31 +866,54 @@ export class GymAppointmentMatDialogComponent implements OnInit {
         untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
       } : undefined;
 
-      const input: CreateGymAppointmentInput = {
-        gymRoomId: this.data.gymRoom.id,
-        patientId: this.form.value.patientId || undefined,
-        clientName: clientName,
-        clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || '',
-        clientEmail: selectedPatient?.email || '',
-        appointmentDate: this.data.date,
-        startTime: this.data.startTime,
-        endTime: this.data.endTime,
-        notes: this.form.value.notes || '',
-        // MULTISERVIZIO: array invece di singolo serviceId
-        services: services.length > 0 ? services : undefined,
-        isRecurring: this.repeatEnabled || undefined,
-        repeatConfig: repeatConfigData
-      };
+      let result: GymAppointment;
 
-      const result: GymAppointment = await firstValueFrom(this.gymRoomService.createAppointment(input));
+      if (this.isEditMode) {
+        // MODIFICA: aggiorna i campi editabili dell'appuntamento esistente.
+        const updateInput: UpdateGymAppointmentInput = {
+          patientId: this.form.value.patientId || undefined,
+          clientName: clientName,
+          clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || undefined,
+          // Email omessa se vuota: il backend valida @IsEmail e rifiuta "".
+          clientEmail: selectedPatient?.email || undefined,
+          notes: this.form.value.notes || undefined,
+          services: services.length > 0 ? services : undefined,
+        };
+        result = await firstValueFrom(
+          this.gymRoomService.updateAppointment(this.data.appointment!.id, updateInput),
+        );
+      } else {
+        // CREAZIONE
+        const input: CreateGymAppointmentInput = {
+          gymRoomId: this.data.gymRoom.id,
+          patientId: this.form.value.patientId || undefined,
+          clientName: clientName,
+          clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || '',
+          // Email omessa se vuota: il backend valida @IsEmail e rifiuta "".
+          clientEmail: selectedPatient?.email || undefined,
+          appointmentDate: this.data.date,
+          startTime: this.data.startTime,
+          endTime: this.data.endTime,
+          notes: this.form.value.notes || '',
+          // MULTISERVIZIO: array invece di singolo serviceId
+          services: services.length > 0 ? services : undefined,
+          isRecurring: this.repeatEnabled || undefined,
+          repeatConfig: repeatConfigData
+        };
+        result = await firstValueFrom(this.gymRoomService.createAppointment(input));
+      }
 
       this.dialogRef.close({
         created: true,
         appointmentId: result?.id
       });
     } catch (error: any) {
-      console.error('[GymAppointmentMatDialog] Error creating appointment:', error);
-      this.serverError = error?.message || 'Errore nella creazione dell\'appuntamento. Riprova.';
+      console.error('[GymAppointmentMatDialog] Error saving appointment:', error);
+      this.serverError =
+        error?.message ||
+        (this.isEditMode
+          ? 'Errore nel salvataggio delle modifiche. Riprova.'
+          : 'Errore nella creazione dell\'appuntamento. Riprova.');
       this.saving = false;
       this.cdr.markForCheck();
     }

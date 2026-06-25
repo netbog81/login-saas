@@ -44,6 +44,20 @@ export class ClinicalAttendanceService {
   }
 
   /**
+   * Rimuove i log NO_SHOW associati a un appuntamento. Usato quando un
+   * "non presentato" viene corretto in "presentato" (ritardatario): il
+   * conteggio no-show del paziente deve tornare coerente.
+   * Ritorna il numero di righe rimosse.
+   */
+  async removeNoShowEvent(appointmentId: string): Promise<number> {
+    const result = await this.logRepo.delete({
+      appointmentId,
+      eventType: AttendanceEventType.NO_SHOW,
+    });
+    return result.affected ?? 0;
+  }
+
+  /**
    * Aggrega contatori per un singolo subject. Costo O(N) sul subject specifico,
    * accettabile dato che N è tipicamente piccolo (pochi log per paziente).
    */

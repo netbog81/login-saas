@@ -65,7 +65,9 @@ export interface AppointmentInstrumentData {
  * Risultato restituito dal dialog alla chiusura.
  */
 export interface EventMatDialogResult {
-  action: 'save' | 'delete' | 'cancel' | 'series-deleted';
+  action: 'save' | 'delete' | 'cancel' | 'series-deleted'
+    | 'mark-attended' | 'mark-no-show' | 'cancel-with-notice' | 'revert-attended';
+  appointmentId?: string;
   appointment?: Appointment;
   services?: { serviceId: string; customPrice?: number; customDuration?: number }[];
   instruments?: AppointmentInstrumentData[];
@@ -786,7 +788,12 @@ export class EventMatDialogComponent implements OnInit {
 
   get canMarkAttended(): boolean {
     const today = new Date().toISOString().split('T')[0];
-    return this.canShowStatusActions && this.form.get('date')?.value === today;
+    const isToday = this.form.get('date')?.value === today;
+    // Da scheduled/confirmed (flusso normale) oppure da no_show di oggi
+    // (caso ritardatario: il paziente arriva tardi e viene fatto passare).
+    const fromStandard = this.canShowStatusActions;
+    const fromNoShow = this.bookingStatus === 'no_show';
+    return (fromStandard || fromNoShow) && isToday;
   }
 
   get canMarkNoShow(): boolean {
@@ -841,9 +848,33 @@ export class EventMatDialogComponent implements OnInit {
     return labels[this.bookingStatus] || 'Prenotato';
   }
 
+  // Le azioni di stato chiudono il dialog ritornando l'azione richiesta.
+  // Il container che lo apre invoca la mutation corrispondente sul backend
+  // (markAppointmentAttended/NoShow/cancelAppointmentWithNotice/revertAttended).
+  // Non aggiorniamo lo stato locale prima del round-trip: in caso di errore
+  // backend la UI rimane coerente al server.
+  onMarkAttended(): void {
+    const appointmentId = String(this.data.appointment?.id ?? '');
+    if (!appointmentId) return;
+    this.dialogRef.close({ action: 'mark-attended', appointmentId });
+  }
+
+  onMarkNoShow(): void {
+    const appointmentId = String(this.data.appointment?.id ?? '');
+    if (!appointmentId) return;
+    this.dialogRef.close({ action: 'mark-no-show', appointmentId });
+  }
+
+  onCancelWithNotice(): void {
+    const appointmentId = String(this.data.appointment?.id ?? '');
+    if (!appointmentId) return;
+    this.dialogRef.close({ action: 'cancel-with-notice', appointmentId });
+  }
+
   onRevertAttended(): void {
-    this.bookingStatus = 'scheduled';
-    this.cdr.markForCheck();
+    const appointmentId = String(this.data.appointment?.id ?? '');
+    if (!appointmentId) return;
+    this.dialogRef.close({ action: 'revert-attended', appointmentId });
   }
 
   // ==================== VALIDATION ====================

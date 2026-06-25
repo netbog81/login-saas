@@ -398,7 +398,6 @@ input CreateEvaluationInput {
   fattoriPrognosticiPositivi: String
   forzaMuscolare: String
   frequenzaSedute: String
-  interventiChirurgici: String
   interventiProposti: [String!]
   limitazioniAttivita: String
   motivoConsulto: String
@@ -409,15 +408,12 @@ input CreateEvaluationInput {
   osservazione: String
   outcome: String
   palpazione: String
-  patologiePregresse: String
   professione: String
   sportPraticati: [String!]
   statoAttualeSintomi: String
   strategieCoping: String
-  terapiaFarmacologica: [String!]
   tests: [EvaluationTestInput!]
   therapeuticPathId: ID!
-  traumi: String
 }
 
 input CreateGymAppointmentInput {
@@ -1613,9 +1609,6 @@ type PatientEvaluation {
   frequenzaSedute: String
   id: ID!
 
-  """Interventi chirurgici precedenti"""
-  interventiChirurgici: String
-
   """Interventi terapeutici proposti"""
   interventiProposti: [String!]
 
@@ -1643,9 +1636,6 @@ type PatientEvaluation {
   """Palpazione"""
   palpazione: String
 
-  """Patologie pregresse"""
-  patologiePregresse: String
-
   """Professione del paziente"""
   professione: String
 
@@ -1657,15 +1647,9 @@ type PatientEvaluation {
 
   """Strategie di coping del paziente"""
   strategieCoping: String
-
-  """Farmaci in uso"""
-  terapiaFarmacologica: [String!]
   tests: [EvaluationTest!]
   therapeuticPath: TherapeuticPath!
   therapeuticPathId: ID!
-
-  """Traumi precedenti"""
-  traumi: String
   updatedAt: DateTime!
 }
 
@@ -2714,7 +2698,6 @@ input UpdateEvaluationInput {
   fattoriPrognosticiPositivi: String
   forzaMuscolare: String
   frequenzaSedute: String
-  interventiChirurgici: String
   interventiProposti: [String!]
   limitazioniAttivita: String
   motivoConsulto: String
@@ -2724,14 +2707,11 @@ input UpdateEvaluationInput {
   osservazione: String
   outcome: String
   palpazione: String
-  patologiePregresse: String
   professione: String
   sportPraticati: [String!]
   statoAttualeSintomi: String
   strategieCoping: String
-  terapiaFarmacologica: [String!]
   tests: [EvaluationTestInput!]
-  traumi: String
 }
 
 input UpdateGymExceptionInput {

@@ -62,6 +62,14 @@ export class SettingsComponent implements OnInit, OnDestroy {
   };
   originalAutoAttendanceSettings: AutoAttendanceSettings = { ...this.autoAttendanceSettings };
 
+  // Auto-start trattamento: apre automaticamente il trattamento quando il
+  // paziente è segnato presentato (solo se ha un unico percorso attivo).
+  autoStartTreatmentEnabled = false;
+  originalAutoStartTreatmentEnabled = false;
+  // Limita l'auto-start ai soli appuntamenti di oggi.
+  autoStartTreatmentOnlyToday = true;
+  originalAutoStartTreatmentOnlyToday = true;
+
   // UI State
   loading = false;
   saving = false;
@@ -108,6 +116,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       calendarSettings: this.settingsService.getCalendarSettings(),
       autoAttendanceEnabled: this.settingsService.getSetting('autoAttendance.enabled'),
       autoAttendanceOffset: this.settingsService.getSetting('autoAttendance.offsetMinutes'),
+      autoStartTreatment: this.settingsService.getSetting('autoStartTreatment.onAttended'),
+      autoStartTreatmentOnlyToday: this.settingsService.getSetting('autoStartTreatment.onlyToday'),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -135,6 +145,16 @@ export class SettingsComponent implements OnInit, OnDestroy {
             this.autoAttendanceSettings.offsetMinutes = results.autoAttendanceOffset.value as number;
           }
           this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
+
+          // Auto-start trattamento
+          if (results.autoStartTreatment) {
+            this.autoStartTreatmentEnabled = results.autoStartTreatment.value as boolean;
+          }
+          this.originalAutoStartTreatmentEnabled = this.autoStartTreatmentEnabled;
+          if (results.autoStartTreatmentOnlyToday) {
+            this.autoStartTreatmentOnlyToday = results.autoStartTreatmentOnlyToday.value as boolean;
+          }
+          this.originalAutoStartTreatmentOnlyToday = this.autoStartTreatmentOnlyToday;
 
           this.loading = false;
         },
@@ -212,6 +232,18 @@ export class SettingsComponent implements OnInit, OnDestroy {
         'autoAttendance.offsetMinutes',
         this.autoAttendanceSettings.offsetMinutes
       ),
+      // Auto-start trattamento (upsert: chiave può non esistere su tenant
+      // non ri-seedati).
+      autoStartTreatment: this.settingsService.upsertSetting(
+        'autoStartTreatment.onAttended',
+        this.autoStartTreatmentEnabled,
+        { valueType: 'boolean', category: 'autoStartTreatment' }
+      ),
+      autoStartTreatmentOnlyToday: this.settingsService.upsertSetting(
+        'autoStartTreatment.onlyToday',
+        this.autoStartTreatmentOnlyToday,
+        { valueType: 'boolean', category: 'autoStartTreatment' }
+      ),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -219,6 +251,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
           this.originalSettings = { ...this.appointmentSettings };
           this.originalCalendarSettings = { ...this.calendarSettings };
           this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
+          this.originalAutoStartTreatmentEnabled = this.autoStartTreatmentEnabled;
+          this.originalAutoStartTreatmentOnlyToday = this.autoStartTreatmentOnlyToday;
           this.saving = false;
           this.successMessage = 'Impostazioni salvate con successo';
           setTimeout(() => {
@@ -263,7 +297,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.autoAttendanceSettings.enabled !== this.originalAutoAttendanceSettings.enabled ||
       this.autoAttendanceSettings.offsetMinutes !== this.originalAutoAttendanceSettings.offsetMinutes;
 
-    return appointmentChanged || calendarChanged || autoAttendanceChanged;
+    const autoStartTreatmentChanged =
+      this.autoStartTreatmentEnabled !== this.originalAutoStartTreatmentEnabled ||
+      this.autoStartTreatmentOnlyToday !== this.originalAutoStartTreatmentOnlyToday;
+
+    return appointmentChanged || calendarChanged || autoAttendanceChanged || autoStartTreatmentChanged;
   }
 
   // Force change detection when settings change

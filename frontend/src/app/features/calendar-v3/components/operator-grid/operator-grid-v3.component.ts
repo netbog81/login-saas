@@ -166,15 +166,15 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                 }
               </div>
             }
-        </div><!-- /grid-body -->
 
-      @if (currentTimeTop >= 0) {
-        <div class="current-time-line"
-             [style.top.px]="currentTimeTop"
-             [style.left.px]="timeColumnWidth">
-          <div class="current-time-dot"></div>
-        </div>
-      }
+          @if (currentTimeTop >= 0) {
+            <div class="current-time-line"
+                 [style.top.px]="currentTimeTop"
+                 [style.left.px]="timeColumnWidth">
+              <div class="current-time-dot"></div>
+            </div>
+          }
+        </div><!-- /grid-body -->
     }
   `,
   styles: [`
@@ -279,6 +279,7 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       flex: 1;
       overflow: auto;
       min-height: 0;
+      position: relative;
     }
 
     .time-column {

@@ -263,8 +263,13 @@ export class TreatmentResolver {
    * Mutation: Segreteria chiude il trattamento
    */
   @Mutation(() => Treatment, { name: 'closeTreatment' })
-  @UseGuards(AuthorizationGuard)
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
   @RequirePermissions('treatment_write')
+  // Ownership: l'operatore può chiudere solo i PROPRI trattamenti. La
+  // segreteria/admin bypassano l'ownership tramite `treatment_force_close`
+  // (permesso posseduto da entrambi), così la chiusura "dalla segreteria"
+  // continua a funzionare su qualsiasi trattamento.
+  @RequireOwnership({ resource: 'treatment', bypassPermission: 'treatment_force_close' })
   async closeTreatment(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: CloseTreatmentInput,
@@ -341,8 +346,11 @@ export class TreatmentResolver {
    * amministrativi (CLOSED → OPERATOR_COMPLETED). Permission-based.
    */
   @Mutation(() => Treatment, { name: 'reopenTreatmentBySecretary' })
-  @UseGuards(AuthorizationGuard)
+  @UseGuards(AuthorizationGuard, OwnershipGuard)
   @RequirePermissions('treatment_write')
+  // Ownership: l'operatore può riaprire solo i PROPRI trattamenti.
+  // Segreteria/admin bypassano via `treatment_force_close`.
+  @RequireOwnership({ resource: 'treatment', bypassPermission: 'treatment_force_close' })
   async reopenTreatmentBySecretary(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<Treatment> {

@@ -35,6 +35,12 @@ export const SETTINGS_KEYS = {
   // Auto Attendance (cambio automatico stato appuntamento)
   AUTO_ATTENDANCE_ENABLED: 'autoAttendance.enabled',
   AUTO_ATTENDANCE_OFFSET_MINUTES: 'autoAttendance.offsetMinutes',
+
+  // Auto Start Treatment (apertura automatica trattamento alla presa in carico)
+  AUTO_START_TREATMENT_ON_ATTENDED: 'autoStartTreatment.onAttended',
+  // Limita l'auto-start ai soli appuntamenti di oggi (evita di toccare
+  // appuntamenti passati quando si abilita la feature).
+  AUTO_START_TREATMENT_ONLY_TODAY: 'autoStartTreatment.onlyToday',
 } as const;
 
 @Injectable()
@@ -276,6 +282,21 @@ export class GeneralSettingsService {
         description: 'Minuti di offset per cambio automatico stato (negativo = prima dell\'ora, positivo = dopo)',
         valueType: 'number',
         category: 'autoAttendance'
+      },
+      // Auto Start Treatment
+      {
+        key: SETTINGS_KEYS.AUTO_START_TREATMENT_ON_ATTENDED,
+        value: false,
+        description: 'Avvia automaticamente il trattamento quando il paziente è segnato presentato (solo se ha un unico percorso terapeutico attivo)',
+        valueType: 'boolean',
+        category: 'autoStartTreatment'
+      },
+      {
+        key: SETTINGS_KEYS.AUTO_START_TREATMENT_ONLY_TODAY,
+        value: true,
+        description: 'Limita l\'avvio automatico del trattamento ai soli appuntamenti la cui data è oggi',
+        valueType: 'boolean',
+        category: 'autoStartTreatment'
       }
     ];
 
@@ -402,6 +423,36 @@ export class GeneralSettingsService {
     ]);
 
     return { enabled, offsetMinutes };
+  }
+
+  // ==================== AUTO START TREATMENT HELPERS ====================
+
+  /**
+   * Helper: verifica se l'apertura automatica del trattamento alla presa in
+   * carico (paziente presentato) è abilitata per il tenant.
+   */
+  async isAutoStartTreatmentOnAttendedEnabled(): Promise<boolean> {
+    return this.getValue<boolean>(SETTINGS_KEYS.AUTO_START_TREATMENT_ON_ATTENDED, false);
+  }
+
+  /**
+   * Helper: l'auto-start è limitato ai soli appuntamenti di oggi?
+   * Default true (sicuro): evita di toccare appuntamenti passati.
+   */
+  async isAutoStartOnlyTodayEnabled(): Promise<boolean> {
+    return this.getValue<boolean>(SETTINGS_KEYS.AUTO_START_TREATMENT_ONLY_TODAY, true);
+  }
+
+  /**
+   * Helper: finestra oraria "clinica" (ora di apertura/chiusura calendario).
+   * Usata per limitare gli auto-start innescati dal cron a orari sensati.
+   */
+  async getClinicHoursWindow(): Promise<{ startHour: number; endHour: number }> {
+    const [startHour, endHour] = await Promise.all([
+      this.getValue<number>(SETTINGS_KEYS.CALENDAR_START_HOUR, 7),
+      this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
+    ]);
+    return { startHour, endHour };
   }
 
   // ==================== PRIVATE HELPERS ====================

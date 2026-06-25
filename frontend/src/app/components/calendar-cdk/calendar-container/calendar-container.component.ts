@@ -1733,7 +1733,42 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
           result.nonRetribuito
         );
       }
+
+      if (result.action === 'mark-attended' && result.appointmentId) {
+        await this.runStatusAction(
+          () => this.availabilityAppointmentService.markAsAttended(result.appointmentId!),
+          'segnare come presentato',
+        );
+      } else if (result.action === 'mark-no-show' && result.appointmentId) {
+        await this.runStatusAction(
+          () => this.availabilityAppointmentService.markAsNoShow(result.appointmentId!),
+          'segnare come non presentato',
+        );
+      } else if (result.action === 'revert-attended' && result.appointmentId) {
+        await this.runStatusAction(
+          () => this.availabilityAppointmentService.revertAttended(result.appointmentId!),
+          'annullare lo stato presentato',
+        );
+      } else if (result.action === 'cancel-with-notice' && result.appointmentId) {
+        await this.runStatusAction(
+          () => this.availabilityAppointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria', 'secretary'),
+          'disdire l\'appuntamento',
+        );
+      }
     });
+  }
+
+  private async runStatusAction(
+    op: () => import('rxjs').Observable<unknown>,
+    azione: string,
+  ): Promise<void> {
+    try {
+      await firstValueFrom(op());
+      await this.loadAppointmentsForCurrentView();
+      this.cdr.markForCheck();
+    } catch (err: any) {
+      alert(err?.graphQLErrors?.[0]?.message || `Errore nel ${azione}`);
+    }
   }
 
   async onDialogResult(result: EventDialogResult): Promise<void> {

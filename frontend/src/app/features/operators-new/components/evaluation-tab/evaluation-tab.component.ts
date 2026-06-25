@@ -28,8 +28,9 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
 
-import { Anamnesis } from '../../../../models/therapeutic-path.model';
-import { AnamnesisComplete, BodyMapMarker, isSectionFilled } from '../../models/anamnesis.model';
+import { Anamnesis, TherapeuticPath } from '../../../../models/therapeutic-path.model';
+import { AnamnesisComplete, BodyMapMarker, RemoteHistory, isSectionFilled } from '../../models/anamnesis.model';
+import { PatientAnamnesis } from '../../models/patient-anamnesis.model';
 
 // Componente Body Map per visualizzazione readonly
 import { BodyMapComponent } from '../body-map/body-map.component';
@@ -179,68 +180,13 @@ import { BodyMapComponent } from '../body-map/body-map.component';
             </mat-expansion-panel>
 
             <!-- ================================================================ -->
-            <!-- SEZIONE 3: ANAMNESI PATOLOGICA REMOTA -->
-            <!-- ================================================================ -->
-            <mat-expansion-panel [class.filled]="isRemoteHistoryFilled()">
-              <mat-expansion-panel-header>
-                <mat-panel-title>
-                  <mat-icon>history</mat-icon>
-                  3. Anamnesi Patologica Remota
-                </mat-panel-title>
-                @if (isRemoteHistoryFilled()) {
-                  <mat-panel-description>
-                    <span class="filled-badge">Compilata</span>
-                  </mat-panel-description>
-                }
-              </mat-expansion-panel-header>
-
-              <div class="panel-content">
-                @if (getRemoteHistory()?.patologiePregresse || getLegacyAnamnesis()?.pastMedicalHistory) {
-                  <div class="field">
-                    <label>Patologie pregresse</label>
-                    <p>{{ getRemoteHistory()?.patologiePregresse || getLegacyAnamnesis()?.pastMedicalHistory }}</p>
-                  </div>
-                }
-
-                @if (getRemoteHistory()?.interventiChirurgici || getLegacyAnamnesis()?.surgicalHistory) {
-                  <div class="field">
-                    <label>Interventi chirurgici</label>
-                    <p>{{ getRemoteHistory()?.interventiChirurgici || getLegacyAnamnesis()?.surgicalHistory }}</p>
-                  </div>
-                }
-
-                @if (getRemoteHistory()?.traumi) {
-                  <div class="field">
-                    <label>Traumi</label>
-                    <p>{{ getRemoteHistory()?.traumi }}</p>
-                  </div>
-                }
-
-                @if (getRemoteHistory()?.terapiaFarmacologica?.length || getLegacyAnamnesis()?.medications?.length) {
-                  <div class="field">
-                    <label>Terapia farmacologica</label>
-                    <mat-chip-set>
-                      @for (farmaco of getRemoteHistory()?.terapiaFarmacologica || getLegacyAnamnesis()?.medications || []; track farmaco) {
-                        <mat-chip>{{ farmaco }}</mat-chip>
-                      }
-                    </mat-chip-set>
-                  </div>
-                }
-
-                @if (!isRemoteHistoryFilled()) {
-                  <p class="empty-section">Sezione non compilata</p>
-                }
-              </div>
-            </mat-expansion-panel>
-
-            <!-- ================================================================ -->
-            <!-- SEZIONE 4: ANAMNESI PATOLOGICA PROSSIMA -->
+            <!-- SEZIONE 3: ANAMNESI PATOLOGICA PROSSIMA -->
             <!-- ================================================================ -->
             <mat-expansion-panel [class.filled]="isRecentHistoryFilled()">
               <mat-expansion-panel-header>
                 <mat-panel-title>
                   <mat-icon>report_problem</mat-icon>
-                  4. Anamnesi Patologica Prossima
+                  3. Anamnesi Patologica Prossima
                 </mat-panel-title>
                 @if (isRecentHistoryFilled()) {
                   <mat-panel-description>
@@ -307,13 +253,112 @@ import { BodyMapComponent } from '../body-map/body-map.component';
             </mat-expansion-panel>
 
             <!-- ================================================================ -->
-            <!-- SEZIONE 5: ESAME OBIETTIVO -->
+            <!-- SEZIONE 4: ESAMI DIAGNOSTICI -->
+            <!-- ================================================================ -->
+            <mat-expansion-panel [class.filled]="getDiagnosticExams()?.length">
+              <mat-expansion-panel-header>
+                <mat-panel-title>
+                  <mat-icon>science</mat-icon>
+                  4. Esami Diagnostici
+                </mat-panel-title>
+                <mat-panel-description>
+                  {{ getDiagnosticExams()?.length || 0 }} esami
+                </mat-panel-description>
+              </mat-expansion-panel-header>
+
+              <div class="panel-content">
+                @if (getDiagnosticExams()?.length) {
+                  <div class="exams-list">
+                    @for (exam of getDiagnosticExams() || []; track exam.id) {
+                      <div class="exam-item">
+                        <div class="exam-header">
+                          <span class="exam-name">{{ exam.nomeEsame }}</span>
+                          @if (exam.data) {
+                            <span class="exam-date">{{ formatDate(exam.data) }}</span>
+                          }
+                        </div>
+                        @if (exam.note) {
+                          <p class="exam-note">{{ exam.note }}</p>
+                        }
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <p class="empty-section">Nessun esame diagnostico inserito</p>
+                }
+              </div>
+            </mat-expansion-panel>
+
+            <!-- ================================================================ -->
+            <!-- SEZIONE 5: ANAMNESI PATOLOGICA REMOTA -->
+            <!-- ================================================================ -->
+            <mat-expansion-panel [class.filled]="isRemoteHistoryFilled()">
+              <mat-expansion-panel-header>
+                <mat-panel-title>
+                  <mat-icon>history</mat-icon>
+                  5. Anamnesi Patologica Remota
+                </mat-panel-title>
+                @if (isRemoteHistoryFilled()) {
+                  <mat-panel-description>
+                    <span class="filled-badge">Compilata</span>
+                  </mat-panel-description>
+                }
+              </mat-expansion-panel-header>
+
+              <div class="panel-content">
+                @if (getRemoteHistory()?.patologiePregresse || getLegacyAnamnesis()?.pastMedicalHistory) {
+                  <div class="field">
+                    <label>Patologie pregresse</label>
+                    <p>{{ getRemoteHistory()?.patologiePregresse || getLegacyAnamnesis()?.pastMedicalHistory }}</p>
+                  </div>
+                }
+
+                @if (getRemoteHistory()?.interventiChirurgici || getLegacyAnamnesis()?.surgicalHistory) {
+                  <div class="field">
+                    <label>Interventi chirurgici</label>
+                    <p>{{ getRemoteHistory()?.interventiChirurgici || getLegacyAnamnesis()?.surgicalHistory }}</p>
+                  </div>
+                }
+
+                @if (getRemoteHistory()?.traumi) {
+                  <div class="field">
+                    <label>Traumi</label>
+                    <p>{{ getRemoteHistory()?.traumi }}</p>
+                  </div>
+                }
+
+                @if (getRemoteHistory()?.terapiaFarmacologica?.length || getLegacyAnamnesis()?.medications?.length) {
+                  <div class="field">
+                    <label>Terapia farmacologica</label>
+                    <mat-chip-set>
+                      @for (farmaco of getRemoteHistory()?.terapiaFarmacologica || getLegacyAnamnesis()?.medications || []; track farmaco) {
+                        <mat-chip>{{ farmaco }}</mat-chip>
+                      }
+                    </mat-chip-set>
+                  </div>
+                }
+
+                @if (getRemoteHistory()?.note) {
+                  <div class="field">
+                    <label>Note anamnesi remota</label>
+                    <p>{{ getRemoteHistory()?.note }}</p>
+                  </div>
+                }
+
+                @if (!isRemoteHistoryFilled()) {
+                  <p class="empty-section">Sezione non compilata</p>
+                }
+              </div>
+            </mat-expansion-panel>
+
+            <!-- ================================================================ -->
+            <!-- SEZIONE 6: ESAME OBIETTIVO -->
             <!-- ================================================================ -->
             <mat-expansion-panel [class.filled]="isObjectiveExamFilled()">
               <mat-expansion-panel-header>
                 <mat-panel-title>
                   <mat-icon>biotech</mat-icon>
-                  5. Esame Obiettivo
+                  6. Esame Obiettivo
                 </mat-panel-title>
                 @if (isObjectiveExamFilled()) {
                   <mat-panel-description>
@@ -431,43 +476,6 @@ import { BodyMapComponent } from '../body-map/body-map.component';
 
                 @if (!isObjectiveExamFilled()) {
                   <p class="empty-section">Sezione non compilata</p>
-                }
-              </div>
-            </mat-expansion-panel>
-
-            <!-- ================================================================ -->
-            <!-- SEZIONE 6: ESAMI DIAGNOSTICI -->
-            <!-- ================================================================ -->
-            <mat-expansion-panel [class.filled]="getDiagnosticExams()?.length">
-              <mat-expansion-panel-header>
-                <mat-panel-title>
-                  <mat-icon>science</mat-icon>
-                  6. Esami Diagnostici
-                </mat-panel-title>
-                <mat-panel-description>
-                  {{ getDiagnosticExams()?.length || 0 }} esami
-                </mat-panel-description>
-              </mat-expansion-panel-header>
-
-              <div class="panel-content">
-                @if (getDiagnosticExams()?.length) {
-                  <div class="exams-list">
-                    @for (exam of getDiagnosticExams() || []; track exam.id) {
-                      <div class="exam-item">
-                        <div class="exam-header">
-                          <span class="exam-name">{{ exam.nomeEsame }}</span>
-                          @if (exam.data) {
-                            <span class="exam-date">{{ formatDate(exam.data) }}</span>
-                          }
-                        </div>
-                        @if (exam.note) {
-                          <p class="exam-note">{{ exam.note }}</p>
-                        }
-                      </div>
-                    }
-                  </div>
-                } @else {
-                  <p class="empty-section">Nessun esame diagnostico inserito</p>
                 }
               </div>
             </mat-expansion-panel>
@@ -1030,6 +1038,10 @@ export class EvaluationTabComponent {
   // Supporta sia il vecchio model che il nuovo
   @Input() anamnesis: Anamnesis | null = null;
   @Input() anamnesisComplete: AnamnesisComplete | null = null;
+  /** Anamnesi remota del paziente: è la fonte della sezione "Anamnesi Remota". */
+  @Input() patientAnamnesis: PatientAnamnesis | null = null;
+  /** Percorso a cui la valutazione appartiene (per mostrarne il nome). */
+  @Input() path: TherapeuticPath | null = null;
   @Input() loading = false;
 
   @Output() edit = new EventEmitter<void>();
@@ -1060,7 +1072,21 @@ export class EvaluationTabComponent {
     return this.anamnesisComplete?.bodyMap?.markers || [];
   }
 
-  getRemoteHistory() {
+  /**
+   * Sezione "Anamnesi Remota": la fonte è il dato del paziente
+   * (patientAnamnesis). Fallback al dato eventualmente embedded nella
+   * valutazione per retrocompatibilità con record vecchi.
+   */
+  getRemoteHistory(): (RemoteHistory & { note?: string | null }) | null {
+    if (this.patientAnamnesis) {
+      return {
+        patologiePregresse: this.patientAnamnesis.patologiePregresse ?? null,
+        interventiChirurgici: this.patientAnamnesis.interventiChirurgici ?? null,
+        traumi: this.patientAnamnesis.traumi ?? null,
+        terapiaFarmacologica: this.patientAnamnesis.terapiaFarmacologica ?? [],
+        note: this.patientAnamnesis.note ?? null,
+      };
+    }
     return this.anamnesisComplete?.remoteHistory || null;
   }
 
@@ -1107,7 +1133,7 @@ export class EvaluationTabComponent {
     const legacy = this.getLegacyAnamnesis();
     if (history) {
       return !!(history.patologiePregresse || history.interventiChirurgici ||
-                history.traumi || history.terapiaFarmacologica?.length);
+                history.traumi || history.terapiaFarmacologica?.length || history.note);
     }
     if (legacy) {
       return !!(legacy.pastMedicalHistory || legacy.surgicalHistory || legacy.medications?.length);

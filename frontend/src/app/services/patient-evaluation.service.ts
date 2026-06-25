@@ -106,13 +106,7 @@ interface BackendPatientEvaluation {
   // Sezione 2
   bodyMapMarkers?: BackendBodyMapMarker[];
 
-  // Sezione 3
-  patologiePregresse?: string;
-  interventiChirurgici?: string;
-  traumi?: string;
-  terapiaFarmacologica?: string[];
-
-  // Sezione 4
+  // Anamnesi prossima (l'anamnesi remota è su PatientAnamnesis, non qui)
   motivoConsulto?: string;
   esordioSintomi?: string;
   statoAttualeSintomi?: string;
@@ -171,13 +165,7 @@ export interface CreateEvaluationInput {
   // Sezione 2
   bodyMapMarkers?: BodyMapMarkerInput[];
 
-  // Sezione 3
-  patologiePregresse?: string;
-  interventiChirurgici?: string;
-  traumi?: string;
-  terapiaFarmacologica?: string[];
-
-  // Sezione 4
+  // Anamnesi prossima (l'anamnesi remota è su PatientAnamnesis, non qui)
   motivoConsulto?: string;
   esordioSintomi?: string;
   statoAttualeSintomi?: string;
@@ -307,6 +295,14 @@ export class PatientEvaluationService extends BaseGraphQLService {
       id: backend.id,
       pathId: backend.therapeuticPathId,
 
+      // Dati percorso: popolati dal container a partire dal TherapeuticPath
+      // selezionato (non vivono sulla valutazione lato backend).
+      pathInfo: {
+        nome: '',
+        diagnosi: null,
+        note: null,
+      },
+
       // Sezione 1: Informazioni Generali
       generalInfo: {
         nome: patientInfo?.nome ?? '',
@@ -323,15 +319,18 @@ export class PatientEvaluationService extends BaseGraphQLService {
         markers: (backend.bodyMapMarkers ?? []) as BodyMapMarker[],
       },
 
-      // Sezione 3: Anamnesi Patologica Remota
+      // Anamnesi Patologica Remota: NON arriva più dalla valutazione, è un dato
+      // del paziente (PatientAnamnesis). Qui resta vuota; il form la pre-compila
+      // dall'input patientAnamnesis.
       remoteHistory: {
-        patologiePregresse: backend.patologiePregresse ?? null,
-        interventiChirurgici: backend.interventiChirurgici ?? null,
-        traumi: backend.traumi ?? null,
-        terapiaFarmacologica: backend.terapiaFarmacologica ?? [],
+        patologiePregresse: null,
+        interventiChirurgici: null,
+        traumi: null,
+        terapiaFarmacologica: [],
+        note: null,
       },
 
-      // Sezione 4: Anamnesi Patologica Prossima
+      // Anamnesi Patologica Prossima
       recentHistory: {
         motivoConsulto: backend.motivoConsulto ?? null,
         esordioSintomi: backend.esordioSintomi ?? null,
@@ -519,13 +518,13 @@ export class PatientEvaluationService extends BaseGraphQLService {
         note: m.note ?? undefined,
       })),
 
-      // Sezione 3
-      patologiePregresse: evaluation.remoteHistory.patologiePregresse ?? undefined,
-      interventiChirurgici: evaluation.remoteHistory.interventiChirurgici ?? undefined,
-      traumi: evaluation.remoteHistory.traumi ?? undefined,
-      terapiaFarmacologica: evaluation.remoteHistory.terapiaFarmacologica,
+      // NB: l'anamnesi remota (patologiePregresse, interventiChirurgici,
+      // traumi, terapiaFarmacologica) NON viene più inviata nell'input della
+      // valutazione: è gestita separatamente su PatientAnamnesis via
+      // SimplePatientAnamnesisService.upsertAnamnesis (orchestrato nel
+      // form container).
 
-      // Sezione 4
+      // Anamnesi prossima
       motivoConsulto: evaluation.recentHistory.motivoConsulto ?? undefined,
       esordioSintomi: evaluation.recentHistory.esordioSintomi ?? undefined,
       statoAttualeSintomi: evaluation.recentHistory.statoAttualeSintomi ?? undefined,

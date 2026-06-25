@@ -189,6 +189,8 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
               <app-evaluation-tab
                 [anamnesis]="anamnesis"
                 [anamnesisComplete]="anamnesisComplete"
+                [patientAnamnesis]="patientAnamnesis"
+                [path]="path"
                 [loading]="loadingAnamnesis"
                 (edit)="onEditEvaluation()"
                 (delete)="onDeleteEvaluation()"

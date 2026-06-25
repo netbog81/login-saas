@@ -76,13 +76,9 @@ export const PATIENT_EVALUATION_FRAGMENT = gql`
       note
     }
 
-    # Sezione 3: Anamnesi Patologica Remota
-    patologiePregresse
-    interventiChirurgici
-    traumi
-    terapiaFarmacologica
+    # Anamnesi Patologica Remota: spostata su PatientAnamnesis, non più qui.
 
-    # Sezione 4: Anamnesi Patologica Prossima
+    # Anamnesi Patologica Prossima
     motivoConsulto
     esordioSintomi
     statoAttualeSintomi

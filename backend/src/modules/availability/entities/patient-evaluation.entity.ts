@@ -84,27 +84,16 @@ export class PatientEvaluation {
   @Column('jsonb', { nullable: true, default: [] })
   bodyMapMarkers?: BodyMapMarker[];
 
-  // ==================== SEZIONE 3: ANAMNESI PATOLOGICA REMOTA ====================
-  // Nota: questi campi rimangono qui per storico, ma l'editing principale
-  // avviene nella nuova PatientAnamnesis (legata al paziente)
+  // ==================== ANAMNESI PATOLOGICA REMOTA ====================
+  // I campi dell'anamnesi remota (patologiePregresse, interventiChirurgici,
+  // traumi, terapiaFarmacologica) NON vivono più qui: sono stati spostati in
+  // PatientAnamnesis, che è la fonte unica dell'"Anamnesi Remota" del paziente
+  // (legata al subject, non alla singola valutazione). Vedi migration
+  // 1789000000000-MoveRemoteAnamnesisToPatientAnamnesis.
+  // L'anamnesi PROSSIMA invece resta qui: è relativa al trauma/patologia in
+  // corso della specifica valutazione.
 
-  @Field({ nullable: true, description: 'Patologie pregresse' })
-  @Column('text', { nullable: true })
-  patologiePregresse?: string;
-
-  @Field({ nullable: true, description: 'Interventi chirurgici precedenti' })
-  @Column('text', { nullable: true })
-  interventiChirurgici?: string;
-
-  @Field({ nullable: true, description: 'Traumi precedenti' })
-  @Column('text', { nullable: true })
-  traumi?: string;
-
-  @Field(() => [String], { nullable: true, description: 'Farmaci in uso' })
-  @Column('varchar', { array: true, nullable: true })
-  terapiaFarmacologica?: string[];
-
-  // ==================== SEZIONE 4: ANAMNESI PATOLOGICA PROSSIMA ====================
+  // ==================== ANAMNESI PATOLOGICA PROSSIMA ====================
 
   @Field({ nullable: true, description: 'Motivo del consulto' })
   @Column('text', { nullable: true })

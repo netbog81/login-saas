@@ -13,6 +13,8 @@ import { Site } from '../entities/site.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymPatternGroupService } from './gym-pattern-group.service';
 import { GymExceptionService } from './gym-exception.service';
+import { TreatmentCascadeService } from './treatment-cascade.service';
+import { EventsService } from '../../events/events.service';
 import { ConflictReason } from '../entities/availability-appointment.entity';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
@@ -101,6 +103,9 @@ export class AvailabilityAppointmentService {
     private generalSettingsService: GeneralSettingsService,
     @Inject(forwardRef(() => AvailabilityService))
     private availabilityService: AvailabilityService,
+    @Inject(forwardRef(() => TreatmentCascadeService))
+    private treatmentCascade: TreatmentCascadeService,
+    private eventsService: EventsService,
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
   ) {}
@@ -1233,6 +1238,18 @@ export class AvailabilityAppointmentService {
     const appointment = await this.findById(id);
     appointment.bookingStatus = BookingStatus.NO_SHOW;
     await this.appointmentRepo.save(appointment);
+
+    // SSE: notifica le UI aperte del cambio stato.
+    this.eventsService.emit({
+      type: 'appointment_status_changed',
+      appointmentIds: [appointment.id],
+      newStatus: BookingStatus.NO_SHOW,
+      timestamp: new Date(),
+    });
+
+    // Cascata: annulla il trattamento collegato se in corso e non fatturato.
+    await this.treatmentCascade.onAppointmentNoShow(appointment);
+
     return this.findById(id);
   }
 
@@ -1313,6 +1330,17 @@ export class AvailabilityAppointmentService {
       await this.incrementPatientNoShow(appointment.patientId, appointment.id);
     }
 
+    // SSE: notifica le UI aperte del cambio stato.
+    this.eventsService.emit({
+      type: 'appointment_status_changed',
+      appointmentIds: [appointment.id],
+      newStatus: BookingStatus.NO_SHOW,
+      timestamp: new Date(),
+    });
+
+    // Cascata: annulla il trattamento collegato se in corso e non fatturato.
+    await this.treatmentCascade.onAppointmentNoShow(appointment);
+
     return this.findById(id);
   }
 
@@ -1328,15 +1356,41 @@ export class AvailabilityAppointmentService {
       throw new BadRequestException('Gli appuntamenti non retribuiti non hanno gestione degli stati');
     }
 
-    // Verifica che l'appuntamento sia in uno stato appropriato
-    if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
+    // Stati da cui si può passare a "presentato". Includiamo NO_SHOW per il
+    // caso "ritardatario": il paziente segnato non presentato arriva in ritardo
+    // e viene fatto passare → si corregge lo stato e si riapre il trattamento.
+    const allowedFrom = [
+      BookingStatus.SCHEDULED,
+      BookingStatus.CONFIRMED,
+      BookingStatus.NO_SHOW,
+    ];
+    if (!allowedFrom.includes(appointment.bookingStatus)) {
       throw new BadRequestException(
         `L'appuntamento non può essere segnato come presentato. Stato attuale: ${appointment.bookingStatus}`
       );
     }
 
+    const wasNoShow = appointment.bookingStatus === BookingStatus.NO_SHOW;
+
     appointment.bookingStatus = BookingStatus.ATTENDED;
     await this.appointmentRepo.save(appointment);
+
+    // Se stiamo correggendo un no-show, azzera il relativo log (contatore).
+    if (wasNoShow && appointment.patientId) {
+      await this.attendanceService.removeNoShowEvent(appointment.id);
+    }
+
+    // SSE: notifica le UI aperte del cambio stato (es. pagina operatori).
+    this.eventsService.emit({
+      type: 'appointment_status_changed',
+      appointmentIds: [appointment.id],
+      newStatus: BookingStatus.ATTENDED,
+      timestamp: new Date(),
+    });
+
+    // Cascata: auto-start / riapertura trattamento (best-effort, non blocca).
+    // Eventuali treatment_created/status_changed vengono emessi dalla cascata.
+    await this.treatmentCascade.onAppointmentAttended(appointment, false);
 
     return this.findById(id);
   }
@@ -1359,6 +1413,14 @@ export class AvailabilityAppointmentService {
     // Reset del flag per permettere un nuovo cambio automatico se l'impostazione è attiva
     appointment.autoStatusChanged = false;
     await this.appointmentRepo.save(appointment);
+
+    // SSE: notifica le UI aperte del cambio stato.
+    this.eventsService.emit({
+      type: 'appointment_status_changed',
+      appointmentIds: [appointment.id],
+      newStatus: BookingStatus.CONFIRMED,
+      timestamp: new Date(),
+    });
 
     return this.findById(id);
   }
