@@ -76,9 +76,14 @@ export class CalendarV2DataService {
             catchError(() => of([] as { operatorId: string; availability: DailyAvailability[] }[])),
           )
         : of([] as { operatorId: string; availability: DailyAvailability[] }[]),
+      // Trattamenti del range visibile (giorno singolo in vista giornaliera,
+      // intervallo in vista settimanale). NON più solo "oggi": così su un
+      // giorno passato/futuro la sidebar mostra i trattamenti corretti.
       treatments: this.treatmentService.getTreatmentsByOperators(
         operatorIds,
-        todayDate,
+        undefined,
+        startDate,
+        endDate,
       ).pipe(catchError(() => of([] as Treatment[]))),
     }).pipe(
       map(({ rawAppointments, rawAvailabilities, treatments }) => {

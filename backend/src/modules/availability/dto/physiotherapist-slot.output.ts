@@ -35,4 +35,9 @@ export class PhysiotherapistSlotBatchOutput {
 
   @Field()
   available: boolean;
+
+  // Popolato solo quando la ricerca batch richiede strumenti (filtro lato
+  // sidebar v3). Permette di evidenziare gli strumenti suggeriti per lo slot.
+  @Field(() => [InstrumentSlotOutput], { nullable: true })
+  suggestedInstruments?: InstrumentSlotOutput[];
 }

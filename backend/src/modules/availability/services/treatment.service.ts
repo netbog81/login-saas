@@ -1093,7 +1093,12 @@ export class TreatmentService {
   /**
    * Bulk: Trattamenti attivi per più operatori in una data (singola query).
    */
-  async getActiveByOperators(operatorIds: string[], date?: string): Promise<Treatment[]> {
+  async getActiveByOperators(
+    operatorIds: string[],
+    date?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<Treatment[]> {
     if (operatorIds.length === 0) return [];
     const queryBuilder = this.treatmentRepo.createQueryBuilder('treatment')
       .leftJoinAndSelect('treatment.appointment', 'appointment')
@@ -1107,8 +1112,12 @@ export class TreatmentService {
       .leftJoinAndSelect('treatmentServices.service', 'treatmentServiceService')
       .where('treatment.operatorId IN (:...operatorIds)', { operatorIds });
 
+    // Filtro per giorno singolo (vista giornaliera) oppure per intervallo
+    // (vista settimanale). Il giorno singolo ha la precedenza se passato.
     if (date) {
       queryBuilder.andWhere('DATE(treatment.startedAt) = :date', { date });
+    } else if (startDate && endDate) {
+      queryBuilder.andWhere('DATE(treatment.startedAt) BETWEEN :startDate AND :endDate', { startDate, endDate });
     }
 
     return queryBuilder
@@ -2292,11 +2301,15 @@ export class TreatmentService {
     if (filters.statuses && filters.statuses.length > 0) {
       qb.andWhere('t.status IN (:...statuses)', { statuses: filters.statuses });
     }
+    // Confronto per GIORNO (non per timestamp): cosi' un singolo giorno
+    // (dateFrom === dateTo) include tutti i trattamenti di quel giorno.
+    // Con 'startedAt <= dateTo' (mezzanotte) si escludevano gli orari del
+    // giorno stesso → la lista risultava vuota se non si allargava il range.
     if (filters.dateFrom) {
-      qb.andWhere('t.startedAt >= :dateFrom', { dateFrom: filters.dateFrom });
+      qb.andWhere('DATE(t.startedAt) >= :dateFrom', { dateFrom: filters.dateFrom });
     }
     if (filters.dateTo) {
-      qb.andWhere('t.startedAt <= :dateTo', { dateTo: filters.dateTo });
+      qb.andWhere('DATE(t.startedAt) <= :dateTo', { dateTo: filters.dateTo });
     }
     if (filters.readyForBilling !== undefined) {
       qb.andWhere('t.readyForBilling = :readyForBilling', { readyForBilling: filters.readyForBilling });

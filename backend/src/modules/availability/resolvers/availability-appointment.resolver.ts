@@ -7,7 +7,8 @@ import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-a
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
 import { GymAvailabilityService } from '../services/gym-availability.service';
-import { RecurringSeriesScope } from '../dto/recurring-series.input';
+import { RecurringSeriesScope, UpdateRecurringSeriesTimeInput } from '../dto/recurring-series.input';
+import { RecurringSeriesOperationResult } from '../dto/recurring-series-conflict.output';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Resolver(() => AvailabilityAppointment)
@@ -323,14 +324,32 @@ export class AvailabilityAppointmentResolver {
   }
 
   /**
-   * Mutation: Elimina (hard delete) appuntamenti di una serie ricorrente
+   * Mutation: Elimina (hard delete) appuntamenti di una serie ricorrente.
+   * Scope: solo corrente / corrente+successivi / intera serie / intervallo date.
    */
   @Mutation(() => Int, { name: 'deleteRecurringSeries' })
   async deleteRecurringSeries(
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
     @Args('fromDate') fromDate: string,
     @Args('scope', { type: () => RecurringSeriesScope }) scope: RecurringSeriesScope,
+    @Args('rangeFrom', { nullable: true }) rangeFrom?: string,
+    @Args('rangeTo', { nullable: true }) rangeTo?: string,
+    @Args('includeCurrent', { nullable: true }) includeCurrent?: boolean,
   ): Promise<number> {
-    return this.appointmentService.deleteRecurringSeries(appointmentId, fromDate, scope);
+    return this.appointmentService.deleteRecurringSeries(
+      appointmentId, fromDate, scope, rangeFrom, rangeTo, includeCurrent,
+    );
+  }
+
+  /**
+   * Mutation: Modifica orario/durata delle occorrenze di una serie ricorrente
+   * nello scope scelto. Valida prima ogni occorrenza: se ci sono conflitti
+   * (fuori disponibilità o sovrapposizioni) NON applica nulla e li ritorna.
+   */
+  @Mutation(() => RecurringSeriesOperationResult, { name: 'updateRecurringSeriesTime' })
+  async updateRecurringSeriesTime(
+    @Args('input') input: UpdateRecurringSeriesTimeInput,
+  ): Promise<RecurringSeriesOperationResult> {
+    return this.appointmentService.updateRecurringSeriesTime(input);
   }
 }

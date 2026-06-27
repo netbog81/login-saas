@@ -101,13 +101,21 @@ export class TreatmentService extends BaseGraphQLService {
   }
 
   /**
-   * Bulk: Trattamenti attivi per più operatori in una data.
+   * Bulk: Trattamenti attivi per più operatori.
+   * - `date`: giorno singolo (vista giornaliera).
+   * - `startDate`/`endDate`: intervallo (vista settimanale).
+   * Se passato `date` ha la precedenza lato backend.
    */
-  getTreatmentsByOperators(operatorIds: string[], date?: string): Observable<Treatment[]> {
+  getTreatmentsByOperators(
+    operatorIds: string[],
+    date?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Observable<Treatment[]> {
     if (operatorIds.length === 0) return new Observable(s => { s.next([]); s.complete(); });
     return this.query<{ treatmentsByOperators: Treatment[] }>(
       GET_TREATMENTS_BY_OPERATORS,
-      { operatorIds, date },
+      { operatorIds, date, startDate, endDate },
       'no-cache'
     ).pipe(map((result) => (result.treatmentsByOperators || []).map(mapEmbeddedPatient)));
   }

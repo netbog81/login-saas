@@ -247,9 +247,11 @@ enum BookingStatus {
 
 type CalendarSettings {
   blockAppointmentsOutsideAvailability: Boolean!
+  defaultOperatorCategory: String!
   defaultView: String!
   endHour: Int!
   operatorsSelectedOnLoad: Boolean!
+  showGymInstructorsInOperators: Boolean!
   showUnavailableCellsBackground: Boolean!
   showWeekend: Boolean!
   showWorkingHoursOnly: Boolean!
@@ -294,6 +296,7 @@ enum ConflictReason {
   OPERATOR_SICK
   OPERATOR_UNAVAILABLE
   OPERATOR_VACATION
+  RECURRING_APPOINTMENT
   TEMPLATE_CHANGE
 }
 
@@ -1218,7 +1221,7 @@ type Mutation {
   deletePatternGroup(id: ID!): Boolean!
   deletePrivacyOfficer(id: ID!): Boolean!
   deleteProduct(id: ID!): Boolean!
-  deleteRecurringSeries(appointmentId: ID!, fromDate: String!, scope: RecurringSeriesScope!): Int!
+  deleteRecurringSeries(appointmentId: ID!, fromDate: String!, includeCurrent: Boolean, rangeFrom: String, rangeTo: String, scope: RecurringSeriesScope!): Int!
   deleteRole(id: ID!): Boolean!
   deleteRoom(id: ID!): Boolean!
   deleteSecretary(id: ID!): Boolean!
@@ -1309,6 +1312,7 @@ type Mutation {
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
   updateProduct(category: String, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String, productCode: String): Product!
+  updateRecurringSeriesTime(input: UpdateRecurringSeriesTimeInput!): RecurringSeriesOperationResult!
   updateRecycleBinSettings(retentionDays: Int): RecycleBinSettings!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, serviceCode: String, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
@@ -1717,6 +1721,7 @@ type PhysiotherapistSlotBatchOutput {
   endTime: String!
   operatorId: ID!
   startTime: String!
+  suggestedInstruments: [InstrumentSlotOutput!]
 }
 
 type PhysiotherapistSlotOutput {
@@ -1851,7 +1856,7 @@ type Query {
   patternGroups: [PatternGroup!]!
   permissions: [Permission!]!
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
-  physiotherapistAvailableSlotsBatch(dates: [String!]!, durationMinutes: Int!, operatorIds: [ID!]!): [PhysiotherapistSlotBatchOutput!]!
+  physiotherapistAvailableSlotsBatch(customInstrumentSlots: [InstrumentSlotInput!], dates: [String!]!, durationMinutes: Int!, instrumentOrderMatters: Boolean, operatorIds: [ID!]!): [PhysiotherapistSlotBatchOutput!]!
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
   product(id: ID!): Product
@@ -1896,7 +1901,7 @@ type Query {
   treatmentInvoiceLines(treatmentId: ID!): [TreatmentInvoiceLine!]!
   treatmentsByAppointments(appointmentIds: [ID!]!): [Treatment!]!
   treatmentsByOperator(date: String, operatorId: ID!): [Treatment!]!
-  treatmentsByOperators(date: String, operatorIds: [ID!]!): [Treatment!]!
+  treatmentsByOperators(date: String, endDate: String, operatorIds: [ID!]!, startDate: String): [Treatment!]!
   treatmentsByPatient(limit: Int, offset: Int, patientId: ID!): [Treatment!]!
   treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
   treatmentsForOperator(dateFrom: String, dateTo: String, limit: Int, offset: Int, operatorId: ID!, statuses: [TreatmentStatus!]): [Treatment!]!
@@ -1957,6 +1962,8 @@ enum RecurringEndType {
 """Scope delle operazioni bulk su serie ricorrenti"""
 enum RecurringSeriesScope {
   ALL
+  CURRENT_ONLY
+  DATE_RANGE
   THIS_AND_FOLLOWING
 }
 
@@ -1983,6 +1990,23 @@ input RecycleBinFilterInput {
 
   """Stringa libera (matching su title/subtitle)"""
   search: String
+}
+
+type RecurringOccurrenceConflict {
+  appointmentId: ID
+  conflictingEndTime: String
+  conflictingStartTime: String
+  date: String!
+  endTime: String!
+  reason: String!
+  startTime: String!
+  type: String!
+}
+
+type RecurringSeriesOperationResult {
+  affectedCount: Int!
+  applied: Boolean!
+  conflicts: [RecurringOccurrenceConflict!]!
 }
 
 type RecycleBinItem {
@@ -2816,6 +2840,16 @@ input UpdatePatternGroupInput {
   name: String
   patternDuration: Float
   patterns: [PatternInput!]
+}
+
+input UpdateRecurringSeriesTimeInput {
+  appointmentId: ID!
+  endTime: String!
+  includeCurrent: Boolean
+  rangeFrom: String
+  rangeTo: String
+  scope: RecurringSeriesScope!
+  startTime: String!
 }
 
 input UpdateRegistryIndividualInput {

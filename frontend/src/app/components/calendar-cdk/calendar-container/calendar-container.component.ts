@@ -1697,7 +1697,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
    */
   private openEventMatDialog(data: EventDialogData): void {
     const dialogRef = this.dialog.open(EventMatDialogComponent, {
-      width: '700px',
+      width: '600px',
       maxHeight: '90vh',
       disableClose: false,
       data: {

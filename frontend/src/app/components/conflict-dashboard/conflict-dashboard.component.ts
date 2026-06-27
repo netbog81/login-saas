@@ -282,6 +282,7 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
       [ConflictReason.OperatorSick]: 'Malattia Operatore',
       [ConflictReason.OperatorVacation]: 'Ferie Operatore',
       [ConflictReason.OperatorUnavailable]: 'Operatore Non Disponibile',
+      [ConflictReason.RecurringAppointment]: 'Appuntamenti Ricorrenti',
     };
     return labels[reason] || reason;
   }

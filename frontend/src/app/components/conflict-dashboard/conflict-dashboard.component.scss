@@ -354,6 +354,10 @@
         background: #fff3cd;
         color: #856404;
       }
+      &[data-reason='RECURRING_APPOINTMENT'] {
+        background: #e0e7ff;
+        color: #3730a3;
+      }
     }
 
     .btn-action {

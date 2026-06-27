@@ -23,6 +23,8 @@ export interface CalendarSettings {
   showUnavailableCellsBackground: boolean;
   blockAppointmentsOutsideAvailability: boolean;
   operatorsSelectedOnLoad: boolean;
+  showGymInstructorsInOperators: boolean;
+  defaultOperatorCategory: string;
 }
 
 const GET_ALL_SETTINGS = gql`
@@ -131,6 +133,8 @@ const GET_CALENDAR_SETTINGS = gql`
       showUnavailableCellsBackground
       blockAppointmentsOutsideAvailability
       operatorsSelectedOnLoad
+      showGymInstructorsInOperators
+      defaultOperatorCategory
     }
   }
 `;
@@ -237,6 +241,8 @@ export class SettingsService extends BaseGraphQLService {
       showUnavailableCellsBackground: true,
       blockAppointmentsOutsideAvailability: false,
       operatorsSelectedOnLoad: false,
+      showGymInstructorsInOperators: true,
+      defaultOperatorCategory: 'all',
     };
 
     return this.query<{ calendarSettings: CalendarSettings }>(GET_CALENDAR_SETTINGS)

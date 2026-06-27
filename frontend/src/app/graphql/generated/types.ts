@@ -273,9 +273,11 @@ export enum BookingStatus {
 export type CalendarSettings = {
   __typename?: 'CalendarSettings';
   blockAppointmentsOutsideAvailability: Scalars['Boolean']['output'];
+  defaultOperatorCategory: Scalars['String']['output'];
   defaultView: Scalars['String']['output'];
   endHour: Scalars['Int']['output'];
   operatorsSelectedOnLoad: Scalars['Boolean']['output'];
+  showGymInstructorsInOperators: Scalars['Boolean']['output'];
   showUnavailableCellsBackground: Scalars['Boolean']['output'];
   showWeekend: Scalars['Boolean']['output'];
   showWorkingHoursOnly: Scalars['Boolean']['output'];
@@ -321,6 +323,7 @@ export enum ConflictReason {
   OperatorSick = 'OPERATOR_SICK',
   OperatorUnavailable = 'OPERATOR_UNAVAILABLE',
   OperatorVacation = 'OPERATOR_VACATION',
+  RecurringAppointment = 'RECURRING_APPOINTMENT',
   TemplateChange = 'TEMPLATE_CHANGE'
 }
 
@@ -1296,6 +1299,7 @@ export type Mutation = {
   updatePatternGroup: PatternGroup;
   updatePatternGroupWithConflicts: PatternGroupUpdateOutput;
   updateProduct: Product;
+  updateRecurringSeriesTime: RecurringSeriesOperationResult;
   updateRecycleBinSettings: RecycleBinSettings;
   updateRoom: Room;
   updateService: Service;
@@ -1849,6 +1853,9 @@ export type MutationDeleteProductArgs = {
 export type MutationDeleteRecurringSeriesArgs = {
   appointmentId: Scalars['ID']['input'];
   fromDate: Scalars['String']['input'];
+  includeCurrent?: InputMaybe<Scalars['Boolean']['input']>;
+  rangeFrom?: InputMaybe<Scalars['String']['input']>;
+  rangeTo?: InputMaybe<Scalars['String']['input']>;
   scope: RecurringSeriesScope;
 };
 
@@ -2381,6 +2388,11 @@ export type MutationUpdateProductArgs = {
 };
 
 
+export type MutationUpdateRecurringSeriesTimeArgs = {
+  input: UpdateRecurringSeriesTimeInput;
+};
+
+
 export type MutationUpdateRecycleBinSettingsArgs = {
   retentionDays?: InputMaybe<Scalars['Int']['input']>;
 };
@@ -2891,6 +2903,7 @@ export type PhysiotherapistSlotBatchOutput = {
   endTime: Scalars['String']['output'];
   operatorId: Scalars['ID']['output'];
   startTime: Scalars['String']['output'];
+  suggestedInstruments?: Maybe<Array<InstrumentSlotOutput>>;
 };
 
 export type PhysiotherapistSlotOutput = {
@@ -3534,8 +3547,10 @@ export type QueryPhysiotherapistAvailableSlotsArgs = {
 
 
 export type QueryPhysiotherapistAvailableSlotsBatchArgs = {
+  customInstrumentSlots?: InputMaybe<Array<InstrumentSlotInput>>;
   dates: Array<Scalars['String']['input']>;
   durationMinutes: Scalars['Int']['input'];
+  instrumentOrderMatters?: InputMaybe<Scalars['Boolean']['input']>;
   operatorIds: Array<Scalars['ID']['input']>;
 };
 
@@ -3725,7 +3740,9 @@ export type QueryTreatmentsByOperatorArgs = {
 
 export type QueryTreatmentsByOperatorsArgs = {
   date?: InputMaybe<Scalars['String']['input']>;
+  endDate?: InputMaybe<Scalars['String']['input']>;
   operatorIds: Array<Scalars['ID']['input']>;
+  startDate?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -3858,9 +3875,30 @@ export enum RecurringEndType {
   Until = 'UNTIL'
 }
 
+export type RecurringOccurrenceConflict = {
+  __typename?: 'RecurringOccurrenceConflict';
+  appointmentId?: Maybe<Scalars['ID']['output']>;
+  conflictingEndTime?: Maybe<Scalars['String']['output']>;
+  conflictingStartTime?: Maybe<Scalars['String']['output']>;
+  date: Scalars['String']['output'];
+  endTime: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
+  startTime: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+};
+
+export type RecurringSeriesOperationResult = {
+  __typename?: 'RecurringSeriesOperationResult';
+  affectedCount: Scalars['Int']['output'];
+  applied: Scalars['Boolean']['output'];
+  conflicts: Array<RecurringOccurrenceConflict>;
+};
+
 /** Scope delle operazioni bulk su serie ricorrenti */
 export enum RecurringSeriesScope {
   All = 'ALL',
+  CurrentOnly = 'CURRENT_ONLY',
+  DateRange = 'DATE_RANGE',
   ThisAndFollowing = 'THIS_AND_FOLLOWING'
 }
 
@@ -4698,6 +4736,16 @@ export type UpdatePatternGroupInput = {
   patterns?: InputMaybe<Array<PatternInput>>;
 };
 
+export type UpdateRecurringSeriesTimeInput = {
+  appointmentId: Scalars['ID']['input'];
+  endTime: Scalars['String']['input'];
+  includeCurrent?: InputMaybe<Scalars['Boolean']['input']>;
+  rangeFrom?: InputMaybe<Scalars['String']['input']>;
+  rangeTo?: InputMaybe<Scalars['String']['input']>;
+  scope: RecurringSeriesScope;
+  startTime: Scalars['String']['input'];
+};
+
 export type UpdateRegistryIndividualInput = {
   addresses?: InputMaybe<Array<RegistryAddressInput>>;
   birthCountry?: InputMaybe<Scalars['String']['input']>;
@@ -5290,10 +5338,20 @@ export type DeleteRecurringSeriesMutationVariables = Exact<{
   appointmentId: Scalars['ID']['input'];
   fromDate: Scalars['String']['input'];
   scope: RecurringSeriesScope;
+  rangeFrom?: InputMaybe<Scalars['String']['input']>;
+  rangeTo?: InputMaybe<Scalars['String']['input']>;
+  includeCurrent?: InputMaybe<Scalars['Boolean']['input']>;
 }>;
 
 
 export type DeleteRecurringSeriesMutation = { __typename?: 'Mutation', deleteRecurringSeries: number };
+
+export type UpdateRecurringSeriesTimeMutationVariables = Exact<{
+  input: UpdateRecurringSeriesTimeInput;
+}>;
+
+
+export type UpdateRecurringSeriesTimeMutation = { __typename?: 'Mutation', updateRecurringSeriesTime: { __typename?: 'RecurringSeriesOperationResult', applied: boolean, affectedCount: number, conflicts: Array<{ __typename?: 'RecurringOccurrenceConflict', appointmentId?: string | null, date: string, startTime: string, endTime: string, type: string, reason: string, conflictingStartTime?: string | null, conflictingEndTime?: string | null }> } };
 
 export type AvailabilityAppointmentFieldsFragment = { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null };
 
@@ -5379,10 +5437,12 @@ export type GetPhysiotherapistAvailableSlotsBatchQueryVariables = Exact<{
   operatorIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
   dates: Array<Scalars['String']['input']> | Scalars['String']['input'];
   durationMinutes: Scalars['Int']['input'];
+  customInstrumentSlots?: InputMaybe<Array<InstrumentSlotInput> | InstrumentSlotInput>;
+  instrumentOrderMatters?: InputMaybe<Scalars['Boolean']['input']>;
 }>;
 
 
-export type GetPhysiotherapistAvailableSlotsBatchQuery = { __typename?: 'Query', physiotherapistAvailableSlotsBatch: Array<{ __typename?: 'PhysiotherapistSlotBatchOutput', operatorId: string, date: string, startTime: string, endTime: string, available: boolean }> };
+export type GetPhysiotherapistAvailableSlotsBatchQuery = { __typename?: 'Query', physiotherapistAvailableSlotsBatch: Array<{ __typename?: 'PhysiotherapistSlotBatchOutput', operatorId: string, date: string, startTime: string, endTime: string, available: boolean, suggestedInstruments?: Array<{ __typename?: 'InstrumentSlotOutput', instrumentCategoryId: string, categoryName: string, instrumentId?: string | null, startOffsetMinutes: number, endOffsetMinutes: number }> | null }> };
 
 export type GetConflictedAppointmentsQueryVariables = Exact<{
   operatorId?: InputMaybe<Scalars['ID']['input']>;
@@ -6851,6 +6911,8 @@ export type GetTreatmentsByOperatorQuery = { __typename?: 'Query', treatmentsByO
 export type GetTreatmentsByOperatorsQueryVariables = Exact<{
   operatorIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
   date?: InputMaybe<Scalars['String']['input']>;
+  startDate?: InputMaybe<Scalars['String']['input']>;
+  endDate?: InputMaybe<Scalars['String']['input']>;
 }>;
 
 

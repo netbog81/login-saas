@@ -211,28 +211,29 @@
           </div>
         </div>
 
-        <!-- Fine ricorrenza -->
+        <!-- Fine ricorrenza: opzioni "Dopo N volte" e "Fino al" sulla stessa riga -->
         <div class="end-config">
           <label>Termina</label>
-          <div class="end-options">
-            <mat-radio-group [(ngModel)]="repeatConfig.endType" [ngModelOptions]="{standalone: true}">
-              <div class="end-option">
-                <mat-radio-button value="after">Dopo</mat-radio-button>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="occurrences-field">
-                  <input matInput type="number" [(ngModel)]="repeatConfig.occurrences" [ngModelOptions]="{standalone: true}"
-                         [disabled]="repeatConfig.endType !== 'after'" min="1" max="52">
-                </mat-form-field>
-                <span>volte</span>
-              </div>
-              <div class="end-option">
-                <mat-radio-button value="until">Fino al</mat-radio-button>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="until-field">
-                  <input matInput type="date" [(ngModel)]="repeatConfig.untilDate" [ngModelOptions]="{standalone: true}"
-                         [disabled]="repeatConfig.endType !== 'until'">
-                </mat-form-field>
-              </div>
-            </mat-radio-group>
-          </div>
+          <mat-radio-group [(ngModel)]="repeatConfig.endType" [ngModelOptions]="{standalone: true}" class="end-options-inline">
+            <div class="end-option">
+              <mat-radio-button value="after">Dopo</mat-radio-button>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="occurrences-field">
+                <input matInput type="number" [(ngModel)]="repeatConfig.occurrences" [ngModelOptions]="{standalone: true}"
+                       [disabled]="repeatConfig.endType !== 'after'" min="1" max="52">
+              </mat-form-field>
+              <span>volte</span>
+            </div>
+            <div class="end-option">
+              <mat-radio-button value="until">Fino al</mat-radio-button>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="until-field">
+                <input matInput [matDatepicker]="untilPicker" [(ngModel)]="repeatUntilDate" [ngModelOptions]="{standalone: true}"
+                       (dateChange)="onRepeatUntilChange($event.value)"
+                       [disabled]="repeatConfig.endType !== 'until'">
+                <mat-datepicker-toggle matIconSuffix [for]="untilPicker" [disabled]="repeatConfig.endType !== 'until'"></mat-datepicker-toggle>
+                <mat-datepicker #untilPicker></mat-datepicker>
+              </mat-form-field>
+            </div>
+          </mat-radio-group>
         </div>
 
         <div class="recurring-preview" *ngIf="getOccurrencesPreview()">
@@ -305,19 +306,14 @@
   </form>
 </mat-dialog-content>
 
-<!-- Gestione serie ricorrenti -->
-<div class="recurring-series-section" *ngIf="isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId">
-  <div class="series-header">
-    <mat-icon>repeat</mat-icon>
-    <span class="series-badge">Appuntamento ricorrente</span>
-    <span class="series-info" *ngIf="!loadingSeriesInfo">({{ futureSeriesCount }} appuntamenti seguenti)</span>
-    <mat-spinner *ngIf="loadingSeriesInfo" diameter="16"></mat-spinner>
-  </div>
-  <div class="series-actions">
-    <button mat-stroked-button color="warn" (click)="onDeleteThisAndFollowing()" [disabled]="futureSeriesCount === 0">Elimina questo e i seguenti</button>
-    <button mat-stroked-button color="warn" (click)="onDeleteAllSeries()">Elimina intera serie</button>
-  </div>
-</div>
+<!-- Gestione serie ricorrenti: pannello "Applica a" + Modifica/Elimina -->
+<app-recurring-scope-panel
+  *ngIf="isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId"
+  [futureCount]="loadingSeriesInfo ? null : futureSeriesCount"
+  [currentDate]="data.appointment?.date || ''"
+  (applyEdit)="onApplySeriesEdit($event)"
+  (applyDelete)="onApplySeriesDelete($event)">
+</app-recurring-scope-panel>
 
 <mat-dialog-actions align="end">
   <button mat-stroked-button color="warn" *ngIf="isEditMode" (click)="onDelete()" type="button">

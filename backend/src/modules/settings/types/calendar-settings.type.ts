@@ -31,4 +31,10 @@ export class CalendarSettings {
 
   @Field()
   operatorsSelectedOnLoad: boolean;
+
+  @Field()
+  showGymInstructorsInOperators: boolean;
+
+  @Field()
+  defaultOperatorCategory: string;
 }

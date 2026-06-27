@@ -237,6 +237,19 @@ body {
   }
 }
 
+/* Finestra Trattamenti minimizzata: collassata alla sola barra blu.
+   Annulla i vincoli di altezza e disabilita il resize. */
+.trattamenti-dialog-pane.minimized {
+  resize: none;
+  min-height: 0 !important;
+  height: auto !important;
+
+  .mat-mdc-dialog-container,
+  .mdc-dialog__surface {
+    height: auto !important;
+  }
+}
+
 /* Appuntamenti Dialog (Calendario V3) - draggable & resizable.
    Stesso pattern del trattamenti-dialog-pane: resize nativo del browser
    propagato al contenuto interno (title-bar + body in flex). */

@@ -31,6 +31,8 @@ export const SETTINGS_KEYS = {
   CALENDAR_SHOW_UNAVAILABLE_BACKGROUND: 'calendar.showUnavailableCellsBackground',
   CALENDAR_BLOCK_OUTSIDE_AVAILABILITY: 'calendar.blockAppointmentsOutsideAvailability',
   CALENDAR_OPERATORS_SELECTED_ON_LOAD: 'calendar.operatorsSelectedOnLoad',
+  CALENDAR_SHOW_GYM_INSTRUCTORS: 'calendar.showGymInstructorsInOperators',
+  CALENDAR_DEFAULT_OPERATOR_CATEGORY: 'calendar.defaultOperatorCategory',
 
   // Auto Attendance (cambio automatico stato appuntamento)
   AUTO_ATTENDANCE_ENABLED: 'autoAttendance.enabled',
@@ -268,6 +270,20 @@ export class GeneralSettingsService {
         valueType: 'boolean',
         category: 'calendar'
       },
+      {
+        key: SETTINGS_KEYS.CALENDAR_SHOW_GYM_INSTRUCTORS,
+        value: true,
+        description: 'Mostra la categoria Istruttori palestra e i relativi operatori nella lista operatori della sidebar del calendario',
+        valueType: 'boolean',
+        category: 'calendar'
+      },
+      {
+        key: SETTINGS_KEYS.CALENDAR_DEFAULT_OPERATOR_CATEGORY,
+        value: 'all',
+        description: 'Categoria operatori mostrata di default nella sidebar del calendario: all | doctor | physiotherapist | gym_instructor',
+        valueType: 'string',
+        category: 'calendar'
+      },
       // Auto Attendance
       {
         key: SETTINGS_KEYS.AUTO_ATTENDANCE_ENABLED,
@@ -360,8 +376,10 @@ export class GeneralSettingsService {
     showUnavailableCellsBackground: boolean;
     blockAppointmentsOutsideAvailability: boolean;
     operatorsSelectedOnLoad: boolean;
+    showGymInstructorsInOperators: boolean;
+    defaultOperatorCategory: string;
   }> {
-    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground, blockAppointmentsOutsideAvailability, operatorsSelectedOnLoad] = await Promise.all([
+    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground, blockAppointmentsOutsideAvailability, operatorsSelectedOnLoad, showGymInstructorsInOperators, defaultOperatorCategory] = await Promise.all([
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_START_HOUR, 7),
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY, true),
@@ -371,6 +389,8 @@ export class GeneralSettingsService {
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_UNAVAILABLE_BACKGROUND, true),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_BLOCK_OUTSIDE_AVAILABILITY, false),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_OPERATORS_SELECTED_ON_LOAD, false),
+      this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_GYM_INSTRUCTORS, true),
+      this.getValue<string>(SETTINGS_KEYS.CALENDAR_DEFAULT_OPERATOR_CATEGORY, 'all'),
     ]);
 
     return {
@@ -383,6 +403,8 @@ export class GeneralSettingsService {
       showUnavailableCellsBackground,
       blockAppointmentsOutsideAvailability,
       operatorsSelectedOnLoad,
+      showGymInstructorsInOperators,
+      defaultOperatorCategory,
     };
   }
 

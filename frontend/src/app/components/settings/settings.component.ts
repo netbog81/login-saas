@@ -19,6 +19,8 @@ interface CalendarSettingsForm {
   showUnavailableCellsBackground: boolean;
   blockAppointmentsOutsideAvailability: boolean;
   operatorsSelectedOnLoad: boolean;
+  showGymInstructorsInOperators: boolean;
+  defaultOperatorCategory: string;
 }
 
 interface AutoAttendanceSettings {
@@ -53,6 +55,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
     showUnavailableCellsBackground: true,
     blockAppointmentsOutsideAvailability: false,
     operatorsSelectedOnLoad: false,
+    showGymInstructorsInOperators: true,
+    defaultOperatorCategory: 'all',
   };
   originalCalendarSettings: CalendarSettingsForm = { ...this.calendarSettings };
 
@@ -223,6 +227,16 @@ export class SettingsComponent implements OnInit, OnDestroy {
         this.calendarSettings.operatorsSelectedOnLoad,
         { valueType: 'boolean', category: 'calendar' }
       ),
+      calShowGymInstructorsInOperators: this.settingsService.upsertSetting(
+        'calendar.showGymInstructorsInOperators',
+        this.calendarSettings.showGymInstructorsInOperators,
+        { valueType: 'boolean', category: 'calendar' }
+      ),
+      calDefaultOperatorCategory: this.settingsService.upsertSetting(
+        'calendar.defaultOperatorCategory',
+        this.calendarSettings.defaultOperatorCategory,
+        { valueType: 'string', category: 'calendar' }
+      ),
       // Auto Attendance settings
       autoAttendanceEnabled: this.settingsService.updateSetting(
         'autoAttendance.enabled',
@@ -291,7 +305,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.calendarSettings.defaultView !== this.originalCalendarSettings.defaultView ||
       this.calendarSettings.showUnavailableCellsBackground !== this.originalCalendarSettings.showUnavailableCellsBackground ||
       this.calendarSettings.blockAppointmentsOutsideAvailability !== this.originalCalendarSettings.blockAppointmentsOutsideAvailability ||
-      this.calendarSettings.operatorsSelectedOnLoad !== this.originalCalendarSettings.operatorsSelectedOnLoad;
+      this.calendarSettings.operatorsSelectedOnLoad !== this.originalCalendarSettings.operatorsSelectedOnLoad ||
+      this.calendarSettings.showGymInstructorsInOperators !== this.originalCalendarSettings.showGymInstructorsInOperators ||
+      this.calendarSettings.defaultOperatorCategory !== this.originalCalendarSettings.defaultOperatorCategory;
 
     const autoAttendanceChanged =
       this.autoAttendanceSettings.enabled !== this.originalAutoAttendanceSettings.enabled ||
@@ -307,7 +323,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
   // Force change detection when settings change
   onSettingChange(): void {
     this.ngZone.run(() => {
-      // Trigger change detection
+      // Se gli istruttori palestra vengono nascosti ma erano la categoria di
+      // default, si ricade su "tutte" (la categoria non sarebbe più valida).
+      if (!this.calendarSettings.showGymInstructorsInOperators &&
+          this.calendarSettings.defaultOperatorCategory === 'gym_instructor') {
+        this.calendarSettings.defaultOperatorCategory = 'all';
+      }
     });
   }
 

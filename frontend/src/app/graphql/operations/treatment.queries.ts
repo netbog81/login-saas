@@ -192,8 +192,8 @@ export const GET_TREATMENTS_BY_OPERATOR = gql`
  * Query bulk: Trattamenti attivi per più operatori in una data.
  */
 export const GET_TREATMENTS_BY_OPERATORS = gql`
-  query GetTreatmentsByOperators($operatorIds: [ID!]!, $date: String) {
-    treatmentsByOperators(operatorIds: $operatorIds, date: $date) {
+  query GetTreatmentsByOperators($operatorIds: [ID!]!, $date: String, $startDate: String, $endDate: String) {
+    treatmentsByOperators(operatorIds: $operatorIds, date: $date, startDate: $startDate, endDate: $endDate) {
       ...TreatmentWithRelationsFields
     }
   }

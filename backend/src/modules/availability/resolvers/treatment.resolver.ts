@@ -147,8 +147,10 @@ export class TreatmentResolver {
   async getTreatmentsByOperators(
     @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
     @Args('date', { nullable: true }) date?: string,
+    @Args('startDate', { nullable: true }) startDate?: string,
+    @Args('endDate', { nullable: true }) endDate?: string,
   ): Promise<Treatment[]> {
-    return this.treatmentService.getActiveByOperators(operatorIds, date);
+    return this.treatmentService.getActiveByOperators(operatorIds, date, startDate, endDate);
   }
 
   /**

@@ -11,6 +11,7 @@ import { Patient, getPatientDisplayName, getPatientPhone } from '../../../models
 import { PatientService } from '../../../services/patient.service';
 import { AddressAutocompleteService, AddressSuggestion } from '../../../services/address-autocomplete.service';
 import { PatientAppointmentsDialogComponent } from '../../../features/operators-new/containers/patient-appointments-dialog.component';
+import { PatientTreatmentsDialogComponent } from '../patient-treatments-dialog/patient-treatments-dialog.component';
 import { PatientTableComponent } from '../../../features/operators-new/components/patients-list/patient-table/patient-table.component';
 import { PatientFolderDialogComponent } from '../../../features/operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
 
@@ -225,6 +226,16 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
       data: { patient },
       width: '700px',
       height: '500px',
+      panelClass: 'resizable-dialog-panel',
+    });
+  }
+
+  /** Apre l'elenco di tutti i trattamenti eseguiti del paziente (stato, data, ecc.). */
+  openTreatments(patient: Patient): void {
+    this.dialog.open(PatientTreatmentsDialogComponent, {
+      data: { patient },
+      width: '640px',
+      height: '520px',
       panelClass: 'resizable-dialog-panel',
     });
   }

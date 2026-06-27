@@ -15,6 +15,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatRadioModule } from '@angular/material/radio';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { Observable, of, startWith, switchMap, debounceTime, distinctUntilChanged, catchError, firstValueFrom } from 'rxjs';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { PatientService } from '../../../services/patient.service';
@@ -25,6 +26,8 @@ import { Appointment, RepeatConfig, RecurringType, RecurringEndType, BookingStat
 import { ServiceService } from '../../../services/service.service';
 import { Service, InstrumentCategory } from '../../../graphql/generated/types';
 import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../service-multi-select';
+import { RecurringScopePanelComponent, RecurringScopeSelection } from '../recurring-scope-panel/recurring-scope-panel.component';
+import { RecurringConflictsDialogComponent } from '../recurring-scope-panel/recurring-conflicts-dialog.component';
 import { NewPatientDialogComponent, NewPatientDialogResult } from '../new-patient-dialog';
 
 /**
@@ -98,7 +101,9 @@ export interface EventMatDialogResult {
     MatCheckboxModule,
     MatButtonToggleModule,
     MatRadioModule,
-    ServiceMultiSelectComponent
+    MatDatepickerModule,
+    ServiceMultiSelectComponent,
+    RecurringScopePanelComponent,
   ],
   templateUrl: './event-mat-dialog.component.html',
   styleUrls: ['./event-mat-dialog.component.scss']
@@ -140,6 +145,21 @@ export class EventMatDialogComponent implements OnInit {
     occurrences: 4,
     untilDate: ''
   };
+  /** Modello Date per il datepicker "Fino al"; tenuto in sync con repeatConfig.untilDate (string). */
+  repeatUntilDate: Date | null = null;
+
+  /** Aggiorna repeatConfig.untilDate (YYYY-MM-DD) dal datepicker. */
+  onRepeatUntilChange(date: Date | null): void {
+    this.repeatUntilDate = date;
+    if (date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      this.repeatConfig.untilDate = `${y}-${m}-${d}`;
+    } else {
+      this.repeatConfig.untilDate = '';
+    }
+  }
 
   // Weekday labels
   weekdays = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
@@ -966,25 +986,61 @@ export class EventMatDialogComponent implements OnInit {
     });
   }
 
-  async onDeleteThisAndFollowing(): Promise<void> {
-    if (!confirm(`Eliminare definitivamente questo appuntamento e i ${this.futureSeriesCount} seguenti? L'operazione non è reversibile.`)) return;
+  /**
+   * Elimina le occorrenze della serie nello scope scelto. La micro-conferma
+   * è già stata data nel pannello.
+   */
+  async onApplySeriesDelete(sel: RecurringScopeSelection): Promise<void> {
+    const apt = this.data.appointment!;
     try {
       const count = await firstValueFrom(this.recurringAppointmentService.deleteRecurringSeries(
-        String(this.data.appointment!.id), this.data.appointment!.date, 'THIS_AND_FOLLOWING'
+        String(apt.id), apt.date, sel.scope,
+        { rangeFrom: sel.rangeFrom, rangeTo: sel.rangeTo, includeCurrent: sel.includeCurrent },
       ));
       alert(`${count} appuntamenti eliminati`);
       this.dialogRef.close({ action: 'series-deleted' });
-    } catch { alert('Errore nell\'eliminazione della serie'); }
+    } catch {
+      alert('Errore nell\'eliminazione della serie');
+    }
   }
 
-  async onDeleteAllSeries(): Promise<void> {
-    if (!confirm(`Eliminare definitivamente TUTTI gli appuntamenti della serie?`)) return;
+  /**
+   * Modifica orario/durata delle occorrenze nello scope scelto, usando l'orario
+   * attualmente impostato nel form. Se il backend rileva conflitti, mostra il
+   * riepilogo e NON chiude (niente è stato applicato).
+   */
+  async onApplySeriesEdit(sel: RecurringScopeSelection): Promise<void> {
+    const apt = this.data.appointment!;
+    const startTime = this.form.get('startTime')?.value;
+    const endTime = this.form.get('endTime')?.value;
+    if (!startTime || !endTime) {
+      alert('Imposta un orario di inizio e fine validi prima di applicare alla serie.');
+      return;
+    }
     try {
-      const count = await firstValueFrom(this.recurringAppointmentService.deleteRecurringSeries(
-        String(this.data.appointment!.id), '2000-01-01', 'ALL'
-      ));
-      alert(`${count} appuntamenti eliminati`);
-      this.dialogRef.close({ action: 'series-deleted' });
-    } catch { alert('Errore nell\'eliminazione della serie'); }
+      const result = await firstValueFrom(this.recurringAppointmentService.updateRecurringSeriesTime({
+        appointmentId: String(apt.id),
+        scope: sel.scope,
+        startTime,
+        endTime,
+        rangeFrom: sel.rangeFrom,
+        rangeTo: sel.rangeTo,
+        includeCurrent: sel.includeCurrent,
+      }));
+
+      if (!result.applied && result.conflicts.length > 0) {
+        // Avvisa e blocca: mostra il riepilogo conflitti, niente modifiche.
+        this.dialog.open(RecurringConflictsDialogComponent, {
+          width: '520px', maxWidth: '95vw',
+          data: { title: 'Modifica serie bloccata', conflicts: result.conflicts },
+        });
+        return;
+      }
+
+      alert(`${result.affectedCount} appuntamenti aggiornati`);
+      this.dialogRef.close({ action: 'series-deleted' }); // forza refresh calendario
+    } catch {
+      alert('Errore nella modifica della serie');
+    }
   }
 }

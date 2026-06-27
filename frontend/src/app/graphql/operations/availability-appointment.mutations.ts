@@ -149,11 +149,40 @@ export const DELETE_RECURRING_SERIES = gql`
     $appointmentId: ID!
     $fromDate: String!
     $scope: RecurringSeriesScope!
+    $rangeFrom: String
+    $rangeTo: String
+    $includeCurrent: Boolean
   ) {
     deleteRecurringSeries(
       appointmentId: $appointmentId
       fromDate: $fromDate
       scope: $scope
+      rangeFrom: $rangeFrom
+      rangeTo: $rangeTo
+      includeCurrent: $includeCurrent
     )
+  }
+`;
+
+/**
+ * Mutation: Modifica orario/durata delle occorrenze di una serie ricorrente.
+ * Ritorna i conflitti rilevati (se non vuoti, nulla è stato applicato).
+ */
+export const UPDATE_RECURRING_SERIES_TIME = gql`
+  mutation UpdateRecurringSeriesTime($input: UpdateRecurringSeriesTimeInput!) {
+    updateRecurringSeriesTime(input: $input) {
+      applied
+      affectedCount
+      conflicts {
+        appointmentId
+        date
+        startTime
+        endTime
+        type
+        reason
+        conflictingStartTime
+        conflictingEndTime
+      }
+    }
   }
 `;

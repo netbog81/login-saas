@@ -9,7 +9,7 @@
  * Scrollbar verticale quando il contenuto eccede l'altezza.
  */
 
-import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -21,7 +21,10 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatRadioModule } from '@angular/material/radio';
 import { CalendarOperator, SearchFilters } from '../../models/calendar-v2.model';
-import { Treatment } from '../../../../models/treatment.model';
+import {
+  Treatment, PaymentMethod,
+  getTreatmentStatusLabel, getTreatmentStatusColor, getPaymentMethodLabel,
+} from '../../../../models/treatment.model';
 import { InstrumentCategory } from '../../../../graphql/generated/types';
 
 @Component({
@@ -53,7 +56,7 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
             <mat-expansion-panel-header>
               <mat-panel-title>
                 <mat-icon>people</mat-icon>
-                Operatori ({{ selectedCount }}/{{ operators.length }})
+                Operatori ({{ selectedCount }}/{{ operatorsCount }})
               </mat-panel-title>
             </mat-expansion-panel-header>
 
@@ -205,20 +208,120 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
             </mat-expansion-panel-header>
 
             @if (treatments.length > 0) {
-              @for (t of treatments; track t.id) {
-                <div class="treatment-item">
-                  <div class="treatment-patient">{{ t.patient?.nome }} {{ t.patient?.cognome }}</div>
-                  <div class="treatment-info">
-                    <span class="treatment-operator">{{ t.operator?.name }}</span>
-                    <span class="treatment-status" [class]="'status-' + t.status">
-                      {{ getStatusLabel(t.status) }}
-                    </span>
+              @if (weekly) {
+                <!-- Vista settimanale: gruppi per giorno espandibili -->
+                @for (group of treatmentsByDay; track group.day) {
+                  <div class="day-group">
+                    <div class="day-group-header"
+                         [class.selected]="isDaySelected(group.day)"
+                         (click)="toggleDay(group.day)">
+                      <mat-icon class="day-chevron">
+                        {{ isDayExpanded(group.day) ? 'expand_more' : 'chevron_right' }}
+                      </mat-icon>
+                      <span class="day-group-label">{{ group.label }}</span>
+                      <span class="day-group-count">{{ group.treatments.length }}</span>
+                    </div>
+                    @if (isDayExpanded(group.day)) {
+                      <div class="day-group-body">
+                        @for (t of group.treatments; track t.id) {
+                          <ng-container *ngTemplateOutlet="treatmentCard; context: { $implicit: t }"></ng-container>
+                        }
+                      </div>
+                    }
                   </div>
-                </div>
+                }
+              } @else {
+                <!-- Vista giornaliera: lista piatta -->
+                @for (t of treatments; track t.id) {
+                  <ng-container *ngTemplateOutlet="treatmentCard; context: { $implicit: t }"></ng-container>
+                }
               }
             } @else {
               <p class="empty-text">Nessun trattamento in corso</p>
             }
+
+            <!-- Card trattamento riusabile (lista piatta e gruppi-giorno) -->
+            <ng-template #treatmentCard let-t>
+              <div class="treatment-item"
+                   [class.selected]="isTreatmentSelected(t)"
+                   (click)="onTreatmentCardClick(t, $event)">
+                <div class="treatment-info">
+                  <span class="treatment-patient-name">{{ getPatientName(t) }}</span>
+                  <span class="treatment-status-badge"
+                        [style.background-color]="getTreatmentStatusColor(t.status)">
+                    {{ getTreatmentStatusLabel(t.status) }}
+                  </span>
+                </div>
+                <div class="treatment-sub">
+                  <span class="treatment-operator">{{ getOperatorName(t) }}</span>
+                  @if (t.startedAt) {
+                    <span class="treatment-time">{{ formatTreatmentTime(t.startedAt) }}</span>
+                  }
+                </div>
+
+                <!-- Popup dettagli (solo se selezionato E status operator_completed) -->
+                @if (isTreatmentSelected(t) && isOperatorCompleted(t)) {
+                  <div class="treatment-details-popup" (click)="$event.stopPropagation()">
+                    <div class="popup-title">Dettagli per la Segreteria</div>
+
+                    @if (t.service) {
+                      <div class="popup-row">
+                        <span class="row-label">Servizio:</span>
+                        <span class="row-value">{{ t.service.name }}</span>
+                      </div>
+                    }
+
+                    @if (t.secretaryNotes) {
+                      <div class="popup-row">
+                        <span class="row-label">Note segreteria:</span>
+                        <div class="row-value notes">{{ t.secretaryNotes }}</div>
+                      </div>
+                    }
+
+                    @if (hasReschedulingInfo(t)) {
+                      <div class="popup-row">
+                        <span class="row-label">Riprogrammazione:</span>
+                        <div class="row-value reschedule">
+                          @if (t.suggestInDays) {
+                            <span>Fra {{ t.suggestInDays }} giorni</span>
+                          }
+                          @if (t.suggestDateRangeStart && t.suggestDateRangeEnd) {
+                            <span>Dal {{ formatShortDate(t.suggestDateRangeStart) }} al {{ formatShortDate(t.suggestDateRangeEnd) }}</span>
+                          }
+                          @if (t.reschedulingNotes) {
+                            <span>{{ t.reschedulingNotes }}</span>
+                          }
+                        </div>
+                      </div>
+                    }
+
+                    <div class="popup-row">
+                      <span class="row-label">Prezzo:</span>
+                      <span class="row-value">
+                        {{ t.price | number:'1.2-2' }} &euro;
+                        @if (t.scontoFE) { <span class="badge badge-sconto">Sconto FE</span> }
+                      </span>
+                    </div>
+
+                    <div class="popup-row">
+                      <span class="row-label">Pagamento:</span>
+                      <span class="row-value">
+                        @if (t.isPaid) {
+                          <span class="badge badge-paid">
+                            {{ isCollectedByOperator(t) ? 'Incassato dall\\'operatore' : 'Incassato dalla segreteria' }}
+                          </span>
+                          @if (t.paymentMethod) {
+                            <span class="payment-method">({{ getPaymentMethodLabelForTreatment(t.paymentMethod) }})</span>
+                          }
+                        } @else {
+                          <span class="badge badge-unpaid">Da incassare</span>
+                        }
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+            </ng-template>
           </mat-expansion-panel>
 
         </div><!-- /sidebar-scroll -->
@@ -391,23 +494,119 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
       border-radius: 4px;
       border-left: 3px solid #6366f1;
       margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
     }
 
-    .treatment-patient { font-size: 0.75rem; font-weight: 500; color: #1e293b; }
-    .treatment-info { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+    .treatment-item:hover { background: #eef2ff; }
+    .treatment-item.selected { background: #eef2ff; border-left-color: #4338ca; }
+
+    .treatment-info { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .treatment-patient-name { font-size: 0.75rem; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .treatment-sub { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
     .treatment-operator { font-size: 0.65rem; color: #64748b; }
-    .treatment-status { font-size: 0.6rem; font-weight: 600; padding: 1px 6px; border-radius: 8px; }
-    .status-in_progress { background: #dbeafe; color: #1d4ed8; }
-    .status-operator_completed { background: #dcfce7; color: #15803d; }
-    .status-closed { background: #f1f5f9; color: #64748b; }
+    .treatment-time { font-size: 0.65rem; color: #94a3b8; }
+    .treatment-status-badge {
+      font-size: 0.58rem; font-weight: 600; padding: 1px 6px; border-radius: 8px;
+      color: #fff; flex-shrink: 0; white-space: nowrap;
+    }
+
+    /* Popup dettagli */
+    .treatment-details-popup {
+      margin-top: 8px;
+      padding: 8px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    .popup-title {
+      font-size: 0.68rem; font-weight: 700; color: #4338ca;
+      text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;
+    }
+    .popup-row { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; }
+    .popup-row:last-child { margin-bottom: 0; }
+    .row-label { font-size: 0.6rem; font-weight: 600; color: #64748b; }
+    .row-value { font-size: 0.72rem; color: #1e293b; }
+    .row-value.notes { white-space: pre-wrap; }
+    .row-value.reschedule { display: flex; flex-direction: column; gap: 1px; }
+    .payment-method { font-size: 0.65rem; color: #64748b; margin-left: 4px; }
+    .badge {
+      display: inline-block; font-size: 0.58rem; font-weight: 600;
+      padding: 1px 6px; border-radius: 8px;
+    }
+    .badge-sconto { background: #fef3c7; color: #b45309; margin-left: 4px; }
+    .badge-paid { background: #dcfce7; color: #15803d; }
+    .badge-unpaid { background: #fee2e2; color: #b91c1c; }
+
     .empty-text { font-size: 0.75rem; color: #94a3b8; text-align: center; padding: 8px 0; margin: 0; }
+
+    /* ===== GRUPPI GIORNO (vista settimanale) ===== */
+    .day-group { margin-bottom: 6px; }
+    .day-group-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 6px;
+      background: #eef2ff;
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .day-group-header:hover { background: #e0e7ff; }
+    .day-group-header.selected {
+      background: #c7d2fe;
+      box-shadow: inset 0 0 0 1.5px #4338ca;
+    }
+    .day-chevron { font-size: 16px; width: 16px; height: 16px; color: #4338ca; }
+    .day-group-label {
+      flex: 1; font-size: 0.72rem; font-weight: 600; color: #312e81;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .day-group-count {
+      font-size: 0.62rem; font-weight: 700; color: #4338ca;
+      background: #fff; border-radius: 8px; padding: 0 6px; min-width: 18px; text-align: center;
+    }
+    .day-group-body { padding: 4px 0 0 6px; }
   `],
 })
 export class CalendarV2SidebarComponent {
-  @Input() operators: CalendarOperator[] = [];
+  @Input()
+  set operators(value: CalendarOperator[]) {
+    this._operators = value || [];
+    // Quando arrivano (o cambiano) gli operatori, prova a risolvere la
+    // categoria iniziale richiesta dalle impostazioni tenant.
+    this.applyPendingInitialCategory();
+  }
+  get operators(): CalendarOperator[] { return this._operators; }
+  private _operators: CalendarOperator[] = [];
+
   @Input() treatments: Treatment[] = [];
   @Input() instrumentCategories: InstrumentCategory[] = [];
   @Input() collapsed = false;
+  /**
+   * Se false, la categoria "Istruttori palestra" (gym_instructor) e i relativi
+   * operatori vengono nascosti dall'elenco operatori. Pilotato dalle impostazioni
+   * del tenant (calendar.showGymInstructorsInOperators).
+   */
+  @Input() showGymInstructors = true;
+  /** true in vista settimanale: i trattamenti vengono raggruppati per giorno. */
+  @Input() weekly = false;
+  /** Date visibili (YYYY-MM-DD), per ordinare i gruppi-giorno in vista settimanale. */
+  @Input() visibleDates: string[] = [];
+  /**
+   * Giorno (YYYY-MM-DD) selezionato cliccando una colonna nella griglia:
+   * il relativo gruppo trattamenti si espande e l'intestazione si evidenzia.
+   */
+  @Input()
+  set selectedDate(value: string | null) {
+    this._selectedDate = value;
+    // Espandi automaticamente il gruppo del giorno selezionato.
+    if (value) this.expandedDays.add(value);
+  }
+  get selectedDate(): string | null { return this._selectedDate; }
+  private _selectedDate: string | null = null;
 
   @Output() toggleOperator = new EventEmitter<string>();
   @Output() setOperatorSelection = new EventEmitter<{ operatorIds: string[]; selected: boolean }>();
@@ -415,8 +614,42 @@ export class CalendarV2SidebarComponent {
   @Output() slotSearchToggle = new EventEmitter<boolean>();
   @Output() searchFiltersChange = new EventEmitter<SearchFilters>();
 
+  /**
+   * Categoria iniziale del filtro operatori (dalle impostazioni tenant). Si
+   * applica solo al dropdown, senza riemettere la selezione: gli operatori
+   * sono già stati selezionati dal container in base alla stessa categoria.
+   */
+  @Input()
+  set initialCategory(value: string | null) {
+    // Normalizza al valore reale presente tra gli operatori (il dropdown usa
+    // i valori grezzi, tipicamente in MAIUSCOLO come l'enum GraphQL). Senza
+    // questo match il mat-select resterebbe vuoto e la lista non filtrerebbe.
+    if (!value) { this.selectedCategory = ''; this._pendingInitialCategory = ''; return; }
+    this._pendingInitialCategory = String(value).toLowerCase();
+    this.applyPendingInitialCategory();
+  }
+  /** Categoria iniziale richiesta (lowercase) in attesa che arrivino gli operatori. */
+  private _pendingInitialCategory = '';
+
+  /** Risolve la categoria iniziale al valore grezzo corrispondente, se presente. */
+  private applyPendingInitialCategory(): void {
+    if (!this._pendingInitialCategory) return;
+    const match = this.operators
+      .map(o => o.macroCategory)
+      .filter(Boolean)
+      .find(c => String(c).toLowerCase() === this._pendingInitialCategory);
+    if (match) {
+      this.selectedCategory = match as string;
+      this._pendingInitialCategory = '';
+    }
+  }
+
   selectedCategory = '';
-  slotSearchEnabled = false;
+  /**
+   * "Mostra slot disponibili": abilitato di default (richiesta calendario v3).
+   * L'utente può comunque disattivarlo manualmente.
+   */
+  slotSearchEnabled = true;
 
   filters: SearchFilters = {
     duration: 45,
@@ -428,17 +661,31 @@ export class CalendarV2SidebarComponent {
     instrument2CategoryId: null,
   };
 
+  /**
+   * Operatori effettivamente mostrabili: esclude gli istruttori palestra
+   * quando il flag tenant è disattivo. Base per conteggi, categorie e lista.
+   */
+  get visibleOperators(): CalendarOperator[] {
+    if (this.showGymInstructors) return this.operators;
+    return this.operators.filter(o => String(o.macroCategory).toLowerCase() !== 'gym_instructor');
+  }
+
   get selectedCount(): number {
-    return this.operators.filter(o => o.selected).length;
+    return this.visibleOperators.filter(o => o.selected).length;
+  }
+
+  get operatorsCount(): number {
+    return this.visibleOperators.length;
   }
 
   get categories(): string[] {
-    return [...new Set(this.operators.map(o => o.macroCategory).filter(Boolean))] as string[];
+    return [...new Set(this.visibleOperators.map(o => o.macroCategory).filter(Boolean))] as string[];
   }
 
   get filteredOperators(): CalendarOperator[] {
-    if (!this.selectedCategory) return this.operators;
-    return this.operators.filter(o => o.macroCategory === this.selectedCategory);
+    if (!this.selectedCategory) return this.visibleOperators;
+    const target = String(this.selectedCategory).toLowerCase();
+    return this.visibleOperators.filter(o => String(o.macroCategory).toLowerCase() === target);
   }
 
   getCategoryLabel(cat: string): string {
@@ -446,18 +693,20 @@ export class CalendarV2SidebarComponent {
       'doctor': 'Medici', 'physiotherapist': 'Fisioterapisti',
       'gym_instructor': 'Istruttori Palestra', 'other': 'Altro',
     };
-    return labels[cat] || cat;
+    // Normalizza il casing: a runtime il valore può arrivare come
+    // 'gym_instructor' o 'GYM_INSTRUCTOR' a seconda della sorgente.
+    return labels[String(cat).toLowerCase()] || cat;
   }
 
   onCategoryChange(): void {
     if (!this.selectedCategory) {
-      // "Tutte" selezionato → attiva tutti
-      const allIds = this.operators.map(o => o.operatorId);
+      // "Tutte" selezionato → attiva tutti quelli visibili
+      const allIds = this.visibleOperators.map(o => o.operatorId);
       this.setOperatorSelection.emit({ operatorIds: allIds, selected: true });
     } else {
       // Categoria specifica → attiva solo quelli della categoria, disattiva gli altri
-      const toActivate = this.operators.filter(o => o.macroCategory === this.selectedCategory).map(o => o.operatorId);
-      const toDeactivate = this.operators.filter(o => o.macroCategory !== this.selectedCategory).map(o => o.operatorId);
+      const toActivate = this.visibleOperators.filter(o => o.macroCategory === this.selectedCategory).map(o => o.operatorId);
+      const toDeactivate = this.visibleOperators.filter(o => o.macroCategory !== this.selectedCategory).map(o => o.operatorId);
       this.setOperatorSelection.emit({ operatorIds: toDeactivate, selected: false });
       this.setOperatorSelection.emit({ operatorIds: toActivate, selected: true });
     }
@@ -477,10 +726,148 @@ export class CalendarV2SidebarComponent {
     this.searchFiltersChange.emit({ ...this.filters });
   }
 
-  getStatusLabel(status: string | undefined): string {
-    const labels: Record<string, string> = {
-      'in_progress': 'In corso', 'operator_completed': 'Completato', 'closed': 'Chiuso',
-    };
-    return labels[status || ''] || status || '';
+  // ==================== TRATTAMENTI ====================
+
+  /** Trattamento selezionato per cui mostrare il popup dettagli. */
+  selectedTreatmentForDetails: Treatment | null = null;
+
+  /** Giorni (YYYY-MM-DD) con gruppo trattamenti espanso in vista settimanale. */
+  expandedDays = new Set<string>();
+
+  /** Chiave giorno YYYY-MM-DD a partire da una data/stringa. */
+  private dayKey(date: Date | string | undefined): string {
+    if (!date) return '';
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  /**
+   * Trattamenti raggruppati per giorno per la vista settimanale, ordinati
+   * secondo visibleDates (o, in mancanza, per chiave giorno). Ogni gruppo
+   * riporta giorno, label e i suoi trattamenti.
+   */
+  get treatmentsByDay(): { day: string; label: string; treatments: Treatment[] }[] {
+    const groups = new Map<string, Treatment[]>();
+    for (const t of this.treatments) {
+      const key = this.dayKey(t.startedAt);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    }
+
+    // Ordina i giorni: prima quelli in visibleDates (nell'ordine dato), poi gli
+    // eventuali altri in ordine crescente.
+    const ordered: string[] = [];
+    for (const d of this.visibleDates) {
+      if (groups.has(d)) ordered.push(d);
+    }
+    for (const k of [...groups.keys()].sort()) {
+      if (!ordered.includes(k)) ordered.push(k);
+    }
+
+    return ordered.map(day => ({
+      day,
+      label: this.formatDayLabel(day),
+      treatments: groups.get(day) || [],
+    }));
+  }
+
+  /** Etichetta separatore giorno: "Mercoledì 17 giu". */
+  formatDayLabel(day: string): string {
+    if (!day) return '';
+    const d = new Date(day + 'T00:00:00');
+    const s = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'short' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  isDayExpanded(day: string): boolean {
+    return this.expandedDays.has(day);
+  }
+
+  isDaySelected(day: string): boolean {
+    return this._selectedDate === day;
+  }
+
+  toggleDay(day: string): void {
+    if (this.expandedDays.has(day)) this.expandedDays.delete(day);
+    else this.expandedDays.add(day);
+  }
+
+  getTreatmentStatusLabel(status: string | undefined): string {
+    return getTreatmentStatusLabel((status || '') as any);
+  }
+
+  getTreatmentStatusColor(status: string | undefined): string {
+    return getTreatmentStatusColor((status || '') as any);
+  }
+
+  getPatientName(t: Treatment): string {
+    const p: any = t.patient;
+    if (!p) return '';
+    if (p.displayName) return p.displayName;
+    const subj = p.subject;
+    if (subj) return `${subj.firstName ?? ''} ${subj.lastName ?? ''}`.trim();
+    return `${p.nome ?? ''} ${p.cognome ?? ''}`.trim();
+  }
+
+  getOperatorName(t: Treatment): string {
+    const op: any = t.operator;
+    if (!op) return '';
+    return `${op.name ?? ''}${op.surname ? ' ' + op.surname : ''}`.trim();
+  }
+
+  formatTreatmentTime(date: Date | string): string {
+    return new Date(date).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  formatShortDate(date: Date | string | undefined): string {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  getPaymentMethodLabelForTreatment(method: PaymentMethod | string | undefined): string {
+    if (!method) return '';
+    return getPaymentMethodLabel(method as PaymentMethod);
+  }
+
+  /** Toggle del popup dettagli per la card cliccata. */
+  onTreatmentCardClick(treatment: Treatment, event: MouseEvent): void {
+    event.stopPropagation();
+    this.selectedTreatmentForDetails =
+      this.selectedTreatmentForDetails?.id === treatment.id ? null : treatment;
+  }
+
+  isTreatmentSelected(treatment: Treatment): boolean {
+    return this.selectedTreatmentForDetails?.id === treatment.id;
+  }
+
+  /** I dettagli estesi sono pensati per i trattamenti completati dall'operatore. */
+  isOperatorCompleted(treatment: Treatment): boolean {
+    return (treatment.status || '').toLowerCase() === 'operator_completed';
+  }
+
+  hasReschedulingInfo(treatment: Treatment): boolean {
+    return !!(
+      treatment.rescheduleRequested ||
+      treatment.suggestInDays ||
+      (treatment.suggestDateRangeStart && treatment.suggestDateRangeEnd) ||
+      (treatment.reschedulingType && treatment.reschedulingType !== 'none')
+    );
+  }
+
+  isCollectedByOperator(treatment: Treatment): boolean {
+    if (!treatment.isPaid) return false;
+    return treatment.collectedBy === treatment.operatorId;
+  }
+
+  /** Chiude il popup quando si clicca fuori da una card trattamento. */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (this.selectedTreatmentForDetails && !target.closest('.treatment-item')) {
+      this.selectedTreatmentForDetails = null;
+    }
   }
 }

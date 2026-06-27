@@ -5,6 +5,7 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatChipsModule } from '@angular/material/chips';
@@ -51,6 +52,7 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
+    MatAutocompleteModule,
     MatDatepickerModule,
     MatNativeDateModule,
     MatChipsModule,
@@ -82,6 +84,10 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
                 Per operatore
               </mat-button-toggle>
             }
+            <mat-button-toggle value="by-day-operator">
+              <mat-icon>calendar_view_day</mat-icon>
+              Giorno / Operatore
+            </mat-button-toggle>
           </mat-button-toggle-group>
         </div>
       }
@@ -136,6 +142,13 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
           <mat-datepicker #pickerTo></mat-datepicker>
         </mat-form-field>
 
+        <!-- Bottoni rapidi di selezione intervallo -->
+        <div class="quick-dates">
+          <button mat-stroked-button type="button" (click)="setToday()">Oggi</button>
+          <button mat-stroked-button type="button" (click)="setThisWeek()">Settimana</button>
+          <button mat-stroked-button type="button" (click)="setThisMonth()">Mese</button>
+        </div>
+
         @if (canSelectOperator) {
           <mat-form-field appearance="outline" class="field-operator">
             <mat-label>Operatore</mat-label>
@@ -152,14 +165,24 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
 
         <mat-form-field appearance="outline" class="field-patient">
           <mat-label>Paziente</mat-label>
-          <mat-select
-            [value]="filters.patientId || null"
-            (selectionChange)="patientIdChange.emit($event.value)">
-            <mat-option [value]="null">Tutti</mat-option>
+          <input matInput
+                 [matAutocomplete]="patientAuto"
+                 [(ngModel)]="patientSearchText"
+                 (ngModelChange)="onPatientSearchInput($event)"
+                 placeholder="Cerca paziente…" />
+          @if (patientSearchText) {
+            <button matIconSuffix mat-icon-button type="button"
+                    (click)="clearPatient()" matTooltip="Rimuovi filtro paziente">
+              <mat-icon>close</mat-icon>
+            </button>
+          }
+          <mat-autocomplete #patientAuto="matAutocomplete"
+                            (optionSelected)="onPatientSelected($event.option.value)"
+                            [displayWith]="displayPatient">
             @for (p of patients; track p.id) {
-              <mat-option [value]="p.id">{{ p.label }}</mat-option>
+              <mat-option [value]="p">{{ p.label }}</mat-option>
             }
-          </mat-select>
+          </mat-autocomplete>
         </mat-form-field>
       </div>
 
@@ -237,6 +260,8 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
     .field-operator, .field-patient { min-width: 200px; flex: 1; }
     .field-triflag { width: 180px; }
     mat-chip-listbox { display: flex; flex-wrap: wrap; gap: 4px; }
+    .quick-dates { display: flex; align-items: center; gap: 6px; }
+    .quick-dates button { min-width: 0; padding: 0 12px; line-height: 32px; }
   `],
 })
 export class TrattamentiFiltersComponent {
@@ -255,8 +280,12 @@ export class TrattamentiFiltersComponent {
   @Output() billingStatusesChange = new EventEmitter<TreatmentBillingStatus[]>();
   @Output() dateFromChange = new EventEmitter<string | null>();
   @Output() dateToChange = new EventEmitter<string | null>();
+  /** Imposta dal+al in un colpo solo (bottoni rapidi oggi/settimana/mese). */
+  @Output() dateRangeChange = new EventEmitter<{ from: string; to: string }>();
   @Output() operatorIdChange = new EventEmitter<string | null>();
   @Output() patientIdChange = new EventEmitter<string | null>();
+  /** Termine di ricerca paziente (debounced lato container → registry). */
+  @Output() patientSearchTerm = new EventEmitter<string>();
   @Output() readyForBillingChange = new EventEmitter<boolean | null>();
   @Output() isInvoicedChange = new EventEmitter<boolean | null>();
   @Output() scontoFEChange = new EventEmitter<boolean | null>();
@@ -331,5 +360,71 @@ export class TrattamentiFiltersComponent {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  // ==================== RICERCA PAZIENTE ====================
+
+  /** Testo digitato nel campo di ricerca paziente. */
+  patientSearchText = '';
+  private patientSearchDebounce?: ReturnType<typeof setTimeout>;
+
+  /** Mostra il nome del paziente selezionato nell'input dell'autocomplete. */
+  displayPatient = (p: PatientOption | string | null): string => {
+    if (!p) return '';
+    return typeof p === 'string' ? p : p.label;
+  };
+
+  /** Debounce la ricerca remota; ignora finché < 2 caratteri. */
+  onPatientSearchInput(term: string): void {
+    if (this.patientSearchDebounce) clearTimeout(this.patientSearchDebounce);
+    // Se l'utente cancella il testo, azzera anche il filtro.
+    if (!term || !term.trim()) {
+      this.patientIdChange.emit(null);
+    }
+    const value = (term || '').trim();
+    if (value.length < 2) return;
+    this.patientSearchDebounce = setTimeout(() => {
+      this.patientSearchTerm.emit(value);
+    }, 300);
+  }
+
+  onPatientSelected(p: PatientOption): void {
+    this.patientSearchText = p.label;
+    this.patientIdChange.emit(p.id);
+  }
+
+  clearPatient(): void {
+    this.patientSearchText = '';
+    this.patientIdChange.emit(null);
+    this.patientSearchTerm.emit('');
+  }
+
+  // ==================== BOTTONI RAPIDI DATA ====================
+
+  /** Oggi: dal === al === oggi. */
+  setToday(): void {
+    const now = new Date();
+    const iso = this.toIsoDate(now);
+    this.dateRangeChange.emit({ from: iso, to: iso });
+  }
+
+  /** Questa settimana: lunedì → domenica della settimana corrente. */
+  setThisWeek(): void {
+    const now = new Date();
+    const dow = now.getDay(); // 0=Dom..6=Sab
+    const diffToMonday = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    this.dateRangeChange.emit({ from: this.toIsoDate(monday), to: this.toIsoDate(sunday) });
+  }
+
+  /** Questo mese: primo → ultimo giorno del mese corrente. */
+  setThisMonth(): void {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    this.dateRangeChange.emit({ from: this.toIsoDate(first), to: this.toIsoDate(last) });
   }
 }

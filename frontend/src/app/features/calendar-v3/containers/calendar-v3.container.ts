@@ -46,6 +46,7 @@ import { GymSlotSummaryV3Component, GymSlotSummaryV3Action } from '../components
 // Dialog Material esistenti
 import { MatDialog } from '@angular/material/dialog';
 import { EventMatDialogComponent, EventMatDialogData, EventMatDialogResult } from '../../../shared/components/event-mat-dialog';
+import { RecurringConflictsDialogComponent } from '../../../shared/components/recurring-scope-panel/recurring-conflicts-dialog.component';
 import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogData, GymAppointmentMatDialogResult } from '../../../shared/components/gym-appointment-mat-dialog';
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
@@ -70,6 +71,7 @@ import { Appointment } from '../../../models/appointment.model';
 import { AvailabilityAppointment } from '../../../graphql/generated/types';
 import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
 import { Treatment } from '../../../models/treatment.model';
+import { TreatmentService } from '../../../services/treatment.service';
 
 @Component({
   selector: 'app-calendar-v3-container',
@@ -131,6 +133,11 @@ import { Treatment } from '../../../models/treatment.model';
             [treatments]="treatments"
             [instrumentCategories]="instrumentCategories"
             [collapsed]="sidebarCollapsed"
+            [showGymInstructors]="showGymInstructorsInOperators"
+            [initialCategory]="initialSelectedCategory"
+            [weekly]="config.viewType === 'weekly'"
+            [visibleDates]="visibleDates"
+            [selectedDate]="selectedTreatmentDay"
             (toggleOperator)="stateService.toggleOperator($event)"
             (setOperatorSelection)="stateService.setOperatorSelection($event.operatorIds, $event.selected)"
             (toggleCollapsed)="sidebarCollapsed = !sidebarCollapsed"
@@ -146,12 +153,15 @@ import { Treatment } from '../../../models/treatment.model';
               [gridData]="operatorGridData"
               [columnWidth]="config.compactMode ? 0 : (config.viewType === 'weekly' ? 120 : 180)"
               [showDateInHeader]="config.viewType === 'weekly'"
+              [selectedDate]="selectedTreatmentDay"
+              (dateHeaderClick)="onDateHeaderClick($event)"
               [currentTimeTop]="currentTimeTop"
               [compactMode]="config.compactMode"
               [availableSlots]="availableSlots"
               [highlightedAppointmentId]="highlightedAppointmentId"
               [showUnavailablePattern]="showUnavailableCellsBackground"
               (cellDblClick)="onCellDblClick($event)"
+              (availableSlotClick)="onAvailableSlotDblClick($event)"
               (availableSlotDblClick)="onAvailableSlotDblClick($event)"
               (eventClick)="onEventClick($event)"
               (eventDblClick)="onEventDblClick($event)"
@@ -227,6 +237,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private dialog = inject(MatDialog);
   private appointmentService = inject(AvailabilityAppointmentService);
   private sseService = inject(SseService);
+  private treatmentService = inject(TreatmentService);
   private instrumentService = inject(InstrumentService);
   private gymRoomService = inject(GymRoomService);
   private overlay = inject(Overlay);
@@ -245,6 +256,17 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   showUnavailableCellsBackground = false;
   /** Da calendar settings: operatori tutti selezionati all'apertura. */
   operatorsSelectedOnLoad = false;
+  /** Da calendar settings: mostra categoria/operatori "Istruttori palestra". */
+  showGymInstructorsInOperators = true;
+  /** Da calendar settings: categoria operatori di default in sidebar (all|doctor|physiotherapist|gym_instructor). */
+  defaultOperatorCategory = 'all';
+  /** Categoria iniziale da riflettere nel dropdown della sidebar ('' = Tutte). */
+  initialSelectedCategory = '';
+  /**
+   * Giorno (YYYY-MM-DD) selezionato cliccando una colonna nella griglia in
+   * vista settimanale: filtra/espande i trattamenti di quel giorno in sidebar.
+   */
+  selectedTreatmentDay: string | null = null;
   operatorGridData: OperatorGridData | null = null;
   currentTimeTop = -1;
   private currentTimeInterval: any;
@@ -257,7 +279,9 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private operatorSelectionRestored = false;
 
   // Search slot state
-  slotSearchEnabled = false;
+  // "Mostra slot disponibili" abilitato di default (deve combaciare con la
+  // sidebar v2 riusata, che lo mostra spuntato all'avvio).
+  slotSearchEnabled = true;
   searchFilters: SearchFilters = {
     duration: 45, withInstrument: false, instrumentCount: 1,
     instrumentPosition: 'first', instrumentOrderMatters: false,
@@ -316,6 +340,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
           this.blockOutsideAvailability = settings.blockAppointmentsOutsideAvailability;
           this.showUnavailableCellsBackground = settings.showUnavailableCellsBackground;
           this.operatorsSelectedOnLoad = settings.operatorsSelectedOnLoad;
+          this.showGymInstructorsInOperators = settings.showGymInstructorsInOperators;
+          this.defaultOperatorCategory = settings.defaultOperatorCategory || 'all';
 
           // Le impostazioni di /settings (durata slot, vista, orari,
           // weekend) sono il default iniziale, ma vanno RIAPPLICATE se
@@ -327,6 +353,12 @@ export class CalendarV3Container implements OnInit, OnDestroy {
             showWorkingHoursOnly: settings.showWorkingHoursOnly,
             showWeekend: settings.showWeekend,
             defaultView: settings.defaultView,
+            // Anche le impostazioni che pilotano la selezione iniziale operatori
+            // devono invalidare lo snapshot, così cambiarle riapplica il default
+            // (altrimenti resterebbe la selezione salvata stantia → lista vuota).
+            operatorsSelectedOnLoad: settings.operatorsSelectedOnLoad,
+            showGymInstructorsInOperators: settings.showGymInstructorsInOperators,
+            defaultOperatorCategory: settings.defaultOperatorCategory,
           });
           const prevSnapshot = sessionStorage.getItem(CalendarV3Container.SETTINGS_SNAPSHOT_KEY);
           const hasStoredState = sessionStorage.getItem('calendar-v2-state') !== null;
@@ -360,18 +392,42 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       const savedSelection = settingsChanged
         ? null
         : this.loadOperatorSelection();
-      const calendarOperators: CalendarOperator[] = operators.map(op => ({
-        id: op.id,
-        operatorId: op.id,
-        name: `${op.name}${op.surname ? ' ' + op.surname : ''}`,
-        color: op.color || '#667eea',
-        active: true,
-        selected: savedSelection
-          ? savedSelection.has(op.id)
-          : this.operatorsSelectedOnLoad,
-        hasTemplate: true,
-        macroCategory: op.macroCategory,
-      }));
+
+      // Categoria di default effettiva: se è "gym_instructor" ma gli istruttori
+      // sono nascosti, oppure se nessun operatore ha quella categoria, si ricade
+      // su "all". Usata solo al primo caricamento (nessuna selezione salvata).
+      const effectiveDefaultCategory = this.resolveDefaultOperatorCategory(operators);
+      this.initialSelectedCategory = effectiveDefaultCategory === 'all' ? '' : effectiveDefaultCategory;
+
+      const matchesDefaultCategory = (op: any): boolean => {
+        if (effectiveDefaultCategory === 'all') return true;
+        return String(op.macroCategory).toLowerCase() === effectiveDefaultCategory;
+      };
+
+      const calendarOperators: CalendarOperator[] = operators.map(op => {
+        // Istruttori palestra nascosti dalle impostazioni: mai selezionati,
+        // così non compaiono né in sidebar né nella griglia.
+        const gymHidden = !this.showGymInstructorsInOperators
+          && String(op.macroCategory).toLowerCase() === 'gym_instructor';
+        // Selezione iniziale (nessuna selezione salvata):
+        // - "Seleziona tutti all'apertura" decide SE partono selezionati;
+        // - la categoria di default è solo un filtro di VISUALIZZAZIONE, non
+        //   forza la selezione. Se "seleziona tutti" è ON e c'è una categoria,
+        //   si selezionano solo gli operatori di quella categoria.
+        const freshSelected = this.operatorsSelectedOnLoad && matchesDefaultCategory(op);
+        return {
+          id: op.id,
+          operatorId: op.id,
+          name: `${op.name}${op.surname ? ' ' + op.surname : ''}`,
+          color: op.color || '#667eea',
+          active: true,
+          selected: gymHidden
+            ? false
+            : (savedSelection ? savedSelection.has(op.id) : freshSelected),
+          hasTemplate: true,
+          macroCategory: op.macroCategory,
+        };
+      });
 
       this.stateService.setOperators(calendarOperators);
       // Persiste subito lo stato iniziale (e ripulisce un'eventuale
@@ -421,6 +477,11 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     ).subscribe(([config, dates, operators]) => {
       this.config = config;
       this.visibleDates = dates;
+      // Se il giorno selezionato per i trattamenti non e' piu' nel range
+      // visibile (cambio settimana o passaggio a vista giornaliera), azzeralo.
+      if (this.selectedTreatmentDay && !dates.includes(this.selectedTreatmentDay)) {
+        this.selectedTreatmentDay = null;
+      }
       this.updateDateLabel();
       this.loadData(config, dates, operators);
     });
@@ -447,6 +508,19 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         JSON.stringify(selectedIds),
       );
     } catch { /* ignore */ }
+  }
+
+  /**
+   * Determina la categoria di default effettiva da applicare alla sidebar:
+   * - 'gym_instructor' ma istruttori nascosti → fallback 'all'
+   * - categoria specifica senza operatori corrispondenti → fallback 'all'
+   */
+  private resolveDefaultOperatorCategory(operators: any[]): string {
+    let cat = (this.defaultOperatorCategory || 'all').toLowerCase();
+    if (cat === 'all') return 'all';
+    if (cat === 'gym_instructor' && !this.showGymInstructorsInOperators) return 'all';
+    const hasAny = operators.some(o => String(o.macroCategory).toLowerCase() === cat);
+    return hasAny ? cat : 'all';
   }
 
   /**
@@ -729,7 +803,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       instrumentCategories: this.instrumentCategories,
     };
     const ref = this.dialog.open(EventMatDialogComponent, {
-      width: '700px',
+      width: '600px',
       maxWidth: '95vw',
       disableClose: false,
       data: dialogData,
@@ -825,6 +899,18 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     return count;
   }
 
+  // ==================== TRATTAMENTI: FILTRO PER GIORNO ====================
+
+  /**
+   * Click su un'intestazione giorno/colonna nella griglia (vista settimanale):
+   * seleziona quel giorno per filtrare/espandere i trattamenti in sidebar.
+   * Ri-cliccare lo stesso giorno deseleziona (torna a tutta la settimana).
+   */
+  onDateHeaderClick(date: string): void {
+    this.selectedTreatmentDay = this.selectedTreatmentDay === date ? null : date;
+    this.cdr.markForCheck();
+  }
+
   // ==================== SLOT SEARCH ====================
 
   onSlotSearchToggle(enabled: boolean): void {
@@ -879,10 +965,14 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     const operatorIds = operators.map(o => o.operatorId);
     const operatorMap = new Map(operators.map(o => [o.operatorId, o]));
 
+    const { customInstrumentSlots, instrumentOrderMatters } = this.buildInstrumentSlotsFromFilters();
+
     this.operatorService.getPhysiotherapistAvailableSlotsBatch(
       operatorIds,
       this.visibleDates,
       this.searchFilters.duration,
+      customInstrumentSlots,
+      instrumentOrderMatters,
     ).pipe(takeUntil(this.destroy$)).subscribe({
       next: (slots) => {
         this.availableSlots = slots
@@ -902,6 +992,50 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       },
     });
+  }
+
+  /**
+   * Costruisce i customInstrumentSlots per la ricerca batch a partire dai
+   * filtri della sidebar. Replica la logica di offset del dialog appuntamento
+   * (event-mat-dialog buildInstrumentData):
+   * - 1 strumento: 'first' → [0,30], 'second' → [durata-30, durata]
+   * - 2 strumenti durata 45 → [0,30] + [15,45]; altrimenti metà/metà
+   *
+   * Ritorna slot vuoti quando il filtro strumenti è disattivo o quando la
+   * categoria è "Qualsiasi" (null): senza una categoria concreta il backend
+   * non può validare lo strumento, quindi si ricade sul solo filtro durata.
+   */
+  private buildInstrumentSlotsFromFilters(): {
+    customInstrumentSlots?: { instrumentCategoryId: string; startOffsetMinutes: number; endOffsetMinutes: number }[];
+    instrumentOrderMatters?: boolean;
+  } {
+    const f = this.searchFilters;
+    if (!f.withInstrument || !f.instrumentCategoryId) {
+      return {};
+    }
+
+    const duration = f.duration;
+    const slots: { instrumentCategoryId: string; startOffsetMinutes: number; endOffsetMinutes: number }[] = [];
+
+    if (f.instrumentCount === 2 && f.instrument2CategoryId) {
+      if (duration === 45) {
+        slots.push({ instrumentCategoryId: f.instrumentCategoryId, startOffsetMinutes: 0, endOffsetMinutes: 30 });
+        slots.push({ instrumentCategoryId: f.instrument2CategoryId, startOffsetMinutes: 15, endOffsetMinutes: 45 });
+      } else {
+        const half = Math.floor(duration / 2);
+        slots.push({ instrumentCategoryId: f.instrumentCategoryId, startOffsetMinutes: 0, endOffsetMinutes: half });
+        slots.push({ instrumentCategoryId: f.instrument2CategoryId, startOffsetMinutes: half, endOffsetMinutes: duration });
+      }
+      return { customInstrumentSlots: slots, instrumentOrderMatters: f.instrumentOrderMatters };
+    }
+
+    // 1 strumento
+    if (duration === 30 || f.instrumentPosition === 'first') {
+      slots.push({ instrumentCategoryId: f.instrumentCategoryId, startOffsetMinutes: 0, endOffsetMinutes: 30 });
+    } else {
+      slots.push({ instrumentCategoryId: f.instrumentCategoryId, startOffsetMinutes: duration - 30, endOffsetMinutes: duration });
+    }
+    return { customInstrumentSlots: slots };
   }
 
   private buildSlotPosition(op: CalendarOperator, date: string, slot: any): AvailableSlotPosition {
@@ -947,10 +1081,43 @@ export class CalendarV3Container implements OnInit, OnDestroy {
               this.reloadCurrentView();
             }
           }
+          // Cambio di stato di un trattamento gia' in lista: refetch mirato del
+          // singolo trattamento, cosi' la sidebar (badge stato + dettagli) si
+          // aggiorna senza ricaricare la griglia ne' resettare ricerca/popup.
+          if (event.type === 'treatment_status_changed' && event.treatmentId
+              && this.treatments.some(t => t.id === event.treatmentId)) {
+            this.refreshSingleTreatment(event.treatmentId);
+            return;
+          }
+          // Creazione/eliminazione (o status_changed di un trattamento non in
+          // lista, che potrebbe doverci entrare): reload completo.
           if (['treatment_created', 'treatment_status_changed', 'treatment_deleted'].includes(event.type)) {
             this.reloadCurrentView();
           }
         },
+      });
+  }
+
+  /**
+   * Refetch mirato di un singolo trattamento (su evento SSE di cambio stato) e
+   * sostituzione in-place nell'array, mantenendo l'ordine. Riassegna l'array
+   * per far girare l'OnPush change-detection. Se non torna piu' (es. uscito dai
+   * filtri lato server) ricarica la vista.
+   */
+  private refreshSingleTreatment(treatmentId: string): void {
+    this.treatmentService.getTreatment(treatmentId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (fresh) => {
+          if (!fresh) {
+            this.reloadCurrentView();
+            return;
+          }
+          this.treatments = this.treatments.map(t => t.id === treatmentId ? fresh : t);
+          // Mantieni allineato il popup dettagli se stava mostrando questo trattamento.
+          this.cdr.markForCheck();
+        },
+        error: () => this.reloadCurrentView(),
       });
   }
 
@@ -1350,7 +1517,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private openEventDialog(data: EventMatDialogData): void {
     const dialogData = { ...data, instrumentCategories: this.instrumentCategories };
     const dialogRef = this.dialog.open(EventMatDialogComponent, {
-      width: '700px',
+      width: '600px',
       maxWidth: '95vw',
       disableClose: false,
       data: dialogData,
@@ -1478,8 +1645,38 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       } else if (error?.message) {
         msg = error.message;
       }
+
+      // Conflitti su creazione serie ricorrente: il backend blocca e include
+      // il JSON dei conflitti nel messaggio. Mostriamo il riepilogo dedicato.
+      const conflicts = this.tryParseRecurringConflicts(msg);
+      if (conflicts) {
+        this.dialog.open(RecurringConflictsDialogComponent, {
+          width: '520px', maxWidth: '95vw',
+          data: { title: 'Creazione serie bloccata', conflicts },
+        });
+        return;
+      }
+
       console.error('[CalendarV3] Save error:', error);
       alert(msg);
+    }
+  }
+
+  /**
+   * Estrae l'elenco conflitti dal messaggio d'errore backend
+   * `RECURRING_SERIES_CONFLICT: [...]`. Ritorna null se non è quel tipo.
+   */
+  private tryParseRecurringConflicts(msg: string): any[] | null {
+    const marker = 'RECURRING_SERIES_CONFLICT';
+    const idx = msg.indexOf(marker);
+    if (idx < 0) return null;
+    const jsonStart = msg.indexOf('[', idx);
+    if (jsonStart < 0) return null;
+    try {
+      const parsed = JSON.parse(msg.slice(jsonStart));
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
     }
   }
 

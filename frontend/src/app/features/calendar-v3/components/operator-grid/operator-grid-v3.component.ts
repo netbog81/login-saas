@@ -57,8 +57,10 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       @if (compactMode && showDateInHeader) {
         <div class="day-headers-row" [style.margin-left.px]="timeColumnWidth">
           @for (date of gridData.dates; track date) {
-            <div class="day-group-header"
-                 [style.flex-basis.%]="100 / gridData.dates.length">
+            <div class="day-group-header day-group-header-clickable"
+                 [class.day-selected]="selectedDate === date"
+                 [style.flex-basis.%]="100 / gridData.dates.length"
+                 (click)="dateHeaderClick.emit(date)">
               <div class="day-label">{{ formatDateShort(date) }}</div>
             </div>
           }
@@ -74,10 +76,13 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                  [style.max-width.px]="compactMode ? undefined : columnWidth"
                  [class.flex-col]="compactMode"
                  [class.compact-header]="compactMode"
+                 [class.day-selected]="showDateInHeader && selectedDate === col.date"
+                 [class.column-header-clickable]="showDateInHeader"
                  [style.background]="compactMode ? col.operatorColor : undefined"
                  [style.border-bottom-color]="col.operatorColor"
                  [matTooltip]="compactMode ? col.operatorName + (showDateInHeader ? ' - ' + formatDateShort(col.date) : '') : ''"
-                 matTooltipPosition="above">
+                 matTooltipPosition="above"
+                 (click)="showDateInHeader && dateHeaderClick.emit(col.date)">
               @if (!compactMode) {
                 <span class="operator-name">{{ col.operatorName }}</span>
                 @if (showDateInHeader) {
@@ -157,6 +162,7 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                        [style.height.px]="slot.heightPx"
                        [style.border-color]="slot.color"
                        [class.compact-slot]="slot.heightPx < 50"
+                       (click)="onAvailableSlotClick($event, slot)"
                        (dblclick)="onAvailableSlotDblClick($event, slot)">
                     <span class="slot-time">{{ slot.startTime }} - {{ slot.endTime }}</span>
                     @if (slot.heightPx >= 50) {
@@ -234,6 +240,18 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       min-height: 14px;
       border-bottom-width: 0;
       cursor: pointer;
+    }
+
+    /* Header colonna/giorno cliccabile (filtro trattamenti per giorno) */
+    .column-header-clickable { cursor: pointer; }
+    .column-header-clickable:hover { background: #f1f5f9; }
+    .day-group-header-clickable { cursor: pointer; }
+    .day-group-header-clickable:hover { background: #f1f5f9; }
+    /* Giorno selezionato: evidenziazione header */
+    .column-header.day-selected,
+    .day-group-header.day-selected {
+      background: #eef2ff !important;
+      box-shadow: inset 0 0 0 2px #4338ca;
     }
 
     .operator-name {
@@ -527,6 +545,8 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
   @Input() columnWidth = 150;
   @Input() timeColumnWidth = 56;
   @Input() showDateInHeader = false;
+  /** Giorno YYYY-MM-DD attualmente selezionato (filtro trattamenti): evidenzia l'header. */
+  @Input() selectedDate: string | null = null;
   @Input() currentTimeTop = -1;
   @Input() compactMode = false;
   @Input() availableSlots: AvailableSlotPosition[] = [];
@@ -541,7 +561,11 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
   @Output() eventDblClick = new EventEmitter<EventClickEvent>();
   @Output() dragMove = new EventEmitter<DragMoveEvent>();
   @Output() availableSlotDblClick = new EventEmitter<AvailableSlotPosition>();
+  /** Click singolo su uno slot disponibile (crea appuntamento, richiesta cliente). */
+  @Output() availableSlotClick = new EventEmitter<AvailableSlotPosition>();
   @Output() resizeEnd = new EventEmitter<{ appointmentId: string; newEndTime: string }>();
+  /** Click sull'intestazione di un giorno/colonna: emette la data YYYY-MM-DD. */
+  @Output() dateHeaderClick = new EventEmitter<string>();
 
   /** Esposto al template per la soglia di visibilita' orario. */
   readonly TIME_VISIBLE_MIN_HEIGHT = TIME_VISIBLE_MIN_HEIGHT;
@@ -572,9 +596,15 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
     return this.availableSlots.filter(s => s.operatorId === operatorId && s.date === date);
   }
 
-  onAvailableSlotDblClick(event: MouseEvent, slot: AvailableSlotPosition): void {
+  onAvailableSlotClick(event: MouseEvent, slot: AvailableSlotPosition): void {
     event.stopPropagation();
-    this.availableSlotDblClick.emit(slot);
+    this.availableSlotClick.emit(slot);
+  }
+
+  onAvailableSlotDblClick(event: MouseEvent, slot: AvailableSlotPosition): void {
+    // Il click singolo gestisce gia' la creazione; qui evitiamo solo che il
+    // doppio click propaghi alla cella sottostante.
+    event.stopPropagation();
   }
 
   getColumnsForDate(date: string): OperatorColumnData[] {

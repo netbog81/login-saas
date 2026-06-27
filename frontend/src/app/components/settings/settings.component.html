@@ -222,6 +222,42 @@
           e l'utente sceglie quali mostrare.
         </small>
       </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="calendarSettings.showGymInstructorsInOperators"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Carica categoria Istruttori Palestra nella lista operatori</span>
+        </label>
+        <small class="hint">
+          Se abilitato, la categoria "Istruttori palestra" e i relativi operatori
+          appaiono nell'elenco operatori della barra laterale del calendario.
+          Se disabilitato, vengono nascosti sia la categoria che gli istruttori.
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label for="defaultOperatorCategory">Categoria operatori mostrata di default</label>
+        <select
+          id="defaultOperatorCategory"
+          [(ngModel)]="calendarSettings.defaultOperatorCategory"
+          (ngModelChange)="onSettingChange()">
+          <option value="all">Tutte le categorie</option>
+          <option value="doctor">Solo Medici</option>
+          <option value="physiotherapist">Solo Fisioterapisti</option>
+          <option value="gym_instructor" [disabled]="!calendarSettings.showGymInstructorsInOperators">
+            Solo Istruttori palestra
+          </option>
+        </select>
+        <small class="hint">
+          All'apertura del calendario, la barra laterale filtra gli operatori su
+          questa categoria. "Solo Istruttori palestra" è disponibile solo se
+          l'opzione qui sopra è attiva; se non lo è, si ricade su "Tutte".
+        </small>
+      </div>
     </section>
 
     <!-- Auto Attendance Section -->

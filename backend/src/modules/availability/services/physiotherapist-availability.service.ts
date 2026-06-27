@@ -36,6 +36,10 @@ export interface CheckAvailabilityParams {
   durationMinutes?: number;
   serviceId?: string;
   customInstrumentSlots?: InstrumentSlot[];
+  // Rilevante solo per slot custom (senza serviceId): se true, l'ordine delle
+  // categorie strumento richieste è vincolante. Con serviceId il valore è
+  // dedotto dal servizio e questo campo viene ignorato.
+  instrumentOrderMatters?: boolean;
 }
 
 export interface AvailabilityResult {
@@ -84,7 +88,9 @@ export class PhysiotherapistAvailabilityService {
 
     // Determine final parameters: custom overrides service
     let requiredInstruments: ServiceInstrument[] = [];
-    let instrumentOrderMatters = false;
+    // Per slot custom (senza serviceId) onoriamo il flag passato dal chiamante;
+    // con serviceId verrà sovrascritto dal valore del servizio più sotto.
+    let instrumentOrderMatters = params.instrumentOrderMatters ?? false;
     let requestedSlots = customInstrumentSlots;
     let serviceConfig: { defaultInstrumentSlotOffset?: number; reverseInstrumentOrder?: boolean } | undefined;
 
@@ -937,14 +943,26 @@ export class PhysiotherapistAvailabilityService {
     operatorIds: string[],
     dates: string[],
     durationMinutes: number,
+    customInstrumentSlots?: { instrumentCategoryId: string; startOffsetMinutes: number; endOffsetMinutes: number }[],
+    instrumentOrderMatters?: boolean,
   ): Promise<{
     operatorId: string;
     date: string;
     startTime: string;
     endTime: string;
     available: boolean;
+    suggestedInstruments?: InstrumentSlot[];
   }[]> {
     if (operatorIds.length === 0 || dates.length === 0) return [];
+
+    // Quando la sidebar v3 richiede slot "con strumento", riusiamo la logica
+    // instrument-aware di checkAvailability() per validare ogni candidato:
+    // mappiamo gli input in InstrumentSlot (categoryName placeholder, riempito
+    // dal service) come fa il resolver single-operator.
+    const requireInstruments = !!customInstrumentSlots && customInstrumentSlots.length > 0;
+    const instrumentSlotsForCheck: InstrumentSlot[] | undefined = requireInstruments
+      ? customInstrumentSlots!.map(s => ({ ...s, categoryName: '' }))
+      : undefined;
 
     const startDate = new Date(dates[0]);
     const endDate = new Date(dates[dates.length - 1]);
@@ -1029,12 +1047,10 @@ export class PhysiotherapistAvailabilityService {
           for (const block of freeBlocks) {
             let currentMinutes = block.startMinutes;
             while (currentMinutes + durationMinutes <= block.endMinutes) {
-              results.push({
-                operatorId: opId, date: dateStr,
-                startTime: this.minutesToTime(currentMinutes),
-                endTime: this.minutesToTime(currentMinutes + durationMinutes),
-                available: true,
-              });
+              await this.pushBatchSlot(
+                results, opId, dateStr, date, currentMinutes, durationMinutes,
+                requireInstruments, instrumentSlotsForCheck, instrumentOrderMatters,
+              );
               currentMinutes += durationMinutes;
             }
           }
@@ -1079,12 +1095,10 @@ export class PhysiotherapistAvailabilityService {
             for (const block of freeBlocks) {
               let currentMinutes = block.startMinutes;
               while (currentMinutes + durationMinutes <= block.endMinutes) {
-                results.push({
-                  operatorId: opId, date: dateStr,
-                  startTime: this.minutesToTime(currentMinutes),
-                  endTime: this.minutesToTime(currentMinutes + durationMinutes),
-                  available: true,
-                });
+                await this.pushBatchSlot(
+                  results, opId, dateStr, date, currentMinutes, durationMinutes,
+                  requireInstruments, instrumentSlotsForCheck, instrumentOrderMatters,
+                );
                 currentMinutes += durationMinutes;
               }
             }
@@ -1094,6 +1108,54 @@ export class PhysiotherapistAvailabilityService {
     }
 
     return results;
+  }
+
+  /**
+   * Aggiunge uno slot candidato ai risultati batch.
+   *
+   * Senza filtro strumenti: push diretto (percorso veloce, comportamento
+   * storico). Con filtro strumenti: rivalida lo slot tramite checkAvailability()
+   * (instrument-aware, riusa la logica del flusso single-operator) e lo include
+   * solo se gli strumenti richiesti sono effettivamente disponibili, allegando
+   * gli strumenti suggeriti.
+   */
+  private async pushBatchSlot(
+    results: {
+      operatorId: string; date: string; startTime: string; endTime: string;
+      available: boolean; suggestedInstruments?: InstrumentSlot[];
+    }[],
+    opId: string,
+    dateStr: string,
+    date: Date,
+    startMinutes: number,
+    durationMinutes: number,
+    requireInstruments: boolean,
+    instrumentSlotsForCheck: InstrumentSlot[] | undefined,
+    instrumentOrderMatters?: boolean,
+  ): Promise<void> {
+    const startTime = this.minutesToTime(startMinutes);
+    const endTime = this.minutesToTime(startMinutes + durationMinutes);
+
+    if (!requireInstruments) {
+      results.push({ operatorId: opId, date: dateStr, startTime, endTime, available: true });
+      return;
+    }
+
+    const check = await this.checkAvailability({
+      operatorId: opId,
+      date,
+      startTime,
+      durationMinutes,
+      customInstrumentSlots: instrumentSlotsForCheck,
+      instrumentOrderMatters,
+    });
+
+    if (check.available) {
+      results.push({
+        operatorId: opId, date: dateStr, startTime, endTime, available: true,
+        suggestedInstruments: check.suggestedInstruments,
+      });
+    }
   }
 
   /**

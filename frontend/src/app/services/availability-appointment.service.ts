@@ -22,6 +22,7 @@ import {
   SEND_APPOINTMENT_RECAP,
   CANCEL_RECURRING_SERIES,
   DELETE_RECURRING_SERIES,
+  UPDATE_RECURRING_SERIES_TIME,
 } from '../graphql/operations/availability-appointment.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
@@ -325,16 +326,61 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
   }
 
   /**
-   * Elimina (hard delete) appuntamenti di una serie ricorrente
+   * Elimina (hard delete) appuntamenti di una serie ricorrente.
+   * Scope: CURRENT_ONLY / THIS_AND_FOLLOWING / ALL / DATE_RANGE.
    */
   deleteRecurringSeries(
     appointmentId: string,
     fromDate: string,
-    scope: 'THIS_AND_FOLLOWING' | 'ALL',
+    scope: RecurringSeriesScope,
+    opts?: { rangeFrom?: string; rangeTo?: string; includeCurrent?: boolean },
   ): Observable<number> {
     return this.mutate<{ deleteRecurringSeries: number }>(
       DELETE_RECURRING_SERIES,
-      { appointmentId, fromDate, scope }
+      {
+        appointmentId, fromDate, scope,
+        rangeFrom: opts?.rangeFrom ?? null,
+        rangeTo: opts?.rangeTo ?? null,
+        includeCurrent: opts?.includeCurrent ?? null,
+      }
     ).pipe(map((result) => result.deleteRecurringSeries));
   }
+
+  /**
+   * Modifica orario/durata delle occorrenze di una serie ricorrente nello
+   * scope scelto. Se la risposta contiene conflitti, NULLA è stato applicato.
+   */
+  updateRecurringSeriesTime(input: {
+    appointmentId: string;
+    scope: RecurringSeriesScope;
+    startTime: string;
+    endTime: string;
+    rangeFrom?: string;
+    rangeTo?: string;
+    includeCurrent?: boolean;
+  }): Observable<RecurringSeriesOperationResult> {
+    return this.mutate<{ updateRecurringSeriesTime: RecurringSeriesOperationResult }>(
+      UPDATE_RECURRING_SERIES_TIME,
+      { input },
+    ).pipe(map((result) => result.updateRecurringSeriesTime));
+  }
+}
+
+export type RecurringSeriesScope = 'CURRENT_ONLY' | 'THIS_AND_FOLLOWING' | 'ALL' | 'DATE_RANGE';
+
+export interface RecurringOccurrenceConflict {
+  appointmentId?: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  type: string; // 'overlap' | 'unavailable'
+  reason: string;
+  conflictingStartTime?: string | null;
+  conflictingEndTime?: string | null;
+}
+
+export interface RecurringSeriesOperationResult {
+  applied: boolean;
+  affectedCount: number;
+  conflicts: RecurringOccurrenceConflict[];
 }

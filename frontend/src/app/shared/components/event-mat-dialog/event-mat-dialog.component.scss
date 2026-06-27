@@ -9,8 +9,8 @@
 }
 
 mat-dialog-content {
-  min-width: 500px;
-  max-width: 700px;
+  min-width: 420px;
+  max-width: 600px;
   // NOTA: padding-top su mat-dialog-content NON funziona con Angular Material MDC
   // perché Material usa margini negativi internamente. Usare margin-top su .form-row:first-child
 }
@@ -18,8 +18,8 @@ mat-dialog-content {
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 4px;
 
   &:first-child {
     margin-top: 8px; // Spazio per floating label del primo campo (Data/Operatore)
@@ -226,19 +226,26 @@ mat-form-field {
         margin-bottom: 12px;
       }
 
-      .end-options {
+      // Opzioni di fine ricorrenza sulla stessa riga (compatto).
+      .end-options-inline {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 16px;
+
         .end-option {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 8px;
+          gap: 6px;
+          white-space: nowrap;
 
           .occurrences-field {
-            width: 80px;
+            width: 64px;
           }
 
           .until-field {
-            width: 160px;
+            width: 150px;
           }
         }
       }
@@ -399,3 +406,33 @@ mat-radio-group {
     button { font-size: 0.8rem; }
   }
 }
+
+// ===== COMPATTAZIONE GLOBALE (riduce l'altezza del dialog) =====
+// Richiesta cliente: il modulo era troppo lungo. Riduce margini/padding
+// delle sezioni e l'altezza dei controlli più ingombranti, senza toccare
+// la struttura. Override volutamente in coda per vincere sulla specificità.
+.toggle-row { margin-bottom: 8px; padding: 6px 10px; }
+.patient-section,
+.services-section,
+.instruments-section,
+.recurring-section,
+.status-section { margin-bottom: 8px; }
+.instruments-section,
+.recurring-section { padding: 8px 10px; }
+.instruments-section .instruments-config,
+.recurring-section .recurring-config { margin-top: 8px; padding-top: 8px; }
+.services-section .section-label,
+.weekday-selector > label,
+.end-config > label { margin-bottom: 4px !important; }
+.recurring-section .weekday-selector { margin-bottom: 8px; }
+.recurring-section .weekday-selector .weekday-buttons button {
+  min-width: 36px !important;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  font-size: 0.75rem;
+}
+.recurring-section .end-config { margin-bottom: 8px; }
+.recurring-section .recurring-preview { margin-top: 6px; }
+.instruments-section .instruments-config mat-form-field { margin-bottom: 4px; }
+.instruments-section .instruments-summary { padding: 8px 10px; margin-top: 8px; }

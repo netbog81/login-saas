@@ -44,7 +44,8 @@ export enum ConflictReason {
   TEMPLATE_CHANGE = 'template_change',        // Cambio template (non loggato)
   OPERATOR_SICK = 'operator_sick',            // Malattia operatore
   OPERATOR_VACATION = 'operator_vacation',    // Ferie operatore
-  OPERATOR_UNAVAILABLE = 'operator_unavailable' // Altro motivo assenza
+  OPERATOR_UNAVAILABLE = 'operator_unavailable', // Altro motivo assenza
+  RECURRING_APPOINTMENT = 'recurring_appointment' // Occorrenza serie ricorrente in conflitto
 }
 
 // Register enums for GraphQL

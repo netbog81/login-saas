@@ -253,7 +253,7 @@ export interface TrattamentiFilters {
 
 // ==================== VISTA ====================
 
-export type TrattamentiViewMode = 'flat' | 'by-patient' | 'by-operator';
+export type TrattamentiViewMode = 'flat' | 'by-patient' | 'by-operator' | 'by-day-operator';
 
 // ==================== INPUT MUTAZIONI ====================
 

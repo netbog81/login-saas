@@ -16,6 +16,7 @@ import { OperatorAvailabilityV3 } from '../dto/operator-availability-v3.type';
 import { RebookingSlot } from '../dto/rebooking-slot.output';
 import { PhysiotherapistSlotBatchOutput } from '../dto/physiotherapist-slot.output';
 import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherapist-availability.input';
+import { InstrumentSlotInput } from '../dto/instrument-slot.input';
 import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
 import { GymSlotOutput } from '../dto/gym-slot.output';
 // import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
@@ -110,8 +111,18 @@ export class AvailabilityResolver {
     @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
     @Args('dates', { type: () => [String] }) dates: string[],
     @Args('durationMinutes', { type: () => Int }) durationMinutes: number,
+    @Args('customInstrumentSlots', { type: () => [InstrumentSlotInput], nullable: true })
+    customInstrumentSlots?: InstrumentSlotInput[],
+    @Args('instrumentOrderMatters', { type: () => Boolean, nullable: true })
+    instrumentOrderMatters?: boolean,
   ): Promise<PhysiotherapistSlotBatchOutput[]> {
-    return this.physiotherapistAvailabilityService.getAvailableSlotsBatch(operatorIds, dates, durationMinutes);
+    return this.physiotherapistAvailabilityService.getAvailableSlotsBatch(
+      operatorIds,
+      dates,
+      durationMinutes,
+      customInstrumentSlots,
+      instrumentOrderMatters,
+    );
   }
 
   @Query(() => [AvailabilitySlot], { name: 'availableSlots' })

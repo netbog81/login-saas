@@ -235,10 +235,18 @@ export class OperatorService extends BaseGraphQLService {
     operatorIds: string[],
     dates: string[],
     durationMinutes: number,
-  ): Observable<{ operatorId: string; date: string; startTime: string; endTime: string; available: boolean }[]> {
+    customInstrumentSlots?: { instrumentCategoryId: string; startOffsetMinutes: number; endOffsetMinutes: number }[],
+    instrumentOrderMatters?: boolean,
+  ): Observable<{ operatorId: string; date: string; startTime: string; endTime: string; available: boolean; suggestedInstruments?: any[] }[]> {
     return this.query<{ physiotherapistAvailableSlotsBatch: any[] }>(
       GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS_BATCH,
-      { operatorIds, dates, durationMinutes },
+      {
+        operatorIds,
+        dates,
+        durationMinutes,
+        customInstrumentSlots: customInstrumentSlots && customInstrumentSlots.length > 0 ? customInstrumentSlots : null,
+        instrumentOrderMatters: instrumentOrderMatters ?? null,
+      },
       'no-cache'
     ).pipe(map((result) => result.physiotherapistAvailableSlotsBatch || []));
   }

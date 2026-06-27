@@ -68,17 +68,28 @@ export const GET_PHYSIOTHERAPIST_AVAILABLE_SLOTS_BATCH = gql`
     $operatorIds: [ID!]!
     $dates: [String!]!
     $durationMinutes: Int!
+    $customInstrumentSlots: [InstrumentSlotInput!]
+    $instrumentOrderMatters: Boolean
   ) {
     physiotherapistAvailableSlotsBatch(
       operatorIds: $operatorIds
       dates: $dates
       durationMinutes: $durationMinutes
+      customInstrumentSlots: $customInstrumentSlots
+      instrumentOrderMatters: $instrumentOrderMatters
     ) {
       operatorId
       date
       startTime
       endTime
       available
+      suggestedInstruments {
+        instrumentCategoryId
+        categoryName
+        instrumentId
+        startOffsetMinutes
+        endOffsetMinutes
+      }
     }
   }
 `;

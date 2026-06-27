@@ -47,6 +47,7 @@ import {
 } from '../components/trattamento-detail/trattamento-detail.component';
 
 import { OperatorService } from '../../../services/operator.service';
+import { PatientService } from '../../../services/patient.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { SseService, CalendarEvent } from '../../../services/sse.service';
 
@@ -143,8 +144,10 @@ const SECRETARY_ROLES = ['admin', 'amministratore', 'superadmin', 'segreteria'];
         (billingStatusesChange)="state.setFilters({ billingStatuses: $event })"
         (dateFromChange)="state.setFilters({ dateFrom: $event })"
         (dateToChange)="state.setFilters({ dateTo: $event })"
+        (dateRangeChange)="state.setFilters({ dateFrom: $event.from, dateTo: $event.to })"
         (operatorIdChange)="state.setFilters({ operatorId: $event })"
         (patientIdChange)="state.setFilters({ patientId: $event })"
+        (patientSearchTerm)="onPatientSearch($event)"
         (readyForBillingChange)="state.setFilters({ readyForBilling: $event })"
         (isInvoicedChange)="state.setFilters({ isInvoicedToPatient: $event })"
         (scontoFEChange)="state.setFilters({ scontoFE: $event })"
@@ -236,6 +239,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     private snackBar: MatSnackBar,
     private sse: SseService,
     private cdr: ChangeDetectorRef,
+    private patientService: PatientService,
   ) {}
 
   ngOnInit(): void {
@@ -452,6 +456,10 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
   }
 
   private rebuildPatientOptions(treatments: Trattamento[]): void {
+    // Quando l'utente sta cercando un paziente dal registry, le opzioni
+    // provengono dalla ricerca remota: non sovrascriverle con i soli pazienti
+    // presenti nei risultati correnti (sarebbe un filtro circolare).
+    if (this.patientOptionsFromSearch) return;
     const map = new Map<string, string>();
     for (const t of treatments) {
       if (t.patient) {
@@ -460,6 +468,36 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     }
     this.patientOptions = Array.from(map.entries()).map(([id, label]) => ({ id, label }));
     this.patientOptions.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  /** true quando patientOptions deriva dalla ricerca registry (non dai risultati). */
+  private patientOptionsFromSearch = false;
+
+  /**
+   * Ricerca paziente nel registry (qualsiasi paziente, non solo quelli con
+   * trattamenti nel periodo filtrato). Popola le opzioni dell'autocomplete.
+   */
+  onPatientSearch(term: string): void {
+    if (!term || !term.trim()) {
+      // Ricerca azzerata: torna a derivare le opzioni dai risultati correnti.
+      this.patientOptionsFromSearch = false;
+      this.rebuildPatientOptions(this.flatTreatments);
+      this.cdr.markForCheck();
+      return;
+    }
+    this.patientOptionsFromSearch = true;
+    this.patientService.searchPatients(term.trim())
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (patients) => {
+          this.patientOptions = (patients || []).map(p => ({
+            id: p.id,
+            label: `${p.cognome ?? ''} ${p.nome ?? ''}`.trim(),
+          })).sort((a, b) => a.label.localeCompare(b.label));
+          this.cdr.markForCheck();
+        },
+        error: () => { /* silenzioso: nessun risultato */ },
+      });
   }
 
   // ==================== FILTRI ====================
@@ -1224,7 +1262,51 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       }).sort((a, b) => a.label.localeCompare(b.label));
     }
 
+    if (mode === 'by-day-operator') {
+      // Albero Giorno → Operatore: gruppo per giorno (data), e dentro
+      // suddivisione per operatore. Stessa forma a 2 livelli di by-operator,
+      // cosi' il componente lista lo renderizza senza modifiche.
+      const dayMap = new Map<string, { label: string; operators: Map<string, TrattamentoGroup> }>();
+      for (const t of treatments) {
+        const dayKey = (t.appointment?.appointmentDate || t.startedAt || '').slice(0, 10);
+        const opKey = t.operator.id;
+        const opLabel = `${t.operator.name} ${t.operator.surname || ''}`.trim();
+
+        if (!dayMap.has(dayKey)) {
+          dayMap.set(dayKey, { label: this.formatDayGroupLabel(dayKey), operators: new Map() });
+        }
+        const dayEntry = dayMap.get(dayKey)!;
+        if (!dayEntry.operators.has(opKey)) {
+          dayEntry.operators.set(opKey, { key: opKey, label: opLabel, treatments: [] });
+        }
+        dayEntry.operators.get(opKey)!.treatments.push(t);
+      }
+
+      // Ordina i giorni in modo decrescente (piu' recenti in alto), operatori A→Z.
+      return Array.from(dayMap.entries())
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([key, entry]) => {
+          const children = Array.from(entry.operators.values())
+            .sort((a, b) => a.label.localeCompare(b.label));
+          return {
+            key,
+            label: entry.label,
+            children,
+            treatments: children.flatMap(c => c.treatments),
+          };
+        });
+    }
+
     return [];
+  }
+
+  /** Etichetta gruppo-giorno: "Mercoledì 17 giu 2026". */
+  private formatDayGroupLabel(day: string): string {
+    if (!day) return 'Senza data';
+    const d = new Date(day + 'T00:00:00');
+    if (isNaN(d.getTime())) return day;
+    const s = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
   private extractError(err: any): string {

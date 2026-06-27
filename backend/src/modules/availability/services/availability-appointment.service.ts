@@ -195,6 +195,14 @@ export class AvailabilityAppointmentService {
     'APPOINTMENT_OUTSIDE_AVAILABILITY';
 
   /**
+   * Prefisso d'errore per i conflitti su serie ricorrenti (creazione o
+   * modifica): il messaggio contiene il JSON dell'elenco conflitti, cosi'
+   * il frontend lo intercetta e mostra il riepilogo.
+   */
+  static readonly RECURRING_CONFLICT_ERROR =
+    'RECURRING_SERIES_CONFLICT';
+
+  /**
    * Guard: se l'impostazione "blocca appuntamenti fuori disponibilita'" e'
    * attiva, verifica che l'intervallo [startTime, endTime] sia interamente
    * coperto dalla disponibilita' dell'operatore in quella data.
@@ -471,6 +479,32 @@ export class AvailabilityAppointmentService {
 
     if (dates.length === 0) {
       throw new BadRequestException('Nessuna data valida per la ricorrenza');
+    }
+
+    // Validazione preventiva (avvisa-e-blocca): se anche una sola occorrenza
+    // cade fuori disponibilità o si sovrappone ad un altro appuntamento, NON
+    // creiamo nulla e segnaliamo i conflitti. Saltata su appuntamenti GYM,
+    // nonRetribuito o quando l'utente forza esplicitamente.
+    const skipValidation =
+      (baseData as any).forceOutsideAvailability === true ||
+      (baseData as any).nonRetribuito === true ||
+      (baseData as any).appointmentType === AppointmentType.GYM ||
+      !(baseData as any).operatorId;
+
+    if (!skipValidation) {
+      const conflicts = await this.validateRecurringOccurrences(
+        dates.map(date => ({
+          operatorId: (baseData as any).operatorId,
+          date,
+          startTime: baseData.startTime,
+          endTime: baseData.endTime,
+        })),
+      );
+      if (conflicts.length > 0) {
+        throw new ConflictException(
+          `${AvailabilityAppointmentService.RECURRING_CONFLICT_ERROR}: ${JSON.stringify(conflicts)}`,
+        );
+      }
     }
 
     // Genera un ID di gruppo per collegare tutti gli appuntamenti
@@ -2098,7 +2132,7 @@ export class AvailabilityAppointmentService {
     fromDate: string,
     reason: string,
     cancelledBy: string,
-    scope: 'this_and_following' | 'all',
+    scope: 'current_only' | 'this_and_following' | 'all' | 'date_range',
   ): Promise<number> {
     const appointment = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
     if (!appointment || !appointment.recurringGroupId) {
@@ -2119,21 +2153,28 @@ export class AvailabilityAppointmentService {
         cancelled: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE],
       });
 
-    if (scope === 'this_and_following') {
-      qb.andWhere('"appointmentDate" >= :fromDate', { fromDate });
-    }
+    this.applyScopeWhere(qb, scope, { appointmentId, fromDate });
 
     const result = await qb.execute();
     return result.affected || 0;
   }
 
   /**
-   * Elimina (hard delete) appuntamenti di una serie ricorrente
+   * Elimina (hard delete) appuntamenti di una serie ricorrente.
+   * Scope supportati:
+   *  - 'current_only': solo l'appuntamento corrente (per data === fromDate)
+   *  - 'this_and_following': dalla data corrente in poi
+   *  - 'all': intera serie
+   *  - 'date_range': intervallo [rangeFrom, rangeTo]; se includeCurrent===false
+   *    esclude esplicitamente l'occorrenza corrente (fromDate)
    */
   async deleteRecurringSeries(
     appointmentId: string,
     fromDate: string,
-    scope: 'this_and_following' | 'all',
+    scope: 'current_only' | 'this_and_following' | 'all' | 'date_range',
+    rangeFrom?: string,
+    rangeTo?: string,
+    includeCurrent?: boolean,
   ): Promise<number> {
     const appointment = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
     if (!appointment || !appointment.recurringGroupId) {
@@ -2146,11 +2187,223 @@ export class AvailabilityAppointmentService {
       .from(AvailabilityAppointment)
       .where('"recurringGroupId" = :groupId', { groupId: appointment.recurringGroupId });
 
-    if (scope === 'this_and_following') {
-      qb.andWhere('"appointmentDate" >= :fromDate', { fromDate });
-    }
+    this.applyScopeWhere(qb, scope, { appointmentId, fromDate, rangeFrom, rangeTo, includeCurrent });
 
     const result = await qb.execute();
     return result.affected || 0;
+  }
+
+  /**
+   * Applica al QueryBuilder (update/delete) il filtro di scope sulla serie.
+   * `recurringGroupId = :groupId` deve essere già impostato dal chiamante.
+   */
+  private applyScopeWhere(
+    qb: import('typeorm').UpdateQueryBuilder<AvailabilityAppointment> | import('typeorm').DeleteQueryBuilder<AvailabilityAppointment>,
+    scope: 'current_only' | 'this_and_following' | 'all' | 'date_range',
+    params: { appointmentId: string; fromDate: string; rangeFrom?: string; rangeTo?: string; includeCurrent?: boolean },
+  ): void {
+    if (scope === 'current_only') {
+      qb.andWhere('id = :selfId', { selfId: params.appointmentId });
+    } else if (scope === 'this_and_following') {
+      qb.andWhere('"appointmentDate" >= :fromDate', { fromDate: params.fromDate });
+    } else if (scope === 'date_range') {
+      if (!params.rangeFrom || !params.rangeTo) {
+        throw new BadRequestException('Intervallo date mancante per scope DATE_RANGE');
+      }
+      qb.andWhere('"appointmentDate" BETWEEN :rangeFrom AND :rangeTo', {
+        rangeFrom: params.rangeFrom,
+        rangeTo: params.rangeTo,
+      });
+      if (params.includeCurrent === false) {
+        qb.andWhere('id <> :selfId', { selfId: params.appointmentId });
+      }
+    }
+    // 'all': nessun filtro aggiuntivo (intera serie)
+  }
+
+  /**
+   * Seleziona le occorrenze di una serie ricorrente coinvolte da uno scope.
+   * Usata sia per la modifica orario sia per il calcolo conflitti.
+   */
+  private async selectSeriesOccurrences(
+    recurringGroupId: string,
+    selfId: string,
+    selfDate: Date | string,
+    scope: 'current_only' | 'this_and_following' | 'all' | 'date_range',
+    rangeFrom?: string,
+    rangeTo?: string,
+    includeCurrent?: boolean,
+  ): Promise<AvailabilityAppointment[]> {
+    const all = await this.appointmentRepo.find({
+      where: { recurringGroupId },
+      relations: ['operator'],
+      order: { appointmentDate: 'ASC', startTime: 'ASC' },
+    });
+    const active = all.filter(a => ![
+      BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY,
+      BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW,
+    ].includes(a.bookingStatus));
+
+    // appointmentDate è un column DATE: a runtime puo' arrivare come stringa
+    // 'YYYY-MM-DD' o come Date a seconda del driver. Normalizziamo a stringa.
+    const ds = (d: Date | string): string =>
+      d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+    const selfDateStr = ds(selfDate as any);
+
+    if (scope === 'current_only') {
+      return active.filter(a => a.id === selfId);
+    }
+    if (scope === 'this_and_following') {
+      return active.filter(a => ds(a.appointmentDate) >= selfDateStr);
+    }
+    if (scope === 'date_range') {
+      if (!rangeFrom || !rangeTo) {
+        throw new BadRequestException('Intervallo date mancante per scope DATE_RANGE');
+      }
+      return active.filter(a =>
+        ds(a.appointmentDate) >= rangeFrom && ds(a.appointmentDate) <= rangeTo &&
+        (includeCurrent !== false || a.id !== selfId),
+      );
+    }
+    return active; // 'all'
+  }
+
+  /**
+   * Valida una lista di occorrenze (operatore/data/orario) verificando per
+   * ciascuna disponibilità operatore e sovrapposizioni con altri appuntamenti.
+   * NON lancia: ritorna l'elenco dei conflitti (vuoto se tutto ok). Riusata
+   * sia per la modifica serie sia per la creazione di una nuova serie.
+   *
+   * @param occurrences occorrenze da validare; `selfId` esclude un appuntamento
+   *   esistente (sé stesso) dai controlli di overlap/availability.
+   */
+  async validateRecurringOccurrences(
+    occurrences: { selfId?: string; operatorId: string; date: string; startTime: string; endTime: string }[],
+  ): Promise<{
+    appointmentId?: string; date: string; startTime: string; endTime: string;
+    type: string; reason: string; conflictingStartTime?: string; conflictingEndTime?: string;
+  }[]> {
+    const conflicts: {
+      appointmentId?: string; date: string; startTime: string; endTime: string;
+      type: string; reason: string; conflictingStartTime?: string; conflictingEndTime?: string;
+    }[] = [];
+
+    const blockEnabled = await this.generalSettingsService.isBlockOutsideAvailabilityEnabled();
+
+    for (const occ of occurrences) {
+      // 1) Sovrapposizione con altro appuntamento dello stesso operatore.
+      const overlapQb = this.appointmentRepo
+        .createQueryBuilder('a')
+        .where('a.operatorId = :operatorId', { operatorId: occ.operatorId })
+        .andWhere('a.appointmentDate = :date', { date: occ.date })
+        .andWhere('a.bookingStatus NOT IN (:...excluded)', {
+          excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
+        })
+        .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
+          startTime: occ.startTime, endTime: occ.endTime,
+        });
+      if (occ.selfId) {
+        overlapQb.andWhere('a.id <> :selfId', { selfId: occ.selfId });
+      }
+      const overlapping = await overlapQb.getOne();
+      if (overlapping) {
+        conflicts.push({
+          appointmentId: occ.selfId,
+          date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
+          type: 'overlap',
+          reason: `Sovrapposto ad un altro appuntamento (${overlapping.startTime}-${overlapping.endTime})`,
+          conflictingStartTime: overlapping.startTime,
+          conflictingEndTime: overlapping.endTime,
+        });
+        continue; // un conflitto per occorrenza è sufficiente per il riepilogo
+      }
+
+      // 2) Fuori disponibilità operatore (solo se il blocco è attivo).
+      if (blockEnabled) {
+        const result = await this.availabilityService.getOperatorsAvailabilityV3(
+          [occ.operatorId], occ.date, occ.date, occ.selfId,
+        );
+        const freeBlocks = result[0]?.days.find(d => d.date === occ.date)?.freeBlocks ?? [];
+        if (!this.isIntervalCovered(occ.startTime, occ.endTime, freeBlocks)) {
+          conflicts.push({
+            appointmentId: occ.selfId,
+            date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
+            type: 'unavailable',
+            reason: `L'operatore non è disponibile nell'orario ${occ.startTime}-${occ.endTime}`,
+          });
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
+   * Modifica SOLO orario/durata (startTime/endTime) delle occorrenze di una
+   * serie ricorrente nello scope scelto. Valida prima ogni occorrenza:
+   * se c'è anche un solo conflitto, NON applica nulla e ritorna i conflitti
+   * (avvisa-e-blocca). I cambi di data/giorno non sono supportati qui (vanno
+   * gestiti eliminando e ricreando la serie).
+   */
+  async updateRecurringSeriesTime(input: {
+    appointmentId: string;
+    scope: 'current_only' | 'this_and_following' | 'all' | 'date_range';
+    startTime: string;
+    endTime: string;
+    rangeFrom?: string;
+    rangeTo?: string;
+    includeCurrent?: boolean;
+  }): Promise<{ applied: boolean; affectedCount: number; conflicts: any[] }> {
+    const current = await this.appointmentRepo.findOne({ where: { id: input.appointmentId } });
+    if (!current || !current.recurringGroupId) {
+      throw new BadRequestException('Appuntamento non trovato o non ricorrente');
+    }
+
+    const occurrences = await this.selectSeriesOccurrences(
+      current.recurringGroupId, current.id, current.appointmentDate,
+      input.scope, input.rangeFrom, input.rangeTo, input.includeCurrent,
+    );
+
+    if (occurrences.length === 0) {
+      return { applied: false, affectedCount: 0, conflicts: [] };
+    }
+
+    // Valida ogni occorrenza con il NUOVO orario, escludendo sé stessa.
+    const toDateStr = (d: Date | string): string =>
+      d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+    const conflicts = await this.validateRecurringOccurrences(
+      occurrences.map(o => ({
+        selfId: o.id,
+        operatorId: o.operatorId,
+        date: toDateStr(o.appointmentDate),
+        startTime: input.startTime,
+        endTime: input.endTime,
+      })),
+    );
+
+    if (conflicts.length > 0) {
+      // Avvisa e blocca: niente modifiche.
+      return { applied: false, affectedCount: 0, conflicts };
+    }
+
+    // Applica il nuovo orario a tutte le occorrenze coinvolte.
+    const ids = occurrences.map(o => o.id);
+    await this.appointmentRepo
+      .createQueryBuilder()
+      .update(AvailabilityAppointment)
+      .set({ startTime: input.startTime, endTime: input.endTime })
+      .whereInIds(ids)
+      .execute();
+
+    // Notifica SSE per refresh calendario.
+    try {
+      this.eventsService.emit({
+        type: 'appointment_status_changed',
+        appointmentIds: ids,
+        timestamp: new Date(),
+      });
+    } catch { /* best-effort */ }
+
+    return { applied: true, affectedCount: ids.length, conflicts: [] };
   }
 }
