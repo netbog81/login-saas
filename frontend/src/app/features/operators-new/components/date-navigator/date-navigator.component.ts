@@ -14,12 +14,15 @@ import {
   Input,
   Output,
   EventEmitter,
-  ChangeDetectionStrategy
+  ChangeDetectionStrategy,
+  ViewChild
 } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDatepickerModule, MatDatepicker, MatDatepickerInputEvent } from '@angular/material/datepicker';
+import { MatInputModule } from '@angular/material/input';
 
 @Component({
   selector: 'app-date-navigator',
@@ -29,6 +32,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
     MatButtonModule,
     MatIconModule,
     MatTooltipModule,
+    MatDatepickerModule,
+    MatInputModule,
     DatePipe
   ],
   template: `
@@ -42,11 +47,17 @@ import { MatTooltipModule } from '@angular/material/tooltip';
         <mat-icon>chevron_left</mat-icon>
       </button>
 
-      <!-- Current date display -->
-      <div class="date-display" (click)="onDateClick()">
+      <!-- Current date display: click apre il datepicker per saltare a una data -->
+      <div class="date-display"
+           matTooltip="Vai a una data"
+           (click)="onDateClick()">
         <span class="day-name">{{ getDayName(selectedDate) }}</span>
         <span class="date-value">{{ selectedDate | date:'d MMMM yyyy':'':'it' }}</span>
       </div>
+      <!-- Input invisibile: serve solo come ancoraggio per il calendario Material -->
+      <input class="hidden-date-input" matInput [matDatepicker]="picker"
+             [value]="selectedDate" (dateChange)="onDatePicked($event)">
+      <mat-datepicker #picker></mat-datepicker>
 
       <!-- Next day -->
       <button
@@ -91,6 +102,18 @@ import { MatTooltipModule } from '@angular/material/tooltip';
         width: 28px;
         height: 28px;
       }
+    }
+
+    /* Input del datepicker: invisibile e fuori flusso, serve solo come
+       ancoraggio per il calendario aperto dal click sulla data. */
+    .hidden-date-input {
+      width: 0;
+      height: 0;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      position: absolute;
+      pointer-events: none;
     }
 
     .date-display {
@@ -156,6 +179,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DateNavigatorComponent {
+  @ViewChild('picker') picker?: MatDatepicker<Date>;
+
   @Input() selectedDate: Date = new Date();
   @Input() disabled = false;
 
@@ -191,7 +216,14 @@ export class DateNavigatorComponent {
   }
 
   onDateClick(): void {
-    // TODO: Aprire date picker
+    if (this.disabled) return;
+    this.picker?.open();
+  }
+
+  onDatePicked(event: MatDatepickerInputEvent<Date>): void {
+    if (event.value) {
+      this.dateChange.emit(event.value);
+    }
   }
 
   private isSameDay(date1: Date, date2: Date): boolean {

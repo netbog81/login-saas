@@ -1,12 +1,23 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ServiceSubcategory } from '../entities/service-subcategory.entity';
+import { Service } from '../entities/service.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
+import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
+import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
+import { CatalogEventMapper } from '../../clinical-events/mappers/catalog-event.mapper';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
 @Resolver(() => ServiceSubcategory)
 export class ServiceSubcategoryResolver {
+  private readonly logger = new Logger(ServiceSubcategoryResolver.name);
+
   constructor(
     private readonly tenantContext: TenantContextService,
+    private readonly eventBuffer: ClinicalEventBuffer,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly catalogMapper: CatalogEventMapper,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -51,11 +62,13 @@ export class ServiceSubcategoryResolver {
     @Args('macroCategory', { type: () => OperatorMacroCategory }) macroCategory: OperatorMacroCategory,
     @Args('name') name: string,
     @Args('description', { nullable: true }) description?: string,
+    @Args('invoiceLineDescription', { nullable: true }) invoiceLineDescription?: string,
   ): Promise<ServiceSubcategory> {
     const subcategory = this.subcategoryRepo.create({
       macroCategory,
       name,
       description,
+      invoiceLineDescription,
       isActive: true,
     });
 
@@ -67,11 +80,13 @@ export class ServiceSubcategoryResolver {
     @Args('id', { type: () => ID }) id: string,
     @Args('name', { nullable: true }) name?: string,
     @Args('description', { nullable: true }) description?: string,
+    @Args('invoiceLineDescription', { nullable: true }) invoiceLineDescription?: string,
     @Args('isActive', { nullable: true }) isActive?: boolean,
   ): Promise<ServiceSubcategory> {
     await this.subcategoryRepo.update(id, {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
+      ...(invoiceLineDescription !== undefined && { invoiceLineDescription }),
       ...(isActive !== undefined && { isActive }),
     });
 
@@ -80,7 +95,51 @@ export class ServiceSubcategoryResolver {
       throw new Error('Sottocategoria non trovata');
     }
 
+    // 2026-07-07 — {descrizione_fattura_sottocategoria} entra nel calcolo di
+    // `invoiceLineDescriptionDefault` sincronizzato verso accounting: se la
+    // descrizione fattura è cambiata, ri-emetti service.upserted per i
+    // service di questa sottocategoria.
+    if (invoiceLineDescription !== undefined) {
+      await this.resyncServicesForSubcategory(id);
+    }
+
     return subcategory;
+  }
+
+  /**
+   * Ri-pubblica `service.upserted` per tutti i service della sottocategoria,
+   * così accounting riceve il nuovo `invoiceLineDescriptionDefault`.
+   * Best-effort: un errore qui non deve far fallire l'update.
+   */
+  private async resyncServicesForSubcategory(subcategoryId: string): Promise<void> {
+    try {
+      const tenantAlias = this.tenantContext.getTenantAlias();
+      const ds = this.tenantContext.getDataSource();
+      if (!tenantAlias || !ds) return;
+      const correlationId = this.tenantContext.getContext()?.requestId;
+
+      const services = await ds.getRepository(Service).find({
+        where: { subcategoryId },
+        relations: ['subcategory'],
+      });
+
+      for (const service of services) {
+        this.eventBuffer.add({
+          eventType: 'service.upserted',
+          payload: await this.catalogMapper.mapServiceUpsertedWithDefaults(service, ds.manager),
+          tenantAlias,
+          correlationId,
+        });
+      }
+      flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+      this.logger.log(
+        `[ServiceSubcategoryResolver] resync ${services.length} service.upserted dopo update sottocategoria ${subcategoryId}`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[ServiceSubcategoryResolver] resync post-update fallito (subcategory=${subcategoryId}): ${(err as Error).message}`,
+      );
+    }
   }
 
   @Mutation(() => Boolean, { name: 'deleteServiceSubcategory' })

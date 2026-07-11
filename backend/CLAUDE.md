@@ -322,6 +322,38 @@ migration successiva. Non in scope Step 1.
 
 ---
 
+## Prerequisiti host (VM) per il deploy — rifare a ogni migrazione
+
+Setting a livello **kernel dell'host**, non impostabili dentro i container
+(sysctl `vm.*` non è namespaced → vale per tutta la VM; il Redis in container
+eredita il valore dell'host). Da riapplicare quando si sposta lo stack su una
+nuova macchina:
+
+- **`vm.overcommit_memory = 1`** — richiesto da `gateway_redis` (BullMQ del
+  whatsapp-gateway). Redis fa `fork()` per i salvataggi RDB/AOF; con
+  overcommit=0 (default) + poca RAM libera il kernel può negare la fork → save
+  fallito → corruzione AOF → Redis in crash-loop → gateway BullMQ morto → i
+  webhook task-message/WhatsApp non tornano al clinico (incidente 2026-07-07,
+  vedi memory `task-message-gateway-redis`).
+
+  ```bash
+  echo 'vm.overcommit_memory = 1' | sudo tee /etc/sysctl.d/99-redis-overcommit.conf
+  sudo sysctl -p /etc/sysctl.d/99-redis-overcommit.conf   # applica subito
+  sysctl vm.overcommit_memory                             # verifica: = 1
+  ```
+
+  Il file in `/etc/sysctl.d/` è persistente (riletto a ogni boot). Prevenzione
+  alla radice; il `gateway_redis` ha anche un entrypoint di self-heal AOF come
+  seconda difesa (vedi `whatsapp-gateway/docker-compose.yml`).
+
+Nota config gateway per-tenant (`whatsapp_tenant_config` nel DB clinico): in
+ambiente containerizzato `gatewayUrl` DEVE essere `http://message_gateway:3000`
+(DNS di rete Docker), NON `http://localhost:PORTA` (che dentro il container non
+raggiunge il gateway). Attenzione se si rieditano quei valori dalla UI di
+configurazione WhatsApp.
+
+---
+
 ## Comandi quotidiani
 
 ```bash
@@ -331,9 +363,24 @@ cd backend && npm run build
 # Type-check strict
 cd backend && npx tsc --noEmit
 
-# Migration su tenant target (NON usare run-all-tenant-migrations
-# perché toccherebbe schemi test/backup non-target)
-cd backend && npx ts-node src/run-tenant-migration.ts t_4701c4aaba73713294696ae7ae46d21b
+# Migration su tenant target — DB-per-tenant (post-containerizzazione
+# 2026-06-11). Ogni tenant ha il proprio database `clinico_<hash>`; NON
+# esiste più un main DB schema-per-tenant. Il vecchio
+# `src/run-tenant-migration.ts` è stato rimosso (CLAUDE.md era disallineato).
+# Il backend gira con `migrationsRun: false` (app.module.ts), quindi le
+# migration nuove vanno lanciate a mano puntando il DataSource al database
+# del tenant via override DB_DATABASE.
+#
+# Mapping alias → database: `clinico_<hash>`, dove <hash> coincide con
+# l'hash dello schema storico `t_<hash>` (es. bdq → t_4701c4aaba73...).
+# Per elencarli: psql -d postgres -c "\l clinico*"
+#
+# Esempio (tenant bdq = clinico_4701c4aaba73713294696ae7ae46d21b):
+cd backend && DB_DATABASE=clinico_4701c4aaba73713294696ae7ae46d21b \
+  npx typeorm-ts-node-commonjs migration:run -d src/typeorm.config.ts
+# Credenziali: di default usa MIGRATOR_DB_USERNAME/PASSWORD da .env (utente
+# `migrator`). typeorm.config.ts legge host/port/user da .env, database
+# dall'override sopra. Per revert: ...migration:revert -d src/typeorm.config.ts
 
 # Smoke #1 (publisher solo, no DB)
 cd backend && npm run smoke:publish-treatment-closed -- --tenant bdq

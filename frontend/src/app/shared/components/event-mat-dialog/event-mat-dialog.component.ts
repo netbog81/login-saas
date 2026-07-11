@@ -42,6 +42,13 @@ export interface EventMatDialogData {
   users: User[];
   patients: Patient[];
   instrumentCategories?: InstrumentCategory[];
+  /**
+   * Apre il dialog in SOLA LETTURA (dettaglio appuntamento): form disabilitato
+   * e nessun pulsante di azione (salva/elimina/stato), solo "Chiudi". Usato dal
+   * calendar-v3 quando operatore/medico/istruttore consultano il proprio
+   * calendario.
+   */
+  readOnly?: boolean;
   searchFilters?: {
     duration?: number;
     withInstrument?: boolean;
@@ -69,7 +76,11 @@ export interface AppointmentInstrumentData {
  */
 export interface EventMatDialogResult {
   action: 'save' | 'delete' | 'cancel' | 'series-deleted'
-    | 'mark-attended' | 'mark-no-show' | 'cancel-with-notice' | 'revert-attended';
+    | 'mark-attended' | 'mark-no-show' | 'cancel-with-notice' | 'revert-attended'
+    // 'copy' → l'utente vuole duplicare l'appuntamento: il dialog si chiude e
+    // il container avvia il flusso copia/incolla. Gestito solo dal calendario
+    // v3; gli altri container lo ignorano (retro-compatibile).
+    | 'copy';
   appointmentId?: string;
   appointment?: Appointment;
   services?: { serviceId: string; customPrice?: number; customDuration?: number }[];
@@ -178,12 +189,24 @@ export class EventMatDialogComponent implements OnInit {
     @Inject(MAT_DIALOG_DATA) public data: EventMatDialogData
   ) {}
 
+  /** Sola lettura: dettaglio appuntamento senza azioni di modifica. */
+  get readOnly(): boolean {
+    return this.data.readOnly === true;
+  }
+
   ngOnInit(): void {
     this.patients = this.data.patients || [];
     this.isEditMode = !!this.data.appointment;
 
     this.initForm();
     this.setupPatientFilter();
+
+    // In sola lettura disabilito l'intero form: i campi restano visibili e
+    // valorizzati ma non modificabili. I pulsanti di azione sono nascosti dal
+    // template (vedi *ngIf="!readOnly").
+    if (this.readOnly) {
+      this.form.disable({ emitEvent: false });
+    }
 
     // Load operator services if operator is selected
     const operatorId = this.form.get('operatorId')?.value;
@@ -960,6 +983,16 @@ export class EventMatDialogComponent implements OnInit {
     this.dialogRef.close({ action: 'cancel' });
   }
 
+  /**
+   * "Copia appuntamento": chiude il dialog restituendo l'appuntamento
+   * originale, cosi' il container puo' avviare il flusso copia/incolla.
+   * Disponibile solo in modifica (serve un appuntamento esistente da copiare).
+   */
+  onCopy(): void {
+    if (!this.isEditMode || !this.data.appointment) return;
+    this.dialogRef.close({ action: 'copy', appointment: this.data.appointment });
+  }
+
   // ==================== UTILITIES ====================
 
   private timeToMinutes(time: string): number {
@@ -1005,24 +1038,43 @@ export class EventMatDialogComponent implements OnInit {
   }
 
   /**
-   * Modifica orario/durata delle occorrenze nello scope scelto, usando l'orario
-   * attualmente impostato nel form. Se il backend rileva conflitti, mostra il
-   * riepilogo e NON chiude (niente è stato applicato).
+   * Applica alla serie (nello scope scelto) TUTTE le modifiche attualmente
+   * impostate nel form: orario, operatore, paziente, servizi, strumenti, note,
+   * non-retribuito ed un eventuale spostamento di data (l'intera serie viene
+   * traslata dello stesso numero di giorni). Se il backend rileva conflitti di
+   * sovrapposizione, mostra il riepilogo e NON chiude (niente è stato applicato).
    */
   async onApplySeriesEdit(sel: RecurringScopeSelection): Promise<void> {
     const apt = this.data.appointment!;
-    const startTime = this.form.get('startTime')?.value;
-    const endTime = this.form.get('endTime')?.value;
+    const f = this.form.value;
+    const startTime = f.startTime;
+    const endTime = f.endTime;
     if (!startTime || !endTime) {
       alert('Imposta un orario di inizio e fine validi prima di applicare alla serie.');
       return;
     }
+
+    const services = this.selectedServices.map(item => ({
+      serviceId: item.serviceId,
+      customPrice: item.customPrice,
+      customDuration: item.customDuration,
+    }));
+
     try {
-      const result = await firstValueFrom(this.recurringAppointmentService.updateRecurringSeriesTime({
+      const result = await firstValueFrom(this.recurringAppointmentService.updateRecurringSeries({
         appointmentId: String(apt.id),
         scope: sel.scope,
         startTime,
         endTime,
+        newDate: f.date || undefined,
+        operatorId: f.operatorId || undefined,
+        patientId: f.patientId || undefined,
+        clientName: f.title || undefined,
+        notes: f.notes || undefined,
+        nonRetribuito: f.nonRetribuito,
+        instrumentOrderMatters: this.instrumentOrderMatters,
+        services: services.length > 0 ? services : undefined,
+        instruments: this.buildInstrumentData(),
         rangeFrom: sel.rangeFrom,
         rangeTo: sel.rangeTo,
         includeCurrent: sel.includeCurrent,
@@ -1037,7 +1089,10 @@ export class EventMatDialogComponent implements OnInit {
         return;
       }
 
-      alert(`${result.affectedCount} appuntamenti aggiornati`);
+      // Applicata (eventuali occorrenze fallite sono segnalate a parte).
+      const failedNote = result.conflicts.length > 0
+        ? ` (${result.conflicts.length} non aggiornati per errore)` : '';
+      alert(`${result.affectedCount} appuntamenti aggiornati${failedNote}`);
       this.dialogRef.close({ action: 'series-deleted' }); // forza refresh calendario
     } catch {
       alert('Errore nella modifica della serie');

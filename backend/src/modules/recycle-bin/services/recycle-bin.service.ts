@@ -18,11 +18,14 @@ import { RecycleBinFilterInput } from '../dto/recycle-bin-filter.input';
 import { RecycleBinSettings } from '../../availability/entities/recycle-bin-settings.entity';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { RegistrySubjectLoader } from '../../registry/registry-subject.loader';
 interface RawDeletedRow {
   id: string;
   entityType: RecycleBinEntityType;
   title: string;
   subtitle: string | null;
+  /** subjectId del registry: il nome paziente si risolve via SubjectLoader. */
+  patientId: string | null;
   deletedAt: Date;
   deletedByUserId: string | null;
   deletedByName: string | null;
@@ -95,8 +98,16 @@ export class RecycleBinService {
    *
    * Il filtro per `ownerUserId` è applicato server-side: il resolver
    * forza il filtro al proprio appUser per gli utenti non-admin.
+   *
+   * I pazienti vivono nel registry (patientId = subjectId, nessuna tabella
+   * locale): i nomi si risolvono in batch via SubjectLoader DOPO le query
+   * SQL, e per lo stesso motivo la ricerca testuale è applicata in memoria
+   * (il cestino è una lista piccola per costruzione, la retention la limita).
    */
-  async list(filter: RecycleBinFilterInput): Promise<RecycleBinItem[]> {
+  async list(
+    filter: RecycleBinFilterInput,
+    subjectLoader?: RegistrySubjectLoader,
+  ): Promise<RecycleBinItem[]> {
     const types =
       filter.entityTypes && filter.entityTypes.length > 0
         ? filter.entityTypes
@@ -121,9 +132,57 @@ export class RecycleBinService {
       rows.push(...(await this.queryDeletedEvaluations(filter)));
     }
 
-    return rows
+    // Risolvi i nomi paziente dal registry e componili nel subtitle.
+    const names = await this.resolvePatientNames(rows, subjectLoader);
+    for (const r of rows) {
+      const patientName = r.patientId ? names.get(r.patientId) : undefined;
+      r.subtitle =
+        [patientName, r.subtitle].filter(v => v && v.length > 0).join(' • ') || null;
+    }
+
+    // Ricerca testuale in memoria su titolo + subtitle (che include il nome
+    // paziente): prima era in SQL con JOIN sulla tabella patients, rimossa.
+    let visible = rows;
+    const search = filter.search?.trim().toLowerCase();
+    if (search && search.length > 0) {
+      visible = rows.filter(
+        r =>
+          (r.title ?? '').toLowerCase().includes(search) ||
+          (r.subtitle ?? '').toLowerCase().includes(search),
+      );
+    }
+
+    return visible
       .sort((a, b) => b.deletedAt.getTime() - a.deletedAt.getTime())
       .map(r => this.toItem(r, retentionDays));
+  }
+
+  /**
+   * Nome visualizzabile dei pazienti coinvolti, in un'unica chiamata bulk al
+   * registry. Errori del registry NON bloccano il cestino: il nome resta
+   * vuoto e la lista si carica comunque.
+   */
+  private async resolvePatientNames(
+    rows: RawDeletedRow[],
+    subjectLoader?: RegistrySubjectLoader,
+  ): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    if (!subjectLoader) return names;
+    const ids = [...new Set(rows.map(r => r.patientId).filter((v): v is string => !!v))];
+    if (ids.length === 0) return names;
+
+    const loaded = await subjectLoader.loadMany(ids);
+    ids.forEach((id, i) => {
+      const subject = loaded[i];
+      if (subject && !(subject instanceof Error)) {
+        const name =
+          [subject.firstName, subject.lastName].filter(Boolean).join(' ') ||
+          subject.legalName ||
+          '';
+        if (name) names.set(id, name);
+      }
+    });
+    return names;
   }
 
   private toItem(row: RawDeletedRow, retentionDays: number | null): RecycleBinItem {
@@ -147,45 +206,27 @@ export class RecycleBinService {
     return item;
   }
 
-  private buildOwnerSearchClauses(
+  /** Clausola SQL per il filtro owner (la ricerca testuale è in memoria, vedi list()). */
+  private buildOwnerClause(
     filter: RecycleBinFilterInput,
     ownerUserCol: string,
-    titleCols: string[],
   ): { sql: string; params: any[] } {
-    const clauses: string[] = [];
-    const params: any[] = [];
-    if (filter.ownerUserId) {
-      params.push(filter.ownerUserId);
-      clauses.push(`${ownerUserCol} = $${params.length}`);
-    }
-    if (filter.search && filter.search.trim().length > 0) {
-      params.push(`%${filter.search.trim().toLowerCase()}%`);
-      const search = `(${titleCols
-        .map(c => `LOWER(COALESCE(${c}, '')) LIKE $${params.length}`)
-        .join(' OR ')})`;
-      clauses.push(search);
-    }
-    return {
-      sql: clauses.length > 0 ? ' AND ' + clauses.join(' AND ') : '',
-      params,
-    };
+    if (!filter.ownerUserId) return { sql: '', params: [] };
+    return { sql: ` AND ${ownerUserCol} = $1`, params: [filter.ownerUserId] };
   }
 
   private async queryDeletedPaths(
     filter: RecycleBinFilterInput,
   ): Promise<RawDeletedRow[]> {
-    const extra = this.buildOwnerSearchClauses(
-      filter,
-      'op."app_user_id"',
-      ['p."name"', 'pat."nome"', 'pat."cognome"'],
-    );
+    const extra = this.buildOwnerClause(filter, 'op."app_user_id"');
 
     const sql = `
       SELECT
         p.id                             AS "id",
         'therapeutic_path'::text         AS "entityType",
         p."name"                         AS "title",
-        TRIM(CONCAT_WS(' ', pat."nome", pat."cognome")) AS "subtitle",
+        NULL::text                       AS "subtitle",
+        p."patientId"                    AS "patientId",
         p."deletedAt"                    AS "deletedAt",
         p."deletedByUserId"              AS "deletedByUserId",
         TRIM(CONCAT_WS(' ', dau."name", dau."surname")) AS "deletedByName",
@@ -195,7 +236,6 @@ export class RecycleBinService {
          WHERE t."therapeuticPathId" = p.id AND t."deletedAt" IS NOT NULL) AS "childrenCount"
       FROM "therapeutic_paths" p
       LEFT JOIN "operators" op ON op.id = p."primaryOperatorId"
-      LEFT JOIN "patients" pat ON pat.id = p."patientId"
       LEFT JOIN "app_users" dau ON dau.id = p."deletedByUserId"
       WHERE p."deletedAt" IS NOT NULL${extra.sql}
     `;
@@ -205,21 +245,15 @@ export class RecycleBinService {
   private async queryDeletedTreatments(
     filter: RecycleBinFilterInput,
   ): Promise<RawDeletedRow[]> {
-    const extra = this.buildOwnerSearchClauses(
-      filter,
-      'op."app_user_id"',
-      ['p."name"', 'pat."nome"', 'pat."cognome"'],
-    );
+    const extra = this.buildOwnerClause(filter, 'op."app_user_id"');
 
     const sql = `
       SELECT
         t.id                             AS "id",
         'treatment'::text                AS "entityType",
         COALESCE(p."name", 'Trattamento') AS "title",
-        TRIM(CONCAT_WS(' • ',
-          TRIM(CONCAT_WS(' ', pat."nome", pat."cognome")),
-          TO_CHAR(t."startedAt", 'DD/MM/YYYY HH24:MI')
-        ))                                AS "subtitle",
+        TO_CHAR(t."startedAt", 'DD/MM/YYYY HH24:MI') AS "subtitle",
+        t."patientId"                    AS "patientId",
         t."deletedAt"                    AS "deletedAt",
         t."deletedByUserId"              AS "deletedByUserId",
         TRIM(CONCAT_WS(' ', dau."name", dau."surname")) AS "deletedByName",
@@ -228,7 +262,6 @@ export class RecycleBinService {
         NULL::int                        AS "childrenCount"
       FROM "treatments" t
       LEFT JOIN "operators" op ON op.id = t."operatorId"
-      LEFT JOIN "patients" pat ON pat.id = t."patientId"
       LEFT JOIN "therapeutic_paths" p ON p.id = t."therapeuticPathId"
       LEFT JOIN "app_users" dau ON dau.id = t."deletedByUserId"
       WHERE t."deletedAt" IS NOT NULL
@@ -244,18 +277,15 @@ export class RecycleBinService {
   private async queryDeletedEvaluations(
     filter: RecycleBinFilterInput,
   ): Promise<RawDeletedRow[]> {
-    const extra = this.buildOwnerSearchClauses(
-      filter,
-      'op."app_user_id"',
-      ['p."name"', 'pat."nome"', 'pat."cognome"'],
-    );
+    const extra = this.buildOwnerClause(filter, 'op."app_user_id"');
 
     const sql = `
       SELECT
         e.id                             AS "id",
         'patient_evaluation'::text       AS "entityType",
         COALESCE('Valutazione · ' || p."name", 'Valutazione') AS "title",
-        TRIM(CONCAT_WS(' ', pat."nome", pat."cognome")) AS "subtitle",
+        NULL::text                       AS "subtitle",
+        p."patientId"                    AS "patientId",
         e."deletedAt"                    AS "deletedAt",
         e."deletedByUserId"              AS "deletedByUserId",
         TRIM(CONCAT_WS(' ', dau."name", dau."surname")) AS "deletedByName",
@@ -265,7 +295,6 @@ export class RecycleBinService {
       FROM "patient_evaluations" e
       LEFT JOIN "therapeutic_paths" p ON p.id = e."therapeuticPathId"
       LEFT JOIN "operators" op ON op.id = e."operatorId"
-      LEFT JOIN "patients" pat ON pat.id = p."patientId"
       LEFT JOIN "app_users" dau ON dau.id = e."deletedByUserId"
       WHERE e."deletedAt" IS NOT NULL
         AND e."therapeuticPathId" NOT IN (

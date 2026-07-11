@@ -1,6 +1,8 @@
 import { Injectable, Injector } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { environment } from '../../../../environments/environment';
 import { BaseGraphQLService } from '../../../core/services/base-graphql.service';
 import {
   Trattamento,
@@ -12,9 +14,14 @@ import {
   CreateTreatmentInvoiceLineInput,
   UpdateTreatmentInvoiceLineInput,
   PaymentMethod,
+  VoucherFe,
+  AccountingPaymentMethod,
+  AccountingVoucher,
+  PaymentTenderLine,
 } from '../models/trattamento.model';
 import {
   TREATMENTS_FOR_SECRETARY,
+  TREATMENTS_FOR_SECRETARY_COUNT,
   TREATMENTS_FOR_OPERATOR,
   UPDATE_TREATMENT_BY_SECRETARY,
   SET_TREATMENTS_READY_FOR_BILLING,
@@ -31,7 +38,15 @@ import {
   REQUEST_TREATMENT_RECALL,
   DISMISS_RETURN_FROM_ACCOUNTING_BANNER,
   RESEND_TREATMENT_TO_ACCOUNTING,
+  RETRY_TREATMENT_INVOICE,
+  MARK_SCONTOFE_CASH_PAYMENT,
+  CANCEL_TREATMENT_PAYMENT,
+  ADD_TREATMENT_SERVICE_LINE,
+  REMOVE_TREATMENT_SERVICE_LINE,
   TREATMENT_BY_ID,
+  USABLE_VOUCHERS_FE,
+  VOUCHERS_FE_BY_PATIENT,
+  ISSUE_VOUCHER_FE,
 } from '../graphql/trattamenti.operations';
 
 /**
@@ -59,22 +74,61 @@ function flattenPatient(t: Trattamento): Trattamento {
  */
 @Injectable({ providedIn: 'root' })
 export class TrattamentiService extends BaseGraphQLService {
+  private readonly http: HttpClient;
+
   constructor(injector: Injector) {
     super(injector);
+    this.http = injector.get(HttpClient);
+  }
+
+  // ==================== INVOICE PDF (PARTE 3) ====================
+
+  /**
+   * Scarica il PDF della fattura di un trattamento dal proxy backend clinico
+   * (`GET /treatments/:id/invoice-pdf`), che inoltra ad accounting. L'auth
+   * interceptor allega automaticamente Authorization + header tenant.
+   * Ritorna il Blob: il chiamante lo apre in una nuova tab per la stampa.
+   */
+  fetchInvoicePdf(treatmentId: string): Observable<Blob> {
+    return this.http.get(
+      `${environment.apiUrl}/treatments/${treatmentId}/invoice-pdf`,
+      { responseType: 'blob' },
+    );
   }
 
   // ==================== QUERIES ====================
 
   /**
    * Per segreteria/admin: tutti i trattamenti con filtri.
-   * Se Apollo restituisce undefined (errore GraphQL), ritorna array vuoto
-   * invece di crashare: lo stato dell'errore viene gestito dal chiamante.
+   * Se Apollo restituisce undefined (errore GraphQL / sessione scaduta)
+   * NON mascherare con lista vuota: propaga un errore così il container
+   * mostra il banner invece di una lista vuota indistinguibile da
+   * "nessun trattamento nel periodo".
    */
   getForSecretary(filters: TrattamentiFilters = {}): Observable<Trattamento[]> {
     return this.query<{ treatmentsForSecretary: Trattamento[] }>(
       TREATMENTS_FOR_SECRETARY,
       this.sanitizeFilters(filters),
-    ).pipe(map(r => (r?.treatmentsForSecretary ?? []).map(flattenPatient)));
+    ).pipe(map(r => {
+      if (!r?.treatmentsForSecretary) {
+        throw new Error('Caricamento trattamenti fallito: risposta vuota dal server (sessione scaduta o errore GraphQL). Ricarica la pagina.');
+      }
+      return r.treatmentsForSecretary.map(flattenPatient);
+    }));
+  }
+
+  /**
+   * Conteggio totale (stessi filtri, senza limit/offset) per il paginator
+   * della lista segreteria.
+   */
+  getForSecretaryCount(filters: TrattamentiFilters = {}): Observable<number> {
+    const vars = this.sanitizeFilters(filters);
+    delete vars['limit'];
+    delete vars['offset'];
+    return this.query<{ treatmentsForSecretaryCount: number }>(
+      TREATMENTS_FOR_SECRETARY_COUNT,
+      vars,
+    ).pipe(map(r => r?.treatmentsForSecretaryCount ?? 0));
   }
 
   /**
@@ -100,7 +154,12 @@ export class TrattamentiService extends BaseGraphQLService {
     return this.query<{ treatmentsForOperator: Trattamento[] }>(
       TREATMENTS_FOR_OPERATOR,
       vars,
-    ).pipe(map(r => (r?.treatmentsForOperator ?? []).map(flattenPatient)));
+    ).pipe(map(r => {
+      if (!r?.treatmentsForOperator) {
+        throw new Error('Caricamento trattamenti fallito: risposta vuota dal server (sessione scaduta o errore GraphQL). Ricarica la pagina.');
+      }
+      return r.treatmentsForOperator.map(flattenPatient);
+    }));
   }
 
   // ==================== MUTATIONS — SECRETARY ECONOMIC ====================
@@ -203,6 +262,61 @@ export class TrattamentiService extends BaseGraphQLService {
   }
 
   /**
+   * 2026-06-30 — "Verifica risoluzione e riprova": chiede ad accounting di
+   * ri-tentare l'emissione fattura per un treatment bloccato (es. dopo aver
+   * aggiunto l'indirizzo del paziente). Esito async via SSE.
+   */
+  retryTreatmentInvoice(id: string): Observable<Trattamento> {
+    return this.mutate<{ retryTreatmentInvoice: Trattamento }>(
+      RETRY_TREATMENT_INVOICE,
+      { id },
+    ).pipe(map(r => flattenPatient(r.retryTreatmentInvoice)));
+  }
+
+  /**
+   * 2026-07-01 — Toggle "Segna come incassato in contanti" (trattamenti sconto
+   * FE). paid=true registra l'incasso contanti sul totale; paid=false lo annulla.
+   */
+  markScontoFeCashPayment(id: string, paid: boolean): Observable<Trattamento> {
+    return this.mutate<{ markScontoFeCashPayment: Trattamento }>(
+      MARK_SCONTOFE_CASH_PAYMENT,
+      { id, paid },
+    ).pipe(map(r => flattenPatient(r.markScontoFeCashPayment)));
+  }
+
+  /**
+   * 2026-07-08 — Annulla il pagamento registrato (solo se non fatturato).
+   * Per i fatturati lo storno si fa da accounting.
+   */
+  cancelTreatmentPayment(id: string): Observable<Trattamento> {
+    return this.mutate<{ cancelTreatmentPayment: Trattamento }>(
+      CANCEL_TREATMENT_PAYMENT,
+      { id },
+    ).pipe(map(r => flattenPatient(r.cancelTreatmentPayment)));
+  }
+
+  /** 2026-07-02 — Aggiunge una riga servizio (dal catalogo) al trattamento. */
+  addTreatmentServiceLine(
+    treatmentId: string,
+    serviceId: string,
+    description?: string,
+    price?: number,
+  ): Observable<Trattamento> {
+    return this.mutate<{ addTreatmentServiceLine: Trattamento }>(
+      ADD_TREATMENT_SERVICE_LINE,
+      { treatmentId, serviceId, description, price },
+    ).pipe(map(r => flattenPatient(r.addTreatmentServiceLine)));
+  }
+
+  /** 2026-07-02 — Rimuove una riga servizio del trattamento. */
+  removeTreatmentServiceLine(treatmentServiceId: string): Observable<Trattamento> {
+    return this.mutate<{ removeTreatmentServiceLine: Trattamento }>(
+      REMOVE_TREATMENT_SERVICE_LINE,
+      { treatmentServiceId },
+    ).pipe(map(r => flattenPatient(r.removeTreatmentServiceLine)));
+  }
+
+  /**
    * Sessione 7 — Chiude il banner "Restituito dall'amministrazione" sul
    * treatment. UI-local, nessun evento publish.
    */
@@ -259,15 +373,59 @@ export class TrattamentiService extends BaseGraphQLService {
     collectedBy: string,
     amount: number | undefined,
     callerRole: 'OPERATOR' | 'SECRETARY' = 'SECRETARY',
+    voucherFeId?: string,
+    tenderLines?: PaymentTenderLine[],
+    replaceExisting?: boolean,
   ): Observable<Trattamento> {
     return this.mutate<{ recordTreatmentPayment: Trattamento }>(
       RECORD_TREATMENT_PAYMENT,
       {
         id,
-        input: { paymentMethod, collectedBy, amount },
+        input: { paymentMethod, collectedBy, amount, voucherFeId, tenderLines, replaceExisting },
         callerRole,
       },
     ).pipe(map(r => r.recordTreatmentPayment));
+  }
+
+  // ==================== VOUCHER FE / METODI ACCOUNTING (PARTE 4) ====================
+
+  /** Voucher FE utilizzabili da un paziente (per i pagamenti sconto FE). */
+  usableVouchersFe(patientId: string): Observable<VoucherFe[]> {
+    return this.query<{ usableVouchersFe: VoucherFe[] }>(USABLE_VOUCHERS_FE, { patientId })
+      .pipe(map(r => r.usableVouchersFe ?? []));
+  }
+
+  vouchersFeByPatient(patientId: string): Observable<VoucherFe[]> {
+    return this.query<{ vouchersFeByPatient: VoucherFe[] }>(VOUCHERS_FE_BY_PATIENT, { patientId })
+      .pipe(map(r => r.vouchersFeByPatient ?? []));
+  }
+
+  issueVoucherFe(
+    patientId: string,
+    initialAmount: number,
+    expiryDate?: string,
+    notes?: string,
+  ): Observable<VoucherFe> {
+    return this.mutate<{ issueVoucherFe: VoucherFe }>(ISSUE_VOUCHER_FE, {
+      patientId,
+      initialAmount,
+      expiryDate,
+      notes,
+    }).pipe(map(r => r.issueVoucherFe));
+  }
+
+  /** Metodi di pagamento accounting per un trattamento (proxy backend). */
+  fetchAccountingPaymentMethods(treatmentId: string): Observable<AccountingPaymentMethod[]> {
+    return this.http.get<AccountingPaymentMethod[]>(
+      `${environment.apiUrl}/treatments/${treatmentId}/payment-methods`,
+    );
+  }
+
+  /** Voucher accounting (tipo 1/2) utilizzabili dal paziente (proxy backend). */
+  fetchAccountingVouchers(treatmentId: string): Observable<AccountingVoucher[]> {
+    return this.http.get<AccountingVoucher[]>(
+      `${environment.apiUrl}/treatments/${treatmentId}/vouchers`,
+    );
   }
 
   close(id: string, secretaryNotes?: string): Observable<Trattamento> {

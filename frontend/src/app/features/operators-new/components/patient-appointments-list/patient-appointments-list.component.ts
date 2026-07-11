@@ -93,13 +93,15 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
                       (click)="onSendRecap(apt)">
                 <mat-icon>send</mat-icon>
               </button>
-              <button mat-icon-button
-                      color="warn"
-                      matTooltip="Cancella appuntamento"
-                      [disabled]="isCancelled(apt)"
-                      (click)="onCancel(apt)">
-                <mat-icon>cancel</mat-icon>
-              </button>
+              @if (canCancel) {
+                <button mat-icon-button
+                        color="warn"
+                        matTooltip="Cancella appuntamento"
+                        [disabled]="isCancelled(apt)"
+                        (click)="onCancel(apt)">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              }
             </div>
           </div>
           @if (!last) {
@@ -290,6 +292,13 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
 export class PatientAppointmentsListComponent {
   @Input() appointments: AvailabilityAppointment[] = [];
   @Input() loading = false;
+  /**
+   * Mostra il pulsante "Cancella appuntamento". Solo segreteria/admin possono
+   * cancellare: gli operatori non creano, modificano né cancellano appuntamenti
+   * (il backend lo blocca via CalendarWriteGuard; qui nascondiamo il bottone
+   * per coerenza UX).
+   */
+  @Input() canCancel = true;
 
   @Output() cancelAppointment = new EventEmitter<AvailabilityAppointment>();
   @Output() sendRecap = new EventEmitter<AvailabilityAppointment>();

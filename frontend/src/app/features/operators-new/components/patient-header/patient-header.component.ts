@@ -355,15 +355,16 @@ export class PatientHeaderComponent {
   @Output() viewAnamnesis = new EventEmitter<void>();
 
   /**
-   * URL per la modifica avanzata del subject nel frontend del registry.
-   * Calcolata dal sottodominio corrente (es. demo.curandis.cloud →
-   * https://registry.demo.curandis.cloud/subjects/{id}).
+   * URL per la modifica avanzata del subject, nella sezione Anagrafiche
+   * della suite unificata (es. bdq.curandis.cloud →
+   * https://gestione.bdq.curandis.cloud/anagrafiche/subjects/{id}).
+   * Vedi frontend/CLAUDE.md sezione "Link cross-modulo".
    */
   get registrySubjectUrl(): string | null {
     if (!this.patient?.id) return null;
     const alias = this.tenantAliasFromHost();
     if (!alias) return null;
-    return `https://registry.${alias}.curandis.cloud/subjects/${this.patient.id}`;
+    return `https://gestione.${alias}.curandis.cloud/anagrafiche/subjects/${this.patient.id}`;
   }
 
   private tenantAliasFromHost(): string | null {

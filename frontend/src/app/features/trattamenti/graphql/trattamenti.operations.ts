@@ -14,6 +14,7 @@ export const TREATMENT_BILLING_FIELDS = gql`
     billingStatus
     amendmentRevision
     accountingBillableEventId
+    accountingDocumentId
     accountingInvoiceUrl
     accountingInvoiceIssuedAt
     accountingDocumentType
@@ -23,6 +24,9 @@ export const TREATMENT_BILLING_FIELDS = gql`
     billingAlertMessage
     billingAlertAt
     billingAlertDismissedAt
+    billingHoldReasonCode
+    billingHoldReason
+    billingHoldReasonAt
     recallRequestId
     recallRequestedAt
     lastRecallRejectionMessage
@@ -59,6 +63,9 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
     forcedClosure
     scontoFE
     price
+    accountingTotalAmount
+    accountingTreatmentLinesAmount
+    accountingDocumentTreatmentCount
     isPaid
     paymentMethod
     paidAt
@@ -180,6 +187,30 @@ export const TREATMENTS_FOR_SECRETARY = gql`
   ${TREATMENT_DETAILS_FRAGMENT}
 `;
 
+export const TREATMENTS_FOR_SECRETARY_COUNT = gql`
+  query TreatmentsForSecretaryCount(
+    $patientId: ID
+    $operatorId: ID
+    $statuses: [TreatmentStatus!]
+    $dateFrom: String
+    $dateTo: String
+    $readyForBilling: Boolean
+    $isInvoicedToPatient: Boolean
+    $scontoFE: Boolean
+  ) {
+    treatmentsForSecretaryCount(
+      patientId: $patientId
+      operatorId: $operatorId
+      statuses: $statuses
+      dateFrom: $dateFrom
+      dateTo: $dateTo
+      readyForBilling: $readyForBilling
+      isInvoicedToPatient: $isInvoicedToPatient
+      scontoFE: $scontoFE
+    )
+  }
+`;
+
 export const TREATMENTS_FOR_OPERATOR = gql`
   query TreatmentsForOperator(
     $operatorId: ID!
@@ -299,6 +330,62 @@ export const RESEND_TREATMENT_TO_ACCOUNTING = gql`
   ${TREATMENT_DETAILS_FRAGMENT}
 `;
 
+// 2026-06-30 — "Verifica risoluzione e riprova": chiede ad accounting di
+// ri-tentare l'emissione fattura per un treatment bloccato (es. indirizzo
+// paziente aggiunto). Esito async via SSE (billable.invoiced o invoice-blocked).
+export const RETRY_TREATMENT_INVOICE = gql`
+  mutation RetryTreatmentInvoice($id: ID!) {
+    retryTreatmentInvoice(id: $id) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// 2026-07-01 — Toggle "Segna come incassato in contanti" per trattamenti
+// sconto FE: paid=true registra l'incasso contanti sul totale, paid=false lo
+// annulla. Solo clinico (nessun evento accounting).
+export const MARK_SCONTOFE_CASH_PAYMENT = gql`
+  mutation MarkScontoFeCashPayment($id: ID!, $paid: Boolean!) {
+    markScontoFeCashPayment(id: $id, paid: $paid) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// 2026-07-08 — Annulla il pagamento registrato (flusso annulla-e-reinserisci).
+// Consentito solo se la fattura NON è emessa; per i fatturati lo storno si fa
+// da accounting (billable.payment-reversed riallinea il clinico).
+export const CANCEL_TREATMENT_PAYMENT = gql`
+  mutation CancelTreatmentPayment($id: ID!) {
+    cancelTreatmentPayment(id: $id) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// 2026-07-02 — Aggiungi/rimuovi riga servizio (legata al catalogo, non testo
+// libero): accounting associa la natura IVA via serviceCode.
+export const ADD_TREATMENT_SERVICE_LINE = gql`
+  mutation AddTreatmentServiceLine($treatmentId: ID!, $serviceId: ID!, $description: String, $price: Float) {
+    addTreatmentServiceLine(treatmentId: $treatmentId, serviceId: $serviceId, description: $description, price: $price) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+export const REMOVE_TREATMENT_SERVICE_LINE = gql`
+  mutation RemoveTreatmentServiceLine($treatmentServiceId: ID!) {
+    removeTreatmentServiceLine(treatmentServiceId: $treatmentServiceId) {
+      ...TreatmentDetails
+    }
+  }
+  ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
 // Sessione 7 — Chiude il banner "Restituito dall'amministrazione"
 // (popolato da billable.returned-to-clinical). Setta
 // returnedFromAccountingDismissedAt = now. UI-only, nessun evento publish.
@@ -401,4 +488,57 @@ export const FORCE_CLOSE_TREATMENT = gql`
     }
   }
   ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// ==================== VOUCHER FE (PARTE 4.3) ====================
+
+export const VOUCHER_FE_FIELDS = gql`
+  fragment VoucherFeFields on VoucherFe {
+    id
+    code
+    patientId
+    initialAmount
+    residualAmount
+    status
+    expiryDate
+    notes
+    createdAt
+  }
+`;
+
+export const USABLE_VOUCHERS_FE = gql`
+  query UsableVouchersFe($patientId: ID!) {
+    usableVouchersFe(patientId: $patientId) {
+      ...VoucherFeFields
+    }
+  }
+  ${VOUCHER_FE_FIELDS}
+`;
+
+export const VOUCHERS_FE_BY_PATIENT = gql`
+  query VouchersFeByPatient($patientId: ID!) {
+    vouchersFeByPatient(patientId: $patientId) {
+      ...VoucherFeFields
+    }
+  }
+  ${VOUCHER_FE_FIELDS}
+`;
+
+export const ISSUE_VOUCHER_FE = gql`
+  mutation IssueVoucherFe(
+    $patientId: ID!
+    $initialAmount: Float!
+    $expiryDate: String
+    $notes: String
+  ) {
+    issueVoucherFe(
+      patientId: $patientId
+      initialAmount: $initialAmount
+      expiryDate: $expiryDate
+      notes: $notes
+    ) {
+      ...VoucherFeFields
+    }
+  }
+  ${VOUCHER_FE_FIELDS}
 `;

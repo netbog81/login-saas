@@ -1,4 +1,6 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
+import { CalendarWriteGuard } from '../guards/calendar-write.guard';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
@@ -7,7 +9,7 @@ import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-a
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
 import { GymAvailabilityService } from '../services/gym-availability.service';
-import { RecurringSeriesScope, UpdateRecurringSeriesTimeInput } from '../dto/recurring-series.input';
+import { RecurringSeriesScope, UpdateRecurringSeriesTimeInput, UpdateRecurringSeriesInput } from '../dto/recurring-series.input';
 import { RecurringSeriesOperationResult } from '../dto/recurring-series-conflict.output';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
@@ -81,6 +83,7 @@ export class AvailabilityAppointmentResolver {
    * Mutation: Crea un nuovo appuntamento
    */
   @Mutation(() => AvailabilityAppointment, { name: 'createAvailabilityAppointment' })
+  @UseGuards(CalendarWriteGuard)
   async createAppointment(
     @Args('input') input: CreateAvailabilityAppointmentInput,
   ): Promise<AvailabilityAppointment> {
@@ -91,6 +94,7 @@ export class AvailabilityAppointmentResolver {
    * Mutation: Aggiorna un appuntamento esistente
    */
   @Mutation(() => AvailabilityAppointment, { name: 'updateAvailabilityAppointment' })
+  @UseGuards(CalendarWriteGuard)
   async updateAppointment(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: UpdateAvailabilityAppointmentInput,
@@ -102,6 +106,7 @@ export class AvailabilityAppointmentResolver {
    * Mutation: Cancella un appuntamento (soft delete)
    */
   @Mutation(() => AvailabilityAppointment, { name: 'cancelAvailabilityAppointment' })
+  @UseGuards(CalendarWriteGuard)
   async cancelAppointment(
     @Args('id', { type: () => ID }) id: string,
     @Args('cancellationReason', { nullable: true }) cancellationReason?: string,
@@ -113,6 +118,7 @@ export class AvailabilityAppointmentResolver {
    * Mutation: Elimina definitivamente un appuntamento
    */
   @Mutation(() => Boolean, { name: 'deleteAvailabilityAppointment' })
+  @UseGuards(CalendarWriteGuard)
   async deleteAppointment(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {
@@ -147,6 +153,7 @@ export class AvailabilityAppointmentResolver {
    * Se preavviso <24h → CANCELLED_LATE (incrementa contatore paziente)
    */
   @Mutation(() => AvailabilityAppointment, { name: 'cancelAppointmentWithNotice' })
+  @UseGuards(CalendarWriteGuard)
   async cancelAppointmentWithNotice(
     @Args('id', { type: () => ID }) id: string,
     @Args('reason') reason: string,
@@ -264,6 +271,7 @@ export class AvailabilityAppointmentResolver {
    * Mutation: Crea un appuntamento palestra con validazione capacità
    */
   @Mutation(() => AvailabilityAppointment, { name: 'createGymAppointment' })
+  @UseGuards(CalendarWriteGuard)
   async createGymAppointment(
     @Args('input') input: CreateGymAppointmentInput,
   ): Promise<AvailabilityAppointment> {
@@ -311,6 +319,7 @@ export class AvailabilityAppointmentResolver {
    * Mutation: Cancella (soft) appuntamenti di una serie ricorrente
    */
   @Mutation(() => Int, { name: 'cancelRecurringSeries' })
+  @UseGuards(CalendarWriteGuard)
   async cancelRecurringSeries(
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
     @Args('fromDate') fromDate: string,
@@ -328,6 +337,7 @@ export class AvailabilityAppointmentResolver {
    * Scope: solo corrente / corrente+successivi / intera serie / intervallo date.
    */
   @Mutation(() => Int, { name: 'deleteRecurringSeries' })
+  @UseGuards(CalendarWriteGuard)
   async deleteRecurringSeries(
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
     @Args('fromDate') fromDate: string,
@@ -347,9 +357,23 @@ export class AvailabilityAppointmentResolver {
    * (fuori disponibilità o sovrapposizioni) NON applica nulla e li ritorna.
    */
   @Mutation(() => RecurringSeriesOperationResult, { name: 'updateRecurringSeriesTime' })
+  @UseGuards(CalendarWriteGuard)
   async updateRecurringSeriesTime(
     @Args('input') input: UpdateRecurringSeriesTimeInput,
   ): Promise<RecurringSeriesOperationResult> {
     return this.appointmentService.updateRecurringSeriesTime(input);
+  }
+
+  /**
+   * Mutation: Modifica COMPLETA (tutti i campi + eventuale spostamento data)
+   * delle occorrenze di una serie ricorrente nello scope scelto. Warn-and-block
+   * sulle sovrapposizioni con appuntamenti esterni alla serie.
+   */
+  @Mutation(() => RecurringSeriesOperationResult, { name: 'updateRecurringSeries' })
+  @UseGuards(CalendarWriteGuard)
+  async updateRecurringSeries(
+    @Args('input') input: UpdateRecurringSeriesInput,
+  ): Promise<RecurringSeriesOperationResult> {
+    return this.appointmentService.updateRecurringSeries(input);
   }
 }

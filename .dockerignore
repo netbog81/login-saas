@@ -1,0 +1,14 @@
+# Il compose builda backend e frontend con context: . (root della repo):
+# tutto ciò che non è escluso qui viene trasferito al daemon a OGNI build.
+# Senza queste esclusioni il contesto pesava ~6GB (node_modules host,
+# cache .angular, dist, .git) e il COPY frontend/. . sovrascriveva i
+# node_modules installati da npm ci in Alpine (musl) con quelli
+# dell'host Ubuntu (glibc) — binari nativi potenzialmente incompatibili.
+
+**/node_modules
+**/.angular
+**/dist
+.git
+**/*.log
+**/.env
+**/.env.*

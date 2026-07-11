@@ -25,7 +25,8 @@ WORKDIR /app
 # local-libs prima del npm ci (le dep file: risolvono i tarball locali).
 COPY backend/local-libs ./local-libs
 COPY backend/package*.json ./
-RUN npm ci --no-audit --no-fund
+# Cache mount BuildKit: la cache npm persiste tra i build (vedi frontend).
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
 
 COPY backend/tsconfig*.json ./
 COPY backend/nest-cli.json ./

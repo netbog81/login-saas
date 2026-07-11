@@ -266,7 +266,7 @@
 
       <!-- Caso ritardatario: paziente segnato non presentato che poi arriva.
            Permette di correggere lo stato (riapre il trattamento se annullato). -->
-      <div class="status-buttons" *ngIf="bookingStatus === 'no_show' && canMarkAttended">
+      <div class="status-buttons" *ngIf="!readOnly && bookingStatus === 'no_show' && canMarkAttended">
         <button mat-flat-button color="primary" type="button" (click)="onMarkAttended()">
           <mat-icon>check</mat-icon>
           Paziente Arrivato (in ritardo)
@@ -276,14 +276,14 @@
         L'appuntamento è stato disdetto.
       </p>
 
-      <div class="status-buttons" *ngIf="canRevertAttended">
+      <div class="status-buttons" *ngIf="!readOnly && canRevertAttended">
         <button mat-stroked-button color="warn" (click)="onRevertAttended()" type="button">
           <mat-icon>undo</mat-icon>
           Annulla Presentato
         </button>
       </div>
 
-      <div class="status-buttons" *ngIf="canShowStatusActions">
+      <div class="status-buttons" *ngIf="!readOnly && canShowStatusActions">
         <button mat-flat-button color="primary" *ngIf="canMarkAttended" type="button" (click)="onMarkAttended()">
           <mat-icon>check</mat-icon>
           Paziente Arrivato
@@ -304,21 +304,36 @@
       </div>
     </div>
   </form>
+
+  <!-- Gestione serie ricorrenti: pannello "Applica a" + Applica modifiche/Elimina.
+       DENTRO mat-dialog-content così scrolla col resto (fuori da qui restava
+       tagliato in fondo, senza scrollbar), ma FUORI dal <form> perché i suoi
+       bottoni senza type non facciano submit. Nascosto in sola lettura. -->
+  <app-recurring-scope-panel
+    *ngIf="!readOnly && isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId"
+    [futureCount]="loadingSeriesInfo ? null : futureSeriesCount"
+    [currentDate]="data.appointment?.date || ''"
+    (applyEdit)="onApplySeriesEdit($event)"
+    (applyDelete)="onApplySeriesDelete($event)">
+  </app-recurring-scope-panel>
 </mat-dialog-content>
 
-<!-- Gestione serie ricorrenti: pannello "Applica a" + Modifica/Elimina -->
-<app-recurring-scope-panel
-  *ngIf="isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId"
-  [futureCount]="loadingSeriesInfo ? null : futureSeriesCount"
-  [currentDate]="data.appointment?.date || ''"
-  (applyEdit)="onApplySeriesEdit($event)"
-  (applyDelete)="onApplySeriesDelete($event)">
-</app-recurring-scope-panel>
+<!-- Sola lettura: solo "Chiudi", nessuna azione di modifica. -->
+<mat-dialog-actions align="end" *ngIf="readOnly">
+  <button mat-flat-button color="primary" (click)="onCancel()" type="button">
+    Chiudi
+  </button>
+</mat-dialog-actions>
 
-<mat-dialog-actions align="end">
+<mat-dialog-actions align="end" *ngIf="!readOnly">
   <button mat-stroked-button color="warn" *ngIf="isEditMode" (click)="onDelete()" type="button">
     <mat-icon>delete</mat-icon>
     Elimina
+  </button>
+  <button mat-stroked-button *ngIf="isEditMode" (click)="onCopy()" type="button"
+          matTooltip="Copia questo appuntamento in un altro slot">
+    <mat-icon>content_copy</mat-icon>
+    Copia
   </button>
   <span class="spacer"></span>
   <button mat-stroked-button (click)="onCancel()" type="button">

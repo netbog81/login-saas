@@ -62,19 +62,23 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
 
       <div class="bar-divider"></div>
 
-      <!-- Mode toggle operatori/palestre -->
-      <mat-button-toggle-group [value]="viewMode" (change)="viewModeChange.emit($event.value)" hideSingleSelectionIndicator>
-        <mat-button-toggle value="operators">
-          <mat-icon>people</mat-icon>
-          Operatori
-        </mat-button-toggle>
-        <mat-button-toggle value="gyms">
-          <mat-icon>fitness_center</mat-icon>
-          Palestre
-        </mat-button-toggle>
-      </mat-button-toggle-group>
+      <!-- Mode toggle operatori/palestre — nascosto in sola lettura
+           (la vista è forzata dal ruolo: operatori per medici/operatori,
+           palestre per gli istruttori). -->
+      @if (!readOnly) {
+        <mat-button-toggle-group [value]="viewMode" (change)="viewModeChange.emit($event.value)" hideSingleSelectionIndicator>
+          <mat-button-toggle value="operators">
+            <mat-icon>people</mat-icon>
+            Operatori
+          </mat-button-toggle>
+          <mat-button-toggle value="gyms">
+            <mat-icon>fitness_center</mat-icon>
+            Palestre
+          </mat-button-toggle>
+        </mat-button-toggle-group>
 
-      <div class="bar-divider"></div>
+        <div class="bar-divider"></div>
+      }
 
       <!-- Slot duration -->
       <div class="slot-duration">
@@ -116,11 +120,13 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
 
       <div class="bar-divider"></div>
 
-      <!-- Lista d'attesa -->
-      <button mat-stroked-button class="action-btn" (click)="openWaitingList.emit()" matTooltip="Lista d'attesa">
-        <mat-icon>list_alt</mat-icon>
-        Lista d'attesa
-      </button>
+      <!-- Lista d'attesa — azione gestionale, nascosta in sola lettura -->
+      @if (!readOnly) {
+        <button mat-stroked-button class="action-btn" (click)="openWaitingList.emit()" matTooltip="Lista d'attesa">
+          <mat-icon>list_alt</mat-icon>
+          Lista d'attesa
+        </button>
+      }
 
       <!-- Toggle vista compatta/espansa -->
       <mat-button-toggle-group [value]="compactMode ? 'compact' : 'expanded'"
@@ -134,19 +140,34 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
         </mat-button-toggle>
       </mat-button-toggle-group>
 
-      <!-- Apri dialog Trattamenti -->
-      <button mat-stroked-button class="action-btn" (click)="openTreatments.emit()"
-              matTooltip="Trattamenti del giorno — apri/chiudi (Alt+T)">
-        <mat-icon>healing</mat-icon>
-        Trattamenti
-      </button>
+      <!-- Azioni gestionali (Trattamenti / Appuntamenti / Copia): nascoste in
+           sola lettura. -->
+      @if (!readOnly) {
+        <!-- Apri dialog Trattamenti -->
+        <button mat-stroked-button class="action-btn" (click)="openTreatments.emit()"
+                matTooltip="Trattamenti del giorno — apri/chiudi (Alt+T)">
+          <mat-icon>healing</mat-icon>
+          Trattamenti
+        </button>
 
-      <!-- Apri dialog Appuntamenti (ricerca paziente + riprenotazione) -->
-      <button mat-stroked-button class="action-btn" (click)="openAppuntamenti.emit()"
-              matTooltip="Cerca paziente e gestisci appuntamenti — apri/chiudi (Alt+A)">
-        <mat-icon>event_note</mat-icon>
-        Appuntamenti
-      </button>
+        <!-- Apri dialog Appuntamenti (ricerca paziente + riprenotazione) -->
+        <button mat-stroked-button class="action-btn" (click)="openAppuntamenti.emit()"
+                matTooltip="Cerca paziente e gestisci appuntamenti — apri/chiudi (Alt+A)">
+          <mat-icon>event_note</mat-icon>
+          Appuntamenti
+        </button>
+
+        <!-- Copia appuntamento: avvia il flusso copia/incolla. Quando attivo
+             diventa "Annulla copia" (stesso pulsante, colore evidenziato). -->
+        <button mat-flat-button
+                class="action-btn copy-btn"
+                [class.copy-btn-active]="copyMode"
+                (click)="toggleCopyMode.emit()"
+                [matTooltip]="copyMode ? 'Annulla copia appuntamento' : 'Copia un appuntamento in un altro slot'">
+          <mat-icon>{{ copyMode ? 'close' : 'content_copy' }}</mat-icon>
+          {{ copyMode ? 'Annulla copia' : 'Copia appuntamento' }}
+        </button>
+      }
 
       <!-- Spinge il toggle vista in fondo a destra -->
       <span class="bar-spacer"></span>
@@ -272,6 +293,13 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
       padding: 0 10px;
       min-width: 0;
     }
+
+    /* Pulsante "Copia appuntamento": neutro a riposo, evidenziato (modalita'
+       attiva) quando un flusso copia/incolla e' in corso. */
+    .copy-btn-active {
+      background: #4338ca;
+      color: white;
+    }
     .action-btn .mat-icon {
       font-size: 18px;
       width: 18px;
@@ -312,6 +340,15 @@ export class CalendarV3ToolbarComponent {
   @Input() showWorkingHoursOnly = false;
   @Input() showWeekend = true;
   @Input() compactMode = true;
+  /** true quando il flusso copia/incolla appuntamento e' attivo. */
+  @Input() copyMode = false;
+  /**
+   * Sola lettura: lascia solo navigazione date e cambio vista
+   * (giorno/settimana, slot, zoom, orario/weekend, compatta). Nasconde le
+   * azioni di modifica: toggle Operatori/Palestre, Lista d'attesa, Trattamenti,
+   * Appuntamenti, Copia appuntamento.
+   */
+  @Input() readOnly = false;
 
   @Output() prev = new EventEmitter<void>();
   @Output() next = new EventEmitter<void>();
@@ -329,6 +366,8 @@ export class CalendarV3ToolbarComponent {
   @Output() openWaitingList = new EventEmitter<void>();
   @Output() openTreatments = new EventEmitter<void>();
   @Output() openAppuntamenti = new EventEmitter<void>();
+  /** Avvia (o annulla) il flusso copia/incolla appuntamento. */
+  @Output() toggleCopyMode = new EventEmitter<void>();
 
   slotDurations = [15, 30, 45, 60];
 

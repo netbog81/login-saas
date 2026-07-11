@@ -26,14 +26,14 @@ export class GymExceptionSubstituteInput {
 
   @Field()
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/, {
     message: 'startTime deve essere nel formato HH:mm',
   })
   startTime: string;
 
   @Field()
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/, {
     message: 'endTime deve essere nel formato HH:mm',
   })
   endTime: string;
@@ -77,7 +77,7 @@ export class CreateGymExceptionInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/, {
     message: 'startTime deve essere nel formato HH:mm'
   })
   startTime?: string;
@@ -85,7 +85,7 @@ export class CreateGymExceptionInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/, {
     message: 'endTime deve essere nel formato HH:mm'
   })
   endTime?: string;
@@ -150,7 +150,7 @@ export class UpdateGymExceptionInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/, {
     message: 'startTime deve essere nel formato HH:mm'
   })
   startTime?: string;
@@ -158,7 +158,7 @@ export class UpdateGymExceptionInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/, {
     message: 'endTime deve essere nel formato HH:mm'
   })
   endTime?: string;

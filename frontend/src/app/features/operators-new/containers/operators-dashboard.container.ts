@@ -325,7 +325,10 @@ export class OperatorsDashboardContainer implements OnInit, OnDestroy {
     const weekEndStr = this.formatDate(weekEnd);
 
     forkJoin({
-      patients: this.patientService.getPatients(1000, 0),
+      // Conteggio totale pazienti via metadato `total` del registry: NON
+      // scaricare i record (il registry limita pageSize a 100 → getPatients(1000)
+      // dava HTTP 400 e faceva fallire l'intero forkJoin).
+      patientsTotal: this.patientService.countPatients(),
       // Filtra appuntamenti per operatore selezionato
       appointmentsToday: this.appointmentService.getAppointmentsByOperator(operator.id, todayStr, todayStr),
       appointmentsWeek: this.appointmentService.getAppointmentsByOperator(operator.id, weekStartStr, weekEndStr),
@@ -341,7 +344,7 @@ export class OperatorsDashboardContainer implements OnInit, OnDestroy {
             );
 
             this.stats = {
-              patientsTotal: results.patients.length,
+              patientsTotal: results.patientsTotal,
               appointmentsToday: results.appointmentsToday.length,
               appointmentsWeek: results.appointmentsWeek.length,
               treatmentsPending: pendingTreatments.length

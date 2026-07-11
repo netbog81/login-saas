@@ -1,4 +1,5 @@
 import { registerEnumType, InputType, Field, ID } from '@nestjs/graphql';
+import { AppointmentInstrumentInput, ServiceInputItem } from './create-availability-appointment.input';
 
 export enum RecurringSeriesScope {
   CURRENT_ONLY = 'current_only',
@@ -42,4 +43,68 @@ export class UpdateRecurringSeriesTimeInput {
   // ricade nell'intervallo. Ignorato per gli altri scope.
   @Field({ nullable: true })
   includeCurrent?: boolean;
+}
+
+/**
+ * Input per la modifica COMPLETA di una serie ricorrente: propaga alle
+ * occorrenze nello scope scelto tutti i campi modificabili (orario, operatore,
+ * paziente, servizi, strumenti, note, non-retribuito) ed un eventuale
+ * spostamento di data. Se `newDate` differisce dalla data attuale
+ * dell'occorrenza corrente, l'intera serie viene traslata dello stesso numero
+ * di giorni. Warn-and-block sulle sovrapposizioni: se una occorrenza si
+ * sovrappone (alla nuova posizione) a un appuntamento esterno alla serie, nulla
+ * viene applicato e i conflitti vengono ritornati.
+ */
+@InputType()
+export class UpdateRecurringSeriesInput {
+  @Field(() => ID)
+  appointmentId: string;
+
+  @Field(() => RecurringSeriesScope)
+  scope: RecurringSeriesScope;
+
+  // Per scope DATE_RANGE: estremi inclusi dell'intervallo (YYYY-MM-DD).
+  @Field({ nullable: true })
+  rangeFrom?: string;
+
+  @Field({ nullable: true })
+  rangeTo?: string;
+
+  @Field({ nullable: true })
+  includeCurrent?: boolean;
+
+  // Nuova data (YYYY-MM-DD) dell'occorrenza corrente: se diversa dall'attuale,
+  // trasla l'intera serie nello scope dello stesso numero di giorni.
+  @Field({ nullable: true })
+  newDate?: string;
+
+  @Field()
+  startTime: string; // HH:mm
+
+  @Field()
+  endTime: string; // HH:mm
+
+  @Field(() => ID, { nullable: true })
+  operatorId?: string;
+
+  @Field(() => ID, { nullable: true })
+  patientId?: string;
+
+  @Field({ nullable: true })
+  clientName?: string;
+
+  @Field({ nullable: true })
+  notes?: string;
+
+  @Field({ nullable: true })
+  nonRetribuito?: boolean;
+
+  @Field({ nullable: true })
+  instrumentOrderMatters?: boolean;
+
+  @Field(() => [ServiceInputItem], { nullable: true })
+  services?: ServiceInputItem[];
+
+  @Field(() => [AppointmentInstrumentInput], { nullable: true })
+  instruments?: AppointmentInstrumentInput[];
 }

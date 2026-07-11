@@ -7,6 +7,7 @@ export const GET_OPERATOR_CATEGORIES = gql`
       macroCategory
       name
       description
+      invoiceLineDescription
       isActive
       createdAt
       updatedAt
@@ -21,6 +22,7 @@ export const GET_OPERATOR_CATEGORY = gql`
       macroCategory
       name
       description
+      invoiceLineDescription
       isActive
       operators {
         id

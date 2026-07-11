@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { In, IsNull, Not, EntityManager } from 'typeorm';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { In, IsNull, Not, EntityManager, SelectQueryBuilder } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import { Treatment, TreatmentStatus, PaymentMethod } from '../entities/treatment.entity';
@@ -19,6 +19,7 @@ import { TreatmentServiceInputItem } from '../dto/treatment.input';
 import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
 import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
 import { TreatmentEventMapper } from '../../clinical-events/mappers/treatment-event.mapper';
+import { VoucherFeService } from './voucher-fe.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
 import { AppUser } from '../../users/entities/app-user.entity';
 
@@ -36,10 +37,36 @@ export interface CloseTreatmentInput {
   secretaryNotes?: string;
 }
 
+export interface PaymentTenderLineInput {
+  kind: string; // 'method' | 'voucher' | 'voucher_fe'
+  paymentMethodId?: string;
+  voucherId?: string;
+  voucherFeId?: string;
+  amount: number;
+}
+
 export interface RecordPaymentInput {
   paymentMethod: PaymentMethod;
   collectedBy: string;
   amount?: number; // Se diverso dal prezzo originale
+  /**
+   * PARTE 4.3 — Solo per trattamenti sconto FE (caso semplice): id del
+   * voucher_fe usato per pagare. Per lo split multi-riga usare `tenderLines`.
+   */
+  voucherFeId?: string;
+  /**
+   * PARTE 2/4 — Split multi-riga. Se presente, la somma degli amount deve
+   * coincidere col totale. Le righe voucher_fe restano nel clinico; le righe
+   * method/voucher vengono propagate ad accounting (se !scontoFE e post-invio).
+   */
+  tenderLines?: PaymentTenderLineInput[];
+  /**
+   * Se true, consente di CORREGGERE/SOSTITUIRE un pagamento già registrato:
+   * storna l'eventuale voucher_fe consumato in precedenza e ri-registra
+   * l'incasso con i nuovi dati. Senza questo flag, un treatment già pagato
+   * rifiuta una nuova registrazione.
+   */
+  replaceExisting?: boolean;
 }
 
 export interface TreatmentInstrumentInput {
@@ -90,12 +117,15 @@ export interface UpdateTreatmentInput {
 
 @Injectable()
 export class TreatmentService {
+  private readonly logger = new Logger(TreatmentService.name);
+
   constructor(
     private readonly tenantContext: TenantContextService,
     private eventsService: EventsService,
     private readonly eventBuffer: ClinicalEventBuffer,
     private readonly eventEmitter: EventEmitter2,
     private readonly treatmentEventMapper: TreatmentEventMapper,
+    private readonly voucherFeService: VoucherFeService,
   ) {}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -144,19 +174,10 @@ export class TreatmentService {
         throw new NotFoundException(`Appuntamento ${appointmentId} non trovato`);
       }
 
-      // Se l'appuntamento è soft-deleted (residuo di un trattamento cestinato),
-      // lo riattiviamo e purghiamo definitivamente il vecchio trattamento
-      // soft-deleted (+ figli via CASCADE DB) così da ripartire da zero senza
-      // duplicati né record orfani nel cestino.
+      // Se l'appuntamento è soft-deleted (residuo storico: fino al 2026-06 la
+      // delete del trattamento soft-deletava a cascata anche l'appuntamento),
+      // lo riattiviamo per poterci riagganciare il nuovo trattamento.
       if (appointment.deletedAt) {
-        const staleTreatments = await treatmentRepo.find({
-          where: { appointmentId },
-          withDeleted: true,
-        });
-        for (const stale of staleTreatments) {
-          await treatmentRepo.delete(stale.id);
-        }
-
         await manager
           .createQueryBuilder()
           .update(AvailabilityAppointment)
@@ -164,6 +185,33 @@ export class TreatmentService {
           .where('id = :aid', { aid: appointmentId })
           .execute();
         appointment.deletedAt = null;
+      }
+
+      // Purga i trattamenti soft-deleted che occupano ancora lo slot UNIQUE
+      // "UQ_treatments_appointment" (il vincolo DB non distingue i soft-deleted).
+      // Va fatto SEMPRE, non solo con appuntamento soft-deleted: oggi "annulla
+      // trattamento" dal workspace operatore cestina il solo trattamento e
+      // lascia vivo l'appuntamento, quindi senza questa purga la ricreazione
+      // violerebbe il vincolo. Guardia: se il trattamento cestinato era già
+      // nel circuito fatturazione non lo distruggiamo (perderemmo lo storico
+      // fiscale) — va ripristinato dal cestino, non ricreato.
+      const staleTreatments = await treatmentRepo.find({
+        where: { appointmentId },
+        withDeleted: true,
+      });
+      const purgeSafeStatuses = [
+        TreatmentBillingStatus.NOT_READY,
+        TreatmentBillingStatus.READY_FOR_BILLING,
+        TreatmentBillingStatus.CANCELLED,
+      ];
+      for (const stale of staleTreatments.filter((t) => t.deletedAt)) {
+        if (stale.billingStatus && !purgeSafeStatuses.includes(stale.billingStatus)) {
+          throw new ConflictException(
+            `Per questo appuntamento esiste un trattamento annullato ma già inviato in fatturazione ` +
+            `(stato ${stale.billingStatus}). Ripristinalo dal cestino invece di crearne uno nuovo.`,
+          );
+        }
+        await treatmentRepo.delete(stale.id);
       }
 
       // Carica appointmentServices separatamente (relazione unidirezionale)
@@ -283,7 +331,9 @@ export class TreatmentService {
   async findById(id: string): Promise<Treatment | null> {
     return this.treatmentRepo.findOne({
       where: { id },
-      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service']
+      // 'site' serve alla generazione dell'attestato di presenza
+      // (intestazione con nome/indirizzo dello studio)
+      relations: ['appointment', 'operator', 'service', 'instruments', 'instruments.instrument', 'instruments.instrumentCategory', 'therapeuticPath', 'treatmentServices', 'treatmentServices.service', 'site']
     });
   }
 
@@ -363,7 +413,17 @@ export class TreatmentService {
       if (updateData.clinicalNotes !== undefined) treatment.clinicalNotes = updateData.clinicalNotes;
       if (updateData.secretaryNotes !== undefined) treatment.secretaryNotes = updateData.secretaryNotes;
       if (updateData.patientNotes !== undefined) treatment.patientNotes = updateData.patientNotes;
-      if (updateData.price !== undefined) treatment.price = updateData.price;
+      if (updateData.price !== undefined) {
+        treatment.price = updateData.price;
+        // Invariante: accountingTotalAmount vale solo finché il documento
+        // accounting da cui deriva è corrente. Qui il treatment è IN_PROGRESS
+        // (guardia sopra) quindi nessun documento esiste: un eventuale residuo
+        // è stale e va azzerato, altrimenti la UI mostrerebbe l'icona "totale
+        // fattura" e incasserebbe sul totale sbagliato.
+        treatment.accountingTotalAmount = null as any;
+        treatment.accountingTreatmentLinesAmount = null as any;
+        treatment.accountingDocumentTreatmentCount = null as any;
+      }
       if (updateData.scontoFE !== undefined) {
         treatment.scontoFE = updateData.scontoFE;
         // Sconto FE attivo => trattamento NON fatturabile:
@@ -478,6 +538,10 @@ export class TreatmentService {
         secretaryNotes: input.secretaryNotes,
         operatorNotes: input.operatorNotes,
         price: input.price,
+        // forcedClosure descrive l'ULTIMA chiusura: un completamento normale
+        // dell'operatore sovrascrive un eventuale flag residuo di una vecchia
+        // chiusura forzata (force-close → reopen → ricompletamento).
+        forcedClosure: false,
         ...(input.isTest !== undefined ? { isTest: input.isTest } : {}),
       });
 
@@ -589,15 +653,19 @@ export class TreatmentService {
     treatment.status = TreatmentStatus.CLOSED;
     treatment.closedAt = now;
     treatment.closedByUserId = closedByUserId ?? treatment.closedByUserId;
+    // Chiusura normale (non forzata): sovrascrive un eventuale flag residuo
+    // di una precedente chiusura forzata poi riaperta.
+    treatment.forcedClosure = false;
     if (input.secretaryNotes) {
       treatment.secretaryNotes = input.secretaryNotes;
     }
 
-    // Chiusura dalla segreteria = auto-marca "pronto per fatturazione"
-    // a meno che scontoFE sia attivo (non fatturabile) o sia già fatturato.
+    // Chiusura dalla segreteria = fatturabile (billingStatus →
+    // READY_FOR_BILLING) a meno che scontoFE sia attivo o sia già fatturato.
+    // 2026-07-10: NON marca più readyForBilling — quel flag ora significa
+    // "inviato ad accounting" (settato solo da setReadyForBilling(true),
+    // con readyForBillingAt = timestamp di invio).
     if (!treatment.scontoFE && !treatment.isInvoicedToPatient) {
-      treatment.readyForBilling = true;
-      treatment.readyForBillingAt = now;
       // Transition billingStatus: NOT_READY → READY_FOR_BILLING.
       // Solo se siamo in NOT_READY: edge case (es. trattamento già SENT
       // riaperto da segreteria e richiuso) non regrediamo lo stato.
@@ -654,11 +722,9 @@ export class TreatmentService {
 
     await this.dataSource.transaction(async manager => {
       const repo = manager.getRepository(Treatment);
-      const readyForBillingPatch =
-        !treatment.scontoFE && !treatment.isInvoicedToPatient
-          ? { readyForBilling: true, readyForBillingAt: now }
-          : {};
-      // Transition billingStatus: NOT_READY → READY_FOR_BILLING (se ready).
+      // Transition billingStatus: NOT_READY → READY_FOR_BILLING (fatturabile).
+      // readyForBilling NON viene marcato: significa "inviato ad accounting"
+      // (vedi close()).
       const billingStatusPatch =
         !treatment.scontoFE &&
         !treatment.isInvoicedToPatient &&
@@ -672,7 +738,6 @@ export class TreatmentService {
         closedByUserId,
         forcedClosure: true,
         ...(secretaryNotes ? { secretaryNotes } : {}),
-        ...readyForBillingPatch,
         ...billingStatusPatch,
       });
 
@@ -733,6 +798,22 @@ export class TreatmentService {
         'Trattamento già fatturato: non può essere riaperto.',
       );
     }
+    // Difensivo: non regredire a IN_PROGRESS un treatment che è già stato
+    // inviato/fatturato (billingStatus avanzato). Va prima richiamato/annullato.
+    const blockedReopen = [
+      TreatmentBillingStatus.SENT,
+      TreatmentBillingStatus.PENDING,
+      TreatmentBillingStatus.INVOICED,
+      TreatmentBillingStatus.PARTIALLY_REFUNDED,
+      TreatmentBillingStatus.REFUNDED,
+      TreatmentBillingStatus.REISSUED,
+    ];
+    if (blockedReopen.includes(treatment.billingStatus)) {
+      throw new BadRequestException(
+        `Trattamento non riapribile (billingStatus=${treatment.billingStatus}): è già stato ` +
+          `inviato/fatturato. Usa "Richiama indietro" o "Annulla invio" prima di riaprirlo.`,
+      );
+    }
     if (treatment.status !== TreatmentStatus.OPERATOR_COMPLETED) {
       throw new BadRequestException(
         `Riapertura operatore consentita solo da OPERATOR_COMPLETED. ` +
@@ -742,6 +823,9 @@ export class TreatmentService {
 
     treatment.status = TreatmentStatus.IN_PROGRESS;
     treatment.completedAt = null as any;
+    // La riapertura annulla la chiusura: il flag di chiusura forzata non deve
+    // sopravvivere (altrimenti il badge "Chiusura forzata" resta per sempre).
+    treatment.forcedClosure = false;
     const result = await this.treatmentRepo.save(treatment);
 
     this.eventsService.emit({
@@ -773,6 +857,26 @@ export class TreatmentService {
         'Trattamento già fatturato: non può essere riaperto.',
       );
     }
+    // GUARDIA POST-INVIO: se il treatment è già stato inviato/fatturato
+    // (billingStatus SENT/PENDING/INVOICED/REFUNDED/...), la riapertura locale
+    // NON è consentita — porterebbe a stati incoerenti (es. operator_completed
+    // + INVOICED, con la fattura già emessa in accounting). Per modificarlo,
+    // l'operatore deve prima "Richiamare indietro" (recall) o annullare l'invio.
+    const blockedReopen = [
+      TreatmentBillingStatus.SENT,
+      TreatmentBillingStatus.PENDING,
+      TreatmentBillingStatus.INVOICED,
+      TreatmentBillingStatus.PARTIALLY_REFUNDED,
+      TreatmentBillingStatus.REFUNDED,
+      TreatmentBillingStatus.REISSUED,
+    ];
+    if (blockedReopen.includes(treatment.billingStatus)) {
+      throw new BadRequestException(
+        `Trattamento non riapribile (billingStatus=${treatment.billingStatus}): è già stato ` +
+          `inviato/fatturato. Usa "Richiama indietro" per recuperarlo da accounting, ` +
+          `oppure "Annulla invio", prima di riaprirlo.`,
+      );
+    }
     if (treatment.status !== TreatmentStatus.CLOSED) {
       throw new BadRequestException(
         `Riapertura segreteria consentita solo da CLOSED. ` +
@@ -782,8 +886,22 @@ export class TreatmentService {
 
     treatment.status = TreatmentStatus.OPERATOR_COMPLETED;
     treatment.closedAt = null as any;
+    // La riapertura annulla la chiusura: azzera anche il flag di chiusura
+    // forzata, così una successiva chiusura normale non mostra più il badge.
+    treatment.forcedClosure = false;
     treatment.readyForBilling = false;
     treatment.readyForBillingAt = null as any;
+    // Un treatment auto-marcato READY_FOR_BILLING alla chiusura deve tornare
+    // NOT_READY quando viene riaperto: altrimenti, riabilitando lo sconto FE e
+    // richiudendo (close() non auto-marca più perché scontoFE=true), il
+    // billingStatus resterebbe bloccato su READY_FOR_BILLING e i pulsanti
+    // fatturazione risulterebbero incoerenti. Gli stati post-invio (SENT,
+    // PENDING, INVOICED+) sono ora bloccati dalla guardia sopra (la riapertura
+    // locale è preclusa: isInvoicedToPatient + billingStatus avanzati
+    // passano per cancel/recall, non per reopenBySecretary).
+    if (treatment.billingStatus === TreatmentBillingStatus.READY_FOR_BILLING) {
+      treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+    }
     const result = await this.treatmentRepo.save(treatment);
 
     this.eventsService.emit({
@@ -800,14 +918,32 @@ export class TreatmentService {
   // ==================== PAYMENT ====================
 
   /**
+   * Verifica che l'operatore del trattamento sia abilitato all'incasso
+   * (Operator.canCollectPayment). Usato per le chiamate con ruolo 'operator'
+   * (derivato server-side dal JWT nel resolver).
+   */
+  private async assertTreatmentOperatorCanCollect(
+    treatment: Treatment,
+  ): Promise<void> {
+    const operator = await this.dataSource
+      .getRepository(Operator)
+      .findOne({ where: { id: treatment.operatorId } });
+    if (!operator || operator.canCollectPayment === false) {
+      throw new BadRequestException(
+        "L'operatore non ha il permesso di registrare pagamenti."
+      );
+    }
+  }
+
+  /**
    * Registra il pagamento del paziente.
    *
-   * @param callerRole - ruolo di chi chiama la mutation.
-   *   'operator': chiamata dall'interfaccia operatore. Richiede che
-   *     l'operatore associato al trattamento abbia canCollectPayment=true.
-   *   'secretary' (default): la segreteria può sempre incassare (a meno
-   *     che il trattamento sia già CLOSED, in cui caso è congelato).
-   *   TODO: sostituire con lettura ruolo dal JWT quando auth sarà attivo.
+   * @param callerRole - ruolo derivato server-side dal resolver (JWT).
+   *   'operator': richiede che l'operatore associato al trattamento abbia
+   *     canCollectPayment=true.
+   *   'secretary' (default): la segreteria può sempre incassare, in
+   *     qualsiasi stato del trattamento (anche CLOSED/SENT/PENDING/INVOICED:
+   *     l'incasso post-chiusura è un caso d'uso legittimo).
    */
   async recordPayment(
     id: string,
@@ -820,38 +956,447 @@ export class TreatmentService {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
     }
 
-    if (treatment.isPaid) {
-      throw new BadRequestException('Il trattamento è già stato pagato');
-    }
-
-    // Dopo CLOSED l'economia è congelata (solo sblocco via reopen).
-    if (treatment.status === TreatmentStatus.CLOSED) {
+    if (treatment.isPaid && !input.replaceExisting) {
       throw new BadRequestException(
-        'Il trattamento è chiuso dalla segreteria: il pagamento non è più modificabile.'
+        'Il trattamento è già stato pagato. Usa la correzione del pagamento per modificarlo.',
       );
     }
 
+    // NB: il pagamento è consentito anche su trattamenti CLOSED/SENT/PENDING/
+    // INVOICED: serve a registrare/sincronizzare l'incasso DOPO l'invio a
+    // fatturazione. Con replaceExisting=true si può anche correggere un
+    // pagamento già registrato (storno voucher_fe precedente + ri-registrazione).
+    // La modifica di righe/prezzi resta congelata altrove (updateBySecretary).
+
     if (callerRole === 'operator') {
-      const operator = await this.dataSource
-        .getRepository(Operator)
-        .findOne({ where: { id: treatment.operatorId } });
-      if (!operator || operator.canCollectPayment === false) {
-        throw new BadRequestException(
-          "L'operatore non ha il permesso di registrare pagamenti."
+      await this.assertTreatmentOperatorCanCollect(treatment);
+    }
+
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+    const paymentId = randomUUID();
+    const now = new Date();
+    const amount = input.amount ?? treatment.accountingTotalAmount ?? treatment.price ?? 0;
+    // Tutti i treatment marcati pagati da questo incasso (il primario + gli
+    // eventuali fratelli della stessa fattura multi-trattamento). Popolato
+    // dentro la transazione, usato per payload evento e notifiche SSE.
+    const coveredTreatmentIds: string[] = [id];
+
+    const updated = await this.dataSource.transaction(async (manager) => {
+      // Correzione: se stiamo sostituendo un pagamento esistente, storniamo
+      // prima i consumi voucher_fe collegati (ripristina il residuo) così la
+      // ri-registrazione riparte pulita.
+      if (input.replaceExisting && treatment.isPaid) {
+        await this.voucherFeService.reverseConsumptionsForTreatment(
+          manager,
+          id,
+          input.collectedBy,
         );
       }
+
+      // Guardia first-write-wins: senza replaceExisting l'UPDATE applica solo
+      // se isPaid è ancora false (row lock Postgres) — se un'altra
+      // registrazione concorrente ha già vinto, RETURNING è vuoto → scartiamo.
+      // Con replaceExisting aggiorniamo comunque (correzione esplicita).
+      // IMPORTANTE: NON sovrascriviamo `treatment.price` con l'importo
+      // incassato. Il `price` è il totale DOVUTO (somma delle righe servizio);
+      // l'`amount` incassato può essere parziale/diverso e va tracciato a parte
+      // (nel PaymentAllocation lato accounting, non sul treatment). Sovrascrivere
+      // il price corromperebbe il totale del trattamento.
+      const updateQb = manager
+        .createQueryBuilder()
+        .update(Treatment)
+        .set({
+          isPaid: true,
+          paymentMethod: input.paymentMethod,
+          paidAt: now,
+          collectedBy: input.collectedBy,
+          paymentId,
+          paymentRecordedSource: 'clinical',
+        })
+        .returning('*');
+      if (input.replaceExisting) {
+        updateQb.where('id = :id', { id });
+      } else {
+        updateQb.where('id = :id AND "isPaid" = false', { id });
+      }
+      const res = await updateQb.execute();
+
+      if (!res.raw || res.raw.length === 0) {
+        // Qualcun altro ha già registrato l'incasso. Idempotente: nessun errore.
+        return null;
+      }
+
+      const fresh = await manager.getRepository(Treatment).findOne({ where: { id } });
+
+      // 2026-07-08 — Fattura multi-trattamento: l'incasso è del DOCUMENTO,
+      // mai della quota. Un solo paymentId condiviso da tutti i treatment
+      // della fattura: si valida che l'importo sia il saldo intero e si
+      // marcano pagati anche gli altri treatment nella STESSA transazione.
+      // Verso accounting parte UN SOLO evento (questo), con l'elenco dei
+      // treatment coperti — niente N eventi da totale pieno (sovra-incasso).
+      const isMultiInvoice =
+        (fresh!.accountingDocumentTreatmentCount ?? 1) > 1 &&
+        !!fresh!.accountingDocumentId;
+      if (isMultiInvoice) {
+        const docTotal = Number(fresh!.accountingTotalAmount ?? 0);
+        if (docTotal > 0 && Math.abs(Number(amount) - docTotal) > 0.01) {
+          throw new BadRequestException(
+            `La fattura ${fresh!.patientInvoiceNumber ?? fresh!.accountingDocumentId} copre ` +
+              `${fresh!.accountingDocumentTreatmentCount} trattamenti: l'incasso va registrato ` +
+              `a saldo intero (€ ${docTotal.toFixed(2)}), ricevuto € ${Number(amount).toFixed(2)}.`,
+          );
+        }
+        const siblings = await manager.getRepository(Treatment).find({
+          where: { accountingDocumentId: fresh!.accountingDocumentId },
+        });
+        for (const sib of siblings) {
+          if (sib.id === id) continue;
+          coveredTreatmentIds.push(sib.id);
+          const sibQb = manager
+            .createQueryBuilder()
+            .update(Treatment)
+            .set({
+              isPaid: true,
+              paymentMethod: input.paymentMethod,
+              paidAt: now,
+              collectedBy: input.collectedBy,
+              paymentId,
+              paymentRecordedSource: 'clinical',
+            })
+            .returning('id');
+          if (input.replaceExisting) {
+            sibQb.where('id = :sid', { sid: sib.id });
+          } else {
+            sibQb.where('id = :sid AND "isPaid" = false', { sid: sib.id });
+          }
+          const sibRes = await sibQb.execute();
+          if (!sibRes.raw || sibRes.raw.length === 0) {
+            // Un altro treatment della stessa fattura risulta già incassato
+            // con un paymentId diverso: stato incoerente, meglio fermarsi
+            // (rollback di tutto) che produrre un doppio incasso parziale.
+            throw new BadRequestException(
+              `Un altro trattamento della fattura ${fresh!.patientInvoiceNumber ?? ''} risulta ` +
+                `già incassato separatamente. Correggere prima quell'incasso ` +
+                `(o ripetere con la correzione del pagamento).`,
+            );
+          }
+        }
+      }
+
+      // Normalizza le righe di tender. Se non fornite, ricava una riga singola
+      // dal `paymentMethod` legacy (retro-compat "Fattura e incassa").
+      const amountStr = Number(amount).toFixed(2);
+      const tenderLines =
+        input.tenderLines && input.tenderLines.length > 0
+          ? input.tenderLines
+          : input.voucherFeId
+          ? [{ kind: 'voucher_fe', voucherFeId: input.voucherFeId, amount }]
+          : [{ kind: 'method', paymentMethodId: input.paymentMethod, amount }];
+
+      // Validazione somma = totale (tolleranza centesimi).
+      const sum = tenderLines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      if (Math.abs(sum - Number(amount)) > 0.01) {
+        throw new BadRequestException(
+          `La somma delle righe di pagamento (€ ${sum.toFixed(2)}) non coincide con il totale (€ ${amountStr}).`,
+        );
+      }
+
+      // Voucher FE (PARTE 4.3): consuma ogni riga voucher_fe nella stessa
+      // transazione. Vietato per trattamenti non-scontoFE.
+      for (const line of tenderLines) {
+        if (line.kind === 'voucher_fe' && line.voucherFeId) {
+          if (!fresh!.scontoFE) {
+            throw new BadRequestException(
+              'Il voucher FE è utilizzabile solo per trattamenti con sconto FE attivo.',
+            );
+          }
+          await this.voucherFeService.consume(manager, {
+            voucherFeId: line.voucherFeId,
+            amount: Number(line.amount),
+            treatmentId: id,
+            createdByUserId: input.collectedBy,
+          });
+        }
+      }
+
+      // Publish verso accounting SOLO se:
+      //  - il trattamento NON è scontoFE (quei pagamenti restano nel clinico), E
+      //  - è già stato inviato a fatturazione (SENT/PENDING/INVOICED): pre-invio
+      //    il payment viaggia già dentro treatment.closed.
+      const postSent =
+        fresh!.billingStatus === TreatmentBillingStatus.SENT ||
+        fresh!.billingStatus === TreatmentBillingStatus.PENDING ||
+        fresh!.billingStatus === TreatmentBillingStatus.INVOICED;
+
+      if (!fresh!.scontoFE && postSent) {
+        if (!tenantAlias) {
+          throw new Error(
+            'recordPayment chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
+          );
+        }
+        const subMap = await this.batchLookupKeycloakSubsForCancel(
+          manager,
+          [input.collectedBy],
+        );
+        const collectedByKeycloakSub = subMap.get(input.collectedBy) ?? null;
+
+        // Mappa le righe verso il payload evento (escludendo voucher_fe, che è
+        // puramente clinico e non va mai verso accounting).
+        const eventTenderLines = tenderLines
+          .filter((l) => l.kind !== 'voucher_fe')
+          .map((l) => ({
+            kind: (l.kind === 'voucher' ? 'voucher' : 'method') as 'method' | 'voucher',
+            paymentMethodId: l.kind === 'method' ? l.paymentMethodId ?? null : null,
+            voucherId: l.kind === 'voucher' ? l.voucherId ?? null : null,
+            amount: Number(l.amount).toFixed(2),
+          }));
+
+        this.eventBuffer.add({
+          eventType: 'treatment.payment-recorded',
+          payload: {
+            treatmentId: id,
+            paymentId,
+            isPaid: true as const,
+            paidAt: now.toISOString(),
+            totalAmount: amountStr,
+            tenderLines: eventTenderLines,
+            collectedByUserId: collectedByKeycloakSub,
+            recordedAt: now.toISOString(),
+            // Fattura multi-trattamento: un solo evento a saldo documento,
+            // con l'elenco completo dei treatment coperti (audit accounting).
+            accountingDocumentId: coveredTreatmentIds.length > 1
+              ? fresh!.accountingDocumentId ?? undefined
+              : undefined,
+            coveredTreatmentIds: coveredTreatmentIds.length > 1
+              ? coveredTreatmentIds
+              : undefined,
+          },
+          tenantAlias,
+          correlationId,
+        });
+      }
+
+      return fresh!;
+    });
+
+    if (!updated) {
+      // First-write-wins perso: ritorna lo stato corrente senza ulteriori azioni.
+      return this.requireFullTreatment(id);
     }
 
-    treatment.isPaid = true;
-    treatment.paymentMethod = input.paymentMethod;
-    treatment.paidAt = new Date();
-    treatment.collectedBy = input.collectedBy;
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    // SSE: notifica le UI aperte (anche l'incasso locale deve propagarsi).
+    // Per le fatture multi-trattamento la notifica parte per TUTTI i treatment
+    // marcati pagati, così ogni riga aperta in lista si aggiorna.
+    for (const coveredId of coveredTreatmentIds) {
+      this.eventsService.emit({
+        type: 'treatment_status_changed',
+        treatmentId: coveredId,
+        operatorId: updated.operatorId,
+        newStatus: updated.billingStatus,
+        timestamp: new Date(),
+      });
+    }
+    return this.requireFullTreatment(id);
+  }
 
-    if (input.amount !== undefined) {
-      treatment.price = input.amount;
+  /**
+   * 2026-07-08 — Annulla un pagamento registrato (flusso annulla-e-reinserisci:
+   * la vecchia "modifica" con replaceExisting sovrascriveva metodo/data in
+   * silenzio, sbagliato per la riconciliazione dei movimenti carte/banca).
+   *
+   * Consentito SOLO se la fattura NON è emessa. Per i trattamenti FATTURATI
+   * (decisione 2026-07-08) lo storno si fa esclusivamente da accounting, che
+   * cancella la riga incasso sul documento e rimanda billable.payment-reversed
+   * (il clinico torna isPaid=false da lì).
+   *
+   * Se il treatment è SENT/PENDING (pagamento già comunicato ad accounting via
+   * treatment.closed embedded o treatment.payment-recorded), pubblica
+   * `treatment.payment-cancelled` così accounting elimina l'allocazione orfana
+   * e il payment embedded sul billable.
+   *
+   * @param callerRole - derivato server-side dal resolver (JWT): 'secretary'
+   *   annulla sempre; 'operator' richiede canCollectPayment=true (stessa
+   *   regola della registrazione: chi può incassare può anche correggere).
+   */
+  async cancelPayment(
+    id: string,
+    actorUserId?: string,
+    callerRole: 'operator' | 'secretary' = 'secretary',
+  ): Promise<Treatment> {
+    const treatment = await this.findById(id);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+    if (!treatment.isPaid) {
+      throw new BadRequestException('Nessun pagamento da annullare per questo trattamento.');
     }
 
-    return this.treatmentRepo.save(treatment);
+    if (callerRole === 'operator') {
+      await this.assertTreatmentOperatorCanCollect(treatment);
+    }
+
+    const invoicedStatuses: TreatmentBillingStatus[] = [
+      TreatmentBillingStatus.INVOICED,
+      TreatmentBillingStatus.REFUNDED,
+      TreatmentBillingStatus.PARTIALLY_REFUNDED,
+      TreatmentBillingStatus.REISSUED,
+    ];
+    if (
+      treatment.isInvoicedToPatient ||
+      invoicedStatuses.includes(treatment.billingStatus)
+    ) {
+      throw new BadRequestException(
+        'La fattura è già stata emessa: l\'incasso va annullato dalla Contabilità ' +
+          '(dettaglio documento → pagamenti registrati). Il trattamento si aggiornerà automaticamente.',
+      );
+    }
+
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+    const cancelledPaymentId = treatment.paymentId;
+    const wasSentOrPending =
+      treatment.billingStatus === TreatmentBillingStatus.SENT ||
+      treatment.billingStatus === TreatmentBillingStatus.PENDING;
+
+    await this.dataSource.transaction(async (manager) => {
+      // Storno difensivo di eventuali consumi voucher_fe (ripristina il residuo).
+      await this.voucherFeService.reverseConsumptionsForTreatment(
+        manager,
+        id,
+        actorUserId ?? treatment.collectedBy ?? '',
+      );
+
+      await manager.getRepository(Treatment).update(id, {
+        isPaid: false,
+        paymentMethod: null as any,
+        paidAt: null as any,
+        collectedBy: null as any,
+        paymentId: null as any,
+        paymentRecordedSource: null as any,
+      });
+
+      // Il pagamento era già stato comunicato ad accounting → annullalo anche là.
+      if (wasSentOrPending && !treatment.scontoFE && cancelledPaymentId) {
+        if (!tenantAlias) {
+          throw new Error(
+            'cancelPayment chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
+          );
+        }
+        const subMap = actorUserId
+          ? await this.batchLookupKeycloakSubsForCancel(manager, [actorUserId])
+          : new Map<string, string>();
+        this.eventBuffer.add({
+          eventType: 'treatment.payment-cancelled',
+          payload: {
+            treatmentId: id,
+            paymentId: cancelledPaymentId,
+            cancelledByUserId: (actorUserId && subMap.get(actorUserId)) ?? null,
+            cancelledAt: new Date().toISOString(),
+          },
+          tenantAlias,
+          correlationId,
+        });
+      }
+    });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: id,
+      operatorId: treatment.operatorId,
+      newStatus: treatment.billingStatus,
+      timestamp: new Date(),
+    });
+    this.logger.log(
+      `Pagamento annullato per treatment ${id} (paymentId=${cancelledPaymentId ?? 'n/d'}, ` +
+        `notificaAccounting=${wasSentOrPending && !treatment.scontoFE}).`,
+    );
+    return this.requireFullTreatment(id);
+  }
+
+  /**
+   * 2026-07-01 — Toggle "Segna come incassato in contanti" per trattamenti
+   * SCONTO FE. Scorciatoia della segreteria: al posto di aprire il dialog
+   * pagamento, marca (o annulla) l'incasso in CONTANTI sull'intero totale.
+   *
+   * Vincolo: solo scontoFE (i trattamenti non-scontoFE incassano dalla scheda
+   * Pagamento con i metodi accounting). Nessun evento verso accounting (i
+   * pagamenti scontoFE restano 100% clinici — vedi payment-source-duality).
+   *
+   *  - paid=true  → registra incasso contanti sul totale (riusa recordPayment,
+   *    con replaceExisting se già pagato in altro modo).
+   *  - paid=false → annulla l'incasso: reset campi pagamento + storno difensivo
+   *    di eventuali consumi voucher_fe.
+   */
+  async setScontoFeCashPayment(
+    id: string,
+    paid: boolean,
+    actorUserId?: string,
+  ): Promise<Treatment> {
+    const treatment = await this.findById(id);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${id} non trovato`);
+    }
+    if (!treatment.scontoFE) {
+      throw new BadRequestException(
+        'La marcatura "incassato in contanti" è disponibile solo per trattamenti con sconto FE attivo.',
+      );
+    }
+    const collectedBy = actorUserId ?? treatment.collectedBy ?? '';
+
+    if (paid) {
+      // Idempotente: se già incassato in contanti, non rifare nulla.
+      if (treatment.isPaid && treatment.paymentMethod === PaymentMethod.CASH) {
+        return this.requireFullTreatment(id);
+      }
+      const total = Number(treatment.price ?? 0);
+      return this.recordPayment(
+        id,
+        {
+          paymentMethod: PaymentMethod.CASH,
+          collectedBy,
+          amount: total,
+          tenderLines: [{ kind: 'method', paymentMethodId: 'cash', amount: total }],
+          replaceExisting: treatment.isPaid,
+        },
+        'secretary',
+      );
+    }
+
+    // paid=false → annulla l'incasso. Reset campi + storno voucher_fe difensivo.
+    await this.dataSource.transaction(async (manager) => {
+      if (treatment.isPaid) {
+        await this.voucherFeService.reverseConsumptionsForTreatment(
+          manager,
+          id,
+          collectedBy,
+        );
+      }
+      await manager
+        .createQueryBuilder()
+        .update(Treatment)
+        .set({
+          isPaid: false,
+          paymentMethod: null as any,
+          paidAt: null as any,
+          collectedBy: null as any,
+          paymentId: null as any,
+          paymentRecordedSource: null as any,
+        })
+        .where('id = :id', { id })
+        .execute();
+    });
+
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: id,
+      operatorId: treatment.operatorId,
+      newStatus: treatment.billingStatus,
+      timestamp: new Date(),
+    });
+    return this.requireFullTreatment(id);
   }
 
   // ==================== INVOICING ====================
@@ -1033,7 +1578,21 @@ export class TreatmentService {
     const treatmentServiceRepo = manager.getRepository(TreatmentServiceEntity);
     const serviceRepo = manager.getRepository(Service);
 
-    // Elimina servizi esistenti
+    // GUARDIA ANTI-CORRUZIONE: un array vuoto NON deve azzerare le righe
+    // esistenti del trattamento. Un treatment senza righe servizio non è un
+    // caso d'uso valido (perderebbe il totale fatturabile). Se il chiamante
+    // passa [] è quasi certamente un bug a monte (payload mal costruito): in
+    // tal caso NON tocchiamo le righe e usciamo. La sostituzione legittima
+    // passa sempre un array non vuoto.
+    if (!services || services.length === 0) {
+      this.logger.warn(
+        `saveTreatmentServices ignorato per treatment ${treatmentId}: array servizi vuoto ` +
+          `(protezione anti-cancellazione accidentale).`,
+      );
+      return;
+    }
+
+    // Replace: elimina le righe esistenti e reinserisce quelle nuove.
     await treatmentServiceRepo.delete({ treatmentId });
 
     // Crea nuovi servizi
@@ -1061,6 +1620,53 @@ export class TreatmentService {
       });
       await treatmentServiceRepo.save(treatmentService);
     }
+  }
+
+  /**
+   * 2026-07-01 — Ricalcola i prezzi delle righe servizio di un treatment
+   * ESISTENTE quando si abilita/disabilita lo sconto FE (senza toccare le righe:
+   * l'operatore ha solo cambiato il flag). Le righe con `isCustomPrice=true`
+   * NON vengono toccate (prezzo fissato a mano dalla segreteria). Per le altre
+   * si applica la tariffa `Service.discountFE` (se scontoFE) o `defaultPrice`.
+   *
+   * Ritorna il nuovo totale (somma di tutte le righe) da assegnare a
+   * `treatment.price`. Stessa logica prezzo di `saveTreatmentServicesWithManager`.
+   */
+  private async recalcServicePricesForScontoFE(
+    manager: EntityManager,
+    treatmentId: string,
+    scontoFE: boolean,
+  ): Promise<number> {
+    const treatmentServiceRepo = manager.getRepository(TreatmentServiceEntity);
+    const rows = await treatmentServiceRepo.find({
+      where: { treatmentId },
+      relations: { service: true },
+    });
+
+    let total = 0;
+    for (const row of rows) {
+      if (row.isCustomPrice) {
+        // Prezzo fissato a mano: non lo tocchiamo, ma conta nel totale.
+        total += Number(row.price ?? 0);
+        continue;
+      }
+      const service = row.service;
+      const newPrice =
+        scontoFE && service?.discountFE
+          ? Number(service.discountFE)
+          : Number(service?.defaultPrice ?? 0);
+      if (Number(row.price ?? 0) !== newPrice) {
+        row.price = newPrice;
+        await treatmentServiceRepo.save(row);
+      }
+      total += newPrice;
+    }
+    // Somma anche le righe custom (legacy testo libero) al totale.
+    const customLines = await manager
+      .getRepository(TreatmentInvoiceLine)
+      .find({ where: { treatmentId } });
+    total += customLines.reduce((s, l) => s + Number(l.amount ?? 0), 0);
+    return total;
   }
 
   // ==================== QUERIES ====================
@@ -1393,9 +1999,13 @@ export class TreatmentService {
      * billingStatus IN SENT/PENDING). Per altri stati può essere omesso.
      */
     amendmentReason?: string;
-  }): Promise<Treatment> {
+  }, actorUserId?: string): Promise<Treatment> {
     const tenantAlias = this.tenantContext.getTenantAlias();
     const correlationId = this.tenantContext.getContext()?.requestId;
+
+    // Reason fissa per l'auto-recall scatenato dall'abilitazione dello sconto FE
+    // (decisione di prodotto: nessun prompt all'operatore, azione fluida).
+    const SCONTO_FE_RECALL_REASON = 'Abilitazione sconto fattura elettronica';
 
     const result = await this.dataSource.transaction(async (manager: EntityManager) => {
       const treatmentRepo = manager.getRepository(Treatment);
@@ -1415,9 +2025,7 @@ export class TreatmentService {
         );
       }
 
-      // Vincolo billing per amend (spec §10): se il treatment è già stato
-      // pubblicato e fatturato (INVOICED, PARTIALLY_REFUNDED, REFUNDED,
-      // REISSUED), modificare le righe richiede nota credito da accounting.
+      // Stati post-fatturazione: ogni modifica richiede nota di credito.
       const blockedForAmend = [
         TreatmentBillingStatus.INVOICED,
         TreatmentBillingStatus.PARTIALLY_REFUNDED,
@@ -1425,6 +2033,33 @@ export class TreatmentService {
         TreatmentBillingStatus.REISSUED,
         TreatmentBillingStatus.CANCELLED,
       ];
+
+      // Blocco specifico per scontoFE su treatment già fatturato: messaggio
+      // dedicato (più chiaro del generico "non modificabile"). Abilitare lo
+      // sconto FE su un INVOICED+ è vietato finché non si emette NC.
+      if (input.scontoFE === true && blockedForAmend.includes(treatment.billingStatus)) {
+        throw new BadRequestException(
+          `Impossibile abilitare lo sconto fattura elettronica: il trattamento è già fatturato ` +
+            `(billingStatus=${treatment.billingStatus}). Per applicare lo sconto FE occorre prima ` +
+            `emettere una nota di credito da accounting.`,
+        );
+      }
+
+      // 2026-07-03 — Regola pagamenti (decisione utente): NON si può attivare
+      // lo sconto FE su un trattamento già incassato (con scontoFE OFF
+      // l'incasso è con metodi accounting, eventualmente già riconciliato in
+      // contabilità). Prima si storna l'incasso — da accounting
+      // (deleteDocumentPayment, che ora propaga lo storno al clinico) o dalla
+      // scheda Pagamento — poi si cambia la fonte. Evita incassi orfani.
+      if (input.scontoFE === true && !treatment.scontoFE && treatment.isPaid) {
+        throw new BadRequestException(
+          `Impossibile abilitare lo sconto fattura elettronica: il trattamento risulta già ` +
+            `incassato. Stornare prima l'incasso, poi attivare lo sconto FE.`,
+        );
+      }
+
+      // Vincolo billing per amend (spec §10): se il treatment è già stato
+      // pubblicato e fatturato, modificare le righe richiede nota credito.
       if (blockedForAmend.includes(treatment.billingStatus)) {
         throw new BadRequestException(
           `Trattamento ${input.id} non modificabile (billingStatus=${treatment.billingStatus}). ` +
@@ -1432,25 +2067,104 @@ export class TreatmentService {
         );
       }
 
-      // Decisione publish: SOLO se accounting già conosce il treatment
-      // (SENT o PENDING). Per NOT_READY/READY_FOR_BILLING le modifiche
-      // sono "private al clinico", non escono ancora.
-      const shouldPublishAmend =
+      const wasSentOrPending =
         treatment.billingStatus === TreatmentBillingStatus.SENT ||
         treatment.billingStatus === TreatmentBillingStatus.PENDING;
 
-      if (input.price !== undefined) treatment.price = input.price;
+      // Auto-recall: abilitare lo sconto FE su un treatment già inviato
+      // (SENT/PENDING) deve recuperarlo da accounting (publish
+      // treatment.cancelled → NOT_READY). In questo caso NON pubblichiamo anche
+      // treatment.amended (mutua esclusione: stiamo richiamando, non emendando).
+      const triggersScontoFERecall =
+        input.scontoFE === true && wasSentOrPending;
+
+      // Decisione publish amend: SOLO se accounting già conosce il treatment
+      // (SENT o PENDING) E non stiamo facendo l'auto-recall scontoFE.
+      const shouldPublishAmend = wasSentOrPending && !triggersScontoFERecall;
+
+      // Invariante: accountingTotalAmount non-null ⟺ documento accounting
+      // corrente. `blockedForAmend` (sopra) garantisce che qui il billingStatus
+      // sia NOT_READY/READY_FOR_BILLING/SENT/PENDING, cioè nessun documento
+      // emesso: se il prezzo cambia, un residuo di una fattura precedente
+      // (stornata/richiamata) è stale → azzera.
+      if (input.price !== undefined) {
+        treatment.price = input.price;
+        treatment.accountingTotalAmount = null as any;
+        treatment.accountingTreatmentLinesAmount = null as any;
+        treatment.accountingDocumentTreatmentCount = null as any;
+      }
       if (input.secretaryNotes !== undefined) treatment.secretaryNotes = input.secretaryNotes;
+
+      // Rileva un cambio EFFETTIVO di scontoFE per ricalcolare i prezzi.
+      const scontoFEChanged =
+        input.scontoFE !== undefined && input.scontoFE !== treatment.scontoFE;
 
       if (input.scontoFE !== undefined) {
         treatment.scontoFE = input.scontoFE;
+        // Con scontoFE attivo il treatment non è fatturabile: azzera il flag.
         if (input.scontoFE === true && treatment.readyForBilling) {
           treatment.readyForBilling = false;
           treatment.readyForBillingAt = null as any;
         }
       }
 
-      await treatmentRepo.save(treatment);
+      // Ricalcolo prezzi al cambio scontoFE (Step 6): le righe servizio
+      // non-custom passano alla tariffa discountFE (se ON) o defaultPrice (se
+      // OFF) e il totale si aggiorna. Solo se l'operatore NON ha anche passato
+      // treatmentServices (in quel caso saveTreatmentServicesWithManager, più
+      // sotto, ricalcola già con il nuovo scontoFE). Se input.price è passato
+      // esplicitamente, rispettiamo quello (override manuale).
+      if (
+        scontoFEChanged &&
+        input.treatmentServices === undefined &&
+        input.price === undefined
+      ) {
+        const newTotal = await this.recalcServicePricesForScontoFE(
+          manager,
+          input.id,
+          treatment.scontoFE,
+        );
+        treatment.price = newTotal;
+        treatment.accountingTotalAmount = null as any;
+        treatment.accountingTreatmentLinesAmount = null as any;
+        treatment.accountingDocumentTreatmentCount = null as any;
+      }
+
+      // 2026-07-03 — ON→OFF con incasso scontoFE esistente: reset SEMPRE
+      // (decisione utente). Cambiando la fonte dei pagamenti, l'incasso
+      // clinico (contanti o voucher_fe) viene azzerato — storno voucher_fe
+      // incluso — e si reincassa con i metodi accounting dopo la fattura.
+      // Nessun evento verso accounting: l'incasso scontoFE non era mai
+      // stato comunicato (payment-source-duality).
+      if (scontoFEChanged && input.scontoFE === false && treatment.isPaid) {
+        await this.voucherFeService.reverseConsumptionsForTreatment(
+          manager,
+          input.id,
+          actorUserId ?? treatment.collectedBy ?? '',
+        );
+        treatment.isPaid = false;
+        treatment.paymentMethod = null as any;
+        treatment.paidAt = null as any;
+        treatment.collectedBy = null as any;
+        treatment.paymentId = null as any;
+        treatment.paymentRecordedSource = null as any;
+        this.logger.log(
+          `Toggle scontoFE OFF su treatment ${input.id}: incasso clinico azzerato (reincassare con metodi accounting).`,
+        );
+      }
+
+      if (triggersScontoFERecall) {
+        // Recupera da accounting (torna NOT_READY, azzera snapshot, publish
+        // treatment.cancelled). applyAutoRecall fa già il save del treatment.
+        await this.applyAutoRecall(manager, treatment, {
+          cancelledByUserId: actorUserId ?? treatment.closedByUserId ?? '',
+          reason: SCONTO_FE_RECALL_REASON,
+          tenantAlias,
+          correlationId,
+        });
+      } else {
+        await treatmentRepo.save(treatment);
+      }
 
       if (input.treatmentServices !== undefined) {
         await this.saveTreatmentServicesWithManager(
@@ -1509,11 +2223,24 @@ export class TreatmentService {
         });
       }
 
-      return this.findByIdWithManager(manager, input.id);
+      const updated = await this.findByIdWithManager(manager, input.id);
+      return { updated, recalled: triggersScontoFERecall };
     });
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
-    return result;
+    // SSE: se è scattato l'auto-recall (abilitazione scontoFE su SENT/PENDING),
+    // notifica le UI aperte del cambio billingStatus → NOT_READY, così i flag
+    // dei pulsanti si riallineano senza attendere altri eventi.
+    if (result.recalled && result.updated) {
+      this.eventsService.emit({
+        type: 'treatment_status_changed',
+        treatmentId: result.updated.id,
+        operatorId: result.updated.operatorId,
+        newStatus: result.updated.billingStatus,
+        timestamp: new Date(),
+      });
+    }
+    return result.updated;
   }
 
   // ==================== CANCEL TREATMENT (sessione 6) ====================
@@ -1567,56 +2294,12 @@ export class TreatmentService {
         );
       }
 
-      // Decisione publish: SOLO se accounting già conosce il treatment.
-      const shouldPublish =
-        treatment.billingStatus === TreatmentBillingStatus.SENT ||
-        treatment.billingStatus === TreatmentBillingStatus.PENDING;
-
-      const now = new Date();
-      // Sessione 7: torna a NOT_READY (riemibile) invece di CANCELLED.
-      treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
-      // Audit dell'annullamento (campi mantenuti per storia: chi/quando/perché).
-      treatment.cancelledAt = now;
-      treatment.cancelledByUserId = cancelledByUserId;
-      treatment.cancellationReason = reason;
-      // Pulisco snapshot accounting così il treatment torna "fresco" per
-      // un nuovo invio (eventuali billable.invoiced "vecchi" per il billable
-      // appena cancellato vengono filtrati dall'anti-stale check su
-      // accountingBillableEventId in handleBillableInvoiced).
-      treatment.accountingBillableEventId = null as any;
-      treatment.accountingInvoiceUrl = null as any;
-      treatment.accountingInvoiceIssuedAt = null as any;
-      treatment.accountingDocumentType = null as any;
-      treatment.patientInvoiceNumber = null as any;
-      treatment.isInvoicedToPatient = false;
-      treatment.invoicedToPatientAt = null as any;
-      await treatmentRepo.save(treatment);
-
-      if (shouldPublish) {
-        if (!tenantAlias) {
-          throw new Error(
-            'cancelTreatment chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
-          );
-        }
-        // Risolvo il keycloakSub del cancelledBy (consistente con altri payload).
-        const subMap = await this.batchLookupKeycloakSubsForCancel(
-          manager,
-          [cancelledByUserId],
-        );
-        const cancelledByKeycloakSub = subMap.get(cancelledByUserId) ?? null;
-
-        this.eventBuffer.add({
-          eventType: 'treatment.cancelled',
-          payload: {
-            treatmentId: id,
-            cancelledAt: now.toISOString(),
-            cancelledByUserId: cancelledByKeycloakSub,
-            reason,
-          },
-          tenantAlias,
-          correlationId,
-        });
-      }
+      await this.applyAutoRecall(manager, treatment, {
+        cancelledByUserId,
+        reason,
+        tenantAlias,
+        correlationId,
+      });
 
       return treatment;
     });
@@ -1633,6 +2316,95 @@ export class TreatmentService {
     // Re-fetch con relations per il return GraphQL (vedi nota su
     // requireFullTreatment in requestTreatmentRecall).
     return this.requireFullTreatment(result.id);
+  }
+
+  /**
+   * Logica condivisa di "recupero da fatturazione" (auto-recall): riporta il
+   * treatment a NOT_READY, azzera lo snapshot accounting e — se il treatment
+   * era già stato pubblicato (SENT/PENDING) — accoda l'evento
+   * `treatment.cancelled` così accounting cancella il billable corrispondente.
+   *
+   * Usata sia da `cancelTreatment` (annulla invio manuale) sia da
+   * `updateBySecretary` quando l'operatore abilita lo sconto FE su un treatment
+   * già inviato (auto-recall). Il chiamante è responsabile dei vincoli di stato
+   * a monte (cancelTreatment blocca INVOICED+, updateBySecretary idem) e del
+   * flush/SSE post-commit.
+   *
+   * NB: l'`add()` al buffer va fatto DENTRO la transazione del chiamante; il
+   * flush avviene dopo il commit. Va invocata all'interno di
+   * `dataSource.transaction(...)` con il `manager` relativo.
+   */
+  private async applyAutoRecall(
+    manager: EntityManager,
+    treatment: Treatment,
+    params: {
+      cancelledByUserId: string;
+      reason: string;
+      tenantAlias: string | null | undefined;
+      correlationId: string | undefined;
+    },
+  ): Promise<void> {
+    // Decisione publish: SOLO se accounting già conosce il treatment.
+    const shouldPublish =
+      treatment.billingStatus === TreatmentBillingStatus.SENT ||
+      treatment.billingStatus === TreatmentBillingStatus.PENDING;
+
+    const now = new Date();
+    // Sessione 7: torna a NOT_READY (riemibile) invece di CANCELLED.
+    treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+    // Coerenza con reopen(): l'annullo dell'invio smarca anche "pronto per
+    // fatturazione" (altrimenti la CTA "Invia" e i filtri lista vedrebbero
+    // ancora il treatment come pronto/inviato).
+    treatment.readyForBilling = false;
+    treatment.readyForBillingAt = null as any;
+    // Audit dell'annullamento (campi mantenuti per storia: chi/quando/perché).
+    treatment.cancelledAt = now;
+    treatment.cancelledByUserId = params.cancelledByUserId;
+    treatment.cancellationReason = params.reason;
+    // Pulisco snapshot accounting così il treatment torna "fresco" per
+    // un nuovo invio (eventuali billable.invoiced "vecchi" per il billable
+    // appena cancellato vengono filtrati dall'anti-stale check su
+    // accountingBillableEventId in handleBillableInvoiced).
+    treatment.accountingBillableEventId = null as any;
+    treatment.accountingDocumentId = null as any;
+    treatment.accountingInvoiceUrl = null as any;
+    treatment.accountingInvoiceIssuedAt = null as any;
+    treatment.accountingDocumentType = null as any;
+    treatment.patientInvoiceNumber = null as any;
+    treatment.isInvoicedToPatient = false;
+    treatment.invoicedToPatientAt = null as any;
+    // Il documento (se esisteva) viene cancellato da accounting: i totali che
+    // ne derivavano sono stale (stesso invariante dei reset nel consumer).
+    treatment.accountingTotalAmount = null as any;
+    treatment.accountingTreatmentLinesAmount = null as any;
+    treatment.accountingDocumentTreatmentCount = null as any;
+    await manager.getRepository(Treatment).save(treatment);
+
+    if (shouldPublish) {
+      if (!params.tenantAlias) {
+        throw new Error(
+          'applyAutoRecall chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
+        );
+      }
+      // Risolvo il keycloakSub del cancelledBy (consistente con altri payload).
+      const subMap = await this.batchLookupKeycloakSubsForCancel(
+        manager,
+        [params.cancelledByUserId],
+      );
+      const cancelledByKeycloakSub = subMap.get(params.cancelledByUserId) ?? null;
+
+      this.eventBuffer.add({
+        eventType: 'treatment.cancelled',
+        payload: {
+          treatmentId: treatment.id,
+          cancelledAt: now.toISOString(),
+          cancelledByUserId: cancelledByKeycloakSub,
+          reason: params.reason,
+        },
+        tenantAlias: params.tenantAlias,
+        correlationId: params.correlationId,
+      });
+    }
   }
 
   /**
@@ -1777,6 +2549,86 @@ export class TreatmentService {
     // per il return GraphQL: il TreatmentDetails fragment del frontend
     // legge `operator` non-nullable + altri sotto-campi, e il `treatment`
     // della transazione qui sopra ha solo le colonne dirette.
+    return this.requireFullTreatment(result.id);
+  }
+
+  /**
+   * 2026-06-30 — "Verifica risoluzione e riprova". L'operatore ha risolto la
+   * causa che bloccava l'emissione fattura (es. ha aggiunto l'indirizzo del
+   * paziente nel registry) e chiede ad accounting di ri-tentare l'auto-issue.
+   *
+   * Pubblica `treatment.retry-invoice-requested.<tenant>` (publish-after-commit)
+   * → consumer accounting → ri-chiama AutoIssue. Se la causa è risolta, arriva
+   * `billable.invoiced` (e il banner sparisce); altrimenti riarriva
+   * `billable.invoice-blocked` col motivo aggiornato.
+   *
+   * Pulisce ottimisticamente `billingHoldReason*`: se il blocco persiste, il
+   * nuovo `billable.invoice-blocked` lo ri-popola; se si risolve,
+   * `billable.invoiced` lo lascia pulito. Lo stato `billingStatus` NON cambia
+   * (resta PENDING finché accounting non emette).
+   *
+   * Idempotente: ri-cliccare pubblica un nuovo evento, ma AutoIssue è
+   * idempotente (se la fattura è già emessa, esce subito senza duplicare).
+   */
+  async retryTreatmentInvoice(id: string): Promise<Treatment> {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const treatmentRepo = manager.getRepository(Treatment);
+      const treatment = await treatmentRepo.findOne({ where: { id } });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      // Ritentabile solo se inviato ad accounting ma non ancora fatturato.
+      const retryable = [
+        TreatmentBillingStatus.SENT,
+        TreatmentBillingStatus.PENDING,
+      ];
+      if (!retryable.includes(treatment.billingStatus)) {
+        throw new BadRequestException(
+          `Trattamento ${id} non ritentabile (billingStatus=${treatment.billingStatus}). ` +
+            `Ritentabili solo trattamenti inviati e non ancora fatturati (SENT/PENDING).`,
+        );
+      }
+      if (treatment.scontoFE) {
+        throw new BadRequestException(
+          `Trattamento ${id} ha sconto FE: non passa da accounting.`,
+        );
+      }
+
+      // Pulizia ottimistica del motivo di blocco: verrà ri-popolato dal nuovo
+      // billable.invoice-blocked se il problema persiste.
+      treatment.billingHoldReason = undefined;
+      treatment.billingHoldReasonCode = undefined;
+      treatment.billingHoldReasonAt = undefined;
+      await treatmentRepo.save(treatment);
+
+      if (!tenantAlias) {
+        throw new Error(
+          'retryTreatmentInvoice chiamato fuori da contesto tenant. Wrappare in TenantContextService.run + eventBuffer.runInScope.',
+        );
+      }
+
+      this.eventBuffer.add({
+        eventType: 'treatment.retry-invoice-requested',
+        payload: { treatmentId: id },
+        tenantAlias,
+        correlationId,
+      });
+
+      return treatment;
+    });
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: result.id,
+      operatorId: result.operatorId,
+      newStatus: result.billingStatus,
+      timestamp: new Date(),
+    });
     return this.requireFullTreatment(result.id);
   }
 
@@ -1974,6 +2826,22 @@ export class TreatmentService {
               `Trattamento ${t.id} è già fatturato.`
             );
           }
+          // ANTI-INVIO-A-VUOTO: un treatment senza righe fatturabili (0 servizi
+          // E 0 righe custom) produrrebbe un `treatment.closed` con `lines: []`,
+          // che lato accounting non crea alcun billable → il treatment resterebbe
+          // bloccato in SENT all'infinito. Lo blocchiamo a monte.
+          const svcCount = await manager.getRepository(TreatmentServiceEntity).count({
+            where: { treatmentId: t.id },
+          });
+          const customCount = await manager.getRepository(TreatmentInvoiceLine).count({
+            where: { treatmentId: t.id },
+          });
+          if (svcCount === 0 && customCount === 0) {
+            throw new BadRequestException(
+              `Trattamento ${t.id} non ha righe fatturabili (nessun servizio né riga personalizzata): ` +
+                `non può essere inviato a fatturazione. Aggiungi almeno una riga.`,
+            );
+          }
         }
       } else {
         // ready=false: vincolo billingStatus per evitare di "annullare" un
@@ -1999,6 +2867,8 @@ export class TreatmentService {
         if (ready && t.status === TreatmentStatus.OPERATOR_COMPLETED) {
           t.status = TreatmentStatus.CLOSED;
           t.closedAt = now;
+          // Chiusura normale: sovrascrive eventuale flag residuo (vedi close()).
+          t.forcedClosure = false;
         }
         t.readyForBilling = ready;
         t.readyForBillingAt = ready ? now : (null as any);
@@ -2206,13 +3076,171 @@ export class TreatmentService {
         'Il trattamento è già fatturato: non si possono aggiungere righe.'
       );
     }
+    // 2026-07-02 — Trattamento chiuso dalla segreteria: niente nuove righe.
+    if (treatment.status === TreatmentStatus.CLOSED) {
+      throw new BadRequestException(
+        'Trattamento chiuso dalla segreteria: riaprirlo per aggiungere righe.'
+      );
+    }
     const line = this.treatmentInvoiceLineRepo.create({
       treatmentId: input.treatmentId,
       description: input.description,
       amount: input.amount,
       createdBy: input.createdBy,
     });
-    return this.treatmentInvoiceLineRepo.save(line);
+    const saved = await this.treatmentInvoiceLineRepo.save(line);
+    await this.dataSource.transaction((m) =>
+      this.recomputeTreatmentTotal(m, input.treatmentId),
+    );
+    return saved;
+  }
+
+  /**
+   * 2026-07-02 — Aggiunge una riga collegata a un SERVIZIO del catalogo (NON
+   * testo libero: accounting deve poter associare la natura IVA via serviceCode).
+   * Descrizione e prezzo sono opzionalmente sovrascrivibili:
+   *  - prezzo assente → tariffa del servizio (discountFE se scontoFE, altrimenti
+   *    defaultPrice);
+   *  - prezzo presente → prezzo custom (isCustomPrice=true, non ricalcolato dal
+   *    toggle scontoFE).
+   * Vietato su trattamento chiuso dalla segreteria o già fatturato.
+   */
+  async addTreatmentServiceLine(
+    input: {
+      treatmentId: string;
+      serviceId: string;
+      description?: string;
+      price?: number;
+    },
+    actorUserId?: string,
+  ): Promise<Treatment> {
+    const treatment = await this.findById(input.treatmentId);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${input.treatmentId} non trovato`);
+    }
+    if (treatment.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Il trattamento è già fatturato: non si possono aggiungere righe.',
+      );
+    }
+    if (treatment.status === TreatmentStatus.CLOSED) {
+      throw new BadRequestException(
+        'Trattamento chiuso dalla segreteria: riaprirlo per aggiungere righe.',
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      const tsRepo = manager.getRepository(TreatmentServiceEntity);
+      const service = await manager
+        .getRepository(Service)
+        .findOne({ where: { id: input.serviceId } });
+      if (!service) {
+        throw new BadRequestException(`Servizio ${input.serviceId} non trovato`);
+      }
+
+      let price: number;
+      let isCustomPrice = false;
+      if (input.price !== undefined && input.price !== null) {
+        price = Number(input.price);
+        isCustomPrice = true;
+      } else {
+        price =
+          treatment.scontoFE && service.discountFE
+            ? Number(service.discountFE)
+            : Number(service.defaultPrice ?? 0);
+      }
+
+      const existing = await tsRepo.find({ where: { treatmentId: input.treatmentId } });
+      const maxOrder = existing.reduce(
+        (m, r) => Math.max(m, r.orderPosition ?? 0),
+        -1,
+      );
+
+      const row = tsRepo.create({
+        treatmentId: input.treatmentId,
+        serviceId: input.serviceId,
+        price,
+        isCustomPrice,
+        invoiceLineDescription: input.description?.trim() || (null as any),
+        orderPosition: maxOrder + 1,
+        executedByOperatorId: (actorUserId ?? null) as any,
+      });
+      await tsRepo.save(row);
+
+      await this.recomputeTreatmentTotal(manager, input.treatmentId);
+    });
+
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: treatment.id,
+      operatorId: treatment.operatorId,
+      newStatus: treatment.billingStatus,
+      timestamp: new Date(),
+    });
+    return this.requireFullTreatment(input.treatmentId);
+  }
+
+  /**
+   * 2026-07-02 — Rimuove una riga servizio del trattamento e ricalcola il
+   * totale. Vietato su trattamento chiuso dalla segreteria o già fatturato.
+   */
+  async removeTreatmentServiceLine(treatmentServiceId: string): Promise<Treatment> {
+    const row = await this.treatmentServiceRepo.findOne({
+      where: { id: treatmentServiceId },
+    });
+    if (!row) {
+      throw new NotFoundException(`Riga servizio ${treatmentServiceId} non trovata`);
+    }
+    const treatment = await this.findById(row.treatmentId);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${row.treatmentId} non trovato`);
+    }
+    if (treatment.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Il trattamento è già fatturato: le righe non sono modificabili.',
+      );
+    }
+    if (treatment.status === TreatmentStatus.CLOSED) {
+      throw new BadRequestException(
+        'Trattamento chiuso dalla segreteria: riaprirlo per modificare le righe.',
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager
+        .getRepository(TreatmentServiceEntity)
+        .delete({ id: treatmentServiceId });
+      await this.recomputeTreatmentTotal(manager, row.treatmentId);
+    });
+
+    this.eventsService.emit({
+      type: 'treatment_status_changed',
+      treatmentId: treatment.id,
+      operatorId: treatment.operatorId,
+      newStatus: treatment.billingStatus,
+      timestamp: new Date(),
+    });
+    return this.requireFullTreatment(row.treatmentId);
+  }
+
+  /**
+   * 2026-07-02 — Ricalcola `treatment.price` come somma delle righe servizio +
+   * righe custom (legacy). Chiamato dopo add/remove riga.
+   */
+  private async recomputeTreatmentTotal(
+    manager: EntityManager,
+    treatmentId: string,
+  ): Promise<void> {
+    const services = await manager
+      .getRepository(TreatmentServiceEntity)
+      .find({ where: { treatmentId } });
+    const customLines = await manager
+      .getRepository(TreatmentInvoiceLine)
+      .find({ where: { treatmentId } });
+    const total =
+      services.reduce((s, r) => s + Number(r.price ?? 0), 0) +
+      customLines.reduce((s, l) => s + Number(l.amount ?? 0), 0);
+    await manager.getRepository(Treatment).update(treatmentId, { price: total });
   }
 
   async updateInvoiceLine(input: {
@@ -2270,18 +3298,7 @@ export class TreatmentService {
    * Filtri combinabili: stato, range date, readyForBilling, isInvoicedToPatient,
    * scontoFE, patientId.
    */
-  async findForListing(filters: {
-    operatorId?: string | null;
-    patientId?: string | null;
-    statuses?: TreatmentStatus[];
-    dateFrom?: string;
-    dateTo?: string;
-    readyForBilling?: boolean;
-    isInvoicedToPatient?: boolean;
-    scontoFE?: boolean;
-    limit?: number;
-    offset?: number;
-  }): Promise<Treatment[]> {
+  async findForListing(filters: TreatmentListingFilters): Promise<Treatment[]> {
     const qb = this.treatmentRepo
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.operator', 'operator')
@@ -2292,6 +3309,30 @@ export class TreatmentService {
       .leftJoinAndSelect('ti.instrument', 'instrument')
       .leftJoinAndSelect('t.invoiceLines', 'invoiceLines');
 
+    this.applyListingFilters(qb, filters);
+
+    qb.orderBy('t.startedAt', 'DESC');
+
+    if (filters.limit) qb.take(filters.limit);
+    if (filters.offset) qb.skip(filters.offset);
+
+    return qb.getMany();
+  }
+
+  /**
+   * Conteggio totale per la paginazione della lista: stessi filtri di
+   * findForListing ma senza join né limit/offset.
+   */
+  async countForListing(filters: TreatmentListingFilters): Promise<number> {
+    const qb = this.treatmentRepo.createQueryBuilder('t');
+    this.applyListingFilters(qb, filters);
+    return qb.getCount();
+  }
+
+  private applyListingFilters(
+    qb: SelectQueryBuilder<Treatment>,
+    filters: TreatmentListingFilters,
+  ): void {
     if (filters.operatorId) {
       qb.andWhere('t.operatorId = :operatorId', { operatorId: filters.operatorId });
     }
@@ -2320,12 +3361,18 @@ export class TreatmentService {
     if (filters.scontoFE !== undefined) {
       qb.andWhere('t.scontoFE = :scontoFE', { scontoFE: filters.scontoFE });
     }
-
-    qb.orderBy('t.startedAt', 'DESC');
-
-    if (filters.limit) qb.take(filters.limit);
-    if (filters.offset) qb.skip(filters.offset);
-
-    return qb.getMany();
   }
+}
+
+export interface TreatmentListingFilters {
+  operatorId?: string | null;
+  patientId?: string | null;
+  statuses?: TreatmentStatus[];
+  dateFrom?: string;
+  dateTo?: string;
+  readyForBilling?: boolean;
+  isInvoicedToPatient?: boolean;
+  scontoFE?: boolean;
+  limit?: number;
+  offset?: number;
 }

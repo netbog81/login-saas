@@ -27,6 +27,7 @@ import { DragDropModule } from '@angular/cdk/drag-drop';
 import { Subject, takeUntil } from 'rxjs';
 
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { OidcAuthService } from '../../../core/auth/oidc-auth.service';
 import { Patient } from '../../../models/patient.model';
 import { AvailabilityAppointment } from '../../../graphql/generated/types';
 import { PatientAppointmentsListComponent } from '../components/patient-appointments-list/patient-appointments-list.component';
@@ -75,6 +76,7 @@ export interface PatientAppointmentsDialogData {
         <app-patient-appointments-list
           [appointments]="appointments"
           [loading]="loading"
+          [canCancel]="canCancel"
           (cancelAppointment)="onCancel($event)"
           (sendRecap)="onSendRecap($event)">
         </app-patient-appointments-list>
@@ -167,6 +169,13 @@ export class PatientAppointmentsDialogComponent implements OnInit, OnDestroy {
   private readonly snackBar = inject(MatSnackBar);
   private readonly ngZone = inject(NgZone);
   readonly cdr = inject(ChangeDetectorRef);
+  private readonly auth = inject(OidcAuthService);
+
+  /**
+   * Solo segreteria/admin possono cancellare appuntamenti (coerente con il
+   * CalendarWriteGuard backend). Per gli operatori il pulsante è nascosto.
+   */
+  readonly canCancel = this.auth.hasRole(['segreteria', 'admin', 'amministratore', 'superadmin']);
 
   private readonly destroy$ = new Subject<void>();
 

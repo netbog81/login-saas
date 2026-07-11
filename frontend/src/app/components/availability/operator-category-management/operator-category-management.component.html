@@ -143,6 +143,16 @@
           ></textarea>
         </div>
 
+        <div class="form-group">
+          <label>Descrizione che sarà inserita nelle righe fattura</label>
+          <textarea
+            [(ngModel)]="editingCategory.invoiceLineDescription"
+            class="form-control"
+            rows="2"
+            placeholder="es: Seduta fisioterapica"
+          ></textarea>
+        </div>
+
         <div class="form-group" *ngIf="isEditMode">
           <label class="checkbox-label">
             <input type="checkbox" [(ngModel)]="editingCategory.isActive" />

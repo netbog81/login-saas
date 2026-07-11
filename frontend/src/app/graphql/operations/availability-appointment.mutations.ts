@@ -186,3 +186,27 @@ export const UPDATE_RECURRING_SERIES_TIME = gql`
     }
   }
 `;
+
+/**
+ * Mutation: Modifica COMPLETA (tutti i campi + eventuale spostamento data)
+ * delle occorrenze di una serie ricorrente nello scope scelto.
+ * Ritorna i conflitti rilevati (se non vuoti, nulla è stato applicato).
+ */
+export const UPDATE_RECURRING_SERIES = gql`
+  mutation UpdateRecurringSeries($input: UpdateRecurringSeriesInput!) {
+    updateRecurringSeries(input: $input) {
+      applied
+      affectedCount
+      conflicts {
+        appointmentId
+        date
+        startTime
+        endTime
+        type
+        reason
+        conflictingStartTime
+        conflictingEndTime
+      }
+    }
+  }
+`;

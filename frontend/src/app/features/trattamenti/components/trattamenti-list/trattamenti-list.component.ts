@@ -67,8 +67,8 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
         <ng-container matColumnDef="date">
           <th mat-header-cell *matHeaderCellDef>Data</th>
           <td mat-cell *matCellDef="let t">
-            {{ formatDate(t.appointment.appointmentDate) }}<br>
-            <small>{{ t.appointment.startTime }}</small>
+            {{ formatDate(t.appointment?.appointmentDate || (t.startedAt || '').slice(0, 10)) }}<br>
+            <small>{{ t.appointment?.startTime || '—' }}</small>
           </td>
         </ng-container>
 
@@ -82,8 +82,8 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
         <ng-container matColumnDef="operator">
           <th mat-header-cell *matHeaderCellDef>Operatore</th>
           <td mat-cell *matCellDef="let t">
-            <span [style.borderLeft]="'3px solid ' + (t.operator.color || '#ccc')" style="padding-left: 8px">
-              {{ t.operator.name }} {{ t.operator.surname || '' }}
+            <span [style.borderLeft]="'3px solid ' + (t.operator?.color || '#ccc')" style="padding-left: 8px">
+              {{ t.operator?.name || 'Operatore rimosso' }} {{ t.operator?.surname || '' }}
             </span>
           </td>
         </ng-container>
@@ -102,7 +102,8 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
               </span>
             }
             @if (t.readyForBilling && !t.billingStatus) {
-              <mat-icon class="flag-icon" matTooltip="Pronto per fatturazione" color="primary">check_circle</mat-icon>
+              <!-- Solo record storici pre-integrazione accounting (senza billingStatus). -->
+              <mat-icon class="flag-icon" matTooltip="Inviato a fatturazione (storico)" color="primary">check_circle</mat-icon>
             }
             @if (t.scontoFE) {
               <mat-icon class="flag-icon" matTooltip="Sconto FE attivo" style="color: #e91e63">discount</mat-icon>
@@ -119,7 +120,20 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
         <ng-container matColumnDef="price">
           <th mat-header-cell *matHeaderCellDef>Importo</th>
           <td mat-cell *matCellDef="let t">
-            € {{ (t.price || 0) | number:'1.2-2' }}
+            <!-- Fattura cumulativa (più trattamenti in un documento): mostra la
+                 QUOTA di questo trattamento; totale documento e n° trattamenti
+                 stanno nel tooltip dell'icona "layers". Fattura singola: totale
+                 REALE confermato da accounting (con bollo) se emessa, altrimenti
+                 il prezzo clinico. -->
+            € {{ (isMultiInvoice(t)
+                    ? (t.accountingTreatmentLinesAmount ?? t.price ?? 0)
+                    : (t.accountingTotalAmount ?? t.price ?? 0)) | number:'1.2-2' }}
+            @if (isMultiInvoice(t)) {
+              <mat-icon class="flag-icon" style="color: #7b1fa2"
+                        [matTooltip]="multiInvoiceTooltip(t)">layers</mat-icon>
+            } @else if (t.accountingTotalAmount != null && t.accountingTotalAmount !== t.price) {
+              <mat-icon class="flag-icon" matTooltip="Totale fattura (marca da bollo inclusa)" style="color: #1976d2">receipt_long</mat-icon>
+            }
             @if (t.isPaid) {
               <mat-icon class="flag-icon" matTooltip="Pagato" style="color: #4caf50">paid</mat-icon>
             }
@@ -134,6 +148,16 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
               matTooltip="Dettagli / modifica">
               <mat-icon>open_in_new</mat-icon>
             </button>
+            @if (canManage) {
+              <button mat-icon-button color="primary"
+                [disabled]="t.status !== TreatmentStatus.OPERATOR_COMPLETED"
+                (click)="closeTreatment.emit(t); $event.stopPropagation()"
+                [matTooltip]="t.status === TreatmentStatus.OPERATOR_COMPLETED
+                  ? 'Chiudi trattamento dalla segreteria'
+                  : 'Disponibile solo quando il trattamento è chiuso dall\\'operatore'">
+                <mat-icon>done_all</mat-icon>
+              </button>
+            }
             @if (canSendRow(t)) {
               <button mat-icon-button
                 color="accent"
@@ -142,6 +166,14 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                 <mat-icon>send</mat-icon>
               </button>
             }
+            <button mat-icon-button
+              [disabled]="!t.appointment"
+              (click)="generateCertificate.emit(t); $event.stopPropagation()"
+              [matTooltip]="t.appointment
+                ? 'Genera attestato di presenza'
+                : 'Attestato non disponibile: nessun appuntamento collegato'">
+              <mat-icon>history_edu</mat-icon>
+            </button>
           </td>
         </ng-container>
 
@@ -187,10 +219,13 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                       [treatments]="child.treatments"
                       [viewMode]="'flat'"
                       [canSelect]="canSelect"
+                      [canManage]="canManage"
                       [selectedIds]="selectedIds"
                       (toggleSelection)="toggleSelection.emit($event)"
                       (selectAllToggle)="selectAllToggle.emit($event)"
-                      (openDetail)="openDetail.emit($event)">
+                      (openDetail)="openDetail.emit($event)"
+                      (closeTreatment)="closeTreatment.emit($event)"
+                      (generateCertificate)="generateCertificate.emit($event)">
                     </app-trattamenti-list>
                   </mat-expansion-panel>
                 }
@@ -200,11 +235,14 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                 [treatments]="group.treatments"
                 [viewMode]="'flat'"
                 [canSelect]="canSelect"
+                [canManage]="canManage"
                 [selectedIds]="selectedIds"
                 (toggleSelection)="toggleSelection.emit($event)"
                 (selectAllToggle)="selectAllToggle.emit($event)"
                 (openDetail)="openDetail.emit($event)"
-                (sendOne)="sendOne.emit($event)">
+                (sendOne)="sendOne.emit($event)"
+                (closeTreatment)="closeTreatment.emit($event)"
+                (generateCertificate)="generateCertificate.emit($event)">
               </app-trattamenti-list>
             }
           </mat-expansion-panel>
@@ -262,12 +300,21 @@ export class TrattamentiListComponent {
   @Input() groups: TrattamentoGroup[] = [];
   @Input() viewMode: TrattamentiViewMode = 'flat';
   @Input() canSelect = false;
+  /** Se true, mostra le azioni di segreteria in riga (es. chiudi trattamento). */
+  @Input() canManage = false;
   @Input() selectedIds: Set<string> = new Set();
 
   @Output() toggleSelection = new EventEmitter<string>();
   @Output() selectAllToggle = new EventEmitter<boolean>();
   @Output() openDetail = new EventEmitter<Trattamento>();
   @Output() sendOne = new EventEmitter<Trattamento>();
+  /** Chiusura rapida dalla segreteria (solo trattamenti OPERATOR_COMPLETED). */
+  @Output() closeTreatment = new EventEmitter<Trattamento>();
+  /** Genera l'attestato di presenza dal template predefinito. */
+  @Output() generateCertificate = new EventEmitter<Trattamento>();
+
+  /** Esposto al template per confrontare lo stato del trattamento. */
+  readonly TreatmentStatus = TreatmentStatus;
 
   columns = ['select', 'date', 'patient', 'operator', 'status', 'price', 'actions'];
 
@@ -291,13 +338,15 @@ export class TrattamentiListComponent {
 
   /**
    * Bottone "Invia al sistema di fatturazione" (riga lista) disponibile
-   * SOLO se readyForBilling=true + scontoFE=false + billingStatus IN
+   * SOLO se status CLOSED/OPERATOR_COMPLETED (il backend auto-chiude i
+   * completati all'invio) + scontoFE=false + billingStatus IN
    * (NOT_READY, READY_FOR_BILLING) o null. Esclude treatment già SENT/
    * PENDING/INVOICED/CANCELLED (idempotenza UI: una volta inviato, niente
    * re-invio).
    */
   canSendRow(t: Trattamento): boolean {
-    if (t.readyForBilling !== true) return false;
+    if (t.status !== TreatmentStatus.CLOSED
+        && t.status !== TreatmentStatus.OPERATOR_COMPLETED) return false;
     if (t.scontoFE === true) return false;
     const status = t.billingStatus;
     return status == null
@@ -332,5 +381,25 @@ export class TrattamentiListComponent {
     // iso è 'YYYY-MM-DD'
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
+  }
+
+  /** Il documento corrente copre più trattamenti (fattura cumulativa). */
+  isMultiInvoice(t: Trattamento): boolean {
+    return (t.accountingDocumentTreatmentCount ?? 1) > 1
+      && t.accountingTotalAmount != null;
+  }
+
+  /** Tooltip dell'icona fattura cumulativa: riferimento, totale e quota. */
+  multiInvoiceTooltip(t: Trattamento): string {
+    const fmt = (n: number) => n.toLocaleString('it-IT', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    const parts = [
+      `Fattura cumulativa${t.patientInvoiceNumber ? ' ' + t.patientInvoiceNumber : ''}: ` +
+        `${t.accountingDocumentTreatmentCount} trattamenti`,
+      `Totale documento € ${fmt(Number(t.accountingTotalAmount ?? 0))} (bollo incluso)`,
+      `Quota di questo trattamento € ${fmt(Number(t.accountingTreatmentLinesAmount ?? t.price ?? 0))}`,
+    ];
+    return parts.join(' · ');
   }
 }

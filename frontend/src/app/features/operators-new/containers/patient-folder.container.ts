@@ -209,7 +209,8 @@ import {
     <app-treatment-detail-dialog-container
       #treatmentDetailDialog
       (close)="onTreatmentDetailClose()"
-      (editTreatment)="onTreatmentEdit($event)">
+      (editTreatment)="onTreatmentEdit($event)"
+      (treatmentUpdated)="onTreatmentPaymentUpdated($event)">
     </app-treatment-detail-dialog-container>
 
     <!-- Evaluation Form Dialog (modulo unificato: percorso + valutazione + anamnesi remota) -->
@@ -1006,6 +1007,17 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
 
   onTreatmentDetailClose(): void {
     console.log('[PatientFolderContainer] Treatment detail dialog closed');
+  }
+
+  /**
+   * Pagamento registrato/annullato dalla scheda Pagamento del dettaglio:
+   * aggiorna la riga corrispondente nella lista trattamenti in memoria.
+   */
+  onTreatmentPaymentUpdated(updated: Treatment): void {
+    this.treatments = this.treatments.map(t =>
+      t.id === updated.id ? { ...t, ...updated } : t
+    );
+    this.cdr.markForCheck();
   }
 
   onEditEvaluation(): void {

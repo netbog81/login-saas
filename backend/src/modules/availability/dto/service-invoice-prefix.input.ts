@@ -1,5 +1,5 @@
 import { InputType, Field } from '@nestjs/graphql';
-import { IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { IsEnum } from 'class-validator';
 
@@ -13,4 +13,11 @@ export class UpsertServiceInvoicePrefixInput {
   @IsString()
   @MaxLength(500, { message: 'Il prefisso non può superare 500 caratteri' })
   prefix: string;
+
+  /** Template descrizione riga fattura (vuoto/assente → composizione legacy). */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000, { message: 'Il template non può superare 1000 caratteri' })
+  template?: string;
 }

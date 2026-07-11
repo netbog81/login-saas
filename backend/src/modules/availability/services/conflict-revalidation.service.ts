@@ -3,9 +3,15 @@ import { In } from 'typeorm';
 import {
   AvailabilityAppointment,
   BookingStatus,
+  ConflictReason,
 } from '../entities/availability-appointment.entity';
+import {
+  AvailabilityException,
+  ExceptionType,
+} from '../entities/availability-exception.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { GymExceptionService } from './gym-exception.service';
+import { AvailabilityService } from './availability.service';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
@@ -28,12 +34,21 @@ const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 ore
  *    getConflictedAppointments per on-read revalidation (opzione B).
  *
  * Flusso per ciascun appointment con hasConflict=true:
- * - Se l'appointment non è GYM, skip (non gestiamo eccezioni per standard).
- * - Se operatorId o gymRoomId mancano, skip.
- * - Chiama GymExceptionService.getEffectiveOperator(gymRoomId, operatorId, date, time).
- * - Se isUncovered=false → l'operatore è disponibile (diretto o via sostituto)
- *   → azzera hasConflict.
- * - Se isUncovered=true → il conflitto è ancora reale, lascio il flag.
+ * - Appuntamenti non più attivi (svolti/cancellati/no-show): il conflitto è
+ *   operativamente irrilevante → azzerato in blocco.
+ * - Assenze operatore (OPERATOR_SICK / OPERATOR_VACATION /
+ *   OPERATOR_UNAVAILABLE): il conflitto è ancora reale se
+ *   un'AvailabilityException dell'operatore copre ancora lo slot (stesso
+ *   predicato di checkAndMarkConflictForOperatorAppointment); per i GYM, in
+ *   aggiunta, se lo slot risulta scoperto da un'eccezione palestra
+ *   (getEffectiveOperator → isUncovered=true, nessun sostituto).
+ * - TEMPLATE_CHANGE (solo standard: la disponibilità palestra ha regole
+ *   proprie): il conflitto è risolto se l'appuntamento ricade interamente
+ *   nelle fasce di disponibilità correnti dell'operatore
+ *   (AvailabilityService.getOperatorsRawBands — template meno assenze, senza
+ *   sottrarre gli appuntamenti). Necessario perché la detection al cambio
+ *   template marca in blocco TUTTI gli appuntamenti futuri dell'operatore.
+ * - RECURRING_APPOINTMENT resta a risoluzione manuale.
  */
 @Injectable()
 export class ConflictRevalidationService {
@@ -43,6 +58,7 @@ export class ConflictRevalidationService {
     private readonly tenantContext: TenantContextService,
     private gymExceptionService: GymExceptionService,
     private settingsService: GeneralSettingsService,
+    private availabilityService: AvailabilityService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -89,57 +105,127 @@ export class ConflictRevalidationService {
    * Ritorna il numero di flag rimossi.
    */
   async revalidateAll(): Promise<number> {
-    // Carica tutti gli appointment in conflitto (solo futuri o oggi)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 0. Appuntamenti non più attivi (svolti/cancellati/no-show): l'elenco
+    //    conflitti li mostrerebbe ma nessuna azione ha più senso → azzera.
+    const staleResult = await this.appointmentRepo
+      .createQueryBuilder()
+      .update(AvailabilityAppointment)
+      .set({
+        hasConflict: false,
+        conflictReason: null as any,
+        conflictDetectedAt: null as any,
+        conflictSourceExceptionId: null as any,
+      })
+      .where('"hasConflict" = true')
+      .andWhere('"bookingStatus" NOT IN (:...active)', {
+        active: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED],
+      })
+      .execute();
+    let resolved = staleResult.affected ?? 0;
+    if (resolved > 0) {
+      this.logger.log(
+        `Revalidazione conflitti: ${resolved} flag azzerati su appuntamenti non più attivi`,
+      );
+    }
 
     const conflictedAppointments = await this.appointmentRepo.find({
       where: {
         hasConflict: true,
         bookingStatus: In([BookingStatus.SCHEDULED, BookingStatus.CONFIRMED]),
       },
-      relations: ['operator'],
     });
 
     if (conflictedAppointments.length === 0) {
-      return 0;
+      return resolved;
     }
 
     this.logger.log(
       `Revalidazione conflitti: ${conflictedAppointments.length} appointment da verificare`,
     );
 
+    const ABSENCE_REASONS = [
+      ConflictReason.OPERATOR_SICK,
+      ConflictReason.OPERATOR_VACATION,
+      ConflictReason.OPERATOR_UNAVAILABLE,
+    ];
+
     const toResolve: string[] = [];
 
+    // --- 1. Conflitti da assenza operatore ---
     for (const apt of conflictedAppointments) {
-      // Solo appointment GYM hanno eccezioni palestra; gli standard non li
-      // gestiamo qui (potrebbero avere TEMPLATE_CHANGE come conflictReason).
-      if (apt.appointmentType !== AppointmentType.GYM) continue;
-      if (!apt.operatorId || !apt.gymRoomId) continue;
+      if (!apt.conflictReason || !ABSENCE_REASONS.includes(apt.conflictReason)) {
+        continue;
+      }
+      if (!apt.operatorId) continue;
 
       try {
-        const result = await this.gymExceptionService.getEffectiveOperator(
-          apt.gymRoomId,
-          apt.operatorId,
-          apt.appointmentDate,
-          apt.startTime,
-        );
+        // Assenza generica operatore ancora attiva sullo slot?
+        let stillReal = await this.isCoveredByOperatorAbsence(apt);
 
-        if (!result.isUncovered) {
-          // L'operatore è disponibile (diretto o via sostituto) → conflitto risolto
+        // GYM: slot ancora scoperto da un'eccezione palestra?
+        if (!stillReal && apt.appointmentType === AppointmentType.GYM && apt.gymRoomId) {
+          const result = await this.gymExceptionService.getEffectiveOperator(
+            apt.gymRoomId,
+            apt.operatorId,
+            apt.appointmentDate,
+            apt.startTime,
+          );
+          stillReal = result.isUncovered;
+        }
+
+        if (!stillReal) {
           toResolve.push(apt.id);
         }
       } catch {
-        // Se getEffectiveOperator fallisce (es. operatore cancellato),
-        // lasciamo il conflitto — la segreteria lo gestirà manualmente.
+        // Se la verifica fallisce (es. operatore cancellato), lasciamo il
+        // conflitto — la segreteria lo gestirà manualmente.
+      }
+    }
+
+    // --- 2. Conflitti da cambio template (solo standard) ---
+    // La detection al cambio template marca in blocco tutti gli appuntamenti
+    // futuri dell'operatore: qui verifichiamo davvero, contro le fasce di
+    // disponibilità correnti (template meno assenze, appuntamenti esclusi).
+    const templateConflicts = conflictedAppointments.filter(
+      (apt) =>
+        apt.conflictReason === ConflictReason.TEMPLATE_CHANGE &&
+        apt.appointmentType !== AppointmentType.GYM &&
+        !!apt.operatorId,
+    );
+    if (templateConflicts.length > 0) {
+      try {
+        const dateStrs = templateConflicts.map((a) => this.toDateStr(a.appointmentDate));
+        const minDate = dateStrs.reduce((a, b) => (a < b ? a : b));
+        const maxDate = dateStrs.reduce((a, b) => (a > b ? a : b));
+        const operatorIds = [...new Set(templateConflicts.map((a) => a.operatorId!))];
+
+        const bands = await this.availabilityService.getOperatorsRawBands(
+          operatorIds,
+          minDate,
+          maxDate,
+        );
+
+        for (const apt of templateConflicts) {
+          const dayBands =
+            bands.get(`${apt.operatorId}|${this.toDateStr(apt.appointmentDate)}`) || [];
+          if (this.isIntervalCovered(apt.startTime, apt.endTime, dayBands)) {
+            toResolve.push(apt.id);
+          }
+        }
+      } catch (err: any) {
+        this.logger.error(
+          `Revalidazione conflitti TEMPLATE_CHANGE fallita: ${err?.message}`,
+        );
       }
     }
 
     if (toResolve.length > 0) {
       await this.appointmentRepo.update(toResolve, {
         hasConflict: false,
-        conflictReason: undefined,
-        conflictDetectedAt: undefined,
+        // null esplicito: TypeORM ignora i campi undefined nell'update
+        conflictReason: null as any,
+        conflictDetectedAt: null as any,
+        conflictSourceExceptionId: null as any,
       });
 
       this.logger.log(
@@ -147,6 +233,85 @@ export class ConflictRevalidationService {
       );
     }
 
-    return toResolve.length;
+    return resolved + toResolve.length;
+  }
+
+  /** Normalizza una data (Date o stringa ISO) in 'YYYY-MM-DD'. */
+  private toDateStr(d: Date | string): string {
+    return d instanceof Date
+      ? d.toISOString().split('T')[0]
+      : String(d).split('T')[0];
+  }
+
+  /**
+   * True se [startTime, endTime] è interamente coperto dalle fasce (in
+   * minuti). Le fasce contigue/sovrapposte vengono fuse, come nel guard
+   * assertWithinAvailability.
+   */
+  private isIntervalCovered(
+    startTime: string,
+    endTime: string,
+    bands: { start: number; end: number }[],
+  ): boolean {
+    const toMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + (m || 0);
+    };
+    const start = toMin(startTime);
+    const end = toMin(endTime);
+    if (end <= start || bands.length === 0) return false;
+
+    const sorted = [...bands].sort((a, b) => a.start - b.start);
+    const merged: { start: number; end: number }[] = [];
+    for (const b of sorted) {
+      const last = merged[merged.length - 1];
+      if (last && b.start <= last.end) {
+        last.end = Math.max(last.end, b.end);
+      } else {
+        merged.push({ ...b });
+      }
+    }
+    return merged.some((r) => r.start <= start && r.end >= end);
+  }
+
+  /**
+   * True se lo slot dell'appuntamento è ancora coperto da un'assenza
+   * operatore (AvailabilityException). Stesso predicato del check allo
+   * spostamento appuntamenti (checkAndMarkConflictForOperatorAppointment):
+   * - MODIFIED con finestra = l'operatore lavora SOLO nella finestra →
+   *   conflitto se l'appuntamento esce dalla finestra;
+   * - altri tipi: senza orari = assente tutto il giorno; con orari =
+   *   conflitto se c'è sovrapposizione.
+   */
+  private async isCoveredByOperatorAbsence(
+    apt: AvailabilityAppointment,
+  ): Promise<boolean> {
+    const exceptions = await this.dataSource
+      .getRepository(AvailabilityException)
+      .find({
+        where: {
+          operatorId: apt.operatorId,
+          exceptionDate: apt.appointmentDate,
+        },
+      });
+    if (exceptions.length === 0) return false;
+
+    const norm = (t: string) => {
+      const p = t.split(':');
+      return `${p[0].padStart(2, '0')}:${(p[1] ?? '00').padStart(2, '0')}`;
+    };
+    const aptStart = norm(apt.startTime);
+    const aptEnd = norm(apt.endTime);
+
+    return exceptions.some((ex) => {
+      if (ex.exceptionType === ExceptionType.MODIFIED) {
+        if (ex.startTime && ex.endTime) {
+          return !(aptStart >= norm(ex.startTime) && aptEnd <= norm(ex.endTime));
+        }
+        return false;
+      }
+      if (!ex.startTime || !ex.endTime) return true;
+      return aptStart < norm(ex.endTime) && norm(ex.startTime) < aptEnd;
+    });
   }
 }

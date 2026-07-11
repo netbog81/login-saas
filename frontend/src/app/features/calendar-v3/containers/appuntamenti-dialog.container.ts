@@ -57,6 +57,13 @@ export interface AppuntamentiDialogData {
   goToCalendar?: (appointment: AvailabilityAppointment) => void;
   editAppointment?: (appointment: AvailabilityAppointment) => Promise<boolean>;
   operators?: RebookingOperatorInput[];
+  /**
+   * Preload (es. da pagina Conflitti): seleziona subito il paziente e, se
+   * indicato anche initialAppointmentId, apre direttamente il pannello di
+   * spostamento su quell'appuntamento.
+   */
+  initialPatientId?: string;
+  initialAppointmentId?: string;
 }
 
 type LayoutMode = 'panels' | 'wizard';
@@ -433,12 +440,31 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
     @Inject(MAT_DIALOG_DATA) public data: AppuntamentiDialogData,
   ) {}
 
+  /** Appuntamento da aprire in spostamento appena la lista è caricata (preload). */
+  private pendingMoveAppointmentId: string | null = null;
+
   ngOnInit(): void {
     this.searchTerm$.pipe(
       debounceTime(300),
       distinctUntilChanged(),
       takeUntil(this.destroy$),
     ).subscribe(term => this.runPatientSearch(term));
+
+    // Preload da pagina Conflitti: seleziona il paziente e (se indicato)
+    // apre direttamente lo spostamento sull'appuntamento in conflitto.
+    if (this.data.initialPatientId) {
+      this.patientService.getPatient(this.data.initialPatientId)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: (patient) => {
+            if (!patient) return;
+            this.pendingMoveAppointmentId = this.data.initialAppointmentId ?? null;
+            this.onSelectPatient(patient);
+            this.cdr.markForCheck();
+          },
+          error: () => { /* preload best-effort: resta la ricerca manuale */ },
+        });
+    }
   }
 
   ngOnDestroy(): void {
@@ -557,6 +583,14 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
           this.appointments = appts;
           this.appointmentsLoading = false;
           this.refreshRebookingAppointmentFromList();
+          // Preload: apri lo spostamento sull'appuntamento richiesto.
+          if (this.pendingMoveAppointmentId) {
+            const target = this.appointments.find(
+              a => a.id === this.pendingMoveAppointmentId,
+            );
+            this.pendingMoveAppointmentId = null;
+            if (target) this.onMoveAppointment(target);
+          }
           this.cdr.markForCheck();
         },
         error: () => {

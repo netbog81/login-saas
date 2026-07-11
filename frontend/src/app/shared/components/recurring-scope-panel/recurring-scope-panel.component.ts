@@ -20,10 +20,14 @@ export interface RecurringScopeSelection {
 /**
  * Pannello "Applica a" per le serie ricorrenti: l'utente sceglie l'ambito
  * (solo corrente / corrente+successivi / intera serie / intervallo date) e poi
- * preme Modifica orario oppure Elimina. Entrambi mostrano una micro-conferma.
+ * preme "Applica modifiche" oppure "Elimina". Entrambi mostrano una
+ * micro-conferma.
  *
- * La modifica riguarda SOLO orario/durata: cambi di data/giorno vanno gestiti
- * eliminando e ricreando la serie.
+ * "Applica modifiche" propaga alle occorrenze nello scope TUTTE le modifiche
+ * fatte nel form (orario, operatore, paziente, servizi, strumenti, note) ed un
+ * eventuale spostamento di data (l'intera serie trasla dello stesso numero di
+ * giorni). È distinto dal pulsante "Salva" del dialog, che agisce invece solo
+ * sull'appuntamento corrente.
  */
 @Component({
   selector: 'app-recurring-scope-panel',
@@ -85,7 +89,7 @@ export interface RecurringScopeSelection {
         <div class="action-buttons">
           <button mat-stroked-button color="primary" (click)="askEdit()"
                   [disabled]="!isScopeValid()">
-            <mat-icon>schedule</mat-icon> Modifica orario
+            <mat-icon>edit</mat-icon> Applica modifiche
           </button>
           <button mat-stroked-button color="warn" (click)="askDelete()"
                   [disabled]="!isScopeValid()">
@@ -98,7 +102,9 @@ export interface RecurringScopeSelection {
   styles: [`
     .scope-panel {
       border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;
-      margin: 8px 24px; background: #f8fafc;
+      /* Vive dentro mat-dialog-content (già con padding 24px): niente margine
+         orizzontale, altrimenti risulterebbe doppiamente rientrato. */
+      margin: 8px 0; background: #f8fafc;
     }
     .panel-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
     .panel-header mat-icon { color: #6366f1; }
@@ -137,7 +143,7 @@ export class RecurringScopePanelComponent {
   pendingAction: 'edit' | 'delete' | null = null;
 
   get confirmMessage(): string {
-    const what = this.pendingAction === 'delete' ? 'eliminare' : 'modificare l\'orario di';
+    const what = this.pendingAction === 'delete' ? 'eliminare' : 'applicare le modifiche a';
     const scopeLabel = this.scopeLabel();
     return `Sei sicuro di voler ${what} ${scopeLabel}?`;
   }

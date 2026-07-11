@@ -68,7 +68,14 @@ export class OperatorWorkspaceService extends BaseGraphQLService {
 
     return this.appointmentService.getAppointmentsByOperator(operatorId, dateStr, dateStr).pipe(
       map(appointments => ({
-        appointments: this.sortAppointmentsByTime(appointments)
+        // Esclude gli appuntamenti non retribuiti (pause, blocchi,
+        // indisponibilità): non hanno un paziente reale — il loro titolo
+        // (es. "Pausa pranzo") finirebbe splittato come nome/cognome nella
+        // colonna Paziente e sporcherebbe la scheda. Vanno gestiti nel
+        // calendario, non qui.
+        appointments: this.sortAppointmentsByTime(
+          appointments.filter(a => a.nonRetribuito !== true)
+        )
       })),
       catchError(error => {
         console.error('[OperatorWorkspaceService] Errore caricamento appuntamenti:', error);

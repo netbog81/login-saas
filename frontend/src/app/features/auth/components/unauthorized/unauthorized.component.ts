@@ -98,7 +98,9 @@ export class UnauthorizedComponent implements OnInit {
   }
 
   goHome(): void {
-    this.router.navigate(['/calendar']);
+    // Home dinamica per ruolo (homeRedirectGuard): non rimandare su /calendar,
+    // o un operatore finito qui ci tornerebbe in loop di "accesso negato".
+    this.router.navigateByUrl('/');
   }
 
   switchAccount(): void {

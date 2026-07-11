@@ -27,8 +27,9 @@ export class OperatorCategoryResolver {
     @Args('macroCategory', { type: () => OperatorMacroCategory }) macroCategory: OperatorMacroCategory,
     @Args('name') name: string,
     @Args('description', { nullable: true }) description?: string,
+    @Args('invoiceLineDescription', { nullable: true }) invoiceLineDescription?: string,
   ): Promise<OperatorCategory> {
-    return this.categoryService.create(macroCategory, name, description);
+    return this.categoryService.create(macroCategory, name, description, invoiceLineDescription);
   }
 
   @Mutation(() => OperatorCategory, { name: 'updateOperatorCategory' })
@@ -36,12 +37,18 @@ export class OperatorCategoryResolver {
     @Args('id', { type: () => ID }) id: string,
     @Args('name', { nullable: true }) name?: string,
     @Args('description', { nullable: true }) description?: string,
+    @Args('invoiceLineDescription', { nullable: true }) invoiceLineDescription?: string,
+    @Args('invoicePrefix', { nullable: true }) invoicePrefix?: string,
+    @Args('invoiceTemplate', { nullable: true }) invoiceTemplate?: string,
     @Args('macroCategory', { type: () => OperatorMacroCategory, nullable: true }) macroCategory?: OperatorMacroCategory,
     @Args('isActive', { nullable: true }) isActive?: boolean,
   ): Promise<OperatorCategory> {
     return this.categoryService.update(id, {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
+      ...(invoiceLineDescription !== undefined && { invoiceLineDescription }),
+      ...(invoicePrefix !== undefined && { invoicePrefix: invoicePrefix?.trim() ? invoicePrefix : null }),
+      ...(invoiceTemplate !== undefined && { invoiceTemplate: invoiceTemplate?.trim() ? invoiceTemplate : null }),
       ...(macroCategory !== undefined && { macroCategory }),
       ...(isActive !== undefined && { isActive }),
     });

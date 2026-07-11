@@ -2,6 +2,13 @@
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  /* Il container padre (dashboard configurazioni) ha height fissa +
+     overflow hidden: rendiamo questo component scrollabile da solo così
+     tutte le card categoria sono raggiungibili (stesso pattern di
+     service-management). */
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .header {

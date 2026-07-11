@@ -33,6 +33,12 @@
     font-size: 1.05em;
     color: #333;
   }
+
+  .sent-at {
+    font-size: 0.8em;
+    color: #666;
+    white-space: nowrap;
+  }
 }
 
 .status-badge {
@@ -182,15 +188,32 @@
 }
 
 .btn {
+  // Bottone neutro (es. "Riapri per modifiche", "Richiama indietro"):
+  // riempimento grigio chiaro pieno + bordo/testo scuri, così si legge
+  // chiaramente come attivo e NON come disabilitato (che è opacità 0.5).
   padding: 6px 12px;
-  border: 1px solid #ccc;
-  background: #fff;
+  border: 1px solid #78909c;
+  background: #eceff1;
+  color: #263238;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9em;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s;
+
+  &:hover:not(:disabled) { background: #cfd8dc; border-color: #546e7a; }
 
   &.btn-sm { padding: 4px 8px; font-size: 0.85em; }
-  &.btn-success { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+  // Azione primaria "Fattura": blu pieno (prima .btn-primary non esisteva →
+  // cadeva sullo stile neutro e sembrava disabilitato).
+  &.btn-primary {
+    background: #1976d2; color: #fff; border-color: #1976d2; font-weight: 600;
+    &:hover:not(:disabled) { background: #1565c0; border-color: #1565c0; }
+  }
+  &.btn-success {
+    background: #2e7d32; color: #fff; border-color: #2e7d32; font-weight: 600;
+    &:hover:not(:disabled) { background: #266b2b; border-color: #266b2b; }
+  }
   &.btn-warning { background: #f9a825; color: #fff; border-color: #f9a825; }
   &.btn-danger { background: #c62828; color: #fff; border-color: #c62828; }
 

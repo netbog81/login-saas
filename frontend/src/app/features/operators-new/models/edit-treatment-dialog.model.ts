@@ -5,7 +5,7 @@
 
 import { Service, Instrument, AppointmentInstrument } from '../../../graphql/generated/types';
 import { TherapeuticPath } from '../../../models/therapeutic-path.model';
-import { Treatment, TreatmentInstrument, PaymentMethod } from '../../../models/treatment.model';
+import { Treatment, TreatmentInstrument, PaymentMethod, PaymentTenderLine } from '../../../models/treatment.model';
 
 /**
  * Base interface for instrument data from either treatment or appointment.
@@ -88,6 +88,11 @@ export interface EditTreatmentFormResult {
   // Cash collection fields
   collectedByOperator?: boolean;
   paymentMethod?: PaymentMethod;
+  /** Split multi-riga scelto nel dialog di pagamento (fonte di verità). */
+  tenderLines?: PaymentTenderLine[];
+  /** Chi ha incassato (userId) e importo confermato nel dialog di pagamento. */
+  collectedBy?: string;
+  collectedAmount?: number;
 }
 
 /**

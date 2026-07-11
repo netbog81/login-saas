@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Subject, takeUntil } from 'rxjs';
 
 import { ConflictService, ConflictFilters } from '../../services/conflict.service';
@@ -16,7 +17,7 @@ import {
 @Component({
   selector: 'app-conflict-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatDialogModule],
   templateUrl: './conflict-dashboard.component.html',
   styleUrls: ['./conflict-dashboard.component.scss'],
 })
@@ -70,13 +71,51 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
   constructor(
     private conflictService: ConflictService,
     private operatorService: OperatorService,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    private dialog: MatDialog,
   ) {}
+
+  /**
+   * Apre il dialog Appuntamenti (lo stesso del calendario, con pannello di
+   * spostamento e vista guidata) precaricato su paziente + appuntamento in
+   * conflitto. Alla chiusura ricarica la lista: se l'appuntamento è stato
+   * spostato, il backend ha già azzerato il flag conflitto.
+   */
+  moveConflict(conflict: AvailabilityAppointment): void {
+    if (!conflict.patientId) {
+      this.error =
+        'Appuntamento senza paziente collegato: usare Riprogramma o gestirlo dal calendario.';
+      return;
+    }
+    import(
+      '../../features/calendar-v3/containers/appuntamenti-dialog.container'
+    ).then((m) => {
+      const ref = this.dialog.open(m.AppuntamentiDialogContainer, {
+        width: '1150px',
+        maxWidth: '97vw',
+        height: '82vh',
+        maxHeight: '92vh',
+        hasBackdrop: false,
+        panelClass: 'appuntamenti-dialog-pane',
+        disableClose: false,
+        autoFocus: false,
+        data: {
+          operators: this.operators.map((o) => ({
+            id: o.id,
+            name: `${o.name} ${o.surname || ''}`.trim(),
+            macroCategory: o.macroCategory ?? '',
+          })),
+          initialPatientId: conflict.patientId,
+          initialAppointmentId: conflict.id,
+        },
+      });
+      ref.afterClosed().subscribe(() => this.ngZone.run(() => this.refreshData()));
+    });
+  }
 
   ngOnInit(): void {
     this.loadOperators();
     this.loadConflicts();
-    this.loadStats();
   }
 
   ngOnDestroy(): void {
@@ -98,7 +137,13 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
       });
   }
 
-  loadConflicts(): void {
+  /**
+   * Carica la lista conflitti. La query lato backend esegue anche la
+   * revalidazione on-read (azzera i flag dei conflitti non più reali),
+   * quindi le statistiche vanno ricaricate DOPO il completamento — non in
+   * parallelo — altrimenti i contatori restano stale.
+   */
+  loadConflicts(refreshStatsAfter = true): void {
     this.loading = true;
     this.error = null;
 
@@ -124,11 +169,17 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
           this.conflicts = conflicts;
           this.loading = false;
           this.selectedConflicts.clear();
+          if (refreshStatsAfter) {
+            this.loadStats();
+          }
         },
         error: (err) => {
           this.error = 'Errore nel caricamento dei conflitti';
           this.loading = false;
           console.error('Error loading conflicts:', err);
+          if (refreshStatsAfter) {
+            this.loadStats();
+          }
         },
       });
   }
@@ -236,7 +287,6 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
         next: () => {
           this.closeResolveDialog();
           this.loadConflicts();
-          this.loadStats();
         },
         error: (err) => {
           this.error = 'Errore nella risoluzione del conflitto';
@@ -264,7 +314,6 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
         next: () => {
           this.selectedConflicts.clear();
           this.loadConflicts();
-          this.loadStats();
         },
         error: (err) => {
           this.error = 'Errore nella risoluzione dei conflitti';
@@ -322,7 +371,6 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
   refreshData(): void {
     this.ngZone.run(() => {
       this.loadConflicts();
-      this.loadStats();
     });
   }
 }

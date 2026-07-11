@@ -17,7 +17,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+# Cache mount BuildKit: la cache npm persiste tra i build, così quando
+# cambia il lockfile i pacchetti non vengono riscaricati da zero.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY frontend/. .
 RUN npm run build -- --configuration=production

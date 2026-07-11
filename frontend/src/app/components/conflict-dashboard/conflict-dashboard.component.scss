@@ -375,6 +375,16 @@
           background: #218838;
         }
       }
+
+      &.btn-move {
+        background: #1976d2;
+        color: white;
+        margin-right: 6px;
+
+        &:hover {
+          background: #1565c0;
+        }
+      }
     }
 
     .loading-state,

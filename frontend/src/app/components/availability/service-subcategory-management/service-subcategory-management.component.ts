@@ -30,6 +30,7 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
     macroCategory: OperatorMacroCategory.Physiotherapist,
     name: '',
     description: '',
+    invoiceLineDescription: '',
     isActive: true
   };
 
@@ -97,6 +98,7 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
           macroCategory: subcategory.macroCategory,
           name: subcategory.name,
           description: subcategory.description || '',
+          invoiceLineDescription: subcategory.invoiceLineDescription || '',
           isActive: subcategory.isActive
         };
       } else {
@@ -106,6 +108,7 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
           macroCategory: this.filterMacroCategory || OperatorMacroCategory.Physiotherapist,
           name: '',
           description: '',
+          invoiceLineDescription: '',
           isActive: true
         };
       }
@@ -136,7 +139,8 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
         this.editingSubcategoryId,
         name,
         this.editingSubcategory.description?.trim() || undefined,
-        this.editingSubcategory.isActive
+        this.editingSubcategory.isActive,
+        this.editingSubcategory.invoiceLineDescription?.trim() || undefined
       ).pipe(takeUntil(this.destroy$))
         .subscribe({
           next: () => {
@@ -152,7 +156,8 @@ export class ServiceSubcategoryManagementComponent implements OnInit, OnDestroy 
       this.subcategoryService.createServiceSubcategory(
         this.editingSubcategory.macroCategory,
         name,
-        this.editingSubcategory.description?.trim() || undefined
+        this.editingSubcategory.description?.trim() || undefined,
+        this.editingSubcategory.invoiceLineDescription?.trim() || undefined
       ).pipe(takeUntil(this.destroy$))
         .subscribe({
           next: () => {

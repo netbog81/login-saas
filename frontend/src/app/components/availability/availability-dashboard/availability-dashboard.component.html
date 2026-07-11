@@ -39,7 +39,7 @@
       <button class="tab"
               [class.active]="activeTab === 'categories'"
               (click)="setActiveTab('categories')">
-        Categorie
+        Categoria operatori
       </button>
       <button class="tab"
               [class.active]="activeTab === 'services'"
@@ -50,6 +50,11 @@
               [class.active]="activeTab === 'subcategories'"
               (click)="setActiveTab('subcategories')">
         Sotto-Categorie
+      </button>
+      <button class="tab"
+              [class.active]="activeTab === 'invoice-descriptions'"
+              (click)="setActiveTab('invoice-descriptions')">
+        Descrizione righe fattura
       </button>
       <button class="tab"
               [class.active]="activeTab === 'templates'"
@@ -90,6 +95,7 @@
     <app-operator-category-management *ngIf="activeTab === 'categories'"></app-operator-category-management>
     <app-service-management *ngIf="activeTab === 'services'"></app-service-management>
     <app-service-subcategory-management *ngIf="activeTab === 'subcategories'"></app-service-subcategory-management>
+    <app-invoice-prefixes-management *ngIf="activeTab === 'invoice-descriptions'"></app-invoice-prefixes-management>
     <app-template-management *ngIf="activeTab === 'templates'"></app-template-management>
     <app-operator-template-assignment *ngIf="activeTab === 'assignments'"></app-operator-template-assignment>
     <app-instrumentation-management *ngIf="activeTab === 'instrumentation'"></app-instrumentation-management>

@@ -19,14 +19,27 @@ import {
 } from '../../../../../services/gym-exception.service';
 
 /**
- * Identifica univocamente uno slot: combinazione di gymRoomId + fascia oraria.
+ * Normalizza un orario a "HH:MM": il backend (colonne Postgres `time`)
+ * restituisce "HH:MM:SS", gli slot generati client-side usano "HH:MM".
+ * Senza normalizzazione le chiavi non matchano e, in modifica di
+ * un'eccezione, i sostituti salvati appaiono come "slot scoperti".
+ */
+export function normalizeSlotTime(time: string): string {
+  if (!time) return time;
+  const parts = time.split(':');
+  return `${parts[0].padStart(2, '0')}:${(parts[1] ?? '00').padStart(2, '0')}`;
+}
+
+/**
+ * Identifica univocamente uno slot: combinazione di gymRoomId + fascia oraria
+ * (orari normalizzati a HH:MM).
  */
 export function slotKey(slot: {
   gymRoomId: string;
   startTime: string;
   endTime: string;
 }): string {
-  return `${slot.gymRoomId}|${slot.startTime}|${slot.endTime}`;
+  return `${slot.gymRoomId}|${normalizeSlotTime(slot.startTime)}|${normalizeSlotTime(slot.endTime)}`;
 }
 
 /**

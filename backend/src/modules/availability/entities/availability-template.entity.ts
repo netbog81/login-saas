@@ -32,7 +32,10 @@ export class AvailabilityTemplate {
   @Column()
   patternDuration: number;
 
-  @Field()
+  // Le tre date qui sotto sono String, non DateTime: TypeORM idrata le
+  // colonne `date` come stringhe e GraphQLISODateTime.serialize le rifiuta
+  // (vedi utils/date-string.util.ts).
+  @Field(() => String, { description: 'Data inizio pattern in formato YYYY-MM-DD' })
   @Column('date')
   patternStartDate: Date;
 
@@ -54,11 +57,11 @@ export class AvailabilityTemplate {
   @Column({ default: true })
   isCurrent: boolean;
 
-  @Field()
+  @Field(() => String, { description: 'Data inizio validità in formato YYYY-MM-DD' })
   @Column('date')
   validFrom: Date;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true, description: 'Data fine validità in formato YYYY-MM-DD' })
   @Column('date', { nullable: true })
   validUntil?: Date;
 

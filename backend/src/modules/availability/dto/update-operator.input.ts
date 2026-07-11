@@ -84,4 +84,22 @@ export class UpdateOperatorInput {
   @IsOptional()
   @IsBoolean()
   canCollectPayment?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Il titolo professionale non può superare 255 caratteri' })
+  professionalTitle?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16, { message: 'Il codice fiscale non può superare 16 caratteri' })
+  taxCode?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(11, { message: 'La partita IVA non può superare 11 caratteri' })
+  vatNumber?: string;
 }

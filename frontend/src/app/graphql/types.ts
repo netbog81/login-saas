@@ -202,11 +202,15 @@ export interface CreateOperatorCategoryInput {
   macroCategory: OperatorMacroCategory;
   name: string;
   description?: string;
+  /** Descrizione che sarà inserita nelle righe fattura. */
+  invoiceLineDescription?: string;
 }
 
 export interface UpdateOperatorCategoryInput {
   name?: string;
   description?: string;
+  /** Descrizione che sarà inserita nelle righe fattura. */
+  invoiceLineDescription?: string;
   macroCategory?: OperatorMacroCategory;
   isActive?: boolean;
 }

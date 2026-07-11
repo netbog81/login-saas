@@ -6,8 +6,8 @@ import { SERVICE_SUBCATEGORY_FIELDS } from './service-subcategory.queries';
  */
 export const CREATE_SERVICE_SUBCATEGORY = gql`
   ${SERVICE_SUBCATEGORY_FIELDS}
-  mutation CreateServiceSubcategory($macroCategory: OperatorMacroCategory!, $name: String!, $description: String) {
-    createServiceSubcategory(macroCategory: $macroCategory, name: $name, description: $description) {
+  mutation CreateServiceSubcategory($macroCategory: OperatorMacroCategory!, $name: String!, $description: String, $invoiceLineDescription: String) {
+    createServiceSubcategory(macroCategory: $macroCategory, name: $name, description: $description, invoiceLineDescription: $invoiceLineDescription) {
       ...ServiceSubcategoryFields
     }
   }
@@ -18,8 +18,8 @@ export const CREATE_SERVICE_SUBCATEGORY = gql`
  */
 export const UPDATE_SERVICE_SUBCATEGORY = gql`
   ${SERVICE_SUBCATEGORY_FIELDS}
-  mutation UpdateServiceSubcategory($id: ID!, $name: String, $description: String, $isActive: Boolean) {
-    updateServiceSubcategory(id: $id, name: $name, description: $description, isActive: $isActive) {
+  mutation UpdateServiceSubcategory($id: ID!, $name: String, $description: String, $invoiceLineDescription: String, $isActive: Boolean) {
+    updateServiceSubcategory(id: $id, name: $name, description: $description, invoiceLineDescription: $invoiceLineDescription, isActive: $isActive) {
       ...ServiceSubcategoryFields
     }
   }

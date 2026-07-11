@@ -113,12 +113,17 @@ export class TherapeuticPathResolver {
   }
 
   /**
-   * Mutation: Aggiorna un percorso terapeutico
+   * Mutation: Aggiorna un percorso terapeutico.
+   *
+   * NESSUN OwnershipGuard: il percorso terapeutico è gestibile da tutta la
+   * categoria (operatori + istruttori), non solo dal creatore. Un paziente
+   * può essere seguito da più terapisti sullo stesso percorso, quindi
+   * chiunque abbia `treatment_write` può modificarlo. L'ownership stretto
+   * resta solo sul Treatment (gestibile dal proprio operatore).
    */
   @Mutation(() => TherapeuticPath, { name: 'updateTherapeuticPath' })
-  @UseGuards(AuthorizationGuard, OwnershipGuard)
+  @UseGuards(AuthorizationGuard)
   @RequirePermissions('treatment_write')
-  @RequireOwnership({ resource: 'therapeutic_path' })
   async updateTherapeuticPath(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: UpdateTherapeuticPathInput,

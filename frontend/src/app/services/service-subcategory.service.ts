@@ -17,6 +17,8 @@ export interface ServiceSubcategory {
   macroCategory: OperatorMacroCategory;
   name: string;
   description?: string;
+  /** Descrizione che sarà inserita nelle righe fattura. */
+  invoiceLineDescription?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -51,11 +53,12 @@ export class ServiceSubcategoryService extends BaseGraphQLService {
   createServiceSubcategory(
     macroCategory: OperatorMacroCategory,
     name: string,
-    description?: string
+    description?: string,
+    invoiceLineDescription?: string
   ): Observable<ServiceSubcategory> {
     return this.mutate<{ createServiceSubcategory: ServiceSubcategory }>(
       CREATE_SERVICE_SUBCATEGORY,
-      { macroCategory, name, description },
+      { macroCategory, name, description, invoiceLineDescription },
       [{ query: GET_SERVICE_SUBCATEGORIES }]
     ).pipe(
       map(result => {
@@ -71,11 +74,12 @@ export class ServiceSubcategoryService extends BaseGraphQLService {
     id: string,
     name?: string,
     description?: string,
-    isActive?: boolean
+    isActive?: boolean,
+    invoiceLineDescription?: string
   ): Observable<ServiceSubcategory> {
     return this.mutate<{ updateServiceSubcategory: ServiceSubcategory }>(
       UPDATE_SERVICE_SUBCATEGORY,
-      { id, name, description, isActive },
+      { id, name, description, invoiceLineDescription, isActive },
       [
         { query: GET_SERVICE_SUBCATEGORIES },
         { query: GET_SERVICE_SUBCATEGORY, variables: { id } }

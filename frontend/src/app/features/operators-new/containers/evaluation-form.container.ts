@@ -380,7 +380,18 @@ export class EvaluationFormContainer {
         },
         error: (err) => {
           console.error('[EvaluationFormContainer] Error saving unified evaluation:', err);
-          this.snackBar.open('Errore durante il salvataggio', 'OK', { duration: 4000 });
+          // Propaga il messaggio reale del backend (es. ForbiddenException su
+          // percorso/trattamento) invece di un generico opaco: aiuta l'utente
+          // a capire la causa (permessi, ownership) senza guardare la console.
+          const backendMessage =
+            err?.graphQLErrors?.[0]?.message ?? err?.message ?? null;
+          this.snackBar.open(
+            backendMessage
+              ? `Errore durante il salvataggio: ${backendMessage}`
+              : 'Errore durante il salvataggio',
+            'OK',
+            { duration: 5000 }
+          );
         },
       });
   }

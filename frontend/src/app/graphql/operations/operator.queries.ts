@@ -40,6 +40,7 @@ export const GET_OPERATORS = gql`
         name
         macroCategory
         description
+        invoiceLineDescription
       }
       preferredDurations
       legacyUserId
@@ -47,6 +48,9 @@ export const GET_OPERATORS = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      professionalTitle
+      taxCode
+      vatNumber
       canCollectPayment
       createdAt
       updatedAt
@@ -75,6 +79,7 @@ export const GET_OPERATOR = gql`
         name
         macroCategory
         description
+        invoiceLineDescription
       }
       preferredDurations
       legacyUserId
@@ -82,6 +87,9 @@ export const GET_OPERATOR = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      professionalTitle
+      taxCode
+      vatNumber
       canCollectPayment
       createdAt
       updatedAt
@@ -125,6 +133,7 @@ export const MY_OPERATOR = gql`
         name
         macroCategory
         description
+        invoiceLineDescription
       }
       preferredDurations
       legacyUserId
@@ -132,6 +141,9 @@ export const MY_OPERATOR = gql`
       isActive
       royaltyPercentage
       professionalRegistration
+      professionalTitle
+      taxCode
+      vatNumber
       canCollectPayment
       createdAt
       updatedAt

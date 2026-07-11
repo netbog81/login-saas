@@ -56,7 +56,10 @@ export class TemplateAssignment {
   updatedAt: Date;
 
   // Relations
-  @Field(() => Operator)
+  // Nullable a livello GraphQL: con operatore soft-deleted (archiviato) il
+  // join TypeORM ritorna null e un campo non-nullable farebbe fallire
+  // l'INTERA query templateAssignments (stesso pattern di Treatment.operator).
+  @Field(() => Operator, { nullable: true })
   @ManyToOne(() => Operator, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'operatorId' })
   operator: Operator;

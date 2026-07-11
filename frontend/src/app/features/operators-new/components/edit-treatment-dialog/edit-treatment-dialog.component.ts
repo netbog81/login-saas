@@ -45,7 +45,7 @@ import {
   BaseInstrumentData,
   ReschedulingType
 } from '../../models/edit-treatment-dialog.model';
-import { PaymentMethod } from '../../../../models/treatment.model';
+import { PaymentMethod, PaymentTenderLine } from '../../../../models/treatment.model';
 import {
   ServiceMultiSelectComponent,
   SelectableService,
@@ -207,27 +207,32 @@ import {
                   </mat-slide-toggle>
                 </div>
 
-                @if (form.get('scontoFE')?.value) {
-                  <div class="cash-collection-section">
-                    @if (!cashCollected) {
-                      <button mat-raised-button color="accent"
-                              type="button"
-                              (click)="onCashCollection()"
-                              class="cash-btn">
-                        <mat-icon>payments</mat-icon>
-                        Incassato da Operatore
+                <div class="cash-collection-section">
+                  @if (!cashCollected) {
+                    <button mat-raised-button color="accent"
+                            type="button"
+                            (click)="onCashCollection()"
+                            class="cash-btn">
+                      <mat-icon>payments</mat-icon>
+                      Incassa
+                    </button>
+                    <span class="payment-source-hint">
+                      @if (form.get('scontoFE')?.value) {
+                        Sconto FE attivo: incasso solo nel clinico (contanti / voucher FE).
+                      } @else {
+                        Metodi di pagamento da contabilità (incasso sincronizzato).
+                      }
+                    </span>
+                  } @else {
+                    <div class="cash-collected-badge">
+                      <mat-icon>check_circle</mat-icon>
+                      <span>Incassato: {{ (collectedAmount ?? form.get('price')?.value) | currency:'EUR' }}</span>
+                      <button mat-icon-button (click)="resetCashCollection()" matTooltip="Annulla incasso">
+                        <mat-icon>cancel</mat-icon>
                       </button>
-                    } @else {
-                      <div class="cash-collected-badge">
-                        <mat-icon>check_circle</mat-icon>
-                        <span>Incassato: {{ form.get('price')?.value | currency:'EUR' }}</span>
-                        <button mat-icon-button (click)="resetCashCollection()" matTooltip="Annulla incasso">
-                          <mat-icon>cancel</mat-icon>
-                        </button>
-                      </div>
-                    }
-                  </div>
-                }
+                    </div>
+                  }
+                </div>
               </div>
 
               <!-- Sezione Riprogrammazione (espansa) -->
@@ -333,12 +338,27 @@ import {
           <!-- Footer -->
           <footer class="dialog-footer">
             <div class="footer-left">
+              <button mat-raised-button color="primary"
+                      [disabled]="!form.valid || isSaving"
+                      (click)="onSave()">
+                @if (isSaving) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <mat-icon>save</mat-icon>
+                  Salva Modifiche
+                }
+              </button>
+              <button mat-button (click)="onCancel()" [disabled]="isSaving">
+                Annulla
+              </button>
+            </div>
+            <div class="footer-right">
               @if (data.treatment.status?.toLowerCase() === 'in_progress') {
                 <button mat-raised-button color="accent"
                         [disabled]="!form.valid || isSaving"
                         (click)="onCompleteTreatment()">
                   <mat-icon>check_circle</mat-icon>
-                  {{ form.dirty ? 'Salva e Completa Trattamento' : 'Completa Trattamento' }}
+                  Completa Trattamento
                 </button>
               }
               @if (data.treatment.status?.toLowerCase() === 'operator_completed') {
@@ -358,21 +378,6 @@ import {
                   Riapri Trattamento (segreteria)
                 </button>
               }
-            </div>
-            <div class="footer-right">
-              <button mat-button (click)="onCancel()" [disabled]="isSaving">
-                Annulla
-              </button>
-              <button mat-raised-button color="primary"
-                      [disabled]="!form.valid || isSaving"
-                      (click)="onSave()">
-                @if (isSaving) {
-                  <mat-spinner diameter="20"></mat-spinner>
-                } @else {
-                  <mat-icon>save</mat-icon>
-                  Salva Modifiche
-                }
-              </button>
             </div>
           </footer>
         </div>
@@ -507,6 +512,15 @@ import {
 
     .cash-collection-section {
       margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .payment-source-hint {
+      font-size: 12px;
+      color: #666;
     }
 
     .cash-btn {
@@ -724,6 +738,10 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   form!: FormGroup;
   cashCollected = false;
   cashPaymentMethod?: PaymentMethod;
+  /** Split scelto nel dialog di pagamento (solo per incassi NUOVI, non ancora salvati). */
+  pendingTenderLines?: PaymentTenderLine[];
+  pendingCollectedBy?: string;
+  collectedAmount?: number;
 
   // Servizi selezionati per multi-select
   selectedServices: SelectedServiceItem[] = [];
@@ -795,8 +813,10 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     this.form.get('serviceId')?.valueChanges.subscribe(() => this.updatePrice());
     this.form.get('scontoFE')?.valueChanges.subscribe(() => {
       this.updatePrice();
-      // Reset cash collection quando si disattiva sconto FE
-      if (!this.form.get('scontoFE')?.value) {
+      // Il toggle scontoFE cambia la FONTE dei metodi di pagamento (clinico vs
+      // accounting): un incasso pendente selezionato con l'altra fonte non è
+      // più valido, quindi va azzerato in ENTRAMBE le direzioni.
+      if (!this.isPopulating) {
         this.resetCashCollection();
       }
     });
@@ -961,14 +981,18 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     // Popola selectedServices dai servizi del trattamento
     this.populateServicesFromTreatment();
 
-    // Leggi stato pagamento dal trattamento (invece di resettare sempre)
+    // Leggi stato pagamento dal trattamento (invece di resettare sempre).
+    // Un pagamento già registrato NON ha pendingTenderLines: il badge mostra
+    // lo stato, ma al salvataggio non viene ri-registrato nulla.
     if (t.isPaid) {
       this.cashCollected = true;
       this.cashPaymentMethod = t.paymentMethod;
+      this.collectedAmount = undefined;
     } else {
-      this.cashCollected = false;
-      this.cashPaymentMethod = undefined;
+      this.resetCashCollection();
     }
+    this.pendingTenderLines = undefined;
+    this.pendingCollectedBy = undefined;
 
     // Popola strumenti - usa treatment instruments o appointment instruments come fallback
     this.clearInstruments();
@@ -1088,15 +1112,26 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
     this.cashCollection.emit();
   }
 
-  setCashCollected(paymentMethod: PaymentMethod): void {
+  setCashCollected(
+    paymentMethod: PaymentMethod,
+    tenderLines?: PaymentTenderLine[],
+    collectedBy?: string,
+    amount?: number,
+  ): void {
     this.cashCollected = true;
     this.cashPaymentMethod = paymentMethod;
+    this.pendingTenderLines = tenderLines;
+    this.pendingCollectedBy = collectedBy;
+    this.collectedAmount = amount;
     this.cdr.markForCheck();
   }
 
   resetCashCollection(): void {
     this.cashCollected = false;
     this.cashPaymentMethod = undefined;
+    this.pendingTenderLines = undefined;
+    this.pendingCollectedBy = undefined;
+    this.collectedAmount = undefined;
   }
 
   /**
@@ -1136,12 +1171,12 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
   }
 
   onCompleteTreatment(): void {
-    if (this.form.dirty) {
-      if (!this.form.valid) return;
-      this.completeTreatment.emit(this.buildFormResult());
-    } else {
-      this.completeTreatment.emit(null);
-    }
+    // Salva SEMPRE le modifiche prima di completare/chiudere il trattamento.
+    // Non ci basiamo su form.dirty perche' alcune modifiche (servizi multi-select,
+    // incasso operatore) usano patchValue/stato esterno e non marcano il form come dirty:
+    // farlo perderebbe quelle modifiche alla chiusura.
+    if (!this.form.valid) return;
+    this.completeTreatment.emit(this.buildFormResult());
   }
 
   onReopenTreatment(): void {
@@ -1222,7 +1257,10 @@ export class EditTreatmentDialogComponent implements OnInit, OnChanges {
       })),
       // Cash collection
       collectedByOperator: this.cashCollected,
-      paymentMethod: this.cashPaymentMethod
+      paymentMethod: this.cashPaymentMethod,
+      tenderLines: this.pendingTenderLines,
+      collectedBy: this.pendingCollectedBy,
+      collectedAmount: this.collectedAmount
     };
   }
 }

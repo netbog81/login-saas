@@ -38,58 +38,80 @@ import { ConflictService } from './services/conflict.service';
             <h1>Curandis</h1>
           </div>
           <div class="nav-menu">
-            <a class="nav-item" routerLink="/calendar" routerLinkActive="active">
-              Calendario
-            </a>
-            <a class="nav-item" routerLink="/calendar2" routerLinkActive="active">
-              Calendario New
-            </a>
-            <a class="nav-item" routerLink="/calendar3" routerLinkActive="active">
-              Calendario V3
-            </a>
-            @if (registryUrl) {
+            @if (authService.hasRole(SEGRETERIA_ROLES)) {
+              <a class="nav-item" routerLink="/calendar" routerLinkActive="active">
+                Calendario
+              </a>
+              <a class="nav-item" routerLink="/calendar2" routerLinkActive="active">
+                Calendario New
+              </a>
+              <a class="nav-item" routerLink="/calendar3" routerLinkActive="active">
+                Calendario V3
+              </a>
+            }
+            @if (!authService.hasRole(SEGRETERIA_ROLES) && authService.hasRole(SELF_CALENDAR_ROLES)) {
+              <a class="nav-item" routerLink="/calendar3" routerLinkActive="active">
+                Il mio calendario
+              </a>
+            }
+            @if (registryUrl && authService.hasRole(SEGRETERIA_ROLES)) {
               <a class="nav-item" [href]="registryUrl" target="_blank" rel="noopener noreferrer">
                 Anagrafiche
               </a>
             }
-            @if (accountingUrl && authService.hasRole(['admin', 'amministratore', 'superadmin', 'segreteria'])) {
+            @if (accountingUrl && authService.hasRole(SEGRETERIA_ROLES)) {
               <a class="nav-item" [href]="accountingUrl" target="_blank" rel="noopener noreferrer">
                 Contabilità
               </a>
             }
-            <a class="nav-item" routerLink="/trattamenti" routerLinkActive="active">
-              Trattamenti
-            </a>
-            <a class="nav-item" routerLink="/patients" routerLinkActive="active">
-              Pazienti
-            </a>
-            @if (authService.hasRole(['operatore', 'medico', 'admin', 'amministratore', 'superadmin', 'it_manager'])) {
+            @if (authService.hasRole(SEGRETERIA_ROLES)) {
+              <a class="nav-item" routerLink="/trattamenti" routerLinkActive="active">
+                Trattamenti
+              </a>
+              <a class="nav-item" routerLink="/patients" routerLinkActive="active">
+                Pazienti
+              </a>
+            }
+            @if (authService.hasRole(OPERATORE_ROLES)) {
               <a class="nav-item" routerLink="/operatori-new" routerLinkActive="active">
                 Operatori
               </a>
             }
-            @if (authService.hasRole(['operatore', 'admin', 'amministratore', 'superadmin', 'it_manager'])) {
+            @if (authService.hasRole(ISTRUTTORE_ROLES)) {
               <a class="nav-item" routerLink="/istruttori" routerLinkActive="active">
                 Istruttori
               </a>
             }
-            <a class="nav-item" routerLink="/availability" routerLinkActive="active">
-              Configurazioni
-            </a>
-            <a class="nav-item" routerLink="/conflicts" routerLinkActive="active">
-              Conflitti
-            </a>
-            @if (authService.hasRole(['admin', 'amministratore', 'superadmin', 'it_manager'])) {
+            @if (authService.hasRole(MEDICO_ROLES)) {
+              <a class="nav-item" routerLink="/medico" routerLinkActive="active">
+                Dashboard
+              </a>
+            }
+            @if (authService.hasRole(SEGRETERIA_ROLES)) {
+              <a class="nav-item" routerLink="/statistiche" routerLinkActive="active">
+                Statistiche
+              </a>
+              <a class="nav-item" routerLink="/gestione-assenze" routerLinkActive="active">
+                Gestione assenze
+              </a>
+              <a class="nav-item" routerLink="/availability" routerLinkActive="active">
+                Configurazioni
+              </a>
+              <a class="nav-item" routerLink="/conflicts" routerLinkActive="active">
+                Conflitti
+              </a>
+            }
+            @if (authService.hasRole(ADMIN_ROLES)) {
               <a class="nav-item" routerLink="/admin" routerLinkActive="active">
                 Admin
               </a>
             }
-            @if (authService.hasRole(['admin', 'amministratore', 'superadmin'])) {
+            @if (authService.hasRole(SEGRETERIA_ROLES)) {
               <a class="nav-item" routerLink="/settings" routerLinkActive="active">
                 Impostazioni
               </a>
             }
-            @if (authService.hasRole(['admin', 'amministratore', 'superadmin', 'segreteria'])) {
+            @if (authService.hasRole(SEGRETERIA_ROLES)) {
               <a class="nav-item" routerLink="/whatsapp" routerLinkActive="active">
                 WhatsApp
               </a>
@@ -287,25 +309,44 @@ export class AppComponent implements OnInit, OnDestroy {
   taskMessageUnreadCount = 0;
 
   /**
-   * URL del modulo Contabilità per il tenant corrente.
-   * Es: tenant "demo4" -> https://accounting.demo4.curandis.cloud
+   * Gruppi di ruoli per la visibilità dei link di navigazione.
+   * `admin`/`amministratore`/`superadmin` sono trattati come admin globale
+   * (vedono tutto) e quindi inclusi in ogni gruppo. Devono restare allineati
+   * ai `data.roles` delle rispettive route in app.routes.ts.
+   */
+  readonly ADMIN_ROLES = ['admin', 'amministratore', 'superadmin', 'it_manager'];
+  readonly SEGRETERIA_ROLES = ['segreteria', 'admin', 'amministratore', 'superadmin'];
+  readonly OPERATORE_ROLES = ['operatore', 'admin', 'amministratore', 'superadmin'];
+  readonly ISTRUTTORE_ROLES = ['istruttore', 'admin', 'amministratore', 'superadmin'];
+  readonly MEDICO_ROLES = ['medico', 'admin', 'amministratore', 'superadmin'];
+  /** Ruoli che vedono il proprio calendario read-only come home (/calendar3). */
+  readonly SELF_CALENDAR_ROLES = ['operatore', 'medico', 'istruttore'];
+
+  /**
+   * URL della sezione Contabilità nella suite unificata.
+   * Es: tenant "bdq" -> https://gestione.bdq.curandis.cloud/contabilita
    * Null se non siamo su un sottodominio tenant valido (es: api., www., ...).
+   *
+   * NB: i link UI verso registry/accounting puntano alla SUITE
+   * (gestione.{tenant}.curandis.cloud/anagrafiche|contabilita/...), non ai
+   * moduli standalone: l'utente naviga tutto in un'unica interfaccia.
+   * Vedi frontend/CLAUDE.md sezione "Link cross-modulo".
    */
   readonly accountingUrl: string | null = (() => {
     const alias = this.tenantResolver.getTenantAlias();
-    return alias ? `https://accounting.${alias}.curandis.cloud` : null;
+    return alias ? `https://gestione.${alias}.curandis.cloud/contabilita` : null;
   })();
 
   /**
-   * URL del modulo Anagrafiche (registry) per il tenant corrente.
-   * Es: tenant "demo4" -> https://registry.demo4.curandis.cloud
-   * È il punto autoritativo per la gestione completa di individui e
-   * organizzazioni: clinico/contabilità ne prelevano i dati ma la
-   * creazione/modifica avanzata si fa qui.
+   * URL della sezione Anagrafiche (registry) nella suite unificata.
+   * Es: tenant "bdq" -> https://gestione.bdq.curandis.cloud/anagrafiche
+   * Il registry resta il punto autoritativo per individui e organizzazioni:
+   * clinico/contabilità ne prelevano i dati ma la creazione/modifica
+   * avanzata si fa lì.
    */
   readonly registryUrl: string | null = (() => {
     const alias = this.tenantResolver.getTenantAlias();
-    return alias ? `https://registry.${alias}.curandis.cloud` : null;
+    return alias ? `https://gestione.${alias}.curandis.cloud/anagrafiche` : null;
   })();
 
   ngOnInit(): void {

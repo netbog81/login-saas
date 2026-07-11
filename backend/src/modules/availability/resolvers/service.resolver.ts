@@ -63,10 +63,12 @@ export class ServiceResolver {
     if (macroCategory) where.macroCategory = macroCategory;
     if (onlyActive) where.isActive = true;
 
+    // Ordinamento per codice servizio (richiesta cliente): tutti i moduli che
+    // caricano l'elenco servizi lo ricevono già ordinato per serviceCode.
     return this.serviceRepo.find({
       where,
       relations: ['requiredInstruments', 'requiredInstruments.instrumentCategory', 'subcategory'],
-      order: { name: 'ASC' },
+      order: { serviceCode: 'ASC' },
     });
   }
 
@@ -209,7 +211,9 @@ export class ServiceResolver {
       if (tenantAlias) {
         this.eventBuffer.add({
           eventType: 'service.upserted',
-          payload: this.catalogMapper.mapServiceUpserted(result),
+          // Variante async: include invoiceLineDescriptionDefault (descrizione
+          // riga fattura service-level, prefill per righe manuali accounting).
+          payload: await this.catalogMapper.mapServiceUpsertedWithDefaults(result, manager),
           tenantAlias,
           correlationId,
         });
@@ -296,7 +300,7 @@ export class ServiceResolver {
       if (tenantAlias) {
         this.eventBuffer.add({
           eventType: 'service.upserted',
-          payload: this.catalogMapper.mapServiceUpserted(reloaded),
+          payload: await this.catalogMapper.mapServiceUpsertedWithDefaults(reloaded, manager),
           tenantAlias,
           correlationId,
         });
@@ -355,5 +359,48 @@ export class ServiceResolver {
 
     flushBufferedEvents(this.eventBuffer, this.eventEmitter);
     return result;
+  }
+
+  /**
+   * 2026-07-07 — Ri-pubblica `service.upserted.<tenant>` per TUTTI i service
+   * del tenant corrente (attivi e non). Serve per backfillare lato accounting
+   * il nuovo campo `invoiceLineDescriptionDefault` sulla mapping table
+   * `clinical_service_mapping` (e in generale per riallineare il catalogo
+   * dopo cambi di config prefissi/template).
+   *
+   * Idempotente lato accounting: l'upsert del consumer aggiorna solo i campi
+   * `clinical*` e NON tocca la config fiscale. Sostituisce lo script legacy
+   * `sync:services` (escluso dal build post-containerizzazione).
+   */
+  @Mutation(() => Int, { name: 'resyncServicesToAccounting' })
+  async resyncServicesToAccounting(): Promise<number> {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    if (!tenantAlias) {
+      throw new BadRequestException('Tenant non risolto nel contesto corrente.');
+    }
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const services = await this.serviceRepo.find({
+      relations: ['subcategory'],
+      order: { serviceCode: 'ASC' },
+    });
+
+    for (const service of services) {
+      this.eventBuffer.add({
+        eventType: 'service.upserted',
+        payload: await this.catalogMapper.mapServiceUpsertedWithDefaults(
+          service,
+          this.dataSource.manager,
+        ),
+        tenantAlias,
+        correlationId,
+      });
+    }
+
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    this.logger.log(
+      `[ServiceResolver] resyncServicesToAccounting: ri-emessi ${services.length} service.upserted (tenant=${tenantAlias})`,
+    );
+    return services.length;
   }
 }

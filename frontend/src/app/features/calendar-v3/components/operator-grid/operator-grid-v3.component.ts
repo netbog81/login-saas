@@ -98,6 +98,8 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       <div class="grid-body"
            [class.compact]="compactMode"
            [class.pattern-unavailable]="showUnavailablePattern"
+           [class.selection-mode]="selectionMode"
+           [class.paste-mode]="pasteMode"
            #gridBodyRef>
           <div class="time-column" [style.width.px]="timeColumnWidth">
             @for (slot of gridData.timeSlots; track slot.index) {
@@ -131,8 +133,10 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                 @for (event of col.events; track event.appointment.id) {
                   <div class="event-chip"
                        [class.highlighted]="event.appointment.id === highlightedAppointmentId"
+                       [class.copyable]="selectionMode"
                        cdkDrag
                        [cdkDragData]="event"
+                       [cdkDragDisabled]="selectionMode || pasteMode || readOnly"
                        (cdkDragStarted)="onDragStarted()"
                        (cdkDragEnded)="onDragEnded($event, event)"
                        [style.top.px]="event.topPx"
@@ -152,12 +156,26 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                         <mat-icon class="recurring-icon">repeat</mat-icon>
                       }
                     </div>
-                    <div class="resize-handle" (mousedown)="onResizeStart($event, event)"></div>
+                    @if (!readOnly) {
+                      <div class="resize-handle" (mousedown)="onResizeStart($event, event)"></div>
+                    }
+                  </div>
+                }
+
+                <!-- Linea ora corrente: solo nelle colonne del giorno di oggi
+                     (in vista settimanale NON deve attraversare gli altri giorni) -->
+                @if (currentTimeTop >= 0 && isTodayColumn(col)) {
+                  <div class="current-time-line-col" [style.top.px]="currentTimeTop">
+                    @if (isFirstTodayColumn($index)) {
+                      <div class="current-time-dot"></div>
+                    }
                   </div>
                 }
 
                 @for (slot of getSlotsForColumn(col.operatorId, col.date); track slot.startTime) {
                   <div class="available-slot-overlay"
+                       [class.paste-target]="pasteMode"
+                       [attr.data-paste-slot]="pasteMode ? slotKey(slot) : null"
                        [style.top.px]="slot.topPx"
                        [style.height.px]="slot.heightPx"
                        [style.border-color]="slot.color"
@@ -166,20 +184,13 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                        (dblclick)="onAvailableSlotDblClick($event, slot)">
                     <span class="slot-time">{{ slot.startTime }} - {{ slot.endTime }}</span>
                     @if (slot.heightPx >= 50) {
-                      <span class="slot-label">Disponibile</span>
+                      <span class="slot-label">{{ pasteMode ? 'Incolla qui' : 'Disponibile' }}</span>
                     }
                   </div>
                 }
               </div>
             }
 
-          @if (currentTimeTop >= 0) {
-            <div class="current-time-line"
-                 [style.top.px]="currentTimeTop"
-                 [style.left.px]="timeColumnWidth">
-              <div class="current-time-dot"></div>
-            </div>
-          }
         </div><!-- /grid-body -->
     }
   `,
@@ -468,9 +479,13 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       }
     }
 
-    .current-time-line {
+    /* Segmento della linea ora corrente, uno per ogni colonna operatore del
+       giorno di oggi: i segmenti adiacenti si fondono visivamente in una
+       linea continua limitata alla colonna del giorno. */
+    .current-time-line-col {
       position: absolute;
-      right: 0;
+      left: 0;
+      right: -1px; /* copre il border-right della colonna, niente gap */
       height: 2px;
       background: #ef4444;
       z-index: 6;
@@ -525,6 +540,45 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
       justify-content: center;
     }
 
+    /* ===== MODALITA' COPIA/INCOLLA ===== */
+
+    /* Fase selezione: gli appuntamenti diventano "copiabili" (cursore copia,
+       leggero rilievo) per invitare al click che copia l'appuntamento. */
+    .grid-body.selection-mode .event-chip.copyable {
+      cursor: copy;
+      outline: 2px solid rgba(67, 56, 202, 0.6);
+      outline-offset: 1px;
+    }
+    .grid-body.selection-mode .event-chip.copyable:hover {
+      outline-color: #4338ca;
+      box-shadow: 0 2px 10px rgba(67, 56, 202, 0.45);
+    }
+
+    /* Fase incollo: gli appuntamenti esistenti si attenuano e non sono
+       interattivi; restano protagonisti solo gli slot dove incollare. */
+    .grid-body.paste-mode .event-chip {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* Slot bersaglio dell'incollo: evidenziato (verde piu' marcato) e
+       pulsante per attirare l'occhio. */
+    .available-slot-overlay.paste-target {
+      border-style: solid;
+      border-width: 2px;
+      background: rgba(34, 197, 94, 0.22);
+      cursor: copy;
+      animation: paste-target-pulse 1.4s ease-in-out infinite;
+    }
+    .available-slot-overlay.paste-target:hover {
+      background: rgba(34, 197, 94, 0.45);
+      box-shadow: 0 0 0 2px #16a34a;
+    }
+    @keyframes paste-target-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.0); }
+      50% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.35); }
+    }
+
     .cdk-drag-preview {
       opacity: 0.8;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
@@ -554,6 +608,19 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
   @Input() highlightedAppointmentId: string | null = null;
   /** Da calendar settings: trama tratteggiata sulle celle non disponibili. */
   @Input() showUnavailablePattern = false;
+  /**
+   * Modalita' selezione del flusso copia/incolla: il click su un appuntamento
+   * lo copia (gestito dal container) invece di aprirne i dettagli.
+   */
+  /** Sola lettura: niente drag, resize o creazione su cella vuota. */
+  @Input() readOnly = false;
+
+  @Input() selectionMode = false;
+  /**
+   * Modalita' incollo: gli slot disponibili diventano bersagli (click o drop)
+   * e gli appuntamenti esistenti si attenuano.
+   */
+  @Input() pasteMode = false;
 
   @Output() cellClick = new EventEmitter<CellClickEvent>();
   @Output() cellDblClick = new EventEmitter<CellClickEvent>();
@@ -566,6 +633,11 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
   @Output() resizeEnd = new EventEmitter<{ appointmentId: string; newEndTime: string }>();
   /** Click sull'intestazione di un giorno/colonna: emette la data YYYY-MM-DD. */
   @Output() dateHeaderClick = new EventEmitter<string>();
+  /**
+   * Incollo su uno slot (click in pasteMode o drop della chip dal banner):
+   * emette lo slot bersaglio. Il container crea il nuovo appuntamento.
+   */
+  @Output() pasteOnSlot = new EventEmitter<AvailableSlotPosition>();
 
   /** Esposto al template per la soglia di visibilita' orario. */
   readonly TIME_VISIBLE_MIN_HEIGHT = TIME_VISIBLE_MIN_HEIGHT;
@@ -592,13 +664,68 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
 
   trackColumn: TrackByFunction<OperatorColumnData> = (_, col) => `${col.operatorId}-${col.date}`;
 
+  /** Data odierna in formato YYYY-MM-DD locale (stesso formato di col.date). */
+  private get todayStr(): string {
+    const now = new Date();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${now.getFullYear()}-${m}-${d}`;
+  }
+
+  /** True se la colonna appartiene al giorno di oggi (segmento linea ora). */
+  isTodayColumn(col: OperatorColumnData): boolean {
+    return col.date === this.todayStr;
+  }
+
+  /** True solo per la prima colonna di oggi: ospita il pallino della linea. */
+  isFirstTodayColumn(index: number): boolean {
+    const today = this.todayStr;
+    return this.gridData?.columns.findIndex(c => c.date === today) === index;
+  }
+
   getSlotsForColumn(operatorId: string, date: string): AvailableSlotPosition[] {
     return this.availableSlots.filter(s => s.operatorId === operatorId && s.date === date);
   }
 
   onAvailableSlotClick(event: MouseEvent, slot: AvailableSlotPosition): void {
     event.stopPropagation();
+    // In modalita' incollo il click sullo slot incolla l'appuntamento copiato
+    // invece di aprire il dialog di creazione standard.
+    if (this.pasteMode) {
+      this.pasteOnSlot.emit(slot);
+      return;
+    }
     this.availableSlotClick.emit(slot);
+  }
+
+  /** Chiave univoca slot (operatore|data|inizio) per l'hit-test del drop. */
+  slotKey(slot: AvailableSlotPosition): string {
+    return `${slot.operatorId}|${slot.date}|${slot.startTime}`;
+  }
+
+  /**
+   * Hit-test: dato un punto (coordinate viewport del rilascio della chip dal
+   * banner), ritorna lo slot bersaglio sottostante, o null se non e' su uno
+   * slot. Chiamato dal container su dragEnded della chip.
+   *
+   * Usa data-paste-slot (presente solo in pasteMode) per riconoscere lo slot
+   * sotto il cursore senza accoppiare il drop a cdkDropList dinamiche.
+   */
+  resolveSlotAtPoint(x: number, y: number): AvailableSlotPosition | null {
+    if (!this.pasteMode) return null;
+    const stack = document.elementsFromPoint(x, y);
+    for (const el of stack) {
+      const key = (el as HTMLElement).getAttribute?.('data-paste-slot');
+      if (key) {
+        return this.availableSlots.find((s) => this.slotKey(s) === key) ?? null;
+      }
+    }
+    return null;
+  }
+
+  /** Inoltra al container l'incollo su uno slot risolto (click o drop). */
+  emitPasteOnSlot(slot: AvailableSlotPosition): void {
+    this.pasteOnSlot.emit(slot);
   }
 
   onAvailableSlotDblClick(event: MouseEvent, slot: AvailableSlotPosition): void {

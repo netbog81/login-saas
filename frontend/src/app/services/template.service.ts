@@ -476,10 +476,12 @@ export class TemplateService extends BaseGraphQLService {
     operatorId?: string,
     onlyCurrent: boolean = true
   ): Observable<TemplateAssignment[]> {
+    // result?. — se GraphQL azzera data per un errore parziale (es. relazione
+    // null) non vogliamo un TypeError che maschera l'errore vero.
     return this.query<{ templateAssignments: any[] }>(
       GET_TEMPLATE_ASSIGNMENTS,
       { operatorId, onlyCurrent }
-    ).pipe(map((result) => result.templateAssignments || []));
+    ).pipe(map((result) => result?.templateAssignments || []));
   }
 
   /**

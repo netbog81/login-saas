@@ -4,6 +4,7 @@ export const GET_SERVICES = gql`
   query GetServices {
     services {
       id
+      serviceCode
       name
       description
       defaultDuration
@@ -22,6 +23,7 @@ export const GET_SERVICES = gql`
       subcategory {
         id
         name
+        invoiceLineDescription
       }
       createdAt
       updatedAt
@@ -33,6 +35,7 @@ export const GET_SERVICE = gql`
   query GetService($id: ID!) {
     service(id: $id) {
       id
+      serviceCode
       name
       description
       defaultDuration

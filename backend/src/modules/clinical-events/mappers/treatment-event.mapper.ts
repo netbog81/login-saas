@@ -10,6 +10,11 @@ import { Service as ServiceEntity } from '../../availability/entities/service.en
 import { AvailabilityAppointment } from '../../availability/entities/availability-appointment.entity';
 import { TherapeuticPath } from '../../availability/entities/therapeutic-path.entity';
 import { AppUser } from '../../users/entities/app-user.entity';
+import { TreatmentInstrument } from '../../availability/entities/treatment-instrument.entity';
+import { ServiceInvoicePrefix } from '../../availability/entities/service-invoice-prefix.entity';
+import { InvoiceLineSettings } from '../../availability/entities/invoice-line-settings.entity';
+import { ServiceInvoicePrefixService } from '../../availability/services/service-invoice-prefix.service';
+import { OperatorMacroCategory } from '../../availability/entities/operator-macro-category.enum';
 import {
   TreatmentClosedPayload,
   TreatmentLine,
@@ -64,10 +69,10 @@ export class TreatmentEventMapper {
       where: { id: treatmentId },
       relations: {
         appointment: true,
-        operator: true,
+        operator: { category: true },
         therapeuticPath: true,
         treatmentServices: {
-          service: true,
+          service: { subcategory: true },
         },
         invoiceLines: true,
       },
@@ -107,6 +112,26 @@ export class TreatmentEventMapper {
     const services = treatment.treatmentServices ?? [];
     const customLines = treatment.invoiceLines ?? [];
 
+    // Dati per la descrizione auto-generata delle righe senza override
+    // manuale: template/prefissi per categoria + strumenti usati. Stessa
+    // logica di invoiceLineDescriptionAuto (resolver), così ciò che
+    // l'operatore vede in anteprima è ciò che arriva in fattura.
+    const prefixConfigs = await manager.getRepository(ServiceInvoicePrefix).find();
+    const configByCategory = new Map(prefixConfigs.map(p => [p.macroCategory, p]));
+    // Toggle "sottocategorie operatori" (tabella settings, una riga per
+    // tenant): se attivo, prefisso/template arrivano dalla categoria
+    // dell'operatore invece che dalla macro-categoria.
+    const lineSettings = await manager.getRepository(InvoiceLineSettings).find({ take: 1 });
+    const useOperatorCategories = lineSettings[0]?.useOperatorCategories ?? false;
+    const usedInstruments = await manager.find(TreatmentInstrument, {
+      where: { treatmentId: treatment.id },
+      relations: { instrument: true },
+    });
+    const instrumentNames = usedInstruments
+      .filter(i => i.wasUsed && i.instrument?.name)
+      .map(i => i.instrument.name)
+      .join(', ');
+
     const serviceLines: TreatmentLineService[] = services.map((ts) =>
       this.buildServiceLine(
         ts,
@@ -114,6 +139,7 @@ export class TreatmentEventMapper {
         treatment.therapeuticPath,
         subMap,
         executionDate,
+        this.buildAutoDescription(ts, treatment.operator, executionDate, configByCategory, instrumentNames, useOperatorCategories),
       ),
     );
     const customLinesPayload: TreatmentLineCustom[] = customLines.map((il) =>
@@ -168,12 +194,56 @@ export class TreatmentEventMapper {
   // Helpers
   // ============================================================================
 
+  /**
+   * Descrizione auto-generata per una riga SERVICE senza override manuale:
+   * template per macro-categoria (se configurato) o composizione legacy.
+   */
+  private buildAutoDescription(
+    ts: TreatmentServiceEntity,
+    operator: Operator | undefined,
+    executionDate: string,
+    configByCategory: Map<OperatorMacroCategory, ServiceInvoicePrefix>,
+    instrumentNames: string,
+    useOperatorCategories: boolean,
+  ): string {
+    const service: ServiceEntity | undefined = ts.service;
+    const category = service?.macroCategory ?? operator?.macroCategory ?? OperatorMacroCategory.OTHER;
+    const saved = configByCategory.get(category);
+    // Stessa scelta di config del resolver invoiceLineDescriptionAuto:
+    // ciò che l'operatore vede in anteprima è ciò che arriva in fattura.
+    const config = ServiceInvoicePrefixService.resolveConfig({
+      useOperatorCategories,
+      operatorCategory: operator?.category ?? null,
+      macroCategory: category,
+      macroSaved: saved ?? null,
+    });
+    const prefix = config.prefix;
+    const operatorFullName = [operator?.name, operator?.surname].filter(Boolean).join(' ').trim();
+
+    return ServiceInvoicePrefixService.composeAuto(
+      config,
+      {
+        prefisso: prefix,
+        data: ServiceInvoicePrefixService.formatDateItalian(executionDate),
+        codiceServizio: service?.serviceCode ?? '',
+        nomeServizio: service?.name ?? '',
+        descrizioneServizio: service?.description ?? '',
+        descrizioneFatturaSottocategoria: service?.subcategory?.invoiceLineDescription ?? '',
+        operatore: operatorFullName,
+        albo: operator?.professionalRegistration ?? '',
+        descrizioneFatturaCategoria: operator?.category?.invoiceLineDescription ?? '',
+        strumenti: instrumentNames,
+      },
+    );
+  }
+
   private buildServiceLine(
     ts: TreatmentServiceEntity,
     operator: Operator | undefined,
     therapeuticPath: TherapeuticPath | undefined,
     subMap: Map<string, string | null>,
     executionDate: string,
+    autoDescription?: string,
   ): TreatmentLineService {
     const service: ServiceEntity | undefined = ts.service;
 
@@ -186,13 +256,15 @@ export class TreatmentEventMapper {
     const executedByUserId = this.resolveSub(subMap, executedAppUserId);
 
     // invoiceLineDescription: NEVER null (lato accounting `itemDescription`
-    // è NOT NULL → INSERT fallisce). Per treatment vecchi creati prima del
-    // flusso billing UI il campo è NULL → fallback `<service.name> del
-    // <executionDate>`. Coerente con il pattern hardcoded del smoke #1.
+    // è NOT NULL → INSERT fallisce). Senza override manuale usa la
+    // descrizione auto-generata (template per categoria / composizione
+    // legacy), la stessa mostrata in anteprima dal resolver
+    // invoiceLineDescriptionAuto. Ultimo fallback: pattern storico.
     const invoiceLineDescription =
       ts.invoiceLineDescription && ts.invoiceLineDescription.trim().length > 0
         ? ts.invoiceLineDescription
-        : `${service?.name ?? 'Prestazione'} del ${executionDate}`;
+        : (autoDescription?.trim()
+            || `${service?.name ?? 'Prestazione'} del ${executionDate}`);
 
     return {
       lineId: ts.id,

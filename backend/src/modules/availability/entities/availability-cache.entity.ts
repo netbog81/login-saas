@@ -16,7 +16,9 @@ export class AvailabilityCache {
   @Column('uuid')
   operatorId: string;
 
-  @Field()
+  // String, non DateTime: TypeORM idrata le colonne `date` come stringhe e
+  // GraphQLISODateTime.serialize le rifiuta (vedi utils/date-string.util.ts).
+  @Field(() => String, { description: 'Data disponibilità in formato YYYY-MM-DD' })
   @Column('date')
   availableDate: Date;
 

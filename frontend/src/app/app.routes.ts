@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, linkedGuard } from './core/auth/auth.guard';
+import { authGuard, linkedGuard, homeRedirectGuard } from './core/auth/auth.guard';
 import { schemaGuard } from './core/auth/schema.guard';
 import { CalendarContainerComponent } from './components/calendar-cdk/calendar-container/calendar-container.component';
 import { AvailabilityDashboardComponent } from './components/availability/availability-dashboard/availability-dashboard.component';
@@ -65,29 +65,37 @@ export const routes: Routes = [
     path: 'calendar',
     component: CalendarContainerComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     title: 'Calendario',
   },
   {
     path: 'calendar2',
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     loadChildren: () => import('./features/calendar-v2/calendar-v2.routes').then(m => m.CALENDAR_V2_ROUTES),
     title: 'Calendario V2',
   },
   {
+    // calendar3 è accessibile anche a operatore/medico/istruttore: per loro è
+    // la home in modalità SOLA LETTURA del proprio calendario (lo decide il
+    // container in base al ruolo). Segreteria/admin lo usano in modalità piena.
     path: 'calendar3',
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin', 'operatore', 'medico', 'istruttore'] },
     loadChildren: () => import('./features/calendar-v3/calendar-v3.routes').then(m => m.CALENDAR_V3_ROUTES),
     title: 'Calendario V3',
   },
   {
     path: 'trattamenti',
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     loadChildren: () => import('./features/trattamenti/trattamenti.routes').then(m => m.TRATTAMENTI_ROUTES),
     title: 'Trattamenti',
   },
   {
     path: 'products',
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     loadChildren: () => import('./features/products/products.routes').then(m => m.PRODUCTS_ROUTES),
     title: 'Prodotti',
   },
@@ -95,13 +103,31 @@ export const routes: Routes = [
     path: 'patients',
     component: PatientManagementComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     title: 'Gestione Pazienti',
+  },
+  {
+    path: 'statistiche',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
+    loadChildren: () => import('./features/voucher-fe/voucher-fe.routes').then(m => m.VOUCHER_FE_ROUTES),
+    title: 'Statistiche',
+  },
+  {
+    path: 'gestione-assenze',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
+    loadChildren: () =>
+      import('./features/availability/absence-management/absence-management.routes').then(
+        (m) => m.ABSENCE_MANAGEMENT_ROUTES,
+      ),
+    title: 'Gestione assenze',
   },
   {
     path: 'operatori-new',
     component: OperatorsNewLayoutComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
-    data: { roles: ['operatore', 'medico', 'admin', 'amministratore', 'superadmin', 'it_manager'] },
+    data: { roles: ['operatore', 'admin', 'amministratore', 'superadmin'] },
     title: 'Workspace Operatore',
     children: [
       {
@@ -127,10 +153,17 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'medico',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['medico', 'admin', 'amministratore', 'superadmin'] },
+    loadChildren: () => import('./features/medici/medici.routes').then(m => m.MEDICI_ROUTES),
+    title: 'Workspace Medico',
+  },
+  {
     path: 'istruttori',
     component: InstructorsLayoutComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
-    data: { roles: ['operatore', 'admin', 'amministratore', 'superadmin', 'it_manager'] },
+    data: { roles: ['istruttore', 'admin', 'amministratore', 'superadmin'] },
     title: 'Workspace Istruttore',
     children: [
       {
@@ -159,20 +192,31 @@ export const routes: Routes = [
     path: 'availability',
     component: AvailabilityDashboardComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     title: 'Gestione Disponibilita',
   },
   {
     path: 'conflicts',
     component: ConflictDashboardComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     title: 'Dashboard Conflitti',
   },
   {
     path: 'settings',
     component: SettingsComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
-    data: { roles: ['admin', 'amministratore', 'superadmin'] },
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
     title: 'Impostazioni Generali',
+  },
+  {
+    path: 'settings/document-templates',
+    canActivate: [authGuard, linkedGuard, schemaGuard],
+    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
+    loadChildren: () =>
+      import('./features/document-templates/document-templates.routes').then(
+        (m) => m.DOCUMENT_TEMPLATES_ROUTES,
+      ),
   },
   {
     path: 'whatsapp',
@@ -188,14 +232,18 @@ export const routes: Routes = [
     ],
   },
 
-  // --- Redirect ---
+  // --- Redirect home dinamico in base al ruolo ---
+  // Il path '' non ha componente: homeRedirectGuard restituisce un UrlTree
+  // verso la landing page coerente col ruolo (calendario per segreteria/admin,
+  // workspace per operatore/istruttore).
   {
     path: '',
-    redirectTo: '/calendar',
+    canActivate: [homeRedirectGuard],
+    children: [],
     pathMatch: 'full',
   },
   {
     path: '**',
-    redirectTo: '/calendar',
+    redirectTo: '',
   },
 ];

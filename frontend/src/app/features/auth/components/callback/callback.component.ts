@@ -104,7 +104,11 @@ export class CallbackComponent implements OnInit {
       } else if (user.tenantStatus === 'suspended' || user.tenantStatus === 'deleted') {
         await this.router.navigate(['/unauthorized']);
       } else {
-        await this.router.navigate(['/calendar']);
+        // Home dinamica per ruolo: la root '' passa da homeRedirectGuard, che
+        // smista segreteria/admin → /calendar, operatore → /operatori-new,
+        // istruttore → /istruttori. Evita di sbattere l'operatore su /calendar
+        // (a cui non ha accesso) subito dopo il login.
+        await this.router.navigateByUrl('/');
       }
     } catch (err: any) {
       if (err?.type === 'TENANT_MISMATCH') {

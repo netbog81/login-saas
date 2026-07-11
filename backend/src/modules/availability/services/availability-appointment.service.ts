@@ -16,6 +16,7 @@ import { GymExceptionService } from './gym-exception.service';
 import { TreatmentCascadeService } from './treatment-cascade.service';
 import { EventsService } from '../../events/events.service';
 import { ConflictReason } from '../entities/availability-appointment.entity';
+import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
 import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
@@ -1073,6 +1074,26 @@ export class AvailabilityAppointmentService {
     // parità di orario.
     const needsPositionChecks = positionChanged || operatorChanged;
 
+    // Spostamento di un appuntamento PALESTRA: blocca se la nuova posizione
+    // cade in uno slot chiuso (chiusura, slot isClosed, fuori orari modificati).
+    if (needsPositionChecks && appointment.appointmentType === AppointmentType.GYM) {
+      const gymRoomId = (input as any).gymRoomId || appointment.gymRoomId;
+      if (gymRoomId) {
+        const gymCheckDate = input.appointmentDate || appointment.appointmentDate;
+        const closure = await this.gymExceptionService.getSlotClosure(
+          gymRoomId,
+          gymCheckDate instanceof Date ? gymCheckDate : new Date(gymCheckDate),
+          input.startTime || appointment.startTime,
+          input.endTime || appointment.endTime,
+        );
+        if (closure.closed) {
+          throw new ConflictException(
+            closure.reason || 'La palestra è chiusa in questa fascia oraria',
+          );
+        }
+      }
+    }
+
     // Check sovrapposizione (solo per appuntamenti non-palestra).
     // L'operatore di riferimento e' quello NUOVO se cambia, altrimenti
     // quello corrente.
@@ -1155,6 +1176,7 @@ export class AvailabilityAppointmentService {
       (updateData as any).hasConflict = false;
       (updateData as any).conflictReason = null;
       (updateData as any).conflictDetectedAt = null;
+      (updateData as any).conflictSourceExceptionId = null;
     }
     Object.assign(appointment, updateData);
     await this.appointmentRepo.save(appointment);
@@ -1223,7 +1245,78 @@ export class AvailabilityAppointmentService {
       ).catch(() => {});
     }
 
+    // Check proattivo per appuntamenti NON palestra: se la nuova posizione
+    // (o il nuovo operatore) ricade in un'assenza operatore, rimarca il
+    // conflitto. Copre il caso "spostato dentro un'altra assenza".
+    if (needsPositionChecks && result.appointmentType !== AppointmentType.GYM) {
+      this.checkAndMarkConflictForOperatorAppointment(result).catch(() => {});
+    }
+
     return result;
+  }
+
+  /**
+   * Verifica se un appuntamento (non palestra) ricade in un'assenza del suo
+   * operatore (AvailabilityException) e in tal caso marca il conflitto con
+   * il riferimento all'eccezione sorgente. Fire-and-forget.
+   */
+  private async checkAndMarkConflictForOperatorAppointment(
+    appointment: AvailabilityAppointment,
+  ): Promise<void> {
+    if (!appointment.operatorId || appointment.nonRetribuito) return;
+
+    try {
+      const exceptions = await this.dataSource
+        .getRepository(AvailabilityException)
+        .find({
+          where: {
+            operatorId: appointment.operatorId,
+            exceptionDate: appointment.appointmentDate,
+          },
+        });
+      if (exceptions.length === 0) return;
+
+      const norm = (t: string) => {
+        const p = t.split(':');
+        return `${p[0].padStart(2, '0')}:${(p[1] ?? '00').padStart(2, '0')}`;
+      };
+      const aptStart = norm(appointment.startTime);
+      const aptEnd = norm(appointment.endTime);
+
+      const hit = exceptions.find((ex) => {
+        if (ex.exceptionType === ExceptionType.MODIFIED) {
+          // MODIFIED = lavora SOLO nella finestra → conflitto se fuori
+          if (ex.startTime && ex.endTime) {
+            return !(aptStart >= norm(ex.startTime) && aptEnd <= norm(ex.endTime));
+          }
+          return false;
+        }
+        if (!ex.startTime || !ex.endTime) return true; // giornata intera
+        return aptStart < norm(ex.endTime) && norm(ex.startTime) < aptEnd;
+      });
+
+      if (hit) {
+        const reason =
+          hit.exceptionType === ExceptionType.SICK
+            ? ConflictReason.OPERATOR_SICK
+            : hit.exceptionType === ExceptionType.VACATION
+              ? ConflictReason.OPERATOR_VACATION
+              : ConflictReason.OPERATOR_UNAVAILABLE;
+        await this.appointmentRepo.update(appointment.id, {
+          hasConflict: true,
+          conflictReason: reason,
+          conflictDetectedAt: new Date(),
+          conflictSourceExceptionId: hit.id,
+        });
+        this.logger.warn(
+          `Appuntamento ${appointment.id} spostato dentro un'assenza operatore → hasConflict=true`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Errore check assenza per appointment ${appointment.id}: ${err?.message}`,
+      );
+    }
   }
 
   /**
@@ -1635,7 +1728,23 @@ export class AvailabilityAppointmentService {
       throw new NotFoundException(`GymRoom con ID ${input.gymRoomId} non trovata o non attiva`);
     }
 
-    // 2. Verifica capacità disponibile
+    // 2. Blocco prenotazione su slot chiuso: chiusura palestra (giornata o
+    // fascia), slot "palestra chiusa" di un'assenza istruttore, o fuori
+    // dagli orari modificati. La vista mostra lo slot rosso, ma senza
+    // questa guardia il booking passava comunque.
+    const closure = await this.gymExceptionService.getSlotClosure(
+      input.gymRoomId,
+      new Date(input.appointmentDate),
+      input.startTime,
+      input.endTime,
+    );
+    if (closure.closed) {
+      throw new ConflictException(
+        closure.reason || 'La palestra è chiusa in questa fascia oraria',
+      );
+    }
+
+    // 2b. Verifica capacità disponibile
     const currentCount = await this.countAppointmentsInSlot(
       input.gymRoomId,
       input.appointmentDate,
@@ -1691,9 +1800,19 @@ export class AvailabilityAppointmentService {
       );
     }
 
+    // 4b. Se per quella data/ora è attiva un'eccezione con sostituto,
+    // l'appuntamento nasce già intestato al sostituto (l'operatore del
+    // trattamento — e quindi la fatturazione — segue l'appuntamento).
+    const effectiveFields = await this.resolveEffectiveGymOperatorFields(
+      input.gymRoomId,
+      operator.id,
+      new Date(input.appointmentDate),
+      input.startTime,
+    );
+
     // 5. Crea singolo appuntamento
     const savedGymAppointment = await this.createSingleGymAppointment(
-      { ...appointmentData, operatorId: operator.id },
+      { ...appointmentData, ...effectiveFields },
       gymRoom,
     );
     this.dispatchWhatsappBooking(savedGymAppointment);
@@ -1714,7 +1833,12 @@ export class AvailabilityAppointmentService {
    * Crea un singolo appuntamento palestra
    */
   private async createSingleGymAppointment(
-    data: Omit<CreateGymAppointmentInput, 'repeatConfig'> & { operatorId: string },
+    data: Omit<CreateGymAppointmentInput, 'repeatConfig'> & {
+      operatorId: string;
+      originalOperatorId?: string;
+      isSubstitution?: boolean;
+      reassignedByGymExceptionId?: string;
+    },
     gymRoom: GymRoom,
     isRecurring: boolean = false,
     recurringGroupId?: string,
@@ -1725,6 +1849,9 @@ export class AvailabilityAppointmentService {
     const defaultSiteId = await this.resolveDefaultSiteId();
     const appointment = this.appointmentRepo.create({
       operatorId: data.operatorId,
+      originalOperatorId: data.originalOperatorId,
+      isSubstitution: data.isSubstitution ?? false,
+      reassignedByGymExceptionId: data.reassignedByGymExceptionId,
       gymRoomId: data.gymRoomId,
       serviceId: data.serviceId,
       siteId: defaultSiteId,
@@ -1810,6 +1937,18 @@ export class AvailabilityAppointmentService {
       const date = dates[i];
 
       try {
+        // Slot chiuso per eccezione in questa data → salta l'occorrenza
+        const closure = await this.gymExceptionService.getSlotClosure(
+          baseData.gymRoomId,
+          new Date(date),
+          baseData.startTime,
+          baseData.endTime,
+        );
+        if (closure.closed) {
+          skippedCount++;
+          continue;
+        }
+
         // Verifica capacità per questa data
         const currentCount = await this.countAppointmentsInSlot(
           baseData.gymRoomId,
@@ -1835,9 +1974,17 @@ export class AvailabilityAppointmentService {
           continue; // Salta se non c'è operatore
         }
 
+        // Applica l'eventuale sostituzione attiva per QUESTA data della serie
+        const effectiveFields = await this.resolveEffectiveGymOperatorFields(
+          baseData.gymRoomId,
+          operator.id,
+          new Date(date),
+          baseData.startTime,
+        );
+
         const isFirst = firstAppointment === null;
         const appointment = await this.createSingleGymAppointment(
-          { ...baseData, appointmentDate: date, operatorId: operator.id },
+          { ...baseData, appointmentDate: date, ...effectiveFields },
           gymRoom,
           true,
           recurringGroupId,
@@ -1865,6 +2012,48 @@ export class AvailabilityAppointmentService {
     }
 
     return firstAppointment;
+  }
+
+  /**
+   * Risolve l'operatore EFFETTIVO per un booking palestra: se per
+   * (gymRoom, data, ora) è attiva un'eccezione OPERATOR_ABSENT con sostituto,
+   * l'appuntamento va intestato al sostituto (con originalOperatorId e marker
+   * dell'eccezione, così il ripristino su cancellazione eccezione lo trova).
+   * Se lo slot è scoperto o il check fallisce, resta l'operatore del template
+   * (il conflitto viene marcato dal check post-creazione).
+   */
+  private async resolveEffectiveGymOperatorFields(
+    gymRoomId: string,
+    templateOperatorId: string,
+    date: Date,
+    startTime: string,
+  ): Promise<{
+    operatorId: string;
+    originalOperatorId?: string;
+    isSubstitution?: boolean;
+    reassignedByGymExceptionId?: string;
+  }> {
+    try {
+      const effective = await this.gymExceptionService.getEffectiveOperator(
+        gymRoomId,
+        templateOperatorId,
+        date,
+        startTime,
+      );
+      if (effective.isSubstitute && effective.operator) {
+        return {
+          operatorId: effective.operator.id,
+          originalOperatorId: templateOperatorId,
+          isSubstitution: true,
+          reassignedByGymExceptionId: effective.exception?.id,
+        };
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `resolveEffectiveGymOperatorFields fallito (${err?.message}), uso operatore template`,
+      );
+    }
+    return { operatorId: templateOperatorId };
   }
 
   /**
@@ -2405,5 +2594,164 @@ export class AvailabilityAppointmentService {
     } catch { /* best-effort */ }
 
     return { applied: true, affectedCount: ids.length, conflicts: [] };
+  }
+
+  /** Differenza in giorni tra due date YYYY-MM-DD (calcolo in UTC, DST-safe). */
+  private diffInDays(fromStr: string, toStr: string): number {
+    const from = new Date(`${fromStr}T00:00:00Z`).getTime();
+    const to = new Date(`${toStr}T00:00:00Z`).getTime();
+    return Math.round((to - from) / 86400000);
+  }
+
+  /** Somma `days` a una data YYYY-MM-DD e ritorna YYYY-MM-DD (UTC, DST-safe). */
+  private addDays(dateStr: string, days: number): string {
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Modifica COMPLETA (tutti i campi + eventuale spostamento di data) delle
+   * occorrenze di una serie ricorrente nello scope scelto. A differenza di
+   * `updateRecurringSeriesTime` (solo orario), propaga operatore, paziente,
+   * servizi, strumenti, note, non-retribuito e un eventuale shift di data.
+   *
+   * Spostamento data: se `newDate` differisce dalla data attuale dell'occorrenza
+   * corrente, l'intera serie nello scope viene traslata dello STESSO numero di
+   * giorni (preserva la spaziatura della ricorrenza).
+   *
+   * Validazione preventiva "avvisa-e-blocca": se una qualsiasi occorrenza, alla
+   * nuova posizione, si sovrappone a un appuntamento ESTERNO alla serie, NON
+   * applica nulla e ritorna i conflitti. Le occorrenze della serie sono escluse
+   * dal controllo (si "scambiano" gli slot durante lo shift). Il vincolo di
+   * disponibilità operatore NON blocca qui: l'applicazione forza il salvataggio
+   * (l'utente ha scelto esplicitamente di modificare la serie).
+   */
+  async updateRecurringSeries(input: {
+    appointmentId: string;
+    scope: 'current_only' | 'this_and_following' | 'all' | 'date_range';
+    rangeFrom?: string;
+    rangeTo?: string;
+    includeCurrent?: boolean;
+    newDate?: string;
+    startTime: string;
+    endTime: string;
+    operatorId?: string;
+    patientId?: string;
+    clientName?: string;
+    notes?: string;
+    nonRetribuito?: boolean;
+    instrumentOrderMatters?: boolean;
+    services?: ServiceInputItem[];
+    instruments?: CreateAppointmentInstrumentInput[];
+  }): Promise<{ applied: boolean; affectedCount: number; conflicts: any[] }> {
+    const current = await this.appointmentRepo.findOne({ where: { id: input.appointmentId } });
+    if (!current || !current.recurringGroupId) {
+      throw new BadRequestException('Appuntamento non trovato o non ricorrente');
+    }
+
+    const occurrences = await this.selectSeriesOccurrences(
+      current.recurringGroupId, current.id, current.appointmentDate,
+      input.scope, input.rangeFrom, input.rangeTo, input.includeCurrent,
+    );
+    if (occurrences.length === 0) {
+      return { applied: false, affectedCount: 0, conflicts: [] };
+    }
+
+    const ds = (d: Date | string): string =>
+      d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
+    // Delta uniforme dallo spostamento della sola occorrenza corrente.
+    const baseStr = ds(current.appointmentDate);
+    const deltaDays = input.newDate ? this.diffInDays(baseStr, input.newDate) : 0;
+
+    const targets = occurrences.map(o => ({
+      occ: o,
+      newDate: deltaDays === 0 ? ds(o.appointmentDate) : this.addDays(ds(o.appointmentDate), deltaDays),
+    }));
+    const batchIds = targets.map(t => t.occ.id);
+
+    // ── Validazione preventiva: solo sovrapposizioni con appuntamenti ESTERNI
+    //    alla serie (la serie in movimento è esclusa via NOT IN batchIds). ──
+    const conflicts: any[] = [];
+    for (const t of targets) {
+      const opId = input.operatorId ?? t.occ.operatorId;
+      const overlap = await this.appointmentRepo
+        .createQueryBuilder('a')
+        .where('a.operatorId = :opId', { opId })
+        .andWhere('a.appointmentDate = :date', { date: t.newDate })
+        .andWhere('a.bookingStatus NOT IN (:...excluded)', {
+          excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
+        })
+        .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
+          startTime: input.startTime, endTime: input.endTime,
+        })
+        .andWhere('a.id NOT IN (:...batchIds)', { batchIds })
+        .getOne();
+      if (overlap) {
+        conflicts.push({
+          appointmentId: t.occ.id,
+          date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+          type: 'overlap',
+          reason: `Sovrapposto ad un altro appuntamento (${overlap.startTime}-${overlap.endTime})`,
+          conflictingStartTime: overlap.startTime,
+          conflictingEndTime: overlap.endTime,
+        });
+      }
+    }
+    if (conflicts.length > 0) {
+      return { applied: false, affectedCount: 0, conflicts };
+    }
+
+    // Ordine di applicazione: con shift in avanti si parte dall'ultima
+    // occorrenza (lo slot di destinazione è già libero), all'indietro dalla
+    // prima. Evita che il controllo sovrapposizioni interno a `update()`
+    // scatti tra occorrenze della stessa serie durante lo spostamento.
+    const ordered = [...targets].sort((a, b) =>
+      deltaDays > 0
+        ? ds(b.occ.appointmentDate).localeCompare(ds(a.occ.appointmentDate))
+        : ds(a.occ.appointmentDate).localeCompare(ds(b.occ.appointmentDate)),
+    );
+
+    const failed: any[] = [];
+    let affected = 0;
+    for (const t of ordered) {
+      try {
+        await this.update(t.occ.id, {
+          appointmentDate: t.newDate,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          operatorId: input.operatorId,
+          patientId: input.patientId,
+          clientName: input.clientName,
+          notes: input.notes,
+          nonRetribuito: input.nonRetribuito,
+          instrumentOrderMatters: input.instrumentOrderMatters,
+          services: input.services,
+          instruments: input.instruments,
+          // Disponibilità già decisa a monte: forziamo per non ri-bloccare la
+          // guardia "fuori disponibilità" occorrenza per occorrenza.
+          forceOutsideAvailability: true,
+        });
+        affected++;
+      } catch (e: any) {
+        failed.push({
+          appointmentId: t.occ.id,
+          date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+          type: 'error',
+          reason: e?.message || 'Errore durante l\'aggiornamento dell\'occorrenza',
+        });
+      }
+    }
+
+    try {
+      this.eventsService.emit({
+        type: 'appointment_status_changed',
+        appointmentIds: batchIds,
+        timestamp: new Date(),
+      });
+    } catch { /* best-effort */ }
+
+    return { applied: affected > 0, affectedCount: affected, conflicts: failed };
   }
 }

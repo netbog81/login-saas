@@ -45,6 +45,7 @@ import { Operator, OperatorMacroCategory } from '../../../../graphql/generated/t
 import {
   SlotGridComponent,
   slotKey,
+  normalizeSlotTime,
   CLOSED_SLOT_VALUE,
 } from '../components/slot-grid/slot-grid.component';
 
@@ -871,11 +872,11 @@ export class GymExceptionDialogContainerComponent implements OnInit, OnDestroy {
         exceptionType: this.exceptionType,
         operatorId: this.operatorId || undefined,
         absenceTypeId: this.absenceTypeId || undefined,
-        substituteOperatorId: this.simpleSubstituteId || undefined,
+        substituteOperatorId: this.realSubstituteIdOrUndefined(),
         substitutes: substitutes,
         reason: this.reason || undefined,
-        startTime: this.startTime || undefined,
-        endTime: this.endTime || undefined,
+        startTime: this.startTime ? normalizeSlotTime(this.startTime) : undefined,
+        endTime: this.endTime ? normalizeSlotTime(this.endTime) : undefined,
       };
       this.gymExceptionService
         .update(this.editingId, input)
@@ -900,11 +901,11 @@ export class GymExceptionDialogContainerComponent implements OnInit, OnDestroy {
       // Se CLOSED/MODIFIED_HOURS → scoped alla gymRoom del manager
       gymRoomId: this.isOperatorAbsent() ? undefined : this.gymRoom?.id,
       absenceTypeId: this.absenceTypeId || undefined,
-      substituteOperatorId: this.simpleSubstituteId || undefined,
+      substituteOperatorId: this.realSubstituteIdOrUndefined(),
       substitutes: substitutes,
       reason: this.reason || undefined,
-      startTime: this.startTime || undefined,
-      endTime: this.endTime || undefined,
+      startTime: this.startTime ? normalizeSlotTime(this.startTime) : undefined,
+      endTime: this.endTime ? normalizeSlotTime(this.endTime) : undefined,
     };
 
     this.gymExceptionService
@@ -943,12 +944,26 @@ export class GymExceptionDialogContainerComponent implements OnInit, OnDestroy {
         value && value !== CLOSED_SLOT_VALUE ? value : undefined;
       return {
         gymRoomId: slot.gymRoom.id,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
+        // Normalizza a HH:MM: gli slot-pattern arrivano dal DB con i secondi
+        // ("07:00:00") e il DTO backend valida il formato orario.
+        startTime: normalizeSlotTime(slot.startTime),
+        endTime: normalizeSlotTime(slot.endTime),
         substituteOperatorId,
         isClosed,
       };
     });
+  }
+
+  /**
+   * Il select "Sostituto" in modalità semplice usa il sentinel CLOSED_VALUE
+   * per "Palestra chiusa": NON è un uuid e non va mai inviato come
+   * substituteOperatorId (il backend lo valida con IsUUID). La chiusura
+   * viaggia già per-slot dentro substitutes[] (isClosed=true).
+   */
+  private realSubstituteIdOrUndefined(): string | undefined {
+    if (!this.simpleSubstituteId) return undefined;
+    if (this.simpleSubstituteId === CLOSED_SLOT_VALUE) return undefined;
+    return this.simpleSubstituteId;
   }
 
   private handleSubmitError(err: any): void {

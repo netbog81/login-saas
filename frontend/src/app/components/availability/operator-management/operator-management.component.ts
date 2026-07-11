@@ -51,7 +51,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   showOperatorForm = false;
   isEditMode = false;
   editingOperatorId: string | null = null;
-  editingOperator: Partial<CreateOperatorInput> & { isActive?: boolean; canCollectPayment?: boolean } = {
+  editingOperator: Partial<CreateOperatorInput> & { isActive?: boolean; canCollectPayment?: boolean; professionalTitle?: string; taxCode?: string; vatNumber?: string } = {
     name: '',
     surname: '',
     email: '',
@@ -64,6 +64,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     isActive: true,
     royaltyPercentage: 0,
     professionalRegistration: '',
+    professionalTitle: '',
+    taxCode: '',
+    vatNumber: '',
     canCollectPayment: true,
   };
 
@@ -244,6 +247,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           isActive: operator.isActive,
           royaltyPercentage: (operator as any).royaltyPercentage || 0,
           professionalRegistration: (operator as any).professionalRegistration || '',
+          professionalTitle: (operator as any).professionalTitle || '',
+          taxCode: (operator as any).taxCode || '',
+          vatNumber: (operator as any).vatNumber || '',
           canCollectPayment: (operator as any).canCollectPayment ?? true,
         };
         this.preferredDurationsString =
@@ -264,6 +270,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           isActive: true,
           royaltyPercentage: 0,
           professionalRegistration: '',
+          professionalTitle: '',
+          taxCode: '',
+          vatNumber: '',
           canCollectPayment: true,
         };
         this.preferredDurationsString = '';
@@ -291,6 +300,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         isActive: true,
         royaltyPercentage: 0,
         professionalRegistration: '',
+        professionalTitle: '',
+        taxCode: '',
+        vatNumber: '',
         canCollectPayment: true,
       };
       this.preferredDurationsString = '';
@@ -330,7 +342,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
         phone: this.editingOperator.phone?.trim(),
         color: this.editingOperator.color,
         macroCategory: this.editingOperator.macroCategory,
-        categoryId: this.editingOperator.categoryId || undefined,
+        // null (non undefined): categoryId vuoto deve SVUOTARE la categoria
+        // sul backend, non "campo non inviato" (che la lascerebbe invariata).
+        categoryId: this.editingOperator.categoryId || null,
         preferredDurations:
           preferredDurations.length > 0 ? preferredDurations : undefined,
         isActive: this.editingOperator.isActive,
@@ -338,6 +352,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           this.editingOperator.maxConcurrentAppointments,
         royaltyPercentage: this.editingOperator.royaltyPercentage,
         professionalRegistration: this.editingOperator.professionalRegistration?.trim() || undefined,
+        professionalTitle: this.editingOperator.professionalTitle?.trim() || undefined,
+        taxCode: this.editingOperator.taxCode?.trim().toUpperCase() || undefined,
+        vatNumber: this.editingOperator.vatNumber?.trim() || undefined,
         canCollectPayment: this.editingOperator.canCollectPayment,
       } as UpdateOperatorInput;
 
@@ -389,6 +406,9 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
           this.editingOperator.maxConcurrentAppointments || 1,
         royaltyPercentage: this.editingOperator.royaltyPercentage,
         professionalRegistration: this.editingOperator.professionalRegistration?.trim() || undefined,
+        professionalTitle: this.editingOperator.professionalTitle?.trim() || undefined,
+        taxCode: this.editingOperator.taxCode?.trim().toUpperCase() || undefined,
+        vatNumber: this.editingOperator.vatNumber?.trim() || undefined,
         canCollectPayment: this.editingOperator.canCollectPayment,
       } as CreateOperatorInput;
 

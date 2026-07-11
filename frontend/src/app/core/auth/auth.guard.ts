@@ -54,6 +54,69 @@ export const authGuard: CanActivateFn = async (route) => {
 };
 
 /**
+ * Guard per la home (path vuoto): reindirizza l'utente alla landing page
+ * coerente con il suo ruolo, perché non tutti hanno accesso al calendario.
+ *
+ * Priorità (un utente può avere più ruoli — vince il profilo "ampio"):
+ *  - segreteria / admin / amministratore / superadmin → /calendar
+ *  - medico                                           → /medico/dashboard
+ *  - operatore / istruttore                           → /calendar3 (proprio
+ *    calendario in sola lettura; il container calendar-v3 applica read-only
+ *    e, per gli istruttori, la modalità palestra in base al ruolo)
+ *  - fallback (nessun ruolo noto)                     → /calendar (poi
+ *    l'authGuard della rotta mostrerà /unauthorized se non abilitato)
+ *
+ * Restituisce sempre un UrlTree (mai true): il path '' non ha un componente
+ * proprio, serve solo a smistare.
+ */
+export const homeRedirectGuard: CanActivateFn = async () => {
+  const oidcAuth = inject(OidcAuthService);
+  const router = inject(Router);
+
+  if (oidcAuth.isTenantMismatch()) {
+    return router.parseUrl('/unauthorized?reason=tenant_mismatch');
+  }
+
+  if (!oidcAuth.isAuthenticated()) {
+    oidcAuth.login();
+    return false;
+  }
+
+  // Dopo un refresh il profilo potrebbe non essere ancora popolato.
+  if (!oidcAuth.currentUser()) {
+    try {
+      const user = await oidcAuth.loadCurrentUser();
+      if (!user) {
+        oidcAuth.login();
+        return false;
+      }
+    } catch {
+      oidcAuth.login();
+      return false;
+    }
+  }
+
+  const SEGRETERIA_ROLES = ['segreteria', 'admin', 'amministratore', 'superadmin'];
+
+  if (oidcAuth.hasRole(SEGRETERIA_ROLES)) {
+    return router.parseUrl('/calendar');
+  }
+  // Il medico atterra sulla propria dashboard (workspace medico).
+  if (oidcAuth.hasRole(['medico'])) {
+    return router.parseUrl('/medico/dashboard');
+  }
+  // Operatore e istruttore atterrano sul calendar-v3 read-only del proprio
+  // calendario (l'istruttore in modalità palestra). Il container calendar-v3
+  // distingue il ruolo e applica la vista corretta.
+  if (oidcAuth.hasRole(['operatore', 'istruttore'])) {
+    return router.parseUrl('/calendar3');
+  }
+
+  // Fallback: lascia che sia l'authGuard della rotta a decidere.
+  return router.parseUrl('/calendar');
+};
+
+/**
  * Guard: con Keycloak Organizations il linking è implicito nell'appartenenza all'org.
  * Mantenuto per retrocompatibilità — passa sempre se autenticato.
  */

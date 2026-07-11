@@ -25,6 +25,7 @@
     "@curandis/openbao-core": "^1.0.0",
     "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/typeorm": "^11.0.0",
+    "@tiptap/extension-image": "^3.27.1",
     "dotenv": "^17.3.1",
     "eventemitter2": "^6.4.9",
     "node-vault": "^0.10.9",

@@ -15,6 +15,7 @@ import {
 import { ClinicalEventsConfig } from './clinical-events.config';
 import { ProcessedClinicalEvent } from './processed-clinical-event.entity';
 import { Treatment } from '../availability/entities/treatment.entity';
+import { PaymentMethod } from '../availability/entities/treatment-enums';
 import { TreatmentBillingStatus } from '../availability/entities/treatment-billing-status.enum';
 import { EventsService } from '../events/events.service';
 import {
@@ -27,6 +28,9 @@ import {
   BillableRecallRejectedPayload,
   BillableRefundedPayload,
   BillableReissuedPayload,
+  BillablePaymentRecordedPayload,
+  BillablePaymentReversedPayload,
+  BillableInvoiceBlockedPayload,
   BillableReturnedToClinicalPayload,
   BillableUninvoicedPayload,
   CurandisEvent,
@@ -99,6 +103,9 @@ export class AccountingEventConsumer
     'billable.recall-accepted.*',
     'billable.recall-rejected.*',
     'billable.returned-to-clinical.*',
+    'billable.payment-recorded.*',
+    'billable.payment-reversed.*',
+    'billable.invoice-blocked.*',
   ];
 
   constructor(
@@ -362,7 +369,10 @@ export class AccountingEventConsumer
       eventType === 'billable.cancellation-rejected' ||
       eventType === 'billable.recall-accepted' ||
       eventType === 'billable.recall-rejected' ||
-      eventType === 'billable.returned-to-clinical'
+      eventType === 'billable.returned-to-clinical' ||
+      eventType === 'billable.payment-recorded' ||
+      eventType === 'billable.payment-reversed' ||
+      eventType === 'billable.invoice-blocked'
     );
   }
 
@@ -421,6 +431,21 @@ export class AccountingEventConsumer
           event as CurandisEvent<BillableReturnedToClinicalPayload>,
           manager,
         );
+      case 'billable.payment-recorded':
+        return this.handleBillablePaymentRecorded(
+          event as CurandisEvent<BillablePaymentRecordedPayload>,
+          manager,
+        );
+      case 'billable.payment-reversed':
+        return this.handleBillablePaymentReversed(
+          event as CurandisEvent<BillablePaymentReversedPayload>,
+          manager,
+        );
+      case 'billable.invoice-blocked':
+        return this.handleBillableInvoiceBlocked(
+          event as CurandisEvent<BillableInvoiceBlockedPayload>,
+          manager,
+        );
     }
   }
 
@@ -465,27 +490,91 @@ export class AccountingEventConsumer
     // e diverso da quello dell'evento, significa che un recall-accepted o un
     // returned-to-clinical ha azzerato il riferimento (o ne ha creato uno nuovo
     // via re-closure). Evento riferito a un billable obsoleto → scarta.
+    //
+    // 2026-07-08 — membership: con più billable per treatment (una riga
+    // documento per servizio) il billable "primario" del payload può non
+    // coincidere con quello memorizzato da billable.received. Se il payload
+    // porta `billableEventIds`, basta che quello memorizzato appartenga
+    // all'insieme. Fallback sull'uguaglianza per producer vecchi.
+    const knownBillableIds =
+      p.billableEventIds && p.billableEventIds.length > 0
+        ? p.billableEventIds
+        : [p.billableEventId];
     if (
       treatment.accountingBillableEventId &&
-      treatment.accountingBillableEventId !== p.billableEventId
+      !knownBillableIds.includes(treatment.accountingBillableEventId)
     ) {
       this.logger.warn(
         `billable.invoiced stale: treatment.accountingBillableEventId=` +
-          `${treatment.accountingBillableEventId} ≠ payload=${p.billableEventId}. Skip.`,
+          `${treatment.accountingBillableEventId} ∉ payload=[${knownBillableIds.join(', ')}]. Skip.`,
       );
       return;
     }
 
     treatment.billingStatus = TreatmentBillingStatus.INVOICED;
     treatment.accountingBillableEventId = p.billableEventId;
+    treatment.accountingDocumentId = p.documentId;
     treatment.accountingDocumentType = p.documentType;
     treatment.accountingInvoiceUrl = p.documentUrl ?? undefined;
     treatment.accountingInvoiceIssuedAt = new Date(p.issuedAt);
     treatment.patientInvoiceNumber = p.invoiceNumber;
     treatment.isInvoicedToPatient = true;
     treatment.invoicedToPatientAt = new Date(p.issuedAt);
+    // Totale REALE confermato da accounting (marca da bollo INCLUSA). Il clinico
+    // lo salva e lo mostra; sul totale confermato si registra poi l'incasso.
+    // Invariante: accountingTotalAmount non-null ⟺ esiste un documento accounting
+    // corrente. Se l'evento non porta il totale, azzeriamo (fallback su price)
+    // invece di lasciare in piedi quello della fattura precedente.
+    treatment.accountingTotalAmount =
+      p.totalAmount != null ? Number(p.totalAmount) : (null as any);
+    // 2026-07-08 — Fatture multi-trattamento: quota di questo treatment nel
+    // documento + numero di treatment coperti (campi additivi, null da
+    // producer vecchi). Stesso invariante di accountingTotalAmount.
+    treatment.accountingTreatmentLinesAmount =
+      p.treatmentLinesAmount != null
+        ? Number(p.treatmentLinesAmount)
+        : (null as any);
+    treatment.accountingDocumentTreatmentCount =
+      p.documentTreatmentCount ?? (null as any);
+    // L'emissione è andata a buon fine → azzera l'eventuale motivo di blocco
+    // (es. era bloccato per indirizzo mancante, ora risolto e fatturato).
+    treatment.billingHoldReason = undefined;
+    treatment.billingHoldReasonCode = undefined;
+    treatment.billingHoldReasonAt = undefined;
     await manager.save(Treatment, treatment);
     this.emitTreatmentChanged(treatment);
+  }
+
+  /**
+   * 2026-06-30 — `billable.invoice-blocked`: l'auto-emissione fattura è
+   * bloccata da una causa risolvibile (indirizzo paziente mancante, P.IVA
+   * mancante, mapping pending). Salva il motivo reale sul treatment e notifica
+   * via SSE, così la UI mostra il banner + pulsante "Verifica risoluzione e
+   * riprova". billingStatus resta invariato (PENDING): la fattura NON è stata
+   * emessa.
+   */
+  private async handleBillableInvoiceBlocked(
+    event: CurandisEvent<BillableInvoiceBlockedPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    if (!p.treatmentId) {
+      this.logger.debug(`billable.invoice-blocked senza treatmentId (sale): ack senza update`);
+      return;
+    }
+
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    treatment.billingHoldReasonCode = p.reasonCode;
+    treatment.billingHoldReason = p.reasonMessage;
+    treatment.billingHoldReasonAt = new Date(p.blockedAt);
+    await manager.save(Treatment, treatment);
+    this.emitTreatmentChanged(treatment);
+    this.logger.log(
+      `Treatment ${p.treatmentId} fattura bloccata (reason=${p.reasonCode}, ` +
+        `tentativi=${p.retriesAttempted}): "${p.reasonMessage}"`,
+    );
   }
 
   private async handleBillableUninvoiced(
@@ -509,6 +598,7 @@ export class AccountingEventConsumer
     // e i bottoni operativi tornano coerenti.
     treatment.billingStatus = TreatmentBillingStatus.PENDING;
     treatment.accountingBillableEventId = p.billableEventId;
+    treatment.accountingDocumentId = null as any;
     treatment.accountingInvoiceUrl = null as any;
     treatment.accountingInvoiceIssuedAt = null as any;
     treatment.accountingDocumentType = null as any;
@@ -521,6 +611,12 @@ export class AccountingEventConsumer
     treatment.patientInvoiceNumber = null as any;
     treatment.isInvoicedToPatient = false;
     treatment.invoicedToPatientAt = null as any;
+    // La fattura non esiste più: il totale con bollo che ne derivava è stale.
+    // Va azzerato o la UI continuerebbe a mostrarlo (icona "totale fattura") e
+    // a proporre l'incasso su un importo di un documento cancellato.
+    treatment.accountingTotalAmount = null as any;
+    treatment.accountingTreatmentLinesAmount = null as any;
+    treatment.accountingDocumentTreatmentCount = null as any;
     await manager.save(Treatment, treatment);
     this.emitTreatmentChanged(treatment);
   }
@@ -641,7 +737,13 @@ export class AccountingEventConsumer
     // riferiti al billable appena cancellato lato accounting vengono scartati
     // dall'anti-stale check in handleBillableInvoiced.
     treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+    // Coerenza con reopen(): il richiamo smarca anche "pronto per
+    // fatturazione", così CTA "Invia" e filtri lista non lo vedono più
+    // come pronto/inviato.
+    treatment.readyForBilling = false;
+    treatment.readyForBillingAt = null as any;
     treatment.accountingBillableEventId = null as any;
+    treatment.accountingDocumentId = null as any;
     treatment.accountingInvoiceUrl = null as any;
     treatment.accountingInvoiceIssuedAt = null as any;
     treatment.accountingDocumentType = null as any;
@@ -654,6 +756,10 @@ export class AccountingEventConsumer
     treatment.patientInvoiceNumber = null as any;
     treatment.isInvoicedToPatient = false;
     treatment.invoicedToPatientAt = null as any;
+    // Documento cancellato lato accounting: il totale con bollo è stale.
+    treatment.accountingTotalAmount = null as any;
+    treatment.accountingTreatmentLinesAmount = null as any;
+    treatment.accountingDocumentTreatmentCount = null as any;
 
     // Chiudo il recall in volo + pulisco eventuale rejection precedente.
     treatment.recallRequestId = null as any;
@@ -727,7 +833,10 @@ export class AccountingEventConsumer
     // accounting (treatment torna NOT_READY, riferimenti azzerati) + salva
     // il motivo per il banner UI dismissibile.
     treatment.billingStatus = TreatmentBillingStatus.NOT_READY;
+    treatment.readyForBilling = false;
+    treatment.readyForBillingAt = null as any;
     treatment.accountingBillableEventId = null as any;
+    treatment.accountingDocumentId = null as any;
     treatment.accountingInvoiceUrl = null as any;
     treatment.accountingInvoiceIssuedAt = null as any;
     treatment.accountingDocumentType = null as any;
@@ -740,6 +849,10 @@ export class AccountingEventConsumer
     treatment.patientInvoiceNumber = null as any;
     treatment.isInvoicedToPatient = false;
     treatment.invoicedToPatientAt = null as any;
+    // Documento cancellato lato accounting: il totale con bollo è stale.
+    treatment.accountingTotalAmount = null as any;
+    treatment.accountingTreatmentLinesAmount = null as any;
+    treatment.accountingDocumentTreatmentCount = null as any;
 
     treatment.returnedFromAccountingReason = p.reason;
     treatment.returnedFromAccountingAt = new Date(p.returnedAt);
@@ -759,6 +872,140 @@ export class AccountingEventConsumer
         (p.returnedByEmail ? ` (operatore=${p.returnedByEmail})` : '') +
         `: ${p.reason}`,
     );
+  }
+
+  /**
+   * Incasso registrato lato accounting → propaga al clinico (isPaid).
+   *
+   * Idempotenza first-write-wins: applichiamo l'UPDATE solo se isPaid è ancora
+   * false (row lock Postgres). Se l'incasso era già stato registrato nel clinico
+   * (o da un evento precedente), l'UPDATE non tocca righe e scartiamo senza errore.
+   */
+  private async handleBillablePaymentRecorded(
+    event: CurandisEvent<BillablePaymentRecordedPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    if (!p.treatmentId) {
+      this.logger.debug(
+        `billable.payment-recorded senza treatmentId (sale standalone): ack senza update`,
+      );
+      return;
+    }
+
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    // Anti-stale: se il treatment è legato a un billable diverso, l'evento è
+    // riferito a un billable obsoleto (es. recall ha azzerato il riferimento).
+    if (
+      treatment.accountingBillableEventId &&
+      p.billableEventId &&
+      treatment.accountingBillableEventId !== p.billableEventId
+    ) {
+      this.logger.warn(
+        `billable.payment-recorded stale: treatment.accountingBillableEventId=` +
+          `${treatment.accountingBillableEventId} ≠ payload=${p.billableEventId}. Skip.`,
+      );
+      return;
+    }
+
+    const res = await manager
+      .createQueryBuilder()
+      .update(Treatment)
+      .set({
+        isPaid: true,
+        paymentId: p.paymentId,
+        paymentRecordedSource: 'accounting',
+        paymentMethod: this.mapAccountingPaymentMethod(p.paymentMethod),
+        paidAt: new Date(p.paidAt),
+      })
+      .where('id = :id AND "isPaid" = false', { id: p.treatmentId })
+      .returning('id')
+      .execute();
+
+    if (!res.raw || res.raw.length === 0) {
+      this.logger.debug(
+        `billable.payment-recorded: incasso già registrato per ${p.treatmentId} ` +
+          `(first-write-wins), skip.`,
+      );
+      return;
+    }
+
+    // Re-fetch per SSE coerente.
+    const fresh = await manager.getRepository(Treatment).findOne({ where: { id: p.treatmentId } });
+    if (fresh) this.emitTreatmentChanged(fresh);
+    this.logger.log(`Incasso registrato da accounting su treatment ${p.treatmentId}.`);
+  }
+
+  /**
+   * 2026-07-03 — `billable.payment-reversed`: un incasso è stato cancellato in
+   * accounting. Reset di isPaid SOLO se il paymentId sul treatment combacia
+   * con l'allocazione stornata (o col pagamento clinico che l'aveva
+   * originata), oppure se il treatment non ha un paymentId tracciato (dati
+   * legacy). Un pagamento diverso da quello stornato non si tocca.
+   */
+  private async handleBillablePaymentReversed(
+    event: CurandisEvent<BillablePaymentReversedPayload>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const p = event.payload;
+    if (!p.treatmentId) {
+      this.logger.debug(
+        `billable.payment-reversed senza treatmentId (sale standalone): ack senza update`,
+      );
+      return;
+    }
+
+    const treatment = await this.findTreatmentOrWarn(manager, p.treatmentId, event);
+    if (!treatment) return;
+
+    const ids = [p.paymentId, p.sourcePaymentId].filter((v): v is string => !!v);
+    const res = await manager
+      .createQueryBuilder()
+      .update(Treatment)
+      .set({
+        isPaid: false,
+        paymentId: null,
+        paymentRecordedSource: null,
+        paymentMethod: null,
+        paidAt: null,
+        collectedBy: null,
+      })
+      .where('id = :id AND "isPaid" = true', { id: p.treatmentId })
+      .andWhere('("paymentId" IS NULL OR "paymentId" IN (:...ids))', { ids })
+      .returning('id')
+      .execute();
+
+    if (!res.raw || res.raw.length === 0) {
+      this.logger.debug(
+        `billable.payment-reversed per ${p.treatmentId}: nessun reset ` +
+          `(non pagato o pagamento diverso da quello stornato), skip.`,
+      );
+      return;
+    }
+
+    const fresh = await manager.getRepository(Treatment).findOne({ where: { id: p.treatmentId } });
+    if (fresh) this.emitTreatmentChanged(fresh);
+    this.logger.log(
+      `Incasso STORNATO da accounting su treatment ${p.treatmentId}` +
+        (p.reason ? ` (${p.reason})` : '') + '.',
+    );
+  }
+
+  /**
+   * Mappa il code metodo accounting sull'enum PaymentMethod clinico in modo
+   * difensivo. I code accounting sono configurabili per tenant: se non
+   * riconosciuto, fallback OTHER (l'importante è isPaid; il metodo è indicativo).
+   */
+  private mapAccountingPaymentMethod(code?: string | null): PaymentMethod {
+    if (!code) return PaymentMethod.OTHER;
+    const c = code.toUpperCase();
+    if (c.includes('CASH') || c.includes('CONTANT')) return PaymentMethod.CASH;
+    if (c.includes('CARD') || c.includes('BANCOMAT') || c.includes('POS')) return PaymentMethod.CARD;
+    if (c.includes('TRANSFER') || c.includes('BONIFIC')) return PaymentMethod.TRANSFER;
+    if (c.includes('SATISPAY')) return PaymentMethod.SATISPAY;
+    return PaymentMethod.OTHER;
   }
 
   // ============================================================================
@@ -790,7 +1037,15 @@ export class AccountingEventConsumer
   /** Estrae billableEventId dal payload se presente. */
   private extractBillableEventId(event: CurandisEvent<unknown>): string | undefined {
     const payload = event.payload as { billableEventId?: string } | undefined;
-    return payload?.billableEventId;
+    const id = payload?.billableEventId;
+    // Difensivo: accounting storicamente inviava '' su billable.payment-recorded
+    // ("non rilevante"); '' non è un uuid valido e faceva fallire l'INSERT di
+    // idempotenza (colonna uuid) mandando l'evento in DLQ. Normalizza a undefined
+    // qualsiasi valore che non sia un uuid.
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return undefined;
+    }
+    return id;
   }
 
   private buildLogContext(event: CurandisEvent<unknown>, routingKey: string): string {

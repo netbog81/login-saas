@@ -4,6 +4,15 @@ import { GymException, GymExceptionType, AbsenceTypeSnapshot } from '../entities
 import { GymExceptionSubstitute } from '../entities/gym-exception-substitute.entity';
 import { GymRoom } from '../entities/gym-room.entity';
 import { Operator } from '../entities/operator.entity';
+import {
+  AvailabilityAppointment,
+  BookingStatus,
+} from '../entities/availability-appointment.entity';
+import { AppointmentType } from '../entities/appointment-type.enum';
+import {
+  AppointmentLog,
+  AppointmentLogEventType,
+} from '../entities/appointment-log.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { GymTemplatePattern } from '../entities/gym-template-pattern.entity';
 import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
@@ -63,6 +72,8 @@ export interface EffectiveOperatorResult {
   originalOperatorId?: string;
   /** True se c'è un'eccezione OPERATOR_ABSENT ma nessun sostituto per questo slot */
   isUncovered: boolean;
+  /** Eccezione che ha determinato la sostituzione/scopertura (se presente). */
+  exception?: GymException;
 }
 
 @Injectable()
@@ -92,6 +103,10 @@ export class GymExceptionService {
   private get templatePatternRepo() { return this.dataSource.getRepository(GymTemplatePattern); }
 
   private get availabilityExceptionRepo() { return this.dataSource.getRepository(AvailabilityException); }
+
+  private get appointmentRepo() { return this.dataSource.getRepository(AvailabilityAppointment); }
+
+  private get appointmentLogRepo() { return this.dataSource.getRepository(AppointmentLog); }
 
   // ==================== FIND / QUERY ====================
 
@@ -380,8 +395,18 @@ export class GymExceptionService {
       return savedEx;
     });
 
-    // 9. Rilevamento e marcatura conflitti per slot scoperti
+    // 9. Riassegnazione appuntamenti esistenti al sostituto (slot coperti)
+    //    + rilevamento e marcatura conflitti per slot scoperti
     if (input.exceptionType === GymExceptionType.OPERATOR_ABSENT && input.operatorId) {
+      await this.applySubstituteReassignments({
+        exceptionId: savedException.id,
+        operatorId: input.operatorId,
+        exceptionDate: input.exceptionDate,
+        absenceTypeName: absenceTypeSnapshot?.name,
+        performedBy: input.createdBy,
+        substitutes: substitutesToSave,
+      });
+
       await this.refreshOperatorAbsenceConflicts({
         exceptionId: savedException.id,
         operatorId: input.operatorId,
@@ -399,6 +424,13 @@ export class GymExceptionService {
 
   async update(id: string, input: UpdateGymExceptionInput): Promise<GymException> {
     const existing = await this.findOne(id);
+
+    // Fotografia dei valori PRIMA della mutazione: servono per ripristinare
+    // riassegnazioni e conflitti generati dalla versione precedente
+    // dell'eccezione (anche se tipo/operatore/data cambiano).
+    const previousType = existing.exceptionType;
+    const previousOperatorId = existing.operatorId;
+    const previousDate = existing.exceptionDate;
 
     // Validazioni orari
     const startTime = input.startTime !== undefined ? input.startTime : existing.startTime;
@@ -494,18 +526,23 @@ export class GymExceptionService {
       }
     });
 
-    // Ricalcolo conflitti se OPERATOR_ABSENT
+    // Ripristino dello stato generato dalla VERSIONE PRECEDENTE dell'eccezione:
+    // riassegnazioni al sostituto e flag di conflitto. Va fatto anche se il
+    // tipo è cambiato (es. da OPERATOR_ABSENT a CLOSED), altrimenti restano
+    // appuntamenti intestati al sostituto/conflitti orfani.
+    if (previousType === GymExceptionType.OPERATOR_ABSENT && previousOperatorId) {
+      await this.restoreSubstituteReassignments(id);
+      await this.appointmentConflictService.clearOperatorAbsenceConflicts(
+        previousOperatorId,
+        previousDate,
+      );
+    }
+
+    // Ri-applicazione su valori aggiornati se (ancora) OPERATOR_ABSENT
     if (
       existing.exceptionType === GymExceptionType.OPERATOR_ABSENT &&
       existing.operatorId
     ) {
-      // Prima clear dei vecchi conflitti per questo operatore/data
-      await this.appointmentConflictService.clearOperatorAbsenceConflicts(
-        existing.operatorId,
-        existing.exceptionDate,
-      );
-
-      // Ricalcolo
       const substitutesForRefresh =
         slotsForConflictRefresh ??
         (await this.substituteRepo.find({ where: { gymExceptionId: id } })).map((s) => ({
@@ -515,6 +552,15 @@ export class GymExceptionService {
           substituteOperatorId: s.substituteOperatorId,
           isClosed: s.isClosed,
         }));
+
+      await this.applySubstituteReassignments({
+        exceptionId: id,
+        operatorId: existing.operatorId,
+        exceptionDate: existing.exceptionDate,
+        absenceTypeName: existing.absenceTypeSnapshot?.name,
+        performedBy: existing.createdBy,
+        substitutes: substitutesForRefresh,
+      });
 
       await this.refreshOperatorAbsenceConflicts({
         exceptionId: id,
@@ -537,11 +583,13 @@ export class GymExceptionService {
       throw new NotFoundException(`Eccezione palestra con ID ${id} non trovata`);
     }
 
-    // Se era OPERATOR_ABSENT, pulisci i conflitti generati
+    // Se era OPERATOR_ABSENT: ripristina gli appuntamenti riassegnati al
+    // sostituto (solo quelli non ancora eseguiti) e pulisci i conflitti.
     if (
       exception.exceptionType === GymExceptionType.OPERATOR_ABSENT &&
       exception.operatorId
     ) {
+      await this.restoreSubstituteReassignments(id);
       await this.appointmentConflictService.clearOperatorAbsenceConflicts(
         exception.operatorId,
         exception.exceptionDate,
@@ -581,13 +629,94 @@ export class GymExceptionService {
       }
 
       if (time && exception.startTime && exception.endTime) {
-        if (time >= exception.startTime && time < exception.endTime) {
+        const t = this.normalizeTime(time);
+        if (
+          t >= this.normalizeTime(exception.startTime) &&
+          t < this.normalizeTime(exception.endTime)
+        ) {
           return exception;
         }
       }
     }
 
     return null;
+  }
+
+  /**
+   * Verifica se uno slot (gymRoomId, date, [startTime,endTime]) è CHIUSO
+   * alle prenotazioni per effetto di un'eccezione:
+   *  - CLOSED scoped alla palestra (giornata intera o finestra sovrapposta)
+   *  - OPERATOR_ABSENT con slot marcato esplicitamente isClosed
+   *  - MODIFIED_HOURS: la palestra è aperta SOLO dentro le finestre indicate
+   *    → slot fuori finestra = chiuso.
+   *
+   * Usato come guardia dalle prenotazioni (createGymAppointment) e dal
+   * check disponibilità: la vista può mostrare lo slot rosso, ma senza
+   * questa guardia il booking passava comunque.
+   */
+  async getSlotClosure(
+    gymRoomId: string,
+    date: Date,
+    startTime: string,
+    endTime: string,
+  ): Promise<{ closed: boolean; reason?: string }> {
+    const exceptions = await this.findRawByDate(gymRoomId, date);
+    const s = this.normalizeTime(startTime);
+    const e = this.normalizeTime(endTime);
+
+    const modifiedWindows: Array<{ start: string; end: string }> = [];
+
+    for (const ex of exceptions) {
+      if (ex.exceptionType === GymExceptionType.CLOSED && ex.gymRoomId === gymRoomId) {
+        if (!ex.startTime || !ex.endTime) {
+          return { closed: true, reason: ex.reason || 'Palestra chiusa' };
+        }
+        if (s < this.normalizeTime(ex.endTime) && this.normalizeTime(ex.startTime) < e) {
+          return { closed: true, reason: ex.reason || 'Palestra chiusa in questa fascia' };
+        }
+      }
+
+      if (
+        ex.exceptionType === GymExceptionType.MODIFIED_HOURS &&
+        ex.gymRoomId === gymRoomId &&
+        ex.startTime &&
+        ex.endTime
+      ) {
+        modifiedWindows.push({
+          start: this.normalizeTime(ex.startTime),
+          end: this.normalizeTime(ex.endTime),
+        });
+      }
+
+      if (
+        ex.exceptionType === GymExceptionType.OPERATOR_ABSENT &&
+        ex.substitutes &&
+        ex.substitutes.length > 0
+      ) {
+        const closedSub = ex.substitutes.find(
+          (sub) =>
+            sub.gymRoomId === gymRoomId &&
+            sub.isClosed &&
+            s < this.normalizeTime(sub.endTime) &&
+            this.normalizeTime(sub.startTime) < e,
+        );
+        if (closedSub) {
+          return {
+            closed: true,
+            reason: 'Palestra chiusa per assenza istruttore in questa fascia',
+          };
+        }
+      }
+    }
+
+    if (modifiedWindows.length > 0) {
+      const inside = modifiedWindows.some((w) => s >= w.start && e <= w.end);
+      if (!inside) {
+        return { closed: true, reason: 'Fuori orario palestra (orari modificati)' };
+      }
+    }
+
+    return { closed: false };
   }
 
   /**
@@ -624,7 +753,8 @@ export class GymExceptionService {
       const hitsWholeDay = !exception.startTime || !exception.endTime;
       const hitsTimeWindow =
         time && exception.startTime && exception.endTime
-          ? time >= exception.startTime && time < exception.endTime
+          ? this.normalizeTime(time) >= this.normalizeTime(exception.startTime) &&
+            this.normalizeTime(time) < this.normalizeTime(exception.endTime)
           : false;
 
       if (!hitsWholeDay && !hitsTimeWindow) continue;
@@ -633,11 +763,12 @@ export class GymExceptionService {
       let substituteOperator: Operator | undefined;
       let foundSlotSub = false;
       if (exception.substitutes && exception.substitutes.length > 0 && time) {
+        const t = this.normalizeTime(time);
         const slotSub = exception.substitutes.find(
           (s) =>
             s.gymRoomId === gymRoomId &&
-            time >= s.startTime &&
-            time < s.endTime,
+            t >= this.normalizeTime(s.startTime) &&
+            t < this.normalizeTime(s.endTime),
         );
         if (slotSub) {
           foundSlotSub = true;
@@ -689,6 +820,7 @@ export class GymExceptionService {
           isSubstitute: true,
           originalOperatorId: templateOperatorId,
           isUncovered: false,
+          exception: availability.exception,
         };
       }
       // Eccezione senza sostituto → slot scoperto
@@ -697,6 +829,7 @@ export class GymExceptionService {
         isSubstitute: false,
         originalOperatorId: templateOperatorId,
         isUncovered: true,
+        exception: availability.exception,
       };
     }
 
@@ -780,7 +913,8 @@ export class GymExceptionService {
           // MODIFIED con orari specifici = l'operatore lavora solo in quella finestra
           if (ex.startTime && ex.endTime) {
             return !(
-              startTime >= ex.startTime && endTime <= ex.endTime
+              this.normalizeTime(startTime) >= this.normalizeTime(ex.startTime) &&
+              this.normalizeTime(endTime) <= this.normalizeTime(ex.endTime)
             );
           }
           return false;
@@ -838,10 +972,12 @@ export class GymExceptionService {
       return true;
     });
 
+    // Normalizza a HH:MM: i pattern dal DB hanno i secondi ("07:00:00"),
+    // il frontend invia "07:00" — i confronti a valle devono essere omogenei.
     return filtered.map((p) => ({
       gymRoomId: p.gymRoom.id,
-      startTime: p.pattern.startTime,
-      endTime: p.pattern.endTime,
+      startTime: this.normalizeTime(p.pattern.startTime),
+      endTime: this.normalizeTime(p.pattern.endTime),
     }));
   }
 
@@ -866,15 +1002,22 @@ export class GymExceptionService {
 
     if (params.providedSubstitutes && params.providedSubstitutes.length > 0) {
       // Mantieni solo le entry che sono sub-intervalli di uno slot-pattern candidato.
+      // Confronti su orari normalizzati HH:MM (il mix "07:00" vs "07:00:00"
+      // scartava silenziosamente il sostituto della prima ora di ogni pattern).
       // Sanitizza isClosed: se substituteOperatorId è valorizzato, isClosed deve
       // essere false (un sostituto attivo non può essere "chiuso").
       return params.providedSubstitutes
+        .map((sub) => ({
+          ...sub,
+          startTime: this.normalizeTime(sub.startTime),
+          endTime: this.normalizeTime(sub.endTime),
+        }))
         .filter((sub) =>
           params.slots.some(
             (slot) =>
               slot.gymRoomId === sub.gymRoomId &&
-              sub.startTime >= slot.startTime &&
-              sub.endTime <= slot.endTime &&
+              sub.startTime >= this.normalizeTime(slot.startTime) &&
+              sub.endTime <= this.normalizeTime(slot.endTime) &&
               sub.startTime < sub.endTime,
           ),
         )
@@ -887,8 +1030,8 @@ export class GymExceptionService {
     // Modalità semplice: propaga il sostituto unico su tutti gli slot-pattern
     return params.slots.map((slot) => ({
       gymRoomId: slot.gymRoomId,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
+      startTime: this.normalizeTime(slot.startTime),
+      endTime: this.normalizeTime(slot.endTime),
       substituteOperatorId: params.simpleSubstituteId,
       isClosed: false,
     }));
@@ -943,6 +1086,116 @@ export class GymExceptionService {
     }
   }
 
+  /**
+   * Riassegna al sostituto gli appuntamenti GYM esistenti negli slot coperti.
+   *
+   * È il cuore della coerenza fatturazione/conteggi: il trattamento creato
+   * alla presenza copia `appointment.operatorId`, quindi l'appuntamento DEVE
+   * essere intestato a chi eseguirà davvero il trattamento.
+   *
+   * - Tocca solo appuntamenti SCHEDULED/CONFIRMED (i già eseguiti non si toccano).
+   * - Salva l'operatore originale in `originalOperatorId` e marca
+   *   `reassignedByGymExceptionId` per permettere il ripristino chirurgico.
+   * - Logga OPERATOR_SUBSTITUTED in appointment_logs per lo storico.
+   */
+  private async applySubstituteReassignments(params: {
+    exceptionId: string;
+    operatorId: string;
+    exceptionDate: Date;
+    absenceTypeName?: string;
+    performedBy?: string;
+    substitutes: GymExceptionSubstituteInput[];
+  }): Promise<void> {
+    const year = new Date().getFullYear();
+
+    for (const sub of params.substitutes) {
+      if (!sub.substituteOperatorId) continue; // scoperto/chiuso → gestito dai conflitti
+
+      const appointments = await this.appointmentRepo
+        .createQueryBuilder('apt')
+        .where('apt.operatorId = :operatorId', { operatorId: params.operatorId })
+        .andWhere('apt.gymRoomId = :gymRoomId', { gymRoomId: sub.gymRoomId })
+        .andWhere('apt.appointmentDate = :date', { date: params.exceptionDate })
+        .andWhere('apt.appointmentType = :type', { type: AppointmentType.GYM })
+        .andWhere('apt.bookingStatus IN (:...statuses)', {
+          statuses: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED],
+        })
+        .andWhere('(apt.startTime < :endTime AND apt.endTime > :startTime)', {
+          startTime: sub.startTime,
+          endTime: sub.endTime,
+        })
+        .getMany();
+
+      for (const apt of appointments) {
+        await this.appointmentRepo.update(apt.id, {
+          operatorId: sub.substituteOperatorId,
+          // Se l'appuntamento era già frutto di una sostituzione precedente,
+          // conserva l'operatore originale più antico.
+          originalOperatorId: apt.originalOperatorId ?? params.operatorId,
+          isSubstitution: true,
+          reassignedByGymExceptionId: params.exceptionId,
+        });
+
+        await this.appointmentLogRepo.save({
+          appointmentId: apt.id,
+          patientId: apt.patientId,
+          operatorId: params.operatorId,
+          eventType: AppointmentLogEventType.OPERATOR_SUBSTITUTED,
+          reason: params.absenceTypeName
+            ? `Riassegnato al sostituto (${params.absenceTypeName})`
+            : 'Riassegnato al sostituto per assenza operatore',
+          performedBy: params.performedBy,
+          originalDate: apt.appointmentDate,
+          originalStartTime: apt.startTime,
+          year,
+        });
+      }
+    }
+  }
+
+  /**
+   * Ripristina l'operatore originale sugli appuntamenti riassegnati da una
+   * specifica eccezione. Chiamato prima di delete/update dell'eccezione.
+   *
+   * Politica: si ripristinano solo gli appuntamenti ancora SCHEDULED/CONFIRMED.
+   * Quelli già ATTENDED (& stati successivi) sono stati eseguiti DAVVERO dal
+   * sostituto: restano intestati a lui (i trattamenti/fatturazione devono
+   * riflettere chi ha lavorato), si sgancia solo il marker.
+   */
+  private async restoreSubstituteReassignments(exceptionId: string): Promise<void> {
+    const reassigned = await this.appointmentRepo.find({
+      where: { reassignedByGymExceptionId: exceptionId },
+    });
+
+    for (const apt of reassigned) {
+      const restorable =
+        (apt.bookingStatus === BookingStatus.SCHEDULED ||
+          apt.bookingStatus === BookingStatus.CONFIRMED) &&
+        !!apt.originalOperatorId;
+
+      if (restorable) {
+        await this.appointmentRepo
+          .createQueryBuilder()
+          .update(AvailabilityAppointment)
+          .set({
+            operatorId: apt.originalOperatorId,
+            originalOperatorId: null as any,
+            isSubstitution: false,
+            reassignedByGymExceptionId: null as any,
+          })
+          .where('id = :id', { id: apt.id })
+          .execute();
+      } else {
+        await this.appointmentRepo
+          .createQueryBuilder()
+          .update(AvailabilityAppointment)
+          .set({ reassignedByGymExceptionId: null as any })
+          .where('id = :id', { id: apt.id })
+          .execute();
+      }
+    }
+  }
+
   private mapAbsenceNameToExceptionType(name?: string): ExceptionType {
     if (!name) return ExceptionType.UNAVAILABLE;
     const normalized = name.toLowerCase();
@@ -973,6 +1226,23 @@ export class GymExceptionService {
   }
 
   private timesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
-    return start1 < end2 && start2 < end1;
+    return (
+      this.normalizeTime(start1) < this.normalizeTime(end2) &&
+      this.normalizeTime(start2) < this.normalizeTime(end1)
+    );
+  }
+
+  /**
+   * Normalizza un orario a "HH:MM". Fondamentale in TUTTI i confronti di
+   * questo service: Postgres restituisce le colonne `time` come "HH:MM:SS",
+   * il frontend invia "HH:MM", e il confronto tra stringhe di formato misto
+   * produce risultati sbagliati ai boundary ("09:00" < "09:00:00" è true).
+   * Bug storico: sostituto della prima ora scartato al salvataggio e
+   * candidati liberi esclusi dalla lista disponibili.
+   */
+  private normalizeTime(time: string): string {
+    if (!time) return time;
+    const parts = time.split(':');
+    return `${parts[0].padStart(2, '0')}:${(parts[1] ?? '00').padStart(2, '0')}`;
   }
 }

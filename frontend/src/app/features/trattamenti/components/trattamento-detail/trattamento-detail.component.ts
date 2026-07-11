@@ -102,10 +102,12 @@ export interface DetailDialogData {
           <span class="status-chip" [style.background]="statusColor">
             {{ statusLabel }}
           </span>
-          @if (treatment.readyForBilling) {
-            <span class="status-chip status-chip-accent" matTooltip="Pronto per fatturazione">
-              <mat-icon inline>check_circle</mat-icon>
-              Pronto
+          @if (treatment.billingStatus === TreatmentBillingStatus.Sent
+               || treatment.billingStatus === TreatmentBillingStatus.Pending) {
+            <span class="status-chip status-chip-accent"
+                  [matTooltip]="'Inviato al sistema di fatturazione' + (treatment.readyForBillingAt ? ' il ' + formatDateTime(treatment.readyForBillingAt) : '')">
+              <mat-icon inline>send</mat-icon>
+              Inviato
             </span>
           }
           @if (treatment.isInvoicedToPatient) {
@@ -123,11 +125,22 @@ export interface DetailDialogData {
           }
         </h2>
         <div class="subtitle">
-          {{ formatDate(treatment.appointment.appointmentDate) }}
-          • {{ treatment.appointment.startTime }}
-          • {{ treatment.operator.name }} {{ treatment.operator.surname }}
-          @if (treatment.operator.professionalRegistration) {
-            • {{ treatment.operator.professionalRegistration }}
+          {{ formatDate(treatment.appointment?.appointmentDate || (treatment.startedAt || '').slice(0, 10)) }}
+          • {{ treatment.appointment?.startTime || '—' }}
+          • {{ treatment.operator?.name || 'Operatore rimosso' }} {{ treatment.operator?.surname || '' }}
+          @if (treatment.operator?.professionalRegistration) {
+            • {{ treatment.operator?.professionalRegistration }}
+          }
+          <!-- Link rapido alla scheda paziente nel registry (nuova tab): utile
+               per completare dati anagrafici mancanti (indirizzo/CF) che
+               bloccano la fatturazione. Uso un button + window.open (più
+               affidabile di un <a> che in alcuni contesti scaricava il link). -->
+          @if (registryPatientUrl) {
+            • <button type="button" class="registry-link"
+                      (click)="openRegistryPatient()"
+                      matTooltip="Apri la scheda del paziente nel registro (nuova scheda)">
+                <mat-icon inline>open_in_new</mat-icon> Scheda paziente
+              </button>
           }
         </div>
       </div>
@@ -141,8 +154,19 @@ export interface DetailDialogData {
         <!-- TAB FATTURAZIONE -->
         <mat-tab label="Fatturazione">
           <div class="tab-panel">
-            <!-- RIGHE SERVIZIO -->
-            <h3>Righe servizio</h3>
+            <!-- RIGHE SERVIZIO (ogni riga legata a un servizio del catalogo:
+                 accounting associa la natura IVA via serviceCode). -->
+            <h3 class="section-h">
+              Righe servizio
+              @if (canAddServiceLine) {
+                <button mat-icon-button color="primary" (click)="startNewServiceLine()"
+                        matTooltip="Aggiungi riga servizio">
+                  <mat-icon>add</mat-icon>
+                </button>
+              } @else if (canEditEconomics && treatment.status === TreatmentStatus.CLOSED) {
+                <small class="hint-warn">Trattamento chiuso: riaprirlo per aggiungere righe.</small>
+              }
+            </h3>
             <table mat-table [dataSource]="treatment.treatmentServices || []"
                    [trackBy]="trackById" class="mini-table">
               <ng-container matColumnDef="service">
@@ -204,63 +228,80 @@ export interface DetailDialogData {
                   }
                 </td>
               </ng-container>
+              <!-- Azioni riga servizio: rimuovi (solo se modificabile). -->
+              <ng-container matColumnDef="sactions">
+                <th mat-header-cell *matHeaderCellDef class="col-actions"></th>
+                <td mat-cell *matCellDef="let ts" class="col-actions">
+                  @if (canAddServiceLine) {
+                    <button mat-icon-button color="warn"
+                            (click)="removeServiceLine.emit(ts.id)"
+                            matTooltip="Rimuovi riga">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  }
+                </td>
+              </ng-container>
               <tr mat-header-row *matHeaderRowDef="svcCols"></tr>
               <tr mat-row *matRowDef="let row; columns: svcCols"></tr>
             </table>
 
-            <!-- RIGHE CUSTOM SEGRETERIA -->
-            <h3 class="section-h">
-              Righe aggiuntive (segreteria)
-              @if (canEditEconomics && !treatment.isInvoicedToPatient) {
-                <button mat-icon-button color="primary" (click)="startNewInvoiceLine()" matTooltip="Aggiungi riga">
-                  <mat-icon>add</mat-icon>
-                </button>
-              }
-            </h3>
-
-            @if ((treatment.invoiceLines || []).length === 0 && !newLineOpen) {
-              <p class="empty-inline">Nessuna riga aggiuntiva.</p>
+            @if ((treatment.treatmentServices || []).length === 0 && !newServiceOpen) {
+              <p class="empty-inline">Nessuna riga servizio.</p>
             }
 
+            <!-- FORM AGGIUNGI RIGA SERVIZIO: seleziona un servizio dal catalogo.
+                 Prezzo vuoto = tariffa del servizio (scontoFE se attivo). -->
+            @if (newServiceOpen) {
+              <div class="new-line-form">
+                <mat-form-field appearance="outline" class="svc-select">
+                  <mat-label>Servizio</mat-label>
+                  <mat-select [(ngModel)]="newServiceId"
+                              (selectionChange)="onNewServiceSelected()">
+                    @for (s of serviceCatalog; track s.id) {
+                      <mat-option [value]="s.id">{{ s.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="desc-input">
+                  <mat-label>Descrizione (opzionale)</mat-label>
+                  <input matInput [(ngModel)]="newServiceDescription"/>
+                  <mat-hint>Lascia vuoto per la descrizione auto-generata secondo le regole impostate, oppure personalizzala qui.</mat-hint>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="amt-input">
+                  <mat-label>Prezzo</mat-label>
+                  <input matInput type="number" step="0.01"
+                         [ngModel]="newServicePrice"
+                         (ngModelChange)="onNewServicePriceChange($event)"
+                         placeholder="Tariffa servizio"/>
+                </mat-form-field>
+                <button mat-flat-button color="primary"
+                        (click)="confirmNewServiceLine()" [disabled]="!newServiceId">
+                  Aggiungi
+                </button>
+                <button mat-stroked-button (click)="cancelNewServiceLine()">Annulla</button>
+              </div>
+            }
+
+            <!-- RIGHE AGGIUNTIVE LEGACY (testo libero): sola lettura + elimina.
+                 Non se ne creano di nuove (accounting non le può mappare). -->
             @if ((treatment.invoiceLines?.length || 0) > 0) {
+              <h3 class="section-h">Righe aggiuntive (testo libero — legacy)</h3>
               <table mat-table [dataSource]="treatment.invoiceLines || []"
                      [trackBy]="trackById" class="mini-table">
                 <ng-container matColumnDef="cdescription">
                   <th mat-header-cell *matHeaderCellDef>Descrizione</th>
-                  <td mat-cell *matCellDef="let l">
-                    @if (canEditEconomics && !treatment.isInvoicedToPatient) {
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="desc-input">
-                        <textarea matInput
-                          cdkTextareaAutosize
-                          cdkAutosizeMinRows="1"
-                          cdkAutosizeMaxRows="5"
-                          [value]="l.description"
-                          (change)="onCustomDescriptionChange(l, $event)">
-                        </textarea>
-                      </mat-form-field>
-                    } @else {
-                      <span>{{ l.description }}</span>
-                    }
-                  </td>
+                  <td mat-cell *matCellDef="let l"><span>{{ l.description }}</span></td>
                 </ng-container>
                 <ng-container matColumnDef="camount">
                   <th mat-header-cell *matHeaderCellDef class="col-price">Importo</th>
                   <td mat-cell *matCellDef="let l" class="col-price">
-                    @if (canEditEconomics && !treatment.isInvoicedToPatient) {
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="amt-input">
-                        <input matInput type="number" step="0.01"
-                          [value]="l.amount"
-                          (change)="onCustomAmountChange(l, $event)"/>
-                      </mat-form-field>
-                    } @else {
-                      € {{ l.amount | number:'1.2-2' }}
-                    }
+                    € {{ l.amount | number:'1.2-2' }}
                   </td>
                 </ng-container>
                 <ng-container matColumnDef="cactions">
                   <th mat-header-cell *matHeaderCellDef class="col-actions"></th>
                   <td mat-cell *matCellDef="let l" class="col-actions">
-                    @if (canEditEconomics && !treatment.isInvoicedToPatient) {
+                    @if (canAddServiceLine) {
                       <button mat-icon-button color="warn" (click)="deleteInvoiceLine.emit({ mode: 'delete', line: l })" matTooltip="Rimuovi">
                         <mat-icon>delete</mat-icon>
                       </button>
@@ -270,23 +311,6 @@ export interface DetailDialogData {
                 <tr mat-header-row *matHeaderRowDef="customCols"></tr>
                 <tr mat-row *matRowDef="let row; columns: customCols"></tr>
               </table>
-            }
-
-            @if (newLineOpen) {
-              <div class="new-line-form">
-                <mat-form-field appearance="outline" class="desc-input">
-                  <mat-label>Descrizione</mat-label>
-                  <input matInput [(ngModel)]="newLineDescription"/>
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="amt-input">
-                  <mat-label>Importo</mat-label>
-                  <input matInput type="number" step="0.01" [(ngModel)]="newLineAmount"/>
-                </mat-form-field>
-                <button mat-flat-button color="primary" (click)="confirmNewInvoiceLine()" [disabled]="!newLineDescription">
-                  Salva
-                </button>
-                <button mat-stroked-button (click)="cancelNewInvoiceLine()">Annulla</button>
-              </div>
             }
 
             <!-- TOTALI -->
@@ -305,22 +329,36 @@ export interface DetailDialogData {
 
             <mat-divider></mat-divider>
 
-            <!-- TOGGLE SCONTO FE -->
+            <!-- TOGGLE SCONTO FE + (se attivo) SEGNA INCASSATO IN CONTANTI -->
             @if (canEditEconomics && !treatment.isInvoicedToPatient) {
               <div class="sconto-fe-row">
                 <mat-checkbox
                   [checked]="treatment.scontoFE"
-                  [disabled]="treatment.status === TreatmentStatus.CLOSED"
+                  [disabled]="treatment.status === TreatmentStatus.CLOSED || scontoFEBlockedByBilling"
                   (change)="onScontoFEToggle($event.checked)">
                   Sconto FE
                 </mat-checkbox>
-                <span class="hint">
-                  @if (treatment.status === TreatmentStatus.CLOSED) {
-                    Trattamento chiuso dalla segreteria: per modificare lo sconto FE riaprirlo prima.
+                <span class="hint hint-xs">
+                  @if (scontoFEBlockedByBilling) {
+                    Bloccato: trattamento già fatturato (serve nota di credito da accounting).
+                  } @else if (treatment.status === TreatmentStatus.CLOSED) {
+                    Trattamento chiuso: riaprirlo per modificare lo sconto FE.
                   } @else {
-                    Se attivo, il trattamento non sarà fatturabile e "Pronto per fatturazione" verrà disattivato.
+                    Se attivo, il trattamento non passa dal sistema di fatturazione (incasso solo nel clinico).
                   }
                 </span>
+
+                <!-- Solo con sconto FE: scorciatoia incasso contanti (solo clinico,
+                     nessuna fattura). Disattivare annulla l'incasso. -->
+                @if (treatment.scontoFE) {
+                  <mat-checkbox
+                    class="cash-toggle"
+                    [checked]="isScontoFeCashPaid"
+                    (change)="onMarkScontoFeCash($event.checked)"
+                    matTooltip="Registra l'incasso in contanti sull'intero totale (solo clinico, nessuna fattura). Disattiva per annullare l'incasso.">
+                    Segna come incassato in contanti
+                  </mat-checkbox>
+                }
               </div>
             }
 
@@ -384,8 +422,9 @@ export interface DetailDialogData {
               <div class="send-to-billing-cta">
                 <mat-icon class="info">send</mat-icon>
                 <div style="flex: 1">
-                  <strong>Pronto per la fatturazione.</strong>
-                  Puoi inviare questo trattamento al sistema di fatturazione.
+                  <strong>Trattamento chiuso, non ancora inviato.</strong>
+                  Puoi inviarlo al sistema di fatturazione (coda "da fatturare"
+                  di accounting), oppure usare "Fattura" per l'emissione immediata.
                 </div>
                 <button mat-flat-button color="accent" (click)="onSendToBilling()">
                   <mat-icon>send</mat-icon>
@@ -399,15 +438,30 @@ export interface DetailDialogData {
                  Sopra il toggle "Pronto per fatturazione" per sequenza visiva
                  "stato → azione". I bottoni di azione (Annulla/Riapri/Fattura subito)
                  vivono qui dentro, NON duplicarli altrove. I flag disabled
-                 arrivano dal container (Step 6.5) basati su billingStatus. -->
+                 arrivano dal container (Step 6.5) basati su billingStatus.
+                 NASCOSTA per i trattamenti sconto FE: non vanno mai ad accounting,
+                 lo stato fatturazione non serve e confonde. -->
+            @if (!treatment.scontoFE) {
             <app-treatment-billing-section
               [treatment]="treatment"
+              [actionsVisible]="canEditEconomics"
               [cancelDisabled]="billingCancelDisabled"
               [cancelDisabledReason]="billingCancelDisabledReason"
               [reopenDisabled]="billingReopenDisabled"
               [reopenDisabledReason]="billingReopenDisabledReason"
-              [immediateInvoiceDisabled]="billingImmediateInvoiceDisabled"
-              [immediateInvoiceDisabledReason]="billingImmediateInvoiceDisabledReason"
+              [fatturaVisible]="billingFatturaVisible"
+              [fatturaDisabled]="billingFatturaDisabled"
+              [fatturaDisabledReason]="billingFatturaDisabledReason"
+              [fatturaInFlight]="billingFatturaInFlight"
+              [incassaVisible]="billingIncassaVisible"
+              [incassaDisabled]="billingIncassaDisabled"
+              [incassaDisabledReason]="billingIncassaDisabledReason"
+              [incassaInFlight]="billingIncassaInFlight"
+              [awaitingFiscalConfig]="billingAwaitingFiscalConfig"
+              [retryInvoiceVisible]="billingRetryInvoiceVisible"
+              [retryInvoiceDisabled]="billingRetryInvoiceDisabled"
+              [retryInvoiceDisabledReason]="billingRetryInvoiceDisabledReason"
+              [retryInvoiceInFlight]="billingRetryInvoiceInFlight"
               [recallDisabled]="billingRecallDisabled"
               [recallDisabledReason]="billingRecallDisabledReason"
               [recallInFlight]="billingRecallInFlight"
@@ -419,48 +473,39 @@ export interface DetailDialogData {
               (dismissAlert)="dismissBillingAlert.emit($event)"
               (cancelTreatment)="cancelTreatmentBilling.emit($event)"
               (reopenTreatment)="reopenTreatmentBilling.emit($event)"
-              (immediateInvoice)="immediateInvoiceBilling.emit($event)"
+              (invoiceTreatment)="invoiceTreatment.emit($event)"
+              (collectPayment)="collectPaymentBilling.emit($event)"
+              (retryInvoice)="retryInvoiceBilling.emit($event)"
               (requestRecall)="requestTreatmentRecall.emit($event)"
               (dismissReturnBanner)="dismissReturnFromAccountingBanner.emit($event)"
-              (resendToAccounting)="resendToAccounting.emit($event)">
+              (resendToAccounting)="resendToAccounting.emit($event)"
+              (printInvoice)="printInvoice.emit($event)">
             </app-treatment-billing-section>
+            }
 
-            <!-- READY FOR BILLING -->
-            @if (canEditEconomics) {
-              <div class="ready-row">
-                <mat-checkbox
-                  [checked]="treatment.readyForBilling"
-                  [disabled]="!canMarkReady"
-                  (change)="toggleReadyForBilling.emit($event.checked)">
-                  Pronto per fatturazione
-                </mat-checkbox>
-                @if (treatment.readyForBillingAt) {
-                  <small class="hint">(marcato il {{ formatDateTime(treatment.readyForBillingAt) }})</small>
-                }
-                @if (treatment.status !== TreatmentStatus.CLOSED) {
-                  <small class="hint-warn">Richiede trattamento chiuso dalla segreteria.</small>
-                }
-                @if (treatment.scontoFE) {
-                  <small class="hint-warn">Disattivato: sconto FE attivo.</small>
+            <!-- 2026-07-10: rimossa la checkbox "Pronto per fatturazione" —
+                 faceva la stessa mutation della CTA "Invia al sistema di
+                 fatturazione" (doppione che confondeva: sembrava un flag
+                 locale ma inviava davvero ad accounting). L'invio passa
+                 SOLO dalla CTA sopra o dal pulsante "Fattura". -->
+
+            <!-- FATTURAZIONE STATUS — nascosto per sconto FE (non fatturabile). -->
+            @if (!treatment.scontoFE) {
+              <div class="invoice-status">
+                <strong>Fatturato:</strong>
+                @if (treatment.isInvoicedToPatient) {
+                  <span class="badge-ok">Sì</span>
+                  @if (treatment.patientInvoiceNumber) {
+                    — fattura n. {{ treatment.patientInvoiceNumber }}
+                  }
+                  @if (treatment.invoicedToPatientAt) {
+                    — {{ formatDateTime(treatment.invoicedToPatientAt) }}
+                  }
+                } @else {
+                  <span class="badge-no">No</span>
                 }
               </div>
             }
-
-            <!-- FATTURAZIONE STATUS -->
-            <div class="invoice-status">
-              <strong>Fatturato:</strong>
-              @if (treatment.isInvoicedToPatient) {
-                <span class="badge-ok">Sì</span>
-                @if (treatment.patientInvoiceNumber) {
-                  — fattura n. {{ treatment.patientInvoiceNumber }}
-                }
-                @if (treatment.invoicedToPatientAt) {
-                  — {{ formatDateTime(treatment.invoicedToPatientAt) }}
-                }
-              } @else {
-                <span class="badge-no">No</span>
-              }
-            </div>
           </div>
         </mat-tab>
 
@@ -468,43 +513,51 @@ export interface DetailDialogData {
         @if (canRecordPayment) {
           <mat-tab label="Pagamento">
             <div class="tab-panel">
+              <!-- Fonte del pagamento: chiarisce QUALI metodi sono disponibili -->
+              <div class="payment-source-banner" [class.fe]="treatment.scontoFE">
+                @if (treatment.scontoFE) {
+                  <mat-icon>info</mat-icon>
+                  <span>Trattamento con <strong>sconto FE</strong>: il pagamento è gestito
+                    solo nel clinico (contanti o voucher FE). Non viene inviato ad accounting.</span>
+                } @else {
+                  <mat-icon>info</mat-icon>
+                  <span>Pagamento sincronizzato con la contabilità: metodi e voucher
+                    provengono da <strong>accounting</strong> (anche split su più metodi).</span>
+                }
+              </div>
+
               <div class="payment-status">
                 <strong>Stato:</strong>
                 @if (treatment.isPaid) {
                   <span class="badge-ok">Pagato</span>
-                  @if (treatment.paidAt) {
-                    il {{ formatDateTime(treatment.paidAt) }}
-                  }
-                  @if (treatment.paymentMethod) {
-                    via {{ treatment.paymentMethod }}
-                  }
+                  @if (treatment.paidAt) { il {{ formatDateTime(treatment.paidAt) }} }
+                  @if (treatment.price != null) { — € {{ treatment.price | number:'1.2-2' }} }
+                  @if (treatment.paymentMethod) { · {{ treatment.paymentMethod }} }
                 } @else {
                   <span class="badge-no">Non pagato</span>
                 }
               </div>
 
-              @if (!treatment.isPaid && treatment.status !== TreatmentStatus.CLOSED) {
-                <div class="payment-form">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Metodo</mat-label>
-                    <mat-select [(ngModel)]="newPaymentMethod">
-                      @for (m of paymentMethods; track m) {
-                        <mat-option [value]="m">{{ m }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Importo (opzionale)</mat-label>
-                    <input matInput type="number" step="0.01" [(ngModel)]="newPaymentAmount"/>
-                  </mat-form-field>
-                  <button mat-flat-button color="primary" (click)="confirmPayment()" [disabled]="!newPaymentMethod">
-                    <mat-icon>payments</mat-icon>
-                    Registra pagamento
+              <!-- 2026-07-08 — Flusso annulla-e-reinserisci: la vecchia "Modifica
+                   pagamento" (replaceExisting) sovrascriveva metodo/data in silenzio,
+                   incompatibile con la riconciliazione dei movimenti carte/banca.
+                   Per i trattamenti FATTURATI lo storno si fa SOLO da Contabilità
+                   (che rimanda payment-reversed): qui il bottone non compare. -->
+              <div class="payment-actions">
+                @if (!treatment.isPaid) {
+                  <button mat-flat-button color="primary" (click)="openPaymentDialog.emit({ replace: false })">
+                    <mat-icon>payments</mat-icon> Registra pagamento
                   </button>
-                </div>
-              } @else if (treatment.status === TreatmentStatus.CLOSED) {
-                <p class="hint-warn">Il trattamento è chiuso: pagamento non più modificabile.</p>
-              }
+                } @else if (!treatment.isInvoicedToPatient) {
+                  <button mat-stroked-button color="warn" (click)="cancelPayment.emit()">
+                    <mat-icon>money_off</mat-icon> Annulla pagamento
+                  </button>
+                } @else {
+                  <span class="hint" matTooltip="La fattura è emessa: lo storno dell'incasso si fa dalla Contabilità (dettaglio documento → pagamenti registrati). Il trattamento si aggiornerà automaticamente.">
+                    Incasso gestito dalla Contabilità
+                  </span>
+                }
+              </div>
             </div>
           </mat-tab>
         }
@@ -596,6 +649,15 @@ export interface DetailDialogData {
       color: rgba(0,0,0,0.6);
       margin-top: 4px;
     }
+    .registry-link {
+      /* reset stile button → link */
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; display: inline-flex; align-items: center; gap: 2px;
+      color: var(--curandis-primary, #5fbb47); font-weight: 500;
+      text-decoration: none; white-space: nowrap;
+    }
+    .registry-link:hover { text-decoration: underline; }
+    .registry-link mat-icon { font-size: 1rem; height: 1rem; width: 1rem; }
     .detail-content { overflow: auto; }
     .tab-panel { padding: 16px 4px; display: flex; flex-direction: column; gap: 12px; }
     h3 { margin: 16px 0 8px; }
@@ -617,8 +679,9 @@ export interface DetailDialogData {
       line-height: 1.3;
     }
     .amt-input { width: 120px; }
+    .svc-select { min-width: 200px; }
     .new-line-form {
-      display: flex; gap: 8px; align-items: center;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
       padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px;
     }
     .totals-row {
@@ -633,8 +696,13 @@ export interface DetailDialogData {
     .sconto-fe-row, .ready-row {
       display: flex; align-items: center; gap: 12px;
       padding: 8px 0;
+      flex-wrap: wrap;
     }
     .hint { color: rgba(0,0,0,0.6); font-size: 0.85rem; }
+    /* Testo hint compatto accanto allo sconto FE, per far spazio al toggle incasso. */
+    .hint-xs { color: rgba(0,0,0,0.55); font-size: 0.72rem; line-height: 1.15; flex: 1 1 180px; min-width: 140px; }
+    /* Toggle "incassato in contanti": evidenziato, va a capo se serve spazio. */
+    .cash-toggle { margin-left: auto; font-weight: 500; }
     .hint-warn { color: #d32f2f; font-size: 0.85rem; }
     .invoice-status { padding: 8px 0; }
     .badge-ok { color: #2e7d32; font-weight: 500; }
@@ -763,13 +831,7 @@ export interface DetailDialogData {
 })
 export class TrattamentoDetailComponent {
   readonly TreatmentStatus = TreatmentStatus;
-  readonly paymentMethods: PaymentMethod[] = [
-    PaymentMethod.CASH,
-    PaymentMethod.CARD,
-    PaymentMethod.TRANSFER,
-    PaymentMethod.SATISPAY,
-    PaymentMethod.OTHER,
-  ];
+  readonly TreatmentBillingStatus = TreatmentBillingStatus;
 
   /** Trattamento corrente. Esposto come campo pubblico perché il container
    * può aggiornarlo dopo una mutation; il setter triggera markForCheck per
@@ -792,14 +854,38 @@ export class TrattamentoDetailComponent {
    * a livello di backend dal guard.
    */
   @Input() canForceCloseTreatment = false;
+  /**
+   * Catalogo servizi per il dropdown "aggiungi riga servizio". Include la
+   * tariffa di listino (`defaultPrice`) e quella scontoFE (`discountFE`), usate
+   * per pre-riempire il prezzo alla selezione. La descrizione NON è pre-caricata
+   * (resta auto-generata se lasciata vuota).
+   */
+  @Input() serviceCatalog: {
+    id: string;
+    name: string;
+    defaultPrice?: number;
+    discountFE?: number;
+  }[] = [];
 
   @Output() updateServiceDescription = new EventEmitter<DetailUpdateServiceDescriptionPayload>();
   @Output() createInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
   @Output() updateInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
   @Output() deleteInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
+  /** 2026-07-02 — Aggiungi riga servizio (dal catalogo). */
+  @Output() addServiceLine = new EventEmitter<{ serviceId: string; description?: string; price?: number }>();
+  /** 2026-07-02 — Rimuovi riga servizio. Emette il TreatmentService.id. */
+  @Output() removeServiceLine = new EventEmitter<string>();
   @Output() updateEconomics = new EventEmitter<DetailUpdateEconomicsPayload>();
-  @Output() recordPayment = new EventEmitter<DetailRecordPaymentPayload>();
-  @Output() toggleReadyForBilling = new EventEmitter<boolean>();
+  /** Toggle "Segna come incassato in contanti" (sconto FE). Emette il nuovo stato. */
+  @Output() markScontoFeCash = new EventEmitter<boolean>();
+  /**
+   * Emesso per aprire il dialog di pagamento (split + voucher + fonte). Il
+   * payload `replace` indica se si sta CORREGGENDO un pagamento già registrato.
+   */
+  @Output() openPaymentDialog = new EventEmitter<{ replace: boolean }>();
+  /** 2026-07-08 — Annulla il pagamento registrato (solo se non fatturato). */
+  @Output() cancelPayment = new EventEmitter<void>();
+  @Output() sendToBilling = new EventEmitter<void>();
   @Output() closeTreatment = new EventEmitter<void>();
 
   // Vincoli BillingSection (Step 6.5). Default conservativo: tutto disabled
@@ -808,8 +894,21 @@ export class TrattamentoDetailComponent {
   @Input() billingCancelDisabledReason: string | null = null;
   @Input() billingReopenDisabled = true;
   @Input() billingReopenDisabledReason: string | null = null;
-  @Input() billingImmediateInvoiceDisabled = true;
-  @Input() billingImmediateInvoiceDisabledReason: string | null = null;
+  // Flusso "Fattura" → "Incassa" (due passi). Vedi treatment-billing-section.
+  @Input() billingFatturaVisible = false;
+  @Input() billingFatturaDisabled = true;
+  @Input() billingFatturaDisabledReason: string | null = null;
+  @Input() billingFatturaInFlight = false;
+  @Input() billingIncassaVisible = false;
+  @Input() billingIncassaDisabled = true;
+  @Input() billingIncassaDisabledReason: string | null = null;
+  @Input() billingIncassaInFlight = false;
+  @Input() billingAwaitingFiscalConfig = false;
+  // 2026-06-30 — "Verifica risoluzione e riprova" (invoice-blocked retry)
+  @Input() billingRetryInvoiceVisible = false;
+  @Input() billingRetryInvoiceDisabled = true;
+  @Input() billingRetryInvoiceDisabledReason: string | null = null;
+  @Input() billingRetryInvoiceInFlight = false;
   // Sessione 7 — recall flags
   @Input() billingRecallDisabled = true;
   @Input() billingRecallDisabledReason: string | null = null;
@@ -826,25 +925,40 @@ export class TrattamentoDetailComponent {
   @Output() dismissBillingAlert = new EventEmitter<string>();
   @Output() cancelTreatmentBilling = new EventEmitter<string>();
   @Output() reopenTreatmentBilling = new EventEmitter<string>();
-  @Output() immediateInvoiceBilling = new EventEmitter<string>();
+  /** "Fattura": chiede ad accounting di emettere (no pagamento). */
+  @Output() invoiceTreatment = new EventEmitter<string>();
+  /** "Incassa": registra il pagamento sul totale confermato. */
+  @Output() collectPaymentBilling = new EventEmitter<string>();
+  /** "Verifica risoluzione e riprova": ri-tenta l'emissione fattura. */
+  @Output() retryInvoiceBilling = new EventEmitter<string>();
   // Sessione 7 — recall outputs
   @Output() requestTreatmentRecall = new EventEmitter<string>();
   @Output() dismissReturnFromAccountingBanner = new EventEmitter<string>();
   // Sessione 7 — Forza re-invio ad accounting
   @Output() resendToAccounting = new EventEmitter<string>();
+  @Output() printInvoice = new EventEmitter<string>();
   @Output() reopenTreatment = new EventEmitter<void>();
   /** Emette la richiesta di force-close (segreteria/admin). */
   @Output() forceCloseTreatment = new EventEmitter<void>();
 
-  svcCols = ['service', 'description', 'price'];
+  svcCols = ['service', 'description', 'price', 'sactions'];
   customCols = ['cdescription', 'camount', 'cactions'];
 
   newLineOpen = false;
   newLineDescription = '';
   newLineAmount: number | null = null;
 
-  newPaymentMethod: PaymentMethod = PaymentMethod.CASH;
-  newPaymentAmount: number | null = null;
+  // 2026-07-02 — Form "aggiungi riga servizio" (sostituisce il testo libero).
+  newServiceOpen = false;
+  newServiceId: string | null = null;
+  newServiceDescription = '';
+  newServicePrice: number | null = null;
+  /**
+   * 2026-07-04 — True se l'operatore ha modificato a mano il prezzo della riga
+   * in creazione. Finché è false, il toggle scontoFE riallinea il prezzo alla
+   * tariffa giusta; una volta true, il prezzo manuale è rispettato.
+   */
+  newServicePriceEdited = false;
 
   /**
    * Map di edit in corso per le descrizioni delle righe servizio.
@@ -912,10 +1026,22 @@ export class TrattamentoDetailComponent {
     return svc + cust;
   }
 
-  get canMarkReady(): boolean {
-    return this.treatment.status === TreatmentStatus.CLOSED
-      && !this.treatment.scontoFE
-      && !this.treatment.isInvoicedToPatient;
+  /**
+   * True se lo sconto FE NON può essere abilitato perché il trattamento è già
+   * fatturato (INVOICED+): in tal caso il backend rifiuta l'abilitazione finché
+   * non si emette una nota di credito. Disabilitiamo il toggle per dare un
+   * feedback immediato (il backend resta comunque la fonte di verità).
+   * NB: per SENT/PENDING il toggle resta abilitato — abilitare lo sconto FE lì
+   * scatena l'auto-recall (recupero da accounting), che è consentito.
+   */
+  get scontoFEBlockedByBilling(): boolean {
+    const status = this.treatment.billingStatus;
+    return (
+      status === TreatmentBillingStatus.Invoiced ||
+      status === TreatmentBillingStatus.PartiallyRefunded ||
+      status === TreatmentBillingStatus.Refunded ||
+      status === TreatmentBillingStatus.Reissued
+    );
   }
 
   get statusLabel(): string {
@@ -940,15 +1066,16 @@ export class TrattamentoDetailComponent {
 
   /**
    * CTA "Invia al sistema di fatturazione" disponibile SOLO se:
-   * - readyForBilling=true (operatore ha cliccato il toggle)
+   * - status=CLOSED (chiuso dalla segreteria — la chiusura marca il
+   *   billingStatus READY_FOR_BILLING)
    * - scontoFE=false (escluso da fatturazione)
    * - billingStatus IN (NOT_READY, READY_FOR_BILLING) — esclude i
    *   trattamenti già SENT/PENDING/INVOICED/CANCELLED. Una volta
    *   inviato non si può re-inviare (idempotenza UI). Per fattura
-   *   immediata usare il bottone separato in BillingSection.
+   *   immediata usare il bottone "Fattura" in BillingSection.
    */
   get canSendToBilling(): boolean {
-    if (this.treatment.readyForBilling !== true) return false;
+    if (this.treatment.status !== TreatmentStatus.CLOSED) return false;
     if (this.treatment.scontoFE === true) return false;
     const status = this.treatment.billingStatus;
     return status == null
@@ -957,15 +1084,16 @@ export class TrattamentoDetailComponent {
   }
 
   /**
-   * Sessione 6 chiusa: emit `toggleReadyForBilling(true)` al container
-   * parent, che chiama la mutation backend `setReadyForBilling([id], true)`.
-   * Il backend pubblica `treatment.closed.<tenant>` → consumer accounting
-   * crea BillableEvent → `billable.received` aggiorna treatment a SENT/PENDING.
-   * AutoIssue non scatta (requestImmediateInvoice=false). Per "Fattura subito
-   * + incassa" usare il bottone separato in BillingSection (Step 6.5).
+   * Emit `sendToBilling` al container parent, che chiama la mutation
+   * `setReadyForBilling([id], true)`. Il backend marca readyForBilling
+   * (= inviato, con timestamp), pubblica `treatment.closed.<tenant>` →
+   * consumer accounting crea BillableEvent → `billable.received` aggiorna
+   * il treatment a SENT/PENDING. AutoIssue non scatta
+   * (requestImmediateInvoice=false); per l'emissione immediata usare il
+   * bottone "Fattura" in BillingSection.
    */
   onSendToBilling(): void {
-    this.toggleReadyForBilling.emit(true);
+    this.sendToBilling.emit();
   }
 
   formatDate(iso: string): string {
@@ -1093,8 +1221,150 @@ export class TrattamentoDetailComponent {
     this.cancelNewInvoiceLine();
   }
 
+  /**
+   * True se si possono aggiungere/rimuovere righe: segreteria, non fatturato,
+   * e NON chiuso dalla segreteria (trattamento chiuso → riaprirlo prima).
+   */
+  get canAddServiceLine(): boolean {
+    return (
+      this.canEditEconomics &&
+      !this.treatment.isInvoicedToPatient &&
+      this.treatment.status !== TreatmentStatus.CLOSED
+    );
+  }
+
+  /**
+   * URL della scheda paziente nella sezione Anagrafiche della suite (nuova
+   * tab). Il patientId del trattamento è il subjectId del registry. La suite
+   * è su `gestione.<host-corrente>` (es. gestione.bdq.curandis.cloud). In
+   * locale/dev (nessun sottodominio) ritorna null → link nascosto.
+   * Vedi frontend/CLAUDE.md sezione "Link cross-modulo".
+   */
+  get registryPatientUrl(): string | null {
+    const subjectId = this.treatment.patientId;
+    if (!subjectId) return null;
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || !host.includes('.')) {
+      return null;
+    }
+    return `https://gestione.${host}/anagrafiche/subjects/${subjectId}`;
+  }
+
+  /** Apre la scheda paziente nel registry in una nuova scheda. */
+  openRegistryPatient(): void {
+    const url = this.registryPatientUrl;
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
+  startNewServiceLine(): void {
+    this.newServiceOpen = true;
+    this.newServiceId = null;
+    this.newServiceDescription = '';
+    this.newServicePrice = null;
+    this.newServicePriceEdited = false;
+  }
+
+  cancelNewServiceLine(): void {
+    this.newServiceOpen = false;
+    this.newServiceId = null;
+    this.newServiceDescription = '';
+    this.newServicePrice = null;
+    this.newServicePriceEdited = false;
+  }
+
+  /**
+   * Tariffa del servizio secondo lo stato scontoFE indicato: usa `discountFE`
+   * se scontoFE attivo e valorizzato, altrimenti la tariffa di listino
+   * (`defaultPrice`). Rispecchia la logica del backend.
+   */
+  private tariffForService(
+    svc: { defaultPrice?: number; discountFE?: number },
+    scontoFE: boolean,
+  ): number | null {
+    if (scontoFE && svc.discountFE != null) return Number(svc.discountFE);
+    return svc.defaultPrice != null ? Number(svc.defaultPrice) : null;
+  }
+
+  /**
+   * 2026-07-04 — Alla selezione di un servizio pre-carica SOLO il prezzo
+   * (tariffa di listino, o scontoFE se attivo). La descrizione resta vuota di
+   * proposito: se lasciata così viene auto-generata al salvataggio secondo le
+   * regole configurate; l'operatore può comunque personalizzarla qui.
+   */
+  onNewServiceSelected(): void {
+    const svc = this.serviceCatalog.find((s) => s.id === this.newServiceId);
+    if (!svc) return;
+    this.newServicePrice = this.tariffForService(
+      svc,
+      this.treatment.scontoFE === true,
+    );
+    // Prezzo appena caricato dalla tariffa: non è una modifica manuale, così il
+    // toggle scontoFE può ancora riallinearlo.
+    this.newServicePriceEdited = false;
+  }
+
+  /** L'operatore ha modificato a mano il prezzo della riga in creazione. */
+  onNewServicePriceChange(value: number | null): void {
+    this.newServicePrice =
+      value === null || (value as any) === '' ? null : Number(value);
+    this.newServicePriceEdited = true;
+  }
+
+  confirmNewServiceLine(): void {
+    if (!this.newServiceId) return;
+    const desc = this.newServiceDescription.trim();
+    const svc = this.serviceCatalog.find((s) => s.id === this.newServiceId);
+    const tariff = svc
+      ? this.tariffForService(svc, this.treatment.scontoFE === true)
+      : null;
+    // Invia un prezzo ESPLICITO (→ isCustomPrice=true lato backend) solo se
+    // l'operatore lo ha portato via dalla tariffa corrente. Se è rimasto al
+    // valore di listino/scontoFE, invia undefined: la riga continua a tracciare
+    // la tariffa e si aggiorna da sola al variare dello scontoFE.
+    const entered =
+      this.newServicePrice === null || (this.newServicePrice as any) === ''
+        ? null
+        : Number(this.newServicePrice);
+    const isCustom =
+      entered !== null &&
+      (tariff === null || Math.abs(entered - tariff) >= 0.005);
+    this.addServiceLine.emit({
+      serviceId: this.newServiceId,
+      description: desc || undefined,
+      price: isCustom ? entered : undefined,
+    });
+    this.cancelNewServiceLine();
+  }
+
   onScontoFEToggle(checked: boolean): void {
     this.updateEconomics.emit({ scontoFE: checked });
+    // Se il form "aggiungi riga" è aperto e il prezzo non è stato modificato a
+    // mano, riallinealo alla tariffa giusta (scontoFE se attivo, altrimenti
+    // listino). Resta comunque modificabile in locale.
+    if (this.newServiceOpen && this.newServiceId && !this.newServicePriceEdited) {
+      const svc = this.serviceCatalog.find((s) => s.id === this.newServiceId);
+      if (svc) {
+        this.newServicePrice = this.tariffForService(svc, checked);
+      }
+    }
+  }
+
+  /**
+   * True se il trattamento è già incassato IN CONTANTI (per lo stato del toggle
+   * "Segna come incassato in contanti"). Confronto case-insensitive: il valore
+   * dell'enum può arrivare come 'CASH' o 'cash' a seconda della serializzazione.
+   */
+  get isScontoFeCashPaid(): boolean {
+    return (
+      !!this.treatment.isPaid &&
+      String(this.treatment.paymentMethod ?? '').toUpperCase() === 'CASH'
+    );
+  }
+
+  onMarkScontoFeCash(checked: boolean): void {
+    this.markScontoFeCash.emit(checked);
   }
 
   onSecretaryNotesChange(ev: Event): void {
@@ -1103,17 +1373,9 @@ export class TrattamentoDetailComponent {
     this.updateEconomics.emit({ secretaryNotes: v });
   }
 
-  confirmPayment(): void {
-    if (!this.newPaymentMethod || !this.data.currentUserId) return;
-    this.recordPayment.emit({
-      paymentMethod: this.newPaymentMethod,
-      collectedBy: this.data.currentUserId,
-      amount: this.newPaymentAmount ?? undefined,
-    });
-  }
 }
 
 // `BillingSubmitInfoDialog` rimosso 2026-05-09: era placeholder
 // pre-Sessione 6 ("integrazione in fase di predisposizione"). Ora
 // l'invio al sistema di fatturazione chiama davvero
-// `setReadyForBilling([id], true)` via `toggleReadyForBilling.emit(true)`.
+// `setReadyForBilling([id], true)` via `sendToBilling.emit()`.

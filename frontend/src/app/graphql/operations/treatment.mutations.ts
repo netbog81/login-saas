@@ -84,8 +84,19 @@ export const FORCE_CLOSE_TREATMENT = gql`
 
 // Operation name `RecordTreatmentPaymentLegacy` per evitare collisione codegen.
 export const RECORD_TREATMENT_PAYMENT = gql`
-  mutation RecordTreatmentPaymentLegacy($id: ID!, $input: RecordPaymentInput!) {
-    recordTreatmentPayment(id: $id, input: $input) {
+  mutation RecordTreatmentPaymentLegacy($id: ID!, $input: RecordPaymentInput!, $callerRole: TreatmentCallerRole) {
+    recordTreatmentPayment(id: $id, input: $input, callerRole: $callerRole) {
+      ...TreatmentWithRelationsFields
+    }
+  }
+  ${TREATMENT_WITH_RELATIONS_FRAGMENT}
+`;
+
+// Operation name `CancelTreatmentPaymentLegacy` per evitare collisione codegen
+// con la mutation omonima della feature trattamenti.
+export const CANCEL_TREATMENT_PAYMENT = gql`
+  mutation CancelTreatmentPaymentLegacy($id: ID!) {
+    cancelTreatmentPayment(id: $id) {
       ...TreatmentWithRelationsFields
     }
   }

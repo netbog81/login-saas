@@ -147,6 +147,17 @@ async function bootstrap() {
       // dal KV per non dover rifattorizzare quei file.
       process.env.RABBITMQ_URL =
         `amqp://${rmq.user}:${rmq.password}@${rmq.host}:${rmq.port}/${rmq.vhost}`;
+      // Utente Management API (DLQ monitor) — OPZIONALE: se il KV contiene
+      // management_user/management_password li usiamo; altrimenti restano le
+      // env di docker-compose/.env (fallback, così la migrazione al KV può
+      // avvenire senza deploy sincronizzato). Vedi memoria sync-pagamenti:
+      // utente dedicato `curandis-monitor-svc`, tag monitoring, no AMQP.
+      if (rmq.management_user && rmq.management_password) {
+        process.env.RABBITMQ_MANAGEMENT_USER = rmq.management_user;
+        process.env.RABBITMQ_MANAGEMENT_PASS = rmq.management_password;
+        if (rmq.management_url) process.env.RABBITMQ_MANAGEMENT_URL = rmq.management_url;
+        if (rmq.vhost) process.env.RABBITMQ_MANAGEMENT_VHOST = rmq.vhost;
+      }
       console.log(`[Bootstrap] RabbitMQ creds caricate da KV (host=${rmq.host}, vhost=${rmq.vhost})`);
     } catch (e) {
       if (!isDevelopment) throw e;
@@ -159,6 +170,15 @@ async function bootstrap() {
 
   const app = await NestFactory.create(
     AppModule.forRootAsync({ openbaoService }),
+    // rawBody: true → Nest bufferizza il corpo grezzo in `req.rawBody`.
+    // Necessario per validare la firma HMAC dei webhook gateway (WhatsApp e
+    // task-message) sui BYTE ESATTI ricevuti: il gateway firma
+    // `JSON.stringify(payload)` e invia quegli stessi byte; ricalcolare l'HMAC
+    // su un body re-serializzato da Express non combacia (ordinamento chiavi,
+    // escaping unicode dei caratteri accentati) → firma invalida → webhook
+    // scartato silenziosamente (regressione dal 2026-05-13, quando è stato
+    // impostato il webhook_secret e la validazione è diventata attiva).
+    { rawBody: true },
   );
 
   // EventEmitter per eventi di rotazione credenziali (gestiti da tenant-datasource)

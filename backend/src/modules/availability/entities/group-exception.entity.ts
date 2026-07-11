@@ -14,7 +14,9 @@ export class GroupException {
   @Column({ length: 255 })
   name: string;
 
-  @Field()
+  // String, non DateTime: TypeORM idrata le colonne `date` come stringhe e
+  // GraphQLISODateTime.serialize le rifiuta (vedi utils/date-string.util.ts).
+  @Field(() => String, { description: 'Data eccezione in formato YYYY-MM-DD' })
   @Column('date')
   exceptionDate: Date;
 

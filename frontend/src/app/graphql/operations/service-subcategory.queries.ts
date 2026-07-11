@@ -9,6 +9,7 @@ export const SERVICE_SUBCATEGORY_FIELDS = gql`
     macroCategory
     name
     description
+    invoiceLineDescription
     isActive
     createdAt
     updatedAt

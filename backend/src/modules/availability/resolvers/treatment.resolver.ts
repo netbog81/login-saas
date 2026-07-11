@@ -1,5 +1,5 @@
-import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent, registerEnumType } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { Resolver, Query, Mutation, Args, ID, Int, Float, ResolveField, Parent, registerEnumType } from '@nestjs/graphql';
+import { ForbiddenException, UseGuards } from '@nestjs/common';
 import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
 import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
@@ -26,12 +26,17 @@ import {
   CurrentUserContext,
 } from '../../users/decorators/current-user.decorator';
 import { OwnershipGuard, RequireOwnership } from '../guards/ownership.guard';
+import { BillingWriteGuard } from '../guards/billing-write.guard';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
  * Ruolo del chiamante per le mutation soggette ad autorizzazione
  * per categoria operatore (es. recordTreatmentPayment).
- * TODO: rimuovere quando il ruolo sarà letto dal JWT sul server.
+ *
+ * 2026-07-10: il ruolo NON viene più letto dall'argomento client (spoofabile)
+ * ma derivato server-side dai ruoli Keycloak nel tenantContext
+ * (`derivePaymentRole`). L'argomento resta nello schema solo per
+ * retrocompatibilità con i client già deployati ed è IGNORATO.
  */
 export enum TreatmentCallerRole {
   OPERATOR = 'operator',
@@ -39,6 +44,17 @@ export enum TreatmentCallerRole {
 }
 
 registerEnumType(TreatmentCallerRole, { name: 'TreatmentCallerRole' });
+
+/**
+ * Ruoli Keycloak che operano "da segreteria" sulle azioni di pagamento
+ * (stessa lista di BillingWriteGuard.BILLING_ROLES).
+ */
+const PAYMENT_SECRETARY_ROLES = [
+  'segreteria',
+  'admin',
+  'amministratore',
+  'superadmin',
+];
 
 @Resolver(() => Treatment)
 export class TreatmentResolver {
@@ -69,6 +85,23 @@ export class TreatmentResolver {
     if (!user?.userId) return undefined;
     const appUser = await this.appUserService.findByKeycloakId(user.userId);
     return appUser?.id;
+  }
+
+  /**
+   * Deriva il ruolo di pagamento dai ruoli Keycloak del chiamante,
+   * ignorando qualsiasi dichiarazione client-side (spoofabile).
+   * Senza tenantContext (richiesta non autenticata) → Forbidden.
+   */
+  private derivePaymentRole(
+    user: CurrentUserContext | undefined,
+  ): 'operator' | 'secretary' {
+    if (!user) {
+      throw new ForbiddenException('Autenticazione richiesta');
+    }
+    const roles: string[] = user.roles || [];
+    return roles.some((r) => PAYMENT_SECRETARY_ROLES.includes(r))
+      ? 'secretary'
+      : 'operator';
   }
 
   /**
@@ -362,18 +395,56 @@ export class TreatmentResolver {
   /**
    * Mutation: Registra pagamento del paziente.
    *
-   * `callerRole`: indica se la chiamata arriva dall'interfaccia operatore
-   * o da quella della segreteria. Se 'operator', l'operatore del
-   * trattamento deve avere canCollectPayment=true; se 'secretary', passa
-   * sempre. Default 'secretary' per retrocompatibilità.
+   * Il ruolo viene derivato SERVER-SIDE dai ruoli Keycloak: segreteria/admin
+   * passano sempre; chiunque altro è trattato come 'operator' e richiede
+   * che l'operatore del trattamento abbia canCollectPayment=true.
+   * L'argomento `callerRole` è ignorato (retrocompatibilità schema).
    */
   @Mutation(() => Treatment, { name: 'recordTreatmentPayment' })
   async recordPayment(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: RecordPaymentInput,
-    @Args('callerRole', { type: () => TreatmentCallerRole, nullable: true }) callerRole?: TreatmentCallerRole,
+    @Args('callerRole', { type: () => TreatmentCallerRole, nullable: true }) _callerRole?: TreatmentCallerRole,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<Treatment> {
-    return this.treatmentService.recordPayment(id, input, callerRole ?? TreatmentCallerRole.SECRETARY);
+    return this.treatmentService.recordPayment(id, input, this.derivePaymentRole(user));
+  }
+
+  /**
+   * Mutation: 2026-07-08 — Annulla un pagamento registrato (annulla-e-reinserisci
+   * al posto della vecchia "modifica" che sovrascriveva in silenzio). Consentito
+   * SOLO se la fattura NON è stata emessa: per i trattamenti fatturati lo storno
+   * si fa da Contabilità (che rimanda billable.payment-reversed).
+   */
+  @Mutation(() => Treatment, { name: 'cancelTreatmentPayment' })
+  async cancelTreatmentPayment(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<Treatment> {
+    const actorUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.cancelPayment(
+      id,
+      actorUserId ?? undefined,
+      this.derivePaymentRole(user),
+    );
+  }
+
+  /**
+   * Mutation: 2026-07-01 — Toggle "Segna come incassato in contanti" per i
+   * trattamenti SCONTO FE. paid=true registra l'incasso contanti sul totale,
+   * paid=false lo annulla. Solo clinico (nessun evento accounting).
+   * Scorciatoia riservata a segreteria/admin: l'operatore incassa dal
+   * flusso pagamento standard (recordTreatmentPayment, con canCollectPayment).
+   */
+  @UseGuards(BillingWriteGuard)
+  @Mutation(() => Treatment, { name: 'markScontoFeCashPayment' })
+  async markScontoFeCashPayment(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('paid', { type: () => Boolean }) paid: boolean,
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<Treatment> {
+    const actorUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.setScontoFeCashPayment(id, paid, actorUserId ?? undefined);
   }
 
   /**
@@ -446,13 +517,12 @@ export class TreatmentResolver {
    * `billable.cancellation-rejected`, il cui handler nel clinico fa
    * rollback CANCELLED → INVOICED + alert (vedi accounting-event.consumer).
    */
+  // Azione di FATTURAZIONE ("Annulla invio a fatturazione"): riservata a
+  // segreteria/admin (vedi BillingWriteGuard). L'operatore — pur avendo
+  // treatment_delete_own per il lavoro clinico — non deve interagire col
+  // ciclo di billing.
   @Mutation(() => Treatment, { name: 'cancelTreatment' })
-  @UseGuards(AuthorizationGuard, OwnershipGuard)
-  @RequirePermissions('treatment_delete_own')
-  @RequireOwnership({
-    resource: 'treatment',
-    bypassPermission: 'treatment_delete_any',
-  })
+  @UseGuards(BillingWriteGuard)
   async cancelTreatment(
     @Args('id', { type: () => ID }) id: string,
     @Args('reason', { type: () => String }) reason: string,
@@ -477,17 +547,29 @@ export class TreatmentResolver {
    * fatturato).
    */
   @Mutation(() => Treatment, { name: 'requestTreatmentRecall' })
-  @UseGuards(AuthorizationGuard, OwnershipGuard)
-  @RequirePermissions('treatment_delete_own')
-  @RequireOwnership({
-    resource: 'treatment',
-    bypassPermission: 'treatment_delete_any',
-  })
+  @UseGuards(BillingWriteGuard)
   async requestTreatmentRecall(
     @Args('id', { type: () => ID }) id: string,
     @Args('reason', { type: () => String, nullable: true }) reason?: string,
   ): Promise<Treatment> {
     return this.treatmentService.requestTreatmentRecall(id, reason);
+  }
+
+  /**
+   * Mutation: 2026-06-30 — "Verifica risoluzione e riprova". L'operatore ha
+   * risolto la causa che bloccava l'emissione fattura (es. indirizzo paziente
+   * aggiunto in registry) e chiede ad accounting di ri-tentare l'auto-issue.
+   * Emette `treatment.retry-invoice-requested`; l'esito arriva async via
+   * `billable.invoiced` (sbloccato) o `billable.invoice-blocked` (motivo
+   * aggiornato). Permessi: stesso scope billing-write delle altre azioni
+   * fatturazione.
+   */
+  @Mutation(() => Treatment, { name: 'retryTreatmentInvoice' })
+  @UseGuards(BillingWriteGuard)
+  async retryTreatmentInvoice(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.retryTreatmentInvoice(id);
   }
 
   /**
@@ -501,8 +583,7 @@ export class TreatmentResolver {
    * Niente OwnershipGuard.
    */
   @Mutation(() => Treatment, { name: 'resendTreatmentToAccounting' })
-  @UseGuards(AuthorizationGuard)
-  @RequirePermissions('treatment_write')
+  @UseGuards(BillingWriteGuard)
   async resendTreatmentToAccounting(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<Treatment> {
@@ -514,12 +595,7 @@ export class TreatmentResolver {
    * sul treatment. Setta `returnedFromAccountingDismissedAt = NOW`.
    */
   @Mutation(() => Treatment, { name: 'dismissReturnFromAccountingBanner' })
-  @UseGuards(AuthorizationGuard, OwnershipGuard)
-  @RequirePermissions('treatment_update_own')
-  @RequireOwnership({
-    resource: 'treatment',
-    bypassPermission: 'treatment_update_any',
-  })
+  @UseGuards(BillingWriteGuard)
   async dismissReturnFromAccountingBanner(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<Treatment> {
@@ -544,10 +620,15 @@ export class TreatmentResolver {
    * (OPERATOR_COMPLETED o CLOSED). Mai campi clinici.
    */
   @Mutation(() => Treatment, { name: 'updateTreatmentBySecretary' })
+  @UseGuards(BillingWriteGuard)
   async updateBySecretary(
     @Args('input') input: UpdateTreatmentBySecretaryInput,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<Treatment> {
-    return this.treatmentService.updateBySecretary(input);
+    // actorUserId serve per l'audit dell'auto-recall scatenato dall'abilitazione
+    // dello sconto FE su un treatment già inviato (popola cancelledByUserId).
+    const actorUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.updateBySecretary(input, actorUserId ?? undefined);
   }
 
   /**
@@ -566,6 +647,7 @@ export class TreatmentResolver {
    * messaggio resta in DB per audit, scompare dalla UI.
    */
   @Mutation(() => Treatment, { name: 'dismissBillingAlert' })
+  @UseGuards(BillingWriteGuard)
   async dismissBillingAlert(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<Treatment> {
@@ -573,6 +655,7 @@ export class TreatmentResolver {
   }
 
   @Mutation(() => [Treatment], { name: 'setTreatmentsReadyForBilling' })
+  @UseGuards(BillingWriteGuard)
   async setReadyForBilling(
     @Args('ids', { type: () => [ID] }) ids: string[],
     @Args('ready', { type: () => Boolean }) ready: boolean,
@@ -636,6 +719,36 @@ export class TreatmentResolver {
     return this.treatmentService.deleteInvoiceLine(id);
   }
 
+  /**
+   * Mutation: 2026-07-02 — Aggiunge una riga collegata a un SERVIZIO del
+   * catalogo (con descrizione/prezzo opzionali). Sostituisce le righe a testo
+   * libero: ogni riga ha un serviceId così accounting associa la natura IVA.
+   */
+  @Mutation(() => Treatment, { name: 'addTreatmentServiceLine' })
+  async addTreatmentServiceLine(
+    @Args('treatmentId', { type: () => ID }) treatmentId: string,
+    @Args('serviceId', { type: () => ID }) serviceId: string,
+    @Args('description', { type: () => String, nullable: true }) description?: string,
+    @Args('price', { type: () => Float, nullable: true }) price?: number,
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<Treatment> {
+    const actorUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.addTreatmentServiceLine(
+      { treatmentId, serviceId, description, price },
+      actorUserId ?? undefined,
+    );
+  }
+
+  /**
+   * Mutation: 2026-07-02 — Rimuove una riga servizio del trattamento.
+   */
+  @Mutation(() => Treatment, { name: 'removeTreatmentServiceLine' })
+  async removeTreatmentServiceLine(
+    @Args('treatmentServiceId', { type: () => ID }) treatmentServiceId: string,
+  ): Promise<Treatment> {
+    return this.treatmentService.removeTreatmentServiceLine(treatmentServiceId);
+  }
+
   // ==================== LISTING QUERIES ====================
 
   /**
@@ -667,6 +780,33 @@ export class TreatmentResolver {
       scontoFE,
       limit,
       offset,
+    });
+  }
+
+  /**
+   * Conteggio totale per la paginazione di treatmentsForSecretary:
+   * stessi filtri (senza limit/offset), restituisce solo il numero.
+   */
+  @Query(() => Int, { name: 'treatmentsForSecretaryCount' })
+  async treatmentsForSecretaryCount(
+    @Args('patientId', { type: () => ID, nullable: true }) patientId?: string,
+    @Args('operatorId', { type: () => ID, nullable: true }) operatorId?: string,
+    @Args('statuses', { type: () => [TreatmentStatus], nullable: true }) statuses?: TreatmentStatus[],
+    @Args('dateFrom', { nullable: true }) dateFrom?: string,
+    @Args('dateTo', { nullable: true }) dateTo?: string,
+    @Args('readyForBilling', { nullable: true }) readyForBilling?: boolean,
+    @Args('isInvoicedToPatient', { nullable: true }) isInvoicedToPatient?: boolean,
+    @Args('scontoFE', { nullable: true }) scontoFE?: boolean,
+  ): Promise<number> {
+    return this.treatmentService.countForListing({
+      patientId,
+      operatorId,
+      statuses,
+      dateFrom,
+      dateTo,
+      readyForBilling,
+      isInvoicedToPatient,
+      scontoFE,
     });
   }
 

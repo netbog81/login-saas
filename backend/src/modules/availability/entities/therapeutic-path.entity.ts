@@ -95,7 +95,15 @@ export class TherapeuticPath {
   // patientId è il subjectId del registry. Campo GraphQL `patient`
   // esposto via field resolver in TherapeuticPathResolver (SubjectLoader).
 
-  @Field(() => Operator)
+  // NULLABLE in GraphQL: se l'operatore referente del percorso è stato
+  // soft-deleted (operators.deletedAt), TypeORM lo esclude dal join →
+  // primaryOperator = null. Con il campo non-nullable, GraphQL faceva fallire
+  // l'INTERA query therapeuticPathsByPatient ("Cannot return null for
+  // non-nullable field TherapeuticPath.primaryOperator"), facendo sparire dalla
+  // scheda paziente TUTTI i percorsi e i trattamenti sotto di essi. Stesso fix
+  // già applicato a Treatment.operator. Il frontend gestisce null via
+  // primaryOperatorName (mapper null-safe).
+  @Field(() => Operator, { nullable: true })
   @ManyToOne(() => Operator, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'primaryOperatorId' })
   primaryOperator: Operator;

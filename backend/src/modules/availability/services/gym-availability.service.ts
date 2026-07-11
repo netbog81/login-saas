@@ -94,12 +94,20 @@ export class GymAvailabilityService {
 
     const slotDuration = durationMinutes || room.slotDuration;
 
-    // 2. Controlla se c'è un'eccezione di chiusura per la palestra
-    const closureException = await this.gymExceptionService.hasException(gymRoomId, date, startTime);
-    if (closureException && closureException.exceptionType === 'closed') {
+    // 2. Controlla se lo slot è chiuso alle prenotazioni: chiusura scoped,
+    // slot "palestra chiusa" di un'assenza istruttore, o fuori dagli orari
+    // modificati (MODIFIED_HOURS).
+    const slotEnd = this.addMinutesToTime(startTime, slotDuration);
+    const closure = await this.gymExceptionService.getSlotClosure(
+      gymRoomId,
+      date,
+      startTime,
+      slotEnd,
+    );
+    if (closure.closed) {
       return {
         available: false,
-        reason: closureException.reason || 'Palestra chiusa',
+        reason: closure.reason || 'Palestra chiusa',
         currentBookings: 0,
         maxCapacity: room.maxCapacity,
         remainingCapacity: 0,
@@ -707,6 +715,26 @@ export class GymAvailabilityService {
             if (slotException) {
               isClosed = true;
               isAvailable = false;
+            }
+
+            // Orari modificati (MODIFIED_HOURS): la palestra è aperta SOLO
+            // dentro le finestre indicate → slot fuori finestra = chiuso.
+            if (!isClosed) {
+              const modifiedWindows = exceptions.filter(e =>
+                e.exceptionType === 'modified_hours' &&
+                e.gymRoomId === roomId &&
+                e.startTime && e.endTime,
+              );
+              if (modifiedWindows.length > 0) {
+                const inside = modifiedWindows.some(e =>
+                  this.normalizeTime(e.startTime!) <= slotStart &&
+                  this.normalizeTime(e.endTime!) >= slotEnd,
+                );
+                if (!inside) {
+                  isClosed = true;
+                  isAvailable = false;
+                }
+              }
             }
 
             if (!isClosed) {

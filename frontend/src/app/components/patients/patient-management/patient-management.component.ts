@@ -12,6 +12,7 @@ import { PatientService } from '../../../services/patient.service';
 import { AddressAutocompleteService, AddressSuggestion } from '../../../services/address-autocomplete.service';
 import { PatientAppointmentsDialogComponent } from '../../../features/operators-new/containers/patient-appointments-dialog.component';
 import { PatientTreatmentsDialogComponent } from '../patient-treatments-dialog/patient-treatments-dialog.component';
+import { PatientVouchersDialogComponent } from '../../../features/voucher-fe/components/patient-vouchers-dialog/patient-vouchers-dialog.component';
 import { PatientTableComponent } from '../../../features/operators-new/components/patients-list/patient-table/patient-table.component';
 import { PatientFolderDialogComponent } from '../../../features/operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
 
@@ -236,6 +237,16 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
       data: { patient },
       width: '640px',
       height: '520px',
+      panelClass: 'resizable-dialog-panel',
+    });
+  }
+
+  /** Apre l'elenco dei voucher FE del paziente (emetti, modifica importo, sospendi/annulla). */
+  openVouchers(patient: Patient): void {
+    this.dialog.open(PatientVouchersDialogComponent, {
+      data: { patient },
+      width: '680px',
+      height: '560px',
       panelClass: 'resizable-dialog-panel',
     });
   }

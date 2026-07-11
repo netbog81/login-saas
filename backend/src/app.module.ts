@@ -17,6 +17,7 @@ import { buildGraphqlContext } from './modules/registry/utils/build-graphql-cont
 import { RegistryEventsModule } from './modules/registry-events/registry-events.module';
 import { ClinicalEventsModule } from './modules/clinical-events/clinical-events.module';
 import { ClinicalEventBufferMiddleware } from './modules/clinical-events/clinical-event-buffer.middleware';
+import { AccountingApiModule } from './modules/accounting-api/accounting-api.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { MeController } from './auth/me.controller';
 import { UsersModule } from './users/users.module';
@@ -69,6 +70,8 @@ import { AppointmentService } from './modules/availability/entities/appointment-
 import { TreatmentService } from './modules/availability/entities/treatment-service.entity';
 import { TreatmentInvoiceLine } from './modules/availability/entities/treatment-invoice-line.entity';
 import { ServiceInvoicePrefix } from './modules/availability/entities/service-invoice-prefix.entity';
+import { VoucherFe } from './modules/availability/entities/voucher-fe.entity';
+import { VoucherFeUsage } from './modules/availability/entities/voucher-fe-usage.entity';
 // Therapeutic path entities
 import { TherapeuticPath } from './modules/availability/entities/therapeutic-path.entity';
 import { PathDocument } from './modules/availability/entities/path-document.entity';
@@ -115,6 +118,10 @@ import { TaskMessageWebhookEvent } from './modules/task-message/entities/task-me
 // Recycle bin (cestino soft-deleted records)
 import { RecycleBinModule } from './modules/recycle-bin/recycle-bin.module';
 import { RecycleBinSettings } from './modules/availability/entities/recycle-bin-settings.entity';
+import { InvoiceLineSettings } from './modules/availability/entities/invoice-line-settings.entity';
+// Template documenti (attestati di presenza)
+import { DocumentTemplatesModule } from './modules/document-templates/document-templates.module';
+import { DocumentTemplate } from './modules/document-templates/entities/document-template.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -154,6 +161,8 @@ const ALL_ENTITIES = [
   TreatmentService,
   TreatmentInvoiceLine,
   ServiceInvoicePrefix,
+  VoucherFe,
+  VoucherFeUsage,
   TherapeuticPath,
   PathDocument,
   PatientEvaluation,
@@ -187,10 +196,13 @@ const ALL_ENTITIES = [
   TaskMessageWebhookEvent,
   // Recycle bin
   RecycleBinSettings,
+  InvoiceLineSettings,
   // Billing integration step 1 (sessione 6)
   Site,
   Product,
   ProcessedClinicalEvent,
+  // Template documenti
+  DocumentTemplate,
 ];
 
 interface AppModuleOptions {
@@ -259,6 +271,9 @@ export class AppModule implements NestModule {
         }),
 
         // Auth — sostituisce JwksService custom + TenantContextMiddleware
+        // NOTA (federation 2026-07-03): aggiunto pattern gestione.{tenant} per suite federation
+        // e "gestione" a nonTenantSubdomains. In federation, il tenant DEVE venire dal JWT,
+        // non dall'hostname (che può essere gestione.{tenant} dal browser della suite).
         AuthCoreModule.forRoot({
           keycloakUrl: process.env.KEYCLOAK_URL,
           keycloakRealm: process.env.KEYCLOAK_REALM || 'curandis',
@@ -268,17 +283,20 @@ export class AppModule implements NestModule {
             fromSubdomainPatterns: [
               /^clinico\.([^.]+)\.curandis\.cloud$/,
               /^agenda\.([^.]+)\.curandis\.cloud$/,
+              /^gestione\.([^.]+)\.curandis\.cloud$/, // suite federation host
             ],
             fromJwtClaim: 'organization',
             fromJwtOrgIdClaim: 'org_id',
-            nonTenantSubdomains: ['api', 'auth', 'tenants', 'my', 'www', 'registry', 'accounting', 'clinico', 'agenda'],
+            nonTenantSubdomains: ['api', 'auth', 'tenants', 'my', 'www', 'registry', 'accounting', 'clinico', 'agenda', 'gestione'],
           },
-          serviceAccountClientIds: [],
+          // S2S: il registry chiama il clinico (cron riconciliazione senza JWT utente).
+          serviceAccountClientIds: ['curandis-registry-service'],
         }),
 
         RegistryModule,
         RegistryEventsModule,
         ClinicalEventsModule,
+        AccountingApiModule,
         SalesModule,
         GraphQLModule.forRootAsync<ApolloDriverConfig>({
           driver: ApolloDriver,
@@ -303,6 +321,7 @@ export class AppModule implements NestModule {
         SeedModule,
         AvailabilityModule,
         SettingsModule,
+        DocumentTemplatesModule,
         TasksModule,
         EventsModule,
         AppUsersModule,

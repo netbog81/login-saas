@@ -14,8 +14,9 @@ export class PostLoginRedirectService {
       return;
     }
 
-    // Redirect al calendario — il CallbackComponent gestisce già
-    // i redirect speciali (pending_schema, suspended, ecc.)
-    this.router.navigate(['/calendar']);
+    // Home dinamica per ruolo via homeRedirectGuard sulla root '' — il
+    // CallbackComponent gestisce già i redirect speciali (pending_schema,
+    // suspended, ecc.). Non hardcodiamo /calendar: l'operatore non vi accede.
+    this.router.navigateByUrl('/');
   }
 }

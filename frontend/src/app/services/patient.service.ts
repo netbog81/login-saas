@@ -49,10 +49,25 @@ export class PatientService extends BaseGraphQLService {
    * limit/offset sono mappati a pageSize/page per back-compat con il vecchio service.
    */
   getPatients(limit?: number, offset?: number): Observable<Patient[]> {
-    const pageSize = limit && limit > 0 ? limit : 50;
+    // pageSize è cappato a 100: è il massimo consentito dal registry
+    // (search-subjects.dto.ts). Valori superiori → HTTP 400 "pageSize must
+    // not be greater than 100". Per il CONTEGGIO totale usare invece
+    // countPatients()/searchPatientsRaw(...).total, che non scarica i record.
+    const requested = limit && limit > 0 ? limit : 50;
+    const pageSize = Math.min(requested, 100);
     const page = offset && offset > 0 ? Math.floor(offset / pageSize) + 1 : 1;
     return this.searchPatientsRaw({ pageSize, page, isActive: true }).pipe(
       map((res) => res.data),
+    );
+  }
+
+  /**
+   * Conteggio totale dei pazienti attivi senza scaricare i record.
+   * Usa il metadato `total` della global-search del registry (pageSize=1).
+   */
+  countPatients(): Observable<number> {
+    return this.searchPatientsRaw({ pageSize: 1, page: 1, isActive: true }).pipe(
+      map((res) => res.total),
     );
   }
 
@@ -95,7 +110,15 @@ export class PatientService extends BaseGraphQLService {
       map((result) => ({
         data: (result.searchPatients.data || [])
           .map((p) => mapApiPatientToFlat(p)!)
-          .filter(Boolean),
+          .filter(Boolean)
+          // Ordine alfabetico per cognome+nome. Il registry restituisce già la
+          // pagina ordinata (colonna sortKey), ma la sortKey usa un prefisso
+          // normalizzato/troncato: qui ri-ordiniamo la pagina ricevuta con il
+          // nome completo per una resa perfetta e indipendente dal backend.
+          .sort((a, b) =>
+            `${a.cognome ?? ''} ${a.nome ?? ''}`.trim()
+              .localeCompare(`${b.cognome ?? ''} ${b.nome ?? ''}`.trim(), 'it', { sensitivity: 'base' }),
+          ),
         total: result.searchPatients.total,
         page: result.searchPatients.page,
         pageSize: result.searchPatients.pageSize,

@@ -5,16 +5,19 @@ export const CREATE_OPERATOR_CATEGORY = gql`
     $macroCategory: OperatorMacroCategory!
     $name: String!
     $description: String
+    $invoiceLineDescription: String
   ) {
     createOperatorCategory(
       macroCategory: $macroCategory
       name: $name
       description: $description
+      invoiceLineDescription: $invoiceLineDescription
     ) {
       id
       macroCategory
       name
       description
+      invoiceLineDescription
       isActive
       createdAt
       updatedAt
@@ -27,6 +30,7 @@ export const UPDATE_OPERATOR_CATEGORY = gql`
     $id: ID!
     $name: String
     $description: String
+    $invoiceLineDescription: String
     $macroCategory: OperatorMacroCategory
     $isActive: Boolean
   ) {
@@ -34,6 +38,7 @@ export const UPDATE_OPERATOR_CATEGORY = gql`
       id: $id
       name: $name
       description: $description
+      invoiceLineDescription: $invoiceLineDescription
       macroCategory: $macroCategory
       isActive: $isActive
     ) {
@@ -41,6 +46,7 @@ export const UPDATE_OPERATOR_CATEGORY = gql`
       macroCategory
       name
       description
+      invoiceLineDescription
       isActive
       createdAt
       updatedAt

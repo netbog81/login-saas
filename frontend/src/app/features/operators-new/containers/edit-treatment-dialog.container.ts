@@ -20,21 +20,28 @@ import {
   ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, forkJoin, switchMap, takeUntil } from 'rxjs';
+import { Subject, forkJoin, of, switchMap, takeUntil } from 'rxjs';
+import { MatDialog } from '@angular/material/dialog';
 import { EditTreatmentDialogComponent } from '../components/edit-treatment-dialog/edit-treatment-dialog.component';
-import { CashCollectionConfirmDialogComponent } from '../components/cash-collection-confirm-dialog/cash-collection-confirm-dialog.component';
 import { EditTreatmentDialogData, EditTreatmentFormResult, BaseInstrumentData } from '../models/edit-treatment-dialog.model';
-import { CashCollectionData } from '../models/start-treatment-dialog.model';
 import { TreatmentService } from '../../../services/treatment.service';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { ServiceService } from '../../../services/service.service';
 import { InstrumentService } from '../../../services/instrument.service';
-import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.model';
+import { Treatment, CompleteTreatmentInput, PaymentMethod, PaymentTenderLine } from '../../../models/treatment.model';
+// Dialog di pagamento condiviso con la feature trattamenti: gestisce la
+// dualità scontoFE (ON → metodi clinici contanti/voucher FE; OFF → metodi
+// accounting + voucher tipo 1/2 via proxy).
+import {
+  PagamentoSplitDialogComponent,
+  PagamentoSplitDialogData,
+  PagamentoSplitDialogResult,
+} from '../../trattamenti/components/pagamento-split-dialog/pagamento-split-dialog.component';
 
 @Component({
   selector: 'app-edit-treatment-dialog-container',
   standalone: true,
-  imports: [CommonModule, EditTreatmentDialogComponent, CashCollectionConfirmDialogComponent],
+  imports: [CommonModule, EditTreatmentDialogComponent],
   template: `
     <app-edit-treatment-dialog
       #dialogComponent
@@ -47,33 +54,7 @@ import { Treatment, CompleteTreatmentInput } from '../../../models/treatment.mod
       (completeTreatment)="onCompleteTreatment($event)"
       (reopenTreatment)="onReopenTreatment()">
     </app-edit-treatment-dialog>
-
-    <!-- Cash Collection Dialog -->
-    @if (showCashCollectionDialog) {
-      <div class="cash-collection-overlay">
-        <app-cash-collection-confirm-dialog
-          [amount]="currentFormPrice"
-          [operatorId]="currentTreatment?.operatorId || ''"
-          (confirm)="onCashCollectionConfirm($event)"
-          (cancel)="onCashCollectionCancel()">
-        </app-cash-collection-confirm-dialog>
-      </div>
-    }
   `,
-  styles: [`
-    .cash-collection-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1100;
-    }
-  `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditTreatmentDialogContainerComponent implements OnDestroy {
@@ -91,16 +72,12 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
   isSaving = false;
   dialogData!: EditTreatmentDialogData;
 
-  // Cash collection state
-  showCashCollectionDialog = false;
-  cashCollectionData: CashCollectionData | null = null;
-  currentFormPrice: number = 0; // Prezzo corrente dal form (con sconto FE applicato)
-
   constructor(
     private treatmentService: TreatmentService,
     private pathService: TherapeuticPathService,
     private serviceService: ServiceService,
     private instrumentService: InstrumentService,
+    private dialog: MatDialog,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -243,7 +220,8 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
           console.log('[EditTreatmentDialogContainer] Treatment updated:', updatedTreatment.id);
 
           // Se è stato richiesto NUOVO incasso da operatore (non era già pagato), registra il pagamento
-          if (result.collectedByOperator && result.paymentMethod && !this.currentTreatment.isPaid) {
+          if (result.collectedByOperator && result.paymentMethod &&
+              result.tenderLines?.length && !this.currentTreatment.isPaid) {
             this.recordPayment(updatedTreatment, result);
           } else {
             // Apollo già esegue dentro NgZone, non serve wrapping aggiuntivo
@@ -282,9 +260,10 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
     this.treatmentService
       .recordPayment(treatment.id, {
         paymentMethod: result.paymentMethod,
-        collectedBy: this.currentTreatment.operatorId,
-        amount: result.price,
-      })
+        collectedBy: result.collectedBy || this.currentTreatment.operatorId,
+        amount: result.collectedAmount ?? result.price,
+        tenderLines: result.tenderLines,
+      }, 'OPERATOR')
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (paidTreatment) => {
@@ -308,41 +287,62 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
   }
 
   /**
-   * Apre il dialog di cash collection
+   * Apre il dialog di pagamento con split multi-riga.
+   *
+   * La fonte dei metodi dipende dal valore CORRENTE del toggle scontoFE nel
+   * form (non da quello salvato sul trattamento): scontoFE ON → contanti +
+   * voucher FE del paziente (solo clinico); OFF → metodi di pagamento di
+   * accounting + voucher tipo 1/2. Il pagamento viene registrato solo al
+   * Salva/Completa, insieme alle altre modifiche.
    */
   onOpenCashCollection(): void {
-    // Leggi il prezzo corrente dal form del component (con sconto FE applicato)
-    if (this.dialogComponent?.form) {
-      this.currentFormPrice = this.dialogComponent.form.get('price')?.value || 0;
-    }
-    console.log('[EditTreatmentDialogContainer] Opening cash collection dialog with price:', this.currentFormPrice);
-    this.showCashCollectionDialog = true;
-    this.cdr.markForCheck();
+    const form = this.dialogComponent?.form;
+    const totalAmount = form?.get('price')?.value || 0;
+    const scontoFE = form?.get('scontoFE')?.value === true;
+
+    const dialogRef = this.dialog.open<
+      PagamentoSplitDialogComponent,
+      PagamentoSplitDialogData,
+      PagamentoSplitDialogResult
+    >(PagamentoSplitDialogComponent, {
+      width: '560px',
+      data: {
+        treatmentId: this.currentTreatment.id,
+        patientId: this.currentTreatment.patientId ?? null,
+        scontoFE,
+        totalAmount,
+        currentUserId: this.currentTreatment.operatorId ?? '',
+        // Workspace operatore: può scalare i voucher FE esistenti ma NON
+        // emetterne di nuovi (riservato a segreteria/admin).
+        canIssueVoucherFe: false,
+      },
+    });
+
+    dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result) => {
+      if (!result || !this.dialogComponent) return;
+      this.dialogComponent.setCashCollected(
+        this.deriveLegacyMethod(result.tenderLines),
+        result.tenderLines,
+        result.collectedBy,
+        result.amount,
+      );
+      this.cdr.markForCheck();
+    });
   }
 
   /**
-   * Conferma incasso da operatore
+   * paymentMethod legacy derivato dalla prima riga 'method' delle tenderLines
+   * (il backend usa tenderLines come fonte di verità; il campo legacy serve
+   * solo per visualizzazione retrocompatibile).
    */
-  onCashCollectionConfirm(data: CashCollectionData): void {
-    console.log('[EditTreatmentDialogContainer] Cash collection confirmed:', data);
-    this.cashCollectionData = data;
-    this.showCashCollectionDialog = false;
-
-    // Notifica il component dialog che l'incasso è stato confermato
-    if (this.dialogComponent) {
-      this.dialogComponent.setCashCollected(data.paymentMethod);
-    }
-
-    this.cdr.markForCheck();
-  }
-
-  /**
-   * Annulla dialog cash collection
-   */
-  onCashCollectionCancel(): void {
-    console.log('[EditTreatmentDialogContainer] Cash collection cancelled');
-    this.showCashCollectionDialog = false;
-    this.cdr.markForCheck();
+  private deriveLegacyMethod(lines: PaymentTenderLine[]): PaymentMethod {
+    const first = lines.find((l) => l.kind === 'method');
+    const code = (first?.paymentMethodId ?? '').toLowerCase();
+    if (code.includes('cash') || code.includes('contant')) return 'CASH' as PaymentMethod;
+    if (code.includes('card') || code.includes('bancomat') || code.includes('pos')) return 'CARD' as PaymentMethod;
+    if (code.includes('transfer') || code.includes('bonific')) return 'TRANSFER' as PaymentMethod;
+    if (code.includes('satispay')) return 'SATISPAY' as PaymentMethod;
+    return 'OTHER' as PaymentMethod;
   }
 
   /**
@@ -390,6 +390,21 @@ export class EditTreatmentDialogContainerComponent implements OnDestroy {
           notes: inst.notes,
         })),
       }).pipe(
+        switchMap(updatedTreatment => {
+          // Se nel form è stato confermato un NUOVO incasso (dialog di
+          // pagamento → tenderLines presenti), registralo prima di completare:
+          // il flusso "Completa" non passa dal Salva e perderebbe il pagamento.
+          if (formResult.collectedByOperator && formResult.paymentMethod &&
+              formResult.tenderLines?.length && !this.currentTreatment.isPaid) {
+            return this.treatmentService.recordPayment(updatedTreatment.id, {
+              paymentMethod: formResult.paymentMethod,
+              collectedBy: formResult.collectedBy || this.currentTreatment.operatorId,
+              amount: formResult.collectedAmount ?? formResult.price,
+              tenderLines: formResult.tenderLines,
+            }, 'OPERATOR');
+          }
+          return of(updatedTreatment);
+        }),
         switchMap(updatedTreatment => {
           console.log('[EditTreatmentDialogContainer] Changes saved, now completing treatment');
           const input: CompleteTreatmentInput = {

@@ -113,13 +113,19 @@ import { ServiceInvoicePrefixResolver } from './resolvers/service-invoice-prefix
 import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver';
 
 import { PazientiModule } from '../../patients/patients.module';
+import { AccountingApiModule } from '../accounting-api/accounting-api.module';
+import { TreatmentPdfController } from './controllers/treatment-pdf.controller';
+import { VoucherFeService } from './services/voucher-fe.service';
+import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
 
 @Module({
   imports: [
     SettingsModule,
     AppUsersModule,
     forwardRef(() => WhatsappModule),
-    PazientiModule],
+    PazientiModule,
+    AccountingApiModule],
+  controllers: [TreatmentPdfController],
   providers: [
     // Services
     AvailabilityService,
@@ -151,6 +157,7 @@ import { PazientiModule } from '../../patients/patients.module';
     PatientAnamnesisService,
     WaitingListService,
     ServiceInvoicePrefixService,
+    VoucherFeService,
     // Guards
     OwnershipGuard,
     // Resolvers
@@ -180,7 +187,8 @@ import { PazientiModule } from '../../patients/patients.module';
     PatientAnamnesisResolver,
     WaitingListResolver,
     ServiceInvoicePrefixResolver,
-    TreatmentServiceResolver],
+    TreatmentServiceResolver,
+    VoucherFeResolver],
   exports: [
     AvailabilityService,
     OperatorBusinessService,

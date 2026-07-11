@@ -48,9 +48,15 @@ export class TreatmentServiceResolver {
     if (!treatment) return null;
 
     const [operator, service, instruments] = await Promise.all([
-      this.operatorRepo.findOne({ where: { id: treatment.operatorId } }),
+      this.operatorRepo.findOne({
+        where: { id: treatment.operatorId },
+        relations: ['category'],
+      }),
       ts.serviceId
-        ? this.serviceRepo.findOne({ where: { id: ts.serviceId } })
+        ? this.serviceRepo.findOne({
+            where: { id: ts.serviceId },
+            relations: ['subcategory'],
+          })
         : Promise.resolve(null),
       this.treatmentInstrumentRepo.find({
         where: { treatmentId: ts.treatmentId },
@@ -60,7 +66,22 @@ export class TreatmentServiceResolver {
 
     if (!operator || !service) return null;
 
-    const prefix = await this.prefixService.getPrefixOrDefault(operator.macroCategory);
+    // Categoria del template: quella del SERVIZIO (coincide con quella
+    // operatore per costruzione del catalogo), fallback su quella operatore.
+    const category = service.macroCategory ?? operator.macroCategory;
+    const [saved, settings] = await Promise.all([
+      this.prefixService.findByCategory(category),
+      this.prefixService.getSettings(),
+    ]);
+    // Toggle "sottocategorie operatori": prefisso/template dalla categoria
+    // dell'operatore che esegue il trattamento, fallback su macro-categoria.
+    const config = ServiceInvoicePrefixService.resolveConfig({
+      useOperatorCategories: settings.useOperatorCategories,
+      operatorCategory: operator.category ?? null,
+      macroCategory: category,
+      macroSaved: saved,
+    });
+    const prefix = config.prefix;
 
     const operatorFullName = [operator.name, operator.surname].filter(Boolean).join(' ').trim();
     const instrumentNames = (instruments || [])
@@ -72,13 +93,20 @@ export class TreatmentServiceResolver {
       ? apptDate.toISOString().slice(0, 10)
       : (apptDate as unknown as string) || null;
 
-    return this.prefixService.composeDescription({
-      prefix,
-      appointmentDate: apptDateStr,
-      serviceName: service.name,
-      instrumentNames,
-      operatorFullName,
-      professionalRegistration: operator.professionalRegistration,
-    });
+    return ServiceInvoicePrefixService.composeAuto(
+      config,
+      {
+        prefisso: prefix,
+        data: ServiceInvoicePrefixService.formatDateItalian(apptDateStr),
+        codiceServizio: service.serviceCode ?? '',
+        nomeServizio: service.name ?? '',
+        descrizioneServizio: service.description ?? '',
+        descrizioneFatturaSottocategoria: service.subcategory?.invoiceLineDescription ?? '',
+        operatore: operatorFullName,
+        albo: operator.professionalRegistration ?? '',
+        descrizioneFatturaCategoria: operator.category?.invoiceLineDescription ?? '',
+        strumenti: instrumentNames.join(', '),
+      },
+    );
   }
 }

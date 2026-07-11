@@ -91,6 +91,24 @@ export class Operator {
   professionalRegistration?: string;
 
   /**
+   * Titolo/qualifica professionale mostrato nei documenti generati
+   * (es. "Fisioterapista", "Psicologo", "Medico Chirurgo").
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'professional_title', length: 255, nullable: true })
+  professionalTitle?: string;
+
+  /** Codice fiscale del professionista (per documenti/attestati). */
+  @Field({ nullable: true })
+  @Column({ name: 'tax_code', length: 16, nullable: true })
+  taxCode?: string;
+
+  /** Partita IVA del professionista (per documenti/attestati). */
+  @Field({ nullable: true })
+  @Column({ name: 'vat_number', length: 11, nullable: true })
+  vatNumber?: string;
+
+  /**
    * Permesso di registrare pagamenti sui trattamenti.
    * Default per categoria: false per GYM_INSTRUCTOR, true per le altre.
    * Editabile dall'admin dalla UI operatori.

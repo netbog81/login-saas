@@ -1,5 +1,6 @@
-import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Int, Context, InputType } from '@nestjs/graphql';
 import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
+import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 import { AvailabilityExceptionService } from '../services/availability-exception.service';
 import { HolidayService, Holiday } from '../services/holiday.service';
 import { ObjectType, Field } from '@nestjs/graphql';
@@ -11,6 +12,55 @@ export class HolidayInfo {
 
   @Field()
   name: string;
+}
+
+/** Input della creazione batch di assenze operatori/medici. */
+@InputType()
+export class CreateOperatorAbsencesInput {
+  @Field(() => [ID])
+  operatorIds: string[];
+
+  @Field()
+  dateFrom: string;
+
+  @Field()
+  dateTo: string;
+
+  @Field({ nullable: true })
+  startTime?: string;
+
+  @Field({ nullable: true })
+  endTime?: string;
+
+  @Field(() => ID, { nullable: true })
+  absenceTypeId?: string;
+
+  @Field({ nullable: true })
+  reason?: string;
+}
+
+@ObjectType()
+export class OperatorAbsencesResult {
+  @Field(() => [AvailabilityException])
+  exceptions: AvailabilityException[];
+
+  @Field(() => Int)
+  conflictCount: number;
+
+  @Field(() => Int)
+  skippedOverlaps: number;
+
+  @Field(() => ID)
+  sourceGroupId: string;
+}
+
+@ObjectType()
+export class AbsenceImpactPreview {
+  @Field(() => [AvailabilityAppointment])
+  conflicts: AvailabilityAppointment[];
+
+  @Field(() => [AvailabilityAppointment])
+  attendedWithoutTreatment: AvailabilityAppointment[];
 }
 
 @Resolver(() => AvailabilityException)
@@ -65,6 +115,57 @@ export class AvailabilityExceptionResolver {
   ): Promise<boolean> {
     const date = new Date(dateStr);
     return this.holidayService.isHoliday(date) !== null;
+  }
+
+  /**
+   * Anteprima (dry-run) degli appuntamenti impattati da un'assenza,
+   * mostrata nel dialog PRIMA del salvataggio.
+   */
+  @Query(() => AbsenceImpactPreview, { name: 'previewOperatorAbsenceImpact' })
+  async previewOperatorAbsenceImpact(
+    @Args('operatorIds', { type: () => [ID] }) operatorIds: string[],
+    @Args('dateFrom') dateFrom: string,
+    @Args('dateTo') dateTo: string,
+    @Args('startTime', { nullable: true }) startTime?: string,
+    @Args('endTime', { nullable: true }) endTime?: string,
+  ): Promise<AbsenceImpactPreview> {
+    return this.exceptionService.previewAbsenceImpact({
+      operatorIds,
+      dateFrom,
+      dateTo,
+      startTime,
+      endTime,
+    });
+  }
+
+  /**
+   * Crea le assenze per più operatori su un range di giorni, marcando i
+   * conflitti sugli appuntamenti impattati.
+   */
+  @Mutation(() => OperatorAbsencesResult, { name: 'createOperatorAbsences' })
+  async createOperatorAbsences(
+    @Args('input') input: CreateOperatorAbsencesInput,
+    @Context() context: any,
+  ): Promise<OperatorAbsencesResult> {
+    const userId = context?.req?.user?.id || context?.req?.tenantContext?.userId;
+    return this.exceptionService.createOperatorAbsences({
+      operatorIds: input.operatorIds,
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      absenceTypeId: input.absenceTypeId,
+      reason: input.reason,
+      performedBy: userId,
+    });
+  }
+
+  /** Cancella tutte le eccezioni di un gruppo (range dal…al / multi-operatore). */
+  @Mutation(() => Int, { name: 'deleteAbsenceGroup' })
+  async deleteAbsenceGroup(
+    @Args('sourceGroupId', { type: () => ID }) sourceGroupId: string,
+  ): Promise<number> {
+    return this.exceptionService.deleteAbsenceGroup(sourceGroupId);
   }
 
   // Mutations

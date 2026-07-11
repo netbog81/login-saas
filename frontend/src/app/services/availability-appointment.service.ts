@@ -23,6 +23,7 @@ import {
   CANCEL_RECURRING_SERIES,
   DELETE_RECURRING_SERIES,
   UPDATE_RECURRING_SERIES_TIME,
+  UPDATE_RECURRING_SERIES,
 } from '../graphql/operations/availability-appointment.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
 
@@ -363,6 +364,36 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
       UPDATE_RECURRING_SERIES_TIME,
       { input },
     ).pipe(map((result) => result.updateRecurringSeriesTime));
+  }
+
+  /**
+   * Modifica COMPLETA di una serie ricorrente nello scope scelto: propaga tutti
+   * i campi modificabili (orario, operatore, paziente, servizi, strumenti, note,
+   * non-retribuito) ed un eventuale spostamento di data (`newDate`). Se la
+   * risposta contiene conflitti, NULLA è stato applicato (avvisa-e-blocca).
+   */
+  updateRecurringSeries(input: {
+    appointmentId: string;
+    scope: RecurringSeriesScope;
+    startTime: string;
+    endTime: string;
+    newDate?: string;
+    operatorId?: string;
+    patientId?: string;
+    clientName?: string;
+    notes?: string;
+    nonRetribuito?: boolean;
+    instrumentOrderMatters?: boolean;
+    services?: { serviceId: string; customPrice?: number; customDuration?: number; orderPosition?: number }[];
+    instruments?: { instrumentCategoryId: string; startOffsetMinutes: number; endOffsetMinutes: number; orderPosition?: number }[];
+    rangeFrom?: string;
+    rangeTo?: string;
+    includeCurrent?: boolean;
+  }): Observable<RecurringSeriesOperationResult> {
+    return this.mutate<{ updateRecurringSeries: RecurringSeriesOperationResult }>(
+      UPDATE_RECURRING_SERIES,
+      { input },
+    ).pipe(map((result) => result.updateRecurringSeries));
   }
 }
 

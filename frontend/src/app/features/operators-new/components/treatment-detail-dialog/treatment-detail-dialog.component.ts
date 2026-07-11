@@ -20,6 +20,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTabsModule } from '@angular/material/tabs';
 import { Treatment } from '../../../../models/treatment.model';
 
 @Component({
@@ -30,7 +31,8 @@ import { Treatment } from '../../../../models/treatment.model';
     MatIconModule,
     MatButtonModule,
     MatDividerModule,
-    MatTooltipModule
+    MatTooltipModule,
+    MatTabsModule
   ],
   template: `
     @if (isVisible && treatment) {
@@ -59,6 +61,8 @@ import { Treatment } from '../../../../models/treatment.model';
                 <span>Caricamento...</span>
               </div>
             } @else {
+              <mat-tab-group class="detail-tabs">
+              <mat-tab label="Dettagli">
               <!-- Info base -->
               <section class="detail-section info-section">
                 <div class="info-row">
@@ -156,10 +160,15 @@ import { Treatment } from '../../../../models/treatment.model';
                 </section>
               }
 
-              <!-- Prezzo e Pagamento -->
-              <mat-divider></mat-divider>
+              </mat-tab>
+
+              <!-- SCHEDA PAGAMENTO — l'operatore può registrare/annullare
+                   l'incasso anche a trattamento completato/chiuso (es. il
+                   paziente paga alla seduta successiva). Il backend verifica
+                   canCollectPayment sull'operatore del trattamento. -->
+              <mat-tab label="Pagamento">
               <section class="detail-section pricing">
-                <h3><mat-icon>payments</mat-icon> Fatturazione</h3>
+                <h3><mat-icon>payments</mat-icon> Pagamento</h3>
                 <div class="pricing-info">
                   @if (treatment.price) {
                     <span class="price">{{ treatment.price.toFixed(2) }}</span>
@@ -190,7 +199,44 @@ import { Treatment } from '../../../../models/treatment.model';
                     Metodo: {{ getPaymentMethodLabel(treatment.paymentMethod) }}
                   </p>
                 }
+                @if (treatment.paidAt) {
+                  <p class="payment-method">
+                    <mat-icon>schedule</mat-icon>
+                    Incassato il {{ formatDate(treatment.paidAt) }}
+                  </p>
+                }
+                <p class="payment-source-hint">
+                  @if (treatment.scontoFE) {
+                    Sconto FE attivo: incasso solo nel clinico (contanti / voucher FE).
+                  } @else {
+                    Metodi di pagamento della contabilità (incasso sincronizzato).
+                  }
+                </p>
+
+                <div class="payment-actions">
+                  @if (!treatment.isPaid) {
+                    <button mat-flat-button color="primary" (click)="onRegisterPayment()">
+                      <mat-icon>payments</mat-icon>
+                      Registra pagamento
+                    </button>
+                    <span class="payment-hint">
+                      Disponibile anche a trattamento chiuso (es. il paziente
+                      paga alla seduta successiva).
+                    </span>
+                  } @else if (!treatment.isInvoicedToPatient) {
+                    <button mat-stroked-button color="warn" (click)="onCancelPayment()">
+                      <mat-icon>cancel</mat-icon>
+                      Annulla pagamento
+                    </button>
+                  } @else {
+                    <span class="payment-hint">
+                      Fattura emessa: l'incasso si gestisce dalla Contabilità.
+                    </span>
+                  }
+                </div>
               </section>
+              </mat-tab>
+              </mat-tab-group>
             }
           </div>
 
@@ -543,6 +589,33 @@ import { Treatment } from '../../../../models/treatment.model';
           height: 16px;
         }
       }
+
+      .payment-source-hint {
+        margin: 12px 0 0;
+        color: #64748b;
+        font-size: 0.8125rem;
+        font-style: italic;
+      }
+
+      .payment-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 16px;
+
+        .payment-hint {
+          color: #64748b;
+          font-size: 0.8125rem;
+        }
+      }
+    }
+
+    .detail-tabs {
+      // Le sezioni interne hanno già il proprio padding.
+      ::ng-deep .mat-mdc-tab-body-wrapper {
+        padding-top: 8px;
+      }
     }
 
     .dialog-footer {
@@ -597,6 +670,9 @@ export class TreatmentDetailDialogComponent {
 
   @Output() close = new EventEmitter<void>();
   @Output() edit = new EventEmitter<Treatment>();
+  // Scheda Pagamento: il container apre lo split dialog / chiama le mutation.
+  @Output() registerPayment = new EventEmitter<Treatment>();
+  @Output() cancelPayment = new EventEmitter<Treatment>();
 
   // Per gestire click-and-drag sull'overlay
   overlayMouseDownTarget: EventTarget | null = null;
@@ -620,6 +696,18 @@ export class TreatmentDetailDialogComponent {
   onEdit(): void {
     if (this.treatment) {
       this.edit.emit(this.treatment);
+    }
+  }
+
+  onRegisterPayment(): void {
+    if (this.treatment) {
+      this.registerPayment.emit(this.treatment);
+    }
+  }
+
+  onCancelPayment(): void {
+    if (this.treatment) {
+      this.cancelPayment.emit(this.treatment);
     }
   }
 

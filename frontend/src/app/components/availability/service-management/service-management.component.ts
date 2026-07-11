@@ -7,12 +7,11 @@ import { AvailabilityStateService } from '../../../services/availability-state.s
 import { ServiceService } from '../../../services/service.service';
 import { ServiceSubcategoryService, ServiceSubcategory } from '../../../services/service-subcategory.service';
 import { Service, MutationCreateServiceArgs as CreateServiceInput, MutationUpdateServiceArgs as UpdateServiceInput, OperatorMacroCategory } from '../../../graphql/generated/types';
-import { InvoicePrefixesManagementComponent } from '../invoice-prefixes-management/invoice-prefixes-management.component';
 
 @Component({
   selector: 'app-service-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, InvoicePrefixesManagementComponent],
+  imports: [CommonModule, FormsModule],
   templateUrl: './service-management.component.html',
   styleUrls: ['./service-management.component.scss']
 })

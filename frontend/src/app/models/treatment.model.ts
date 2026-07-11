@@ -159,10 +159,24 @@ export interface CloseTreatmentInput {
   secretaryNotes?: string;
 }
 
+/**
+ * Riga di tender per lo split multi-riga del pagamento.
+ * Stessa forma del TenderLineInput GraphQL (vedi anche feature trattamenti).
+ */
+export interface PaymentTenderLine {
+  kind: 'method' | 'voucher' | 'voucher_fe';
+  paymentMethodId?: string;
+  voucherId?: string;
+  voucherFeId?: string;
+  amount: number;
+}
+
 export interface RecordPaymentInput {
   paymentMethod: PaymentMethod;
   collectedBy: string;
   amount?: number;
+  /** Dettaglio metodi/voucher usati; se presente è la fonte di verità lato backend. */
+  tenderLines?: PaymentTenderLine[];
 }
 
 export interface TreatmentInstrumentInput {

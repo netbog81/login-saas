@@ -20,12 +20,30 @@
       "Bash(node /tmp/inspect-tenant-anamnesi.js)",
       "Bash(curl -s http://127.0.0.1:8200/v1/kv/data/tenant-map/bdq)",
       "Bash(grep -nA5 \"private async resolveAppUserId\\\\|resolveAppUserId\" /home/marco/agenda/login-saas/backend/src/modules/availability/resolvers/treatment.resolver.ts)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(docker logs *)",
+      "Read(//tmp/**)",
+      "Bash(docker restart *)",
+      "Bash(cat /tmp/regerr.txt | tail -40)",
+      "Bash(docker image *)"
     ],
     "additionalDirectories": [
       "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/services",
       "/home/marco/agenda/login-saas/backend/src/migrations",
-      "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/containers"
+      "/home/marco/agenda/login-saas/frontend/src/app/features/operators-new/containers",
+      "/home/marco/curandis-accounting/backend/src/accounting-events",
+      "/home/marco/curandis-accounting/backend/src/clinical-events",
+      "/home/marco/curandis-accounting/backend/src/billable-events",
+      "/home/marco/curandis-accounting/backend/src/shared-kernel/enums",
+      "/home/marco/curandis-accounting/backend/src/vouchers/entities",
+      "/home/marco/curandis-accounting/backend/src/migrations",
+      "/home/marco/curandis-accounting/backend/src/vouchers/dto",
+      "/home/marco/curandis-accounting/backend/src/vouchers/services",
+      "/home/marco/curandis-accounting/backend/src/sales-documents",
+      "/home/marco/curandis-accounting/backend/src/parties",
+      "/home/marco/curandis-accounting/backend/src",
+      "/home/marco/curandis-accounting/backend/src/billable-events/entities",
+      "/home/marco/curandis-accounting/backend/src/auto-issue"
     ]
   }
 }

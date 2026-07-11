@@ -107,6 +107,7 @@ export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
           macroCategory: category.macroCategory,
           name: category.name,
           description: category.description ?? undefined,
+          invoiceLineDescription: (category as any).invoiceLineDescription ?? undefined,
           isActive: category.isActive,
         };
       } else {
@@ -116,6 +117,7 @@ export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
           macroCategory: OperatorMacroCategory.Physiotherapist,
           name: '',
           description: '',
+          invoiceLineDescription: '',
           isActive: true,
         };
       }
@@ -159,6 +161,7 @@ export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
       const input: UpdateOperatorCategoryInput = {
         name: name,
         description: this.editingCategory.description?.trim(),
+        invoiceLineDescription: this.editingCategory.invoiceLineDescription?.trim(),
         macroCategory: this.editingCategory.macroCategory,
         isActive: this.editingCategory.isActive,
       };
@@ -188,6 +191,7 @@ export class OperatorCategoryManagementComponent implements OnInit, OnDestroy {
         macroCategory: this.editingCategory.macroCategory!,
         name: name,
         description: this.editingCategory.description?.trim(),
+        invoiceLineDescription: this.editingCategory.invoiceLineDescription?.trim(),
       };
 
       this.categoryService

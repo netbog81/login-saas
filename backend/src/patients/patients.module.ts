@@ -14,6 +14,12 @@ import { ClinicalSubjectIndexService } from './services/clinical-subject-index.s
 import { ClinicalAttendanceService } from './services/clinical-attendance.service';
 import { PatientRelationshipService } from './services/patient-relationship.service';
 import { RegistryPatientService } from './services/registry-patient.service';
+import { SubjectDataSummaryService } from './services/subject-data-summary.service';
+import { SubjectMergeService } from './services/subject-merge.service';
+
+// Controller
+import { SubjectDataSummaryController } from './controllers/subject-data-summary.controller';
+import { SubjectMergeController } from './controllers/subject-merge.controller';
 
 // Resolver
 import { PatientResolver } from './resolvers/patient.resolver';
@@ -21,12 +27,15 @@ import { PatientResolver } from './resolvers/patient.resolver';
 @Module({
   imports: [
   ],
+  controllers: [SubjectDataSummaryController, SubjectMergeController],
   providers: [
     ClinicalSubjectIndexService,
     ClinicalAttendanceService,
     PatientRelationshipService,
     PatientAnamnesisService,
     RegistryPatientService,
+    SubjectDataSummaryService,
+    SubjectMergeService,
     PatientResolver],
   exports: [
     ClinicalSubjectIndexService,

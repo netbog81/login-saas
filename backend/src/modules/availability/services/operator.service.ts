@@ -267,6 +267,15 @@ export class OperatorService {
     // Aggiorna campi
     Object.assign(operator, input);
 
+    // GOTCHA TypeORM: findOne() carica la relazione `category`; se resta
+    // sull'entity, in save() l'id della relazione (vecchia categoria) ha
+    // precedenza sulla colonna `categoryId` appena assegnata e il cambio
+    // categoria non viene persistito. Scartiamo la relazione stale così
+    // vale il valore della colonna (null incluso, per svuotare la categoria).
+    if (input.categoryId !== undefined) {
+      operator.category = undefined;
+    }
+
     // Sincronizza campi identita' con app_users
     if (operator.appUserId) {
       const identityUpdate: Partial<AppUser> = {};
@@ -281,7 +290,11 @@ export class OperatorService {
       }
     }
 
-    return this.operatorRepo.save(operator);
+    await this.operatorRepo.save(operator);
+    // Rilegge con la relazione `category` fresca: la risposta GraphQL
+    // include category { ... } e l'entity in memoria non ha più la
+    // relazione azzerata sopra.
+    return this.findOne(id);
   }
 
   /**
@@ -375,6 +388,13 @@ export class OperatorService {
       //    nuovamente corrente. Manteniamo i template come storico.
       await manager
         .getRepository(AvailabilityTemplate)
+        .update({ operatorId: id, isCurrent: true }, { isCurrent: false });
+
+      // 4. Assegnazioni template: stessa sorte dei template. Senza questo,
+      //    resterebbe una template_assignment isCurrent=true che punta a un
+      //    operatore soft-deleted (join null → pagina Assegnazioni rotta).
+      await manager
+        .getRepository(TemplateAssignment)
         .update({ operatorId: id, isCurrent: true }, { isCurrent: false });
     });
 

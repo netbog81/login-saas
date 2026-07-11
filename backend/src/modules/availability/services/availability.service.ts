@@ -13,6 +13,7 @@ import { CreateAvailabilityTemplateInput } from '../dto/create-availability-temp
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
 import { AssignTemplateToOperatorInput } from '../dto/assign-template-to-operator.input';
 import { DailyAvailability, AvailabilitySlot } from '../dto/availability-slot.output';
+import { toDateString } from '../utils/date-string.util';
 import { OperatorAvailabilityV3, DayAvailabilityV3, TimeBlockV3 } from '../dto/operator-availability-v3.type';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
@@ -238,13 +239,16 @@ export class AvailabilityService {
       assignmentsByOp.get(a.operatorId)!.push(a);
     }
 
-    // Indicizza exceptions per "operatorId|date"
-    const exceptionsByOpDate = new Map<string, AvailabilityException>();
+    // Indicizza exceptions per "operatorId|date". ARRAY: dal 2026-07 sono
+    // ammesse più eccezioni per giorno (assenze a fascia oraria).
+    const exceptionsByOpDate = new Map<string, AvailabilityException[]>();
     for (const ex of allExceptions) {
       const dateStr = ex.exceptionDate instanceof Date
         ? ex.exceptionDate.toISOString().split('T')[0]
         : String(ex.exceptionDate).split('T')[0];
-      exceptionsByOpDate.set(`${ex.operatorId}|${dateStr}`, ex);
+      const key = `${ex.operatorId}|${dateStr}`;
+      if (!exceptionsByOpDate.has(key)) exceptionsByOpDate.set(key, []);
+      exceptionsByOpDate.get(key)!.push(ex);
     }
 
     // Genera date nel range
@@ -264,29 +268,44 @@ export class AvailabilityService {
 
       for (const date of dates) {
         const dateStr = date.toISOString().split('T')[0];
-        const exception = exceptionsByOpDate.get(`${opId}|${dateStr}`);
+        const dayExceptions = exceptionsByOpDate.get(`${opId}|${dateStr}`) || [];
         const slots: AvailabilitySlot[] = [];
 
-        if (exception) {
-          // Eccezione: orario modificato o non disponibile
-          if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
-            const booked = bookingMap.get(`${opId}|${dateStr}|${exception.startTime}`) || 0;
+        // Classificazione eccezioni del giorno:
+        // - giornata intera (no orari, tipo != modified) → giorno vuoto
+        // - MODIFIED con orari → sostituisce il template
+        // - assenza a fascia (orari, tipo != modified) → sottrae dal template
+        const wholeDayBlocked = dayExceptions.some(
+          e => e.exceptionType !== 'modified' && (!e.startTime || !e.endTime),
+        );
+        const modified = dayExceptions.find(
+          e => e.exceptionType === 'modified' && e.startTime && e.endTime,
+        );
+        const blockWindows = dayExceptions.filter(
+          e => e.exceptionType !== 'modified' && e.startTime && e.endTime,
+        );
+
+        if (wholeDayBlocked) {
+          // Nessuno slot → giorno non lavorativo
+        } else if (modified) {
+          const booked = bookingMap.get(`${opId}|${dateStr}|${modified.startTime}`) || 0;
+          if (!this.overlapsAnyWindow(modified.startTime!, modified.endTime!, blockWindows)) {
             slots.push({
               operatorId: opId,
               date: dateStr,
-              startTime: exception.startTime,
-              endTime: exception.endTime,
+              startTime: modified.startTime!,
+              endTime: modified.endTime!,
               totalCapacity: maxCapacity,
               bookedCapacity: booked,
               availableCapacity: Math.max(0, maxCapacity - booked),
               isAvailable: booked < maxCapacity,
               source: 'exception',
-              sourceId: exception.id,
+              sourceId: modified.id,
             });
           }
-          // Se unavailable, nessuno slot → giorno vuoto
         } else {
-          // Applica template assignments
+          // Applica template assignments, escludendo gli slot che toccano
+          // una finestra di assenza.
           for (const assignment of assignments) {
             if (date >= assignment.validFrom && (!assignment.validUntil || date <= assignment.validUntil)) {
               const pg = assignment.patternGroup;
@@ -295,6 +314,9 @@ export class AvailabilityService {
               const patternDay = this.getPatternDay(date, assignment.patternStartDate, pg.patternDuration);
               for (const pattern of pg.patterns) {
                 if (pattern.dayInPattern === patternDay) {
+                  if (this.overlapsAnyWindow(pattern.startTime, pattern.endTime, blockWindows)) {
+                    continue;
+                  }
                   const booked = bookingMap.get(`${opId}|${dateStr}|${pattern.startTime}`) || 0;
                   slots.push({
                     operatorId: opId,
@@ -405,13 +427,16 @@ export class AvailabilityService {
       assignmentsByOp.get(a.operatorId)!.push(a);
     }
 
-    // Indicizza exceptions per "operatorId|date".
-    const exceptionsByOpDate = new Map<string, AvailabilityException>();
+    // Indicizza exceptions per "operatorId|date". ARRAY: dal 2026-07 sono
+    // ammesse più eccezioni per giorno (assenze a fascia oraria).
+    const exceptionsByOpDate = new Map<string, AvailabilityException[]>();
     for (const ex of allExceptions) {
       const dateStr = ex.exceptionDate instanceof Date
         ? ex.exceptionDate.toISOString().split('T')[0]
         : String(ex.exceptionDate).split('T')[0];
-      exceptionsByOpDate.set(`${ex.operatorId}|${dateStr}`, ex);
+      const key = `${ex.operatorId}|${dateStr}`;
+      if (!exceptionsByOpDate.has(key)) exceptionsByOpDate.set(key, []);
+      exceptionsByOpDate.get(key)!.push(ex);
     }
 
     // Genera le date del range.
@@ -430,37 +455,9 @@ export class AvailabilityService {
 
       for (const date of dates) {
         const dateStr = date.toISOString().split('T')[0];
-        const exception = exceptionsByOpDate.get(`${opId}|${dateStr}`);
+        const dayExceptions = exceptionsByOpDate.get(`${opId}|${dateStr}`) || [];
 
-        // Raccogli le fasce "lorde" del giorno (template o eccezione).
-        const rawBands: { start: number; end: number }[] = [];
-
-        if (exception) {
-          if (exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
-            rawBands.push({
-              start: this.hhmmToMinutes(exception.startTime),
-              end: this.hhmmToMinutes(exception.endTime),
-            });
-          }
-          // exceptionType 'unavailable' → nessuna fascia: giorno non lavorativo.
-        } else {
-          for (const assignment of assignments) {
-            if (date >= assignment.validFrom && (!assignment.validUntil || date <= assignment.validUntil)) {
-              const pg = assignment.patternGroup;
-              if (!pg?.patterns) continue;
-              const patternDay = this.getPatternDay(date, assignment.patternStartDate, pg.patternDuration);
-              for (const pattern of pg.patterns) {
-                if (pattern.dayInPattern === patternDay) {
-                  rawBands.push({
-                    start: this.hhmmToMinutes(pattern.startTime),
-                    end: this.hhmmToMinutes(pattern.endTime),
-                  });
-                }
-              }
-            }
-          }
-        }
-
+        const rawBands = this.computeDayRawBands(assignments, dayExceptions, date);
         if (rawBands.length === 0) continue;
 
         // Sottrai gli appuntamenti dalle fasce → free-block reali.
@@ -481,6 +478,175 @@ export class AvailabilityService {
 
       return { operatorId: opId, days };
     });
+  }
+
+  /**
+   * Fasce "lorde" di un giorno per un operatore: template correnti meno le
+   * assenze (giornata intera, MODIFIED = lavora solo nella finestra, finestre
+   * parziali che spezzano le fasce) — SENZA sottrarre gli appuntamenti.
+   */
+  private computeDayRawBands(
+    assignments: TemplateAssignment[],
+    dayExceptions: AvailabilityException[],
+    date: Date,
+  ): { start: number; end: number }[] {
+    const wholeDayBlocked = dayExceptions.some(
+      e => e.exceptionType !== 'modified' && (!e.startTime || !e.endTime),
+    );
+    const modified = dayExceptions.find(
+      e => e.exceptionType === 'modified' && e.startTime && e.endTime,
+    );
+    const blockWindows = dayExceptions.filter(
+      e => e.exceptionType !== 'modified' && e.startTime && e.endTime,
+    );
+
+    // Raccogli le fasce "lorde" del giorno (template o eccezione).
+    let rawBands: { start: number; end: number }[] = [];
+
+    if (wholeDayBlocked) {
+      // Giornata intera di assenza → nessuna fascia.
+    } else if (modified) {
+      rawBands.push({
+        start: this.hhmmToMinutes(modified.startTime!),
+        end: this.hhmmToMinutes(modified.endTime!),
+      });
+    } else {
+      for (const assignment of assignments) {
+        if (date >= assignment.validFrom && (!assignment.validUntil || date <= assignment.validUntil)) {
+          const pg = assignment.patternGroup;
+          if (!pg?.patterns) continue;
+          const patternDay = this.getPatternDay(date, assignment.patternStartDate, pg.patternDuration);
+          for (const pattern of pg.patterns) {
+            if (pattern.dayInPattern === patternDay) {
+              rawBands.push({
+                start: this.hhmmToMinutes(pattern.startTime),
+                end: this.hhmmToMinutes(pattern.endTime),
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Sottrai le finestre di assenza parziale (le fasce si spezzano
+    // attorno all'assenza: 08-13 con assenza 10-11 → 08-10 e 11-13).
+    for (const w of blockWindows) {
+      rawBands = this.subtractWindowFromBands(rawBands, {
+        start: this.hhmmToMinutes(w.startTime!),
+        end: this.hhmmToMinutes(w.endTime!),
+      });
+    }
+
+    return rawBands;
+  }
+
+  /**
+   * Fasce di disponibilità lorde per più operatori su un range di date,
+   * in batch (una manciata di query, non per-giorno). Chiave della mappa:
+   * `${operatorId}|YYYY-MM-DD`; i giorni senza fasce non compaiono.
+   *
+   * A differenza di getOperatorsAvailabilityV3 NON sottrae gli appuntamenti:
+   * serve alla revalidazione dei conflitti TEMPLATE_CHANGE, dove il predicato
+   * è "l'appuntamento ricade ancora nella disponibilità corrente?" — lo slot
+   * occupato dall'appuntamento stesso non deve contare come indisponibile.
+   */
+  async getOperatorsRawBands(
+    operatorIds: string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<Map<string, { start: number; end: number }[]>> {
+    const bands = new Map<string, { start: number; end: number }[]>();
+    if (operatorIds.length === 0) return bands;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const allAssignments = await this.assignmentRepo.find({
+      where: { operatorId: In(operatorIds), isCurrent: true },
+      relations: ['patternGroup', 'patternGroup.patterns'],
+    });
+    const allExceptions = await this.exceptionRepo.find({
+      where: { operatorId: In(operatorIds), exceptionDate: Between(start, end) },
+    });
+
+    const assignmentsByOp = new Map<string, TemplateAssignment[]>();
+    for (const a of allAssignments) {
+      if (!assignmentsByOp.has(a.operatorId)) assignmentsByOp.set(a.operatorId, []);
+      assignmentsByOp.get(a.operatorId)!.push(a);
+    }
+
+    const exceptionsByOpDate = new Map<string, AvailabilityException[]>();
+    for (const ex of allExceptions) {
+      const dateStr = ex.exceptionDate instanceof Date
+        ? ex.exceptionDate.toISOString().split('T')[0]
+        : String(ex.exceptionDate).split('T')[0];
+      const key = `${ex.operatorId}|${dateStr}`;
+      if (!exceptionsByOpDate.has(key)) exceptionsByOpDate.set(key, []);
+      exceptionsByOpDate.get(key)!.push(ex);
+    }
+
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const date = new Date(cursor);
+      const dateStr = date.toISOString().split('T')[0];
+      for (const opId of operatorIds) {
+        const dayBands = this.computeDayRawBands(
+          assignmentsByOp.get(opId) || [],
+          exceptionsByOpDate.get(`${opId}|${dateStr}`) || [],
+          date,
+        );
+        if (dayBands.length > 0) {
+          bands.set(`${opId}|${dateStr}`, dayBands);
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return bands;
+  }
+
+  /**
+   * True se [startTime, endTime] tocca una delle finestre di assenza.
+   * Confronti su orari normalizzati HH:MM (le colonne time hanno i secondi).
+   */
+  private overlapsAnyWindow(
+    startTime: string,
+    endTime: string,
+    windows: { startTime?: string; endTime?: string }[],
+  ): boolean {
+    const norm = (t: string) => {
+      const p = t.split(':');
+      return `${p[0].padStart(2, '0')}:${(p[1] ?? '00').padStart(2, '0')}`;
+    };
+    const s = norm(startTime);
+    const e = norm(endTime);
+    return windows.some(
+      w => w.startTime && w.endTime && s < norm(w.endTime) && norm(w.startTime) < e,
+    );
+  }
+
+  /**
+   * Sottrae un intervallo (minuti) da un elenco di fasce, spezzandole se
+   * l'intervallo cade in mezzo. Usato per le assenze a fascia oraria.
+   */
+  private subtractWindowFromBands(
+    bands: { start: number; end: number }[],
+    window: { start: number; end: number },
+  ): { start: number; end: number }[] {
+    const result: { start: number; end: number }[] = [];
+    for (const band of bands) {
+      if (window.end <= band.start || window.start >= band.end) {
+        result.push(band);
+        continue;
+      }
+      if (window.start > band.start) {
+        result.push({ start: band.start, end: window.start });
+      }
+      if (window.end < band.end) {
+        result.push({ start: window.end, end: band.end });
+      }
+    }
+    return result;
   }
 
   /**
@@ -609,12 +775,16 @@ export class AvailabilityService {
       { isCurrent: false }
     );
 
-    // Create new template
+    // Create new template. Le date restano stringhe YYYY-MM-DD (i campi
+    // GraphQL sono String e save() restituisce al client il valore passato
+    // qui — un Date vivo verrebbe serializzato come epoch millis; il cast è
+    // necessario perché la property è tipata Date ma a runtime, come dopo
+    // l'idratazione TypeORM, è una stringa).
     const template = this.templateRepo.create({
       ...input,
-      patternStartDate: new Date(input.patternStartDate),
-      validFrom: new Date(input.validFrom),
-      validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+      patternStartDate: toDateString(input.patternStartDate) as unknown as Date,
+      validFrom: toDateString(input.validFrom) as unknown as Date,
+      validUntil: input.validUntil ? (toDateString(input.validUntil) as unknown as Date) : undefined,
       isCurrent: true,
       version: 1
     });
@@ -817,12 +987,15 @@ export class AvailabilityService {
 
     await this.templateRepo.delete(id);
 
-    // Rebuild cache
+    // Rebuild cache. toDateString, NON .toISOString(): il valore idratato da
+    // TypeORM per le colonne `date` è una stringa → .toISOString() esplodeva
+    // con TypeError.
     await this.rebuildCache(
       template.operatorId,
-      template.validFrom.toISOString().split('T')[0],
-      template.validUntil?.toISOString().split('T')[0] ||
-        new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
+      toDateString(template.validFrom),
+      template.validUntil
+        ? toDateString(template.validUntil)
+        : new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
     );
 
     return true;
@@ -836,9 +1009,11 @@ export class AvailabilityService {
     endTime?: string;
     reason?: string;
   }): Promise<AvailabilityException> {
+    // toDateString: il campo GraphQL è String e save() restituisce il valore
+    // passato qui (un Date vivo serializzerebbe epoch millis).
     const exception = this.exceptionRepo.create({
       ...input,
-      exceptionDate: new Date(input.date),
+      exceptionDate: toDateString(input.date) as unknown as Date,
       exceptionType: input.type as any
     });
 
@@ -1147,9 +1322,11 @@ export class AvailabilityService {
     operatorIds?: string[];
     reason?: string;
   }): Promise<GroupException> {
+    // toDateString: il campo GraphQL è String e save() restituisce il valore
+    // passato qui (un Date vivo serializzerebbe epoch millis).
     const groupException = this.groupExceptionRepo.create({
       name: input.name,
-      exceptionDate: new Date(input.exceptionDate),
+      exceptionDate: toDateString(input.exceptionDate) as unknown as Date,
       exceptionType: input.exceptionType,
       appliesToAll: input.appliesToAll || false,
       reason: input.reason
@@ -1207,8 +1384,10 @@ export class AvailabilityService {
     // Delete the group exception (cascade will handle individual exceptions)
     await this.groupExceptionRepo.delete(id);
 
-    // Rebuild cache for all affected operators
-    const dateStr = groupException.exceptionDate.toISOString().split('T')[0];
+    // Rebuild cache for all affected operators. toDateString, NON
+    // .toISOString(): il valore idratato da TypeORM per le colonne `date` è
+    // una stringa → .toISOString() esplodeva con TypeError.
+    const dateStr = toDateString(groupException.exceptionDate);
     for (const exception of exceptions) {
       await this.rebuildCache(exception.operatorId, dateStr, dateStr);
     }

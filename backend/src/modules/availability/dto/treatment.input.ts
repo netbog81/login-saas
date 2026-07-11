@@ -67,6 +67,66 @@ export class RecordPaymentInput {
   @IsNumber()
   @Min(0, { message: 'L\'importo non può essere negativo' })
   amount?: number;
+
+  /**
+   * PARTE 4.3 — Solo trattamenti sconto FE (caso semplice): voucher_fe usato
+   * per pagare. Per lo split multi-riga usare `tenderLines`.
+   */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID('4', { message: 'ID voucher FE non valido' })
+  voucherFeId?: string;
+
+  /**
+   * PARTE 2/4 — Split multi-riga: N righe di tender (metodo accounting,
+   * voucher accounting tipo 1/2, o voucher_fe per scontoFE). Se presente, la
+   * somma degli `amount` deve coincidere con il totale incassato. Quando
+   * assente si usa il singolo `paymentMethod` (retro-compat "Fattura e incassa").
+   */
+  @Field(() => [TenderLineInput], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TenderLineInput)
+  tenderLines?: TenderLineInput[];
+
+  /** True per correggere/sostituire un pagamento già registrato. */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  replaceExisting?: boolean;
+}
+
+/** Una riga di tender di un incasso split (PARTE 2/4). */
+@InputType()
+export class TenderLineInput {
+  /** 'method' | 'voucher' | 'voucher_fe' */
+  @Field()
+  @IsString()
+  kind: string;
+
+  /** Code metodo accounting (se kind='method'). */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  paymentMethodId?: string;
+
+  /** Id voucher accounting tipo 1/2 (se kind='voucher'). */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID('4')
+  voucherId?: string;
+
+  /** Id voucher_fe clinico (se kind='voucher_fe', solo scontoFE). */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID('4')
+  voucherFeId?: string;
+
+  @Field(() => Float)
+  @IsNumber()
+  @Min(0)
+  amount: number;
 }
 
 /**

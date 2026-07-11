@@ -17,9 +17,11 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   HostListener,
+  ViewChild,
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { Subject, combineLatest, forkJoin, firstValueFrom } from 'rxjs';
 import { takeUntil, debounceTime } from 'rxjs/operators';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
@@ -30,12 +32,17 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 // Componente nuovo v3
 import { CalendarV3ToolbarComponent } from '../components/calendar-toolbar/calendar-v3-toolbar.component';
 
 // Componente nuovo v3
 import { OperatorGridV3Component } from '../components/operator-grid/operator-grid-v3.component';
+
+// Copia/incolla appuntamento (v3)
+import { AppointmentPasteBarComponent } from '../components/appointment-paste-bar/appointment-paste-bar.component';
+import { AppointmentClipboardService, PasteTargetSlot } from '../services/appointment-clipboard.service';
 
 // Componenti riusati da calendar-v2 (Layer 1 - Dumb)
 import { CalendarV2SidebarComponent } from '../../calendar-v2/components/calendar-sidebar/calendar-v2-sidebar.component';
@@ -62,6 +69,10 @@ import { CalendarV2GridService } from '../../calendar-v2/services/calendar-v2-gr
 import { CalendarV3DataService } from '../services/calendar-v3-data.service';
 import { OperatorService } from '../../../services/operator.service';
 import { SettingsService } from '../../../services/settings.service';
+import { PermissionsService } from '../../../core/services/permissions.service';
+import { OidcAuthService } from '../../../core/auth/oidc-auth.service';
+import { OperatorWorkspaceStateService } from '../../operators-new/services/operator-workspace-state.service';
+import { InstructorWorkspaceStateService } from '../../instructors/services/instructor-workspace-state.service';
 
 // Models e util riusati da calendar-v2
 import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, EventClickEvent, DragMoveEvent, AvailableSlotPosition, SearchFilters } from '../../calendar-v2/models/calendar-v2.model';
@@ -83,15 +94,18 @@ import { TreatmentService } from '../../../services/treatment.service';
     MatSidenavModule,
     MatIconModule,
     MatButtonModule,
+    MatSnackBarModule,
     CalendarV3ToolbarComponent,
     CalendarV2SidebarComponent,
     OperatorGridV3Component,
     GymGridComponent,
+    AppointmentPasteBarComponent,
   ],
   template: `
     <div class="calendar-v3">
       <!-- Barra unica: navigazione date + controlli + toggle vista -->
       <app-calendar-v3-toolbar
+        [readOnly]="readOnly"
         [dateLabel]="currentDateLabel"
         [currentDate]="stateService.currentDate"
         [viewMode]="config.viewMode"
@@ -101,6 +115,8 @@ import { TreatmentService } from '../../../services/treatment.service';
         [showWorkingHoursOnly]="config.showWorkingHoursOnly"
         [showWeekend]="config.showWeekend"
         [compactMode]="config.compactMode"
+        [copyMode]="clipboard.isActive"
+        (toggleCopyMode)="onToggleCopyMode()"
         (prev)="onNavigatePrev()"
         (next)="onNavigateNext()"
         (today)="onNavigateToday()"
@@ -126,8 +142,9 @@ import { TreatmentService } from '../../../services/treatment.service';
           </div>
         }
 
-        <!-- Sidebar operatori -->
-        @if (config.viewMode === 'operators') {
+        <!-- Sidebar operatori: nascosta in sola lettura (l'utente è bloccato
+             sul proprio calendario, niente selezione operatori). -->
+        @if (config.viewMode === 'operators' && !readOnly) {
           <app-calendar-v2-sidebar
             [operators]="stateService.operators"
             [treatments]="treatments"
@@ -150,6 +167,8 @@ import { TreatmentService } from '../../../services/treatment.service';
         <div class="calendar-v3-main">
           @if (config.viewMode === 'operators' && operatorGridData) {
             <app-operator-grid-v3
+              #operatorGrid
+              [readOnly]="readOnly"
               [gridData]="operatorGridData"
               [columnWidth]="config.compactMode ? 0 : (config.viewType === 'weekly' ? 120 : 180)"
               [showDateInHeader]="config.viewType === 'weekly'"
@@ -160,14 +179,28 @@ import { TreatmentService } from '../../../services/treatment.service';
               [availableSlots]="availableSlots"
               [highlightedAppointmentId]="highlightedAppointmentId"
               [showUnavailablePattern]="showUnavailableCellsBackground"
+              [selectionMode]="clipboard.isSelecting"
+              [pasteMode]="clipboard.isPasting"
               (cellDblClick)="onCellDblClick($event)"
               (availableSlotClick)="onAvailableSlotDblClick($event)"
               (availableSlotDblClick)="onAvailableSlotDblClick($event)"
               (eventClick)="onEventClick($event)"
               (eventDblClick)="onEventDblClick($event)"
               (dragMove)="onDragMove($event)"
-              (resizeEnd)="onResizeEnd($event)">
+              (resizeEnd)="onResizeEnd($event)"
+              (pasteOnSlot)="onPasteOnSlot($event)">
             </app-operator-grid-v3>
+          }
+
+          <!-- Banner copia/incolla: visibile durante selezione o incollo. -->
+          @if (clipboard.isActive) {
+            <app-appointment-paste-bar
+              [phase]="clipboard.phase"
+              [summary]="clipboard.getSummary()"
+              (cancel)="onCancelCopy()"
+              (dragStarted)="onPasteDragStarted()"
+              (dragEnded)="onPasteDragEnded($event)">
+            </app-appointment-paste-bar>
           }
 
           @if (config.viewMode === 'gyms') {
@@ -241,9 +274,34 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private instrumentService = inject(InstrumentService);
   private gymRoomService = inject(GymRoomService);
   private overlay = inject(Overlay);
+  private snackBar = inject(MatSnackBar);
+  private permissions = inject(PermissionsService);
+  private oidcAuth = inject(OidcAuthService);
+  private router = inject(Router);
+  private operatorWorkspaceState = inject(OperatorWorkspaceStateService);
+  private instructorWorkspaceState = inject(InstructorWorkspaceStateService);
+  /** Stato del flusso copia/incolla appuntamento (pubblico: usato nel template). */
+  clipboard = inject(AppointmentClipboardService);
+
+  /** Riferimento alla griglia operatori, per l'hit-test del drop in pasteMode. */
+  @ViewChild('operatorGrid') operatorGrid?: OperatorGridV3Component;
 
   // State
   loading = false;
+
+  /**
+   * Modalità SOLA LETTURA del proprio calendario. Attiva per operatore /
+   * medico / istruttore: vedono solo il proprio calendario, senza poter
+   * creare/spostare/modificare appuntamenti. Segreteria/admin → false (uso pieno).
+   */
+  readOnly = false;
+  /** operatorId del proprio record Operator (read-only): calendario bloccato su di lui. */
+  private selfOperatorId: string | null = null;
+  /** true se l'utente read-only è un istruttore palestra (vista 'gyms' forzata). */
+  private selfIsGymInstructor = false;
+  /** Route della scheda appuntamenti su cui rimbalzare al doppio click (read-only). */
+  private appointmentsRoute = '/operatori-new/appuntamenti';
+
   config: CalendarV2Config = this.stateService.config;
   visibleDates: string[] = [];
   appointmentCount = 0;
@@ -307,11 +365,59 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private gymSummaryEvent: GymSlotClickEvent | null = null;
   private static readonly GYM_CLICK_DEBOUNCE_MS = 250;
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
+    await this.resolveReadOnlyMode();
     this.loadInitialData();
     this.subscribeToState();
     this.startCurrentTimeUpdates();
     this.subscribeToSse();
+  }
+
+  /**
+   * Decide se il calendario va in modalità sola lettura "proprio calendario".
+   * Operatore/medico/istruttore → read-only sul proprio operatore; gli
+   * istruttori in vista palestra. Segreteria/admin → uso pieno.
+   *
+   * Carica il profilo (myProfile.operatorId) per sapere QUALE operatore è
+   * l'utente. Se manca l'operatorId, resta in modalità piena per non lasciare
+   * un calendario vuoto (il backend resta comunque la fonte di verità).
+   */
+  private async resolveReadOnlyMode(): Promise<void> {
+    const fullAccess = this.oidcAuth.hasRole([
+      'segreteria', 'admin', 'amministratore', 'superadmin',
+    ]);
+    if (fullAccess) {
+      this.readOnly = false;
+      return;
+    }
+
+    const selfRole = this.oidcAuth.hasRole(['operatore', 'medico', 'istruttore']);
+    if (!selfRole) {
+      this.readOnly = false;
+      return;
+    }
+
+    const profile = await this.permissions.ensureLoaded().catch(() => null);
+    this.selfOperatorId = profile?.operatorId ?? null;
+
+    // Senza operatorId non possiamo filtrare il "proprio" calendario: meglio
+    // non attivare il read-only (evita una vista vuota e fuorviante).
+    if (!this.selfOperatorId) {
+      this.readOnly = false;
+      return;
+    }
+
+    this.readOnly = true;
+    this.selfIsGymInstructor = this.oidcAuth.hasRole(['istruttore']);
+    this.appointmentsRoute = this.selfIsGymInstructor
+      ? '/istruttori/appuntamenti'
+      : '/operatori-new/appuntamenti';
+
+    // L'istruttore vede il proprio calendario in modalità palestra.
+    if (this.selfIsGymInstructor) {
+      this.stateService.updateConfig({ viewMode: 'gyms' });
+      this.config = this.stateService.config;
+    }
   }
 
   ngOnDestroy(): void {
@@ -320,6 +426,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     if (this.currentTimeInterval) clearInterval(this.currentTimeInterval);
     if (this.gymSlotClickTimer) clearTimeout(this.gymSlotClickTimer);
     this.closeGymSummary();
+    // Non lasciare un flusso copia/incolla pendente uscendo dalla pagina.
+    this.clipboard.clear();
   }
 
   // ==================== INITIALIZATION ====================
@@ -415,15 +523,18 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         //   forza la selezione. Se "seleziona tutti" è ON e c'è una categoria,
         //   si selezionano solo gli operatori di quella categoria.
         const freshSelected = this.operatorsSelectedOnLoad && matchesDefaultCategory(op);
+        // Read-only: il calendario è bloccato sul PROPRIO operatore — solo lui
+        // selezionato, ignorando default/selezione salvata.
+        const selected = this.readOnly
+          ? op.id === this.selfOperatorId
+          : (gymHidden ? false : (savedSelection ? savedSelection.has(op.id) : freshSelected));
         return {
           id: op.id,
           operatorId: op.id,
           name: `${op.name}${op.surname ? ' ' + op.surname : ''}`,
           color: op.color || '#667eea',
           active: true,
-          selected: gymHidden
-            ? false
-            : (savedSelection ? savedSelection.has(op.id) : freshSelected),
+          selected,
           hasTemplate: true,
           macroCategory: op.macroCategory,
         };
@@ -431,8 +542,12 @@ export class CalendarV3Container implements OnInit, OnDestroy {
 
       this.stateService.setOperators(calendarOperators);
       // Persiste subito lo stato iniziale (e ripulisce un'eventuale
-      // selezione stantia se le impostazioni erano cambiate).
-      this.saveOperatorSelection(calendarOperators);
+      // selezione stantia se le impostazioni erano cambiate). In read-only la
+      // selezione è forzata sul proprio operatore: non la persistiamo, così
+      // non inquina lo stato di sessione di un eventuale account pieno.
+      if (!this.readOnly) {
+        this.saveOperatorSelection(calendarOperators);
+      }
       this.operatorSelectionRestored = true;
 
       this.allUsers = operators.map(op => ({
@@ -612,6 +727,13 @@ export class CalendarV3Container implements OnInit, OnDestroy {
    */
   @HostListener('document:keydown', ['$event'])
   onKeyboardShortcut(event: KeyboardEvent): void {
+    // ESC annulla il flusso copia/incolla in corso (selezione o incollo).
+    if (event.key === 'Escape' && this.clipboard.isActive) {
+      event.preventDefault();
+      this.onCancelCopy();
+      return;
+    }
+
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
     const target = event.target as HTMLElement | null;
@@ -931,6 +1053,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   }
 
   onAvailableSlotDblClick(slot: AvailableSlotPosition): void {
+    if (this.readOnly) return; // sola lettura: niente prenotazione su slot libero
     const endMinutes = this.timeToMinutes(slot.startTime) + this.searchFilters.duration;
     this.openEventDialog({
       defaultDate: slot.date,
@@ -952,6 +1075,110 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
+  // ==================== COPIA / INCOLLA APPUNTAMENTO ====================
+
+  /** Pulsante toolbar: avvia il flusso copia (o lo annulla se gia' attivo). */
+  onToggleCopyMode(): void {
+    if (this.readOnly) return; // sola lettura: copia/incolla disabilitato
+    if (this.clipboard.isActive) {
+      this.onCancelCopy();
+    } else {
+      this.clipboard.startSelecting();
+      this.snackBar.open('Clicca l\'appuntamento da copiare', 'Annulla', { duration: 4000 })
+        .onAction().pipe(takeUntil(this.destroy$)).subscribe(() => this.onCancelCopy());
+      this.cdr.markForCheck();
+    }
+  }
+
+  /** Annulla il flusso copia/incolla e ripristina gli slot normali. */
+  onCancelCopy(): void {
+    if (!this.clipboard.isActive) return;
+    this.clipboard.clear();
+    this.refreshSlotsAfterCopyChange();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Copia l'appuntamento ed entra in fase incollo: ricalcola gli slot
+   * compatibili (durata + strumenti) su tutti i fisioterapisti idonei.
+   * Usato sia dal click in modalita' selezione, sia dal pulsante "Copia" del
+   * dialog di modifica.
+   */
+  private startPaste(appointment: Appointment): void {
+    this.clipboard.copy(appointment);
+    this.refreshSlotsAfterCopyChange();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Click su uno slot (o drop della chip) in fase incollo: crea il nuovo
+   * appuntamento copiando tutto tranne data/ora/operatore, con snackbar Undo.
+   */
+  async onPasteOnSlot(slot: PasteTargetSlot): Promise<void> {
+    const input = this.clipboard.buildCreateInput(slot);
+    if (!input) return;
+
+    // Esci dalla modalita' incollo subito: evita doppi incolli accidentali.
+    this.clipboard.clear();
+    this.refreshSlotsAfterCopyChange();
+
+    try {
+      const created = await firstValueFrom(this.appointmentService.createAppointment(input));
+      this.reloadCurrentView();
+      this.offerUndo(String(created.id));
+    } catch (err: any) {
+      const msg = err?.graphQLErrors?.[0]?.message || err?.message || 'Errore durante la duplicazione';
+      if (typeof msg === 'string' && msg.includes('APPOINTMENT_OUTSIDE_AVAILABILITY')) {
+        this.snackBar.open('Lo slot scelto non è più disponibile.', 'OK', { duration: 4000 });
+      } else {
+        this.snackBar.open(msg, 'OK', { duration: 5000 });
+      }
+      this.reloadCurrentView();
+    }
+  }
+
+  /** Snackbar "Appuntamento duplicato" con azione Annulla (hard delete). */
+  private offerUndo(newAppointmentId: string): void {
+    this.snackBar.open('Appuntamento duplicato', 'Annulla', { duration: 6000 })
+      .onAction().pipe(takeUntil(this.destroy$)).subscribe(async () => {
+        try {
+          await firstValueFrom(this.appointmentService.deleteAppointment(newAppointmentId));
+          this.reloadCurrentView();
+        } catch {
+          this.snackBar.open('Impossibile annullare la duplicazione', 'OK', { duration: 4000 });
+        }
+      });
+  }
+
+  /** Inizio drag della chip dal banner: nessuna azione (gli slot sono gia' evidenziati). */
+  onPasteDragStarted(): void {
+    // no-op: gli slot bersaglio sono gia' evidenziati in pasteMode.
+  }
+
+  /** Fine drag della chip: hit-test dello slot sotto il punto di rilascio. */
+  onPasteDragEnded(point: { x: number; y: number }): void {
+    if (!this.clipboard.isPasting) return;
+    const slot = this.operatorGrid?.resolveSlotAtPoint(point.x, point.y);
+    if (slot) {
+      this.onPasteOnSlot(slot);
+    }
+    // Drop fuori da uno slot valido → non fa nulla, il banner resta aperto.
+  }
+
+  /**
+   * Ricalcola gli slot dopo un cambio di fase copia/incolla.
+   * - In pasteMode: cerca con i vincoli dell'appuntamento copiato.
+   * - Altrimenti: ripristina la ricerca normale (se abilitata) o svuota.
+   */
+  private refreshSlotsAfterCopyChange(): void {
+    if (this.clipboard.isPasting || this.slotSearchEnabled) {
+      this.searchAvailableSlots();
+    } else {
+      this.availableSlots = [];
+      this.cdr.markForCheck();
+    }
+  }
+
   private searchAvailableSlots(): void {
     if (!this.operatorGridData) return;
 
@@ -965,12 +1192,29 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     const operatorIds = operators.map(o => o.operatorId);
     const operatorMap = new Map(operators.map(o => [o.operatorId, o]));
 
-    const { customInstrumentSlots, instrumentOrderMatters } = this.buildInstrumentSlotsFromFilters();
+    // In modalita' incollo i vincoli vengono dall'appuntamento copiato
+    // (durata + strumenti con offset), non dai filtri sidebar: cosi' restano
+    // evidenziati solo gli slot dove l'appuntamento entra davvero, su QUALSIASI
+    // fisioterapista compatibile.
+    let duration: number;
+    let customInstrumentSlots: { instrumentCategoryId: string; startOffsetMinutes: number; endOffsetMinutes: number }[] | undefined;
+    let instrumentOrderMatters: boolean | undefined;
+    if (this.clipboard.isPasting) {
+      duration = this.clipboard.getDurationMinutes();
+      const slots = this.clipboard.getInstrumentSlots();
+      customInstrumentSlots = slots.length ? slots : undefined;
+      instrumentOrderMatters = this.clipboard.getInstrumentOrderMatters();
+    } else {
+      duration = this.searchFilters.duration;
+      const built = this.buildInstrumentSlotsFromFilters();
+      customInstrumentSlots = built.customInstrumentSlots;
+      instrumentOrderMatters = built.instrumentOrderMatters;
+    }
 
     this.operatorService.getPhysiotherapistAvailableSlotsBatch(
       operatorIds,
       this.visibleDates,
-      this.searchFilters.duration,
+      duration,
       customInstrumentSlots,
       instrumentOrderMatters,
     ).pipe(takeUntil(this.destroy$)).subscribe({
@@ -1197,6 +1441,24 @@ export class CalendarV3Container implements OnInit, OnDestroy {
    * (che invece apre il riquadro riassunto).
    */
   onGymSlotClick(event: GymSlotClickEvent): void {
+    // Read-only (istruttore): singolo click → riepilogo slot in sola lettura;
+    // doppio click → scheda appuntamenti istruttore sul giorno cliccato.
+    // Nessuna prenotazione possibile.
+    if (this.readOnly) {
+      if (this.gymSlotClickTimer) {
+        clearTimeout(this.gymSlotClickTimer);
+        this.gymSlotClickTimer = null;
+        const day = this.parseDateString(event.date);
+        if (day) this.instructorWorkspaceState.setSelectedDate(day);
+        this.router.navigateByUrl(this.appointmentsRoute);
+        return;
+      }
+      this.gymSlotClickTimer = setTimeout(() => {
+        this.gymSlotClickTimer = null;
+        this.openGymSlotSummaryOverlay(event);
+      }, CalendarV3Container.GYM_CLICK_DEBOUNCE_MS);
+      return;
+    }
     // Discriminazione singolo/doppio click sul SOLO stream `slotClick`, che la
     // griglia emette per QUALSIASI slot (anche pieno/non disponibile). Lo stream
     // `slotDblClick` invece e' filtrato dalla griglia (`!isAvailable`), quindi
@@ -1211,8 +1473,33 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     }
     this.gymSlotClickTimer = setTimeout(() => {
       this.gymSlotClickTimer = null;
+      // Blocco inserimento sugli slot non prenotabili: palestra chiusa
+      // (`isClosed`, sfondo grigio) o nessun operatore disponibile (slot
+      // scoperto da eccezione "modifica orari": `operator` assente). La griglia
+      // emette `slotClick` per QUALSIASI slot, quindi il filtro va qui.
+      // Lo slot PIENO (operatore presente, capienza esaurita) resta cliccabile
+      // come prima — l'eventuale overbooking lo gestisce il dialog.
+      const info = event.slotInfo;
+      if (!info || info.isClosed || !info.operator) {
+        this.snackBar.open(
+          info?.isClosed
+            ? 'Palestra chiusa in questo orario: impossibile prenotare.'
+            : 'Nessun operatore disponibile in questo slot: impossibile prenotare.',
+          'OK',
+          { duration: 3500 },
+        );
+        return;
+      }
       this.openGymAppointmentDialog(event);
     }, CalendarV3Container.GYM_CLICK_DEBOUNCE_MS);
+  }
+
+  /** Parsa una data 'YYYY-MM-DD' a mezzanotte locale, o null se invalida. */
+  private parseDateString(dateStr: string | undefined): Date | null {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
 
   /**
@@ -1316,6 +1603,11 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   /** Gestisce le azioni emesse dal riquadro riassunto. */
   private handleGymSummaryAction(action: GymSlotSummaryV3Action): void {
     const event = this.gymSummaryEvent;
+    // Sola lettura: nessuna azione mutante dal riepilogo, solo chiusura.
+    if (this.readOnly && action.type !== 'close') {
+      this.closeGymSummary();
+      return;
+    }
     switch (action.type) {
       case 'add':
         this.closeGymSummary();
@@ -1375,6 +1667,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   // ==================== GRID INTERACTIONS ====================
 
   onCellDblClick(event: CellClickEvent): void {
+    if (this.readOnly) return; // sola lettura: niente creazione su cella vuota
     const operator = this.stateService.operators.find(o => o.operatorId === event.operatorId);
     const isGymInstructor = operator?.macroCategory === 'gym_instructor';
 
@@ -1404,6 +1697,22 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   }
 
   onEventClick(event: EventClickEvent): void {
+    // Read-only: click singolo → dettaglio appuntamento in sola lettura.
+    if (this.readOnly) {
+      this.openEventDialog({
+        appointment: event.appointment,
+        users: this.allUsers,
+        patients: this.patients,
+        readOnly: true,
+      });
+      return;
+    }
+    // In modalita' selezione (flusso copia avviato da toolbar) il click copia
+    // l'appuntamento ed entra in fase incollo, invece di aprirne i dettagli.
+    if (this.clipboard.isSelecting) {
+      this.startPaste(event.appointment);
+      return;
+    }
     this.openEventDialog({
       appointment: event.appointment,
       users: this.allUsers,
@@ -1412,6 +1721,12 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   }
 
   onEventDblClick(event: EventClickEvent): void {
+    // Read-only: doppio click → scheda appuntamenti dell'utente, posizionata
+    // sul giorno dell'appuntamento cliccato.
+    if (this.readOnly) {
+      this.goToAppointmentsScheduleForDay(event.appointment);
+      return;
+    }
     this.openEventDialog({
       appointment: event.appointment,
       users: this.allUsers,
@@ -1419,7 +1734,35 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Read-only: porta l'utente alla propria scheda appuntamenti
+   * (/operatori-new/appuntamenti o /istruttori/appuntamenti) posizionata sul
+   * giorno dell'appuntamento. La data è propagata via lo state service del
+   * workspace (singleton root), che il container di destinazione legge.
+   */
+  private goToAppointmentsScheduleForDay(appointment: Appointment): void {
+    const day = this.parseAppointmentDay(appointment);
+    if (day) {
+      if (this.selfIsGymInstructor) {
+        this.instructorWorkspaceState.setSelectedDate(day);
+      } else {
+        this.operatorWorkspaceState.setSelectedDate(day);
+      }
+    }
+    this.router.navigateByUrl(this.appointmentsRoute);
+  }
+
+  /** Estrae la data (mezzanotte locale) da un appuntamento, se valorizzata. */
+  private parseAppointmentDay(appointment: Appointment): Date | null {
+    const raw = (appointment as any)?.date || (appointment as any)?.appointmentDate;
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
   async onResizeEnd(event: { appointmentId: string; newEndTime: string }): Promise<void> {
+    if (this.readOnly) { this.reloadCurrentView(); return; } // sola lettura: annulla il resize
     // Per il resize serve l'operatore/data/start: li recupero dall'evento in griglia.
     const posEvent = this.findPositionedEvent(event.appointmentId);
     if (posEvent) {
@@ -1454,6 +1797,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   }
 
   async onDragMove(event: DragMoveEvent): Promise<void> {
+    if (this.readOnly) { this.reloadCurrentView(); return; } // sola lettura: annulla lo spostamento
     // Escludi l'intervallo originale dell'appuntamento dal calcolo
     // disponibilita': sta solo cambiando posizione, lo spazio che lasciava
     // libero non deve generare un falso positivo. Vale solo se resta sullo
@@ -1525,6 +1869,13 @@ export class CalendarV3Container implements OnInit, OnDestroy {
 
     dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(async (result: EventMatDialogResult | undefined) => {
       if (!result || result.action === 'cancel') return;
+
+      // "Copia appuntamento" dal dialog: chiude il dialog e avvia il flusso
+      // incollo con l'appuntamento mostrato.
+      if (result.action === 'copy' && result.appointment) {
+        this.startPaste(result.appointment);
+        return;
+      }
 
       if (result.action === 'save' && result.appointment) {
         await this.saveAppointment(result);

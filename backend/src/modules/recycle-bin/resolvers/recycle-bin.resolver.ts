@@ -30,6 +30,8 @@ import { PatientEvaluation } from '../../availability/entities/patient-evaluatio
 import { Operator } from '../../availability/entities/operator.entity';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { SubjectLoader } from '../../registry/decorators/subject-loader.decorator';
+import { RegistrySubjectLoader } from '../../registry/registry-subject.loader';
 @Resolver()
 export class RecycleBinResolver {
   constructor(
@@ -69,6 +71,7 @@ export class RecycleBinResolver {
   async listRecycleBin(
     @Args('filter', { nullable: true }) filter: RecycleBinFilterInput | undefined,
     @CurrentUser() user: CurrentUserContext,
+    @SubjectLoader() subjectLoader: RegistrySubjectLoader,
   ): Promise<RecycleBinItem[]> {
     const effectiveFilter = filter ?? {};
     const isAdmin = await this.hasPermission(user, 'recycle_bin_restore_any');
@@ -76,7 +79,7 @@ export class RecycleBinResolver {
       const myAppUserId = await this.resolveAppUserId(user);
       effectiveFilter.ownerUserId = myAppUserId; // forza al proprio
     }
-    return this.recycleBinService.list(effectiveFilter);
+    return this.recycleBinService.list(effectiveFilter, subjectLoader);
   }
 
   /**

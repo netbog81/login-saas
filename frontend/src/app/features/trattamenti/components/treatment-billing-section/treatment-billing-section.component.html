@@ -4,6 +4,9 @@
     <span class="status-badge" [class]="'status-badge--' + statusModifier">
       {{ statusLabel }}
     </span>
+    <span *ngIf="showSentAt" class="sent-at">
+      Inviato il {{ treatment.readyForBillingAt | date:'dd/MM/yyyy HH:mm' }}
+    </span>
     <span *ngIf="showAmendmentBadge" class="amendment-badge"
           [title]="'Trattamento modificato dopo l\'invio'">
       Rev. {{ treatment.amendmentRevision }}
@@ -19,7 +22,8 @@
         {{ treatment.billingAlertAt | date:'dd/MM/yyyy HH:mm' }}
       </p>
     </div>
-    <button type="button"
+    <button *ngIf="actionsVisible"
+            type="button"
             class="btn btn-sm btn-warning"
             (click)="onDismissAlert()">
       Letto
@@ -52,7 +56,7 @@
     <div class="billing-alert__content">
       <p class="billing-alert__message">{{ sentWarningMessage }}</p>
     </div>
-    <button *ngIf="resendVisible"
+    <button *ngIf="resendVisible && actionsVisible"
             type="button"
             class="btn btn-sm btn-warning"
             [disabled]="resendDisabled"
@@ -79,11 +83,61 @@
         </span>
       </p>
     </div>
-    <button type="button"
+    <button *ngIf="actionsVisible"
+            type="button"
             class="btn btn-sm"
             (click)="onDismissReturnBanner()">
       Letto
     </button>
+  </div>
+
+  <!-- Banner "in attesa / bloccata": il trattamento è stato inviato ad
+       accounting ma la fattura non è ancora emessa. Se accounting ha mandato un
+       MOTIVO reale (billable.invoice-blocked → billingHoldReason) lo mostriamo;
+       altrimenti testo generico. Il pulsante "Verifica risoluzione e riprova"
+       ri-tenta dopo che l'operatore ha risolto la causa (es. indirizzo). -->
+  <div *ngIf="awaitingFiscalConfig"
+       class="billing-alert billing-alert--awaiting-fiscal"
+       [class.billing-alert--blocked]="treatment.billingHoldReason">
+    <div class="billing-alert__icon" aria-hidden="true">
+      {{ treatment.billingHoldReason ? '🔒' : '⏳' }}
+    </div>
+    <div class="billing-alert__content">
+      <p class="billing-alert__title">{{ awaitingTitle }}</p>
+      <p class="billing-alert__message">{{ awaitingMessage }}</p>
+      <p *ngIf="treatment.billingHoldReasonAt" class="billing-alert__timestamp">
+        Rilevato il {{ treatment.billingHoldReasonAt | date:'dd/MM/yyyy HH:mm' }}
+      </p>
+    </div>
+    <button *ngIf="retryInvoiceVisible && actionsVisible"
+            type="button"
+            class="btn btn-sm btn-warning"
+            [disabled]="retryInvoiceDisabled || retryInvoiceInFlight"
+            [title]="retryInvoiceDisabled ? (retryInvoiceDisabledReason || '') : 'Dopo aver risolto il problema (es. aggiunto l\'indirizzo del paziente), clicca per far ri-tentare l\'emissione della fattura.'"
+            (click)="onRetryInvoice()">
+      {{ retryInvoiceInFlight ? 'Verifica in corso…' : 'Verifica risoluzione e riprova' }}
+    </button>
+  </div>
+
+  <!-- Evidenza "Fatturato": la fattura è stata EMESSA da accounting. Mostra il
+       totale REALE (marca da bollo inclusa) su cui si registra l'incasso. -->
+  <div *ngIf="isInvoiced" class="invoiced-highlight">
+    <span class="invoiced-highlight__badge">✓ Fatturato</span>
+    <span class="invoiced-highlight__total">
+      Totale fattura: <strong>{{ displayTotal | currency:'EUR' }}</strong>
+    </span>
+    <span *ngIf="treatment.isPaid" class="invoiced-highlight__paid">— Incassato</span>
+  </div>
+
+  <!-- Fattura cumulativa: il documento copre più trattamenti. La quota di
+       questo trattamento è distinta dal totale documento (su cui si incassa). -->
+  <div *ngIf="isInvoiced && isMultiInvoice" class="invoiced-highlight" style="background:#f3e5f5;">
+    <span class="invoiced-highlight__total">
+      <strong>Fattura cumulativa</strong>: {{ treatment.accountingDocumentTreatmentCount }} trattamenti
+      · quota di questo trattamento
+      <strong>{{ (treatment.accountingTreatmentLinesAmount ?? treatment.price ?? 0) | currency:'EUR' }}</strong>
+      · l'incasso salda l'intero documento per tutti i trattamenti coperti.
+    </span>
   </div>
 
   <!-- Snapshot fattura emessa -->
@@ -99,11 +153,14 @@
       <dt>Data emissione</dt>
       <dd>{{ (treatment.accountingInvoiceIssuedAt || treatment.invoicedToPatientAt) | date:'dd/MM/yyyy' }}</dd>
 
-      <dt *ngIf="treatment.accountingInvoiceUrl">PDF</dt>
-      <dd *ngIf="treatment.accountingInvoiceUrl">
-        <a [href]="treatment.accountingInvoiceUrl" target="_blank" rel="noopener">
-          Apri documento
-        </a>
+      <dt *ngIf="canPrintInvoice">PDF</dt>
+      <dd *ngIf="canPrintInvoice">
+        <button type="button"
+                class="btn btn-sm"
+                title="Apre il PDF della fattura da stampare"
+                (click)="onPrintInvoice()">
+          Stampa fattura
+        </button>
       </dd>
     </dl>
   </div>
@@ -144,13 +201,28 @@
        stato clinico del trattamento (chiusura, riapertura clinica, ecc.
        sono in altre sezioni del dettaglio). Naming esplicito per
        evitare confusione con le azioni cliniche omonime. -->
-  <div class="billing-actions">
-    <button type="button"
+  <div class="billing-actions" *ngIf="actionsVisible">
+    <!-- Passo 1 — "Fattura": chiede ad accounting di EMETTERE la fattura
+         (totale vero con marca da bollo). NON registra alcun pagamento.
+         Si nasconde una volta che la fattura è stata emessa. -->
+    <button *ngIf="fatturaVisible"
+            type="button"
+            class="btn btn-primary"
+            [disabled]="fatturaDisabled || fatturaInFlight"
+            [title]="fatturaDisabled ? (fatturaDisabledReason || '') : 'Invia ad accounting per emettere la fattura (con marca da bollo). Il pagamento si registra dopo, con \'Incassa\'.'"
+            (click)="onFattura()">
+      {{ fatturaInFlight ? 'Invio in corso…' : 'Fattura' }}
+    </button>
+
+    <!-- Passo 2 — "Incassa": registra il pagamento sul TOTALE CONFERMATO da
+         accounting. Visibile solo dopo l'emissione fattura, se non già pagato. -->
+    <button *ngIf="incassaVisible"
+            type="button"
             class="btn btn-success"
-            [disabled]="immediateInvoiceDisabled"
-            [title]="immediateInvoiceDisabled ? (immediateInvoiceDisabledReason || '') : 'Registra l\'incasso e invia subito ad accounting per emettere fattura automatica'"
-            (click)="onImmediateInvoice()">
-      Fattura e incassa
+            [disabled]="incassaDisabled || incassaInFlight"
+            [title]="incassaDisabled ? (incassaDisabledReason || '') : 'Registra l\'incasso sul totale confermato della fattura (' + (displayTotal | currency:'EUR') + ').'"
+            (click)="onIncassa()">
+      {{ incassaInFlight ? 'Registrazione…' : 'Incassa' }}
     </button>
 
     <button type="button"

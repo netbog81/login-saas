@@ -147,6 +147,17 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
           <button mat-stroked-button type="button" (click)="setToday()">Oggi</button>
           <button mat-stroked-button type="button" (click)="setThisWeek()">Settimana</button>
           <button mat-stroked-button type="button" (click)="setThisMonth()">Mese</button>
+          <button mat-stroked-button type="button" (click)="setLastMonths(2)">Ultimi 2 mesi</button>
+          <button mat-stroked-button type="button" (click)="setLastMonths(3)">Ultimi 3 mesi</button>
+          <!-- "Tutti i trattamenti": azzera l'intervallo date per mostrare lo
+               storico completo (del paziente se selezionato, altrimenti di
+               tutti — la lista è paginata quindi il volume non è un problema). -->
+          <button mat-flat-button color="primary" type="button"
+                  (click)="showAllForPatient()"
+                  matTooltip="Mostra tutti i trattamenti, senza filtro di data">
+            <mat-icon>history</mat-icon>
+            Tutti i trattamenti
+          </button>
         </div>
 
         @if (canSelectOperator) {
@@ -190,7 +201,7 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
       @if (showBillingFlags) {
         <div class="filters-row filters-row-wrap filters-row-tight">
           <mat-form-field appearance="outline" class="field-triflag">
-            <mat-label>Pronto per fatturazione</mat-label>
+            <mat-label>Inviato a fatturazione</mat-label>
             <mat-select
               [value]="filters.readyForBilling ?? null"
               (selectionChange)="readyForBillingChange.emit($event.value)">
@@ -290,6 +301,8 @@ export class TrattamentiFiltersComponent {
   @Output() isInvoicedChange = new EventEmitter<boolean | null>();
   @Output() scontoFEChange = new EventEmitter<boolean | null>();
   @Output() viewModeChange = new EventEmitter<TrattamentiViewMode>();
+  /** Azzera l'intervallo date (dal/al = null): storico completo paziente. */
+  @Output() clearDates = new EventEmitter<void>();
   @Output() reset = new EventEmitter<void>();
 
   /**
@@ -426,5 +439,20 @@ export class TrattamentiFiltersComponent {
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     this.dateRangeChange.emit({ from: this.toIsoDate(first), to: this.toIsoDate(last) });
+  }
+
+  /** Ultimi N mesi: da (oggi - N mesi) a oggi. */
+  setLastMonths(months: number): void {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth() - months, now.getDate());
+    this.dateRangeChange.emit({ from: this.toIsoDate(from), to: this.toIsoDate(now) });
+  }
+
+  /**
+   * "Tutti i trattamenti": azzera l'intervallo date per mostrare lo storico
+   * completo del paziente selezionato. Visibile solo quando c'è un paziente.
+   */
+  showAllForPatient(): void {
+    this.clearDates.emit();
   }
 }

@@ -46,20 +46,6 @@ export class WhatsappWebhookController {
     try {
       this.logger.log(`[WA-WEBHOOK] Incoming webhook tenantId=${tenantId}`);
 
-      // Validate HMAC signature
-      if (signature) {
-        const isValid = await this.validateSignature(
-          signature,
-          req.rawBody || Buffer.from(JSON.stringify(body)),
-        );
-        if (!isValid) {
-          this.logger.warn(
-            `[WA-WEBHOOK] Invalid signature from tenant: ${tenantId}`,
-          );
-          return { received: true };
-        }
-      }
-
       // Resolve tenant DataSource via @curandis/tenant-datasource.
       // Webhook esterni NON passano dal middleware (sono in exclude api/webhooks/*),
       // quindi qui dobbiamo costruire manualmente il contesto tenant.
@@ -88,7 +74,14 @@ export class WhatsappWebhookController {
         `[WA-WEBHOOK] Resolved tenant "${tenantAlias}" → db="${(ds.options as { database?: string }).database}"`,
       );
 
-      // Run processing inside tenant context AsyncLocalStorage.
+      // IMPORTANTE: la validazione della firma DEVE avvenire DENTRO il contesto
+      // tenant. `validateSignature` → `getWebhookSecret()` legge il secret dal
+      // DB del tenant via TenantContextService (AsyncLocalStorage). Se validata
+      // fuori dal contesto (com'era prima), `getWebhookSecret` esplode con
+      // "No tenant DataSource in current request context", il catch ritorna
+      // false e OGNI webhook firmato veniva rifiutato (regressione dalla
+      // migrazione DB-per-tenant del 2026-06-11).
+      const rawBody = req.rawBody;
       this.tenantContext.run(
         {
           dataSource: ds,
@@ -98,7 +91,7 @@ export class WhatsappWebhookController {
           requestId: randomUUID(),
         },
         () => {
-          this.routeWebhook(isTaskMessage, tenantAlias, body);
+          void this.validateAndRoute(isTaskMessage, tenantAlias, body, signature, rawBody);
         },
       );
     } catch (error: any) {
@@ -107,6 +100,31 @@ export class WhatsappWebhookController {
 
     // Always respond 200 to prevent gateway retries
     return { received: true };
+  }
+
+  /**
+   * Valida la firma HMAC (dentro il contesto tenant) e, se valida, instrada.
+   * Eseguito dentro `tenantContext.run` così `getWebhookSecret()` ha il
+   * DataSource del tenant disponibile.
+   */
+  private async validateAndRoute(
+    isTaskMessage: boolean,
+    tenantAlias: string,
+    body: any,
+    signature: string | undefined,
+    rawBody: Buffer | undefined,
+  ): Promise<void> {
+    if (signature) {
+      const isValid = await this.validateSignature(
+        signature,
+        rawBody || Buffer.from(JSON.stringify(body)),
+      );
+      if (!isValid) {
+        this.logger.warn(`[WA-WEBHOOK] Invalid signature from tenant: ${tenantAlias}`);
+        return;
+      }
+    }
+    this.routeWebhook(isTaskMessage, tenantAlias, body);
   }
 
   /**

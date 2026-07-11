@@ -1,0 +1,93 @@
+<h2 mat-dialog-title>{{ data.isCorrection ? 'Modifica pagamento' : 'Registra pagamento' }}</h2>
+<mat-dialog-content>
+  <p class="hint" *ngIf="data.isCorrection" style="color:#e65100;">
+    Stai correggendo un pagamento già registrato: i voucher eventualmente usati
+    prima verranno ripristinati e sostituiti con la nuova selezione.
+  </p>
+  <p class="hint" *ngIf="data.scontoFE">
+    Trattamento con sconto FE: pagamento gestito solo nel clinico
+    (contanti o voucher FE). Nessun invio ad accounting.
+  </p>
+  <p class="hint" *ngIf="!data.scontoFE">
+    Seleziona uno o più metodi di pagamento. La somma deve coincidere con il
+    totale. Puoi combinare contanti, carta e voucher su righe separate.
+  </p>
+  <p class="hint" *ngIf="data.multiInvoice" style="color:#7b1fa2;">
+    <strong>Fattura cumulativa{{ data.multiInvoice.invoiceNumber ? ' ' + data.multiInvoice.invoiceNumber : '' }}:</strong>
+    questo documento copre {{ data.multiInvoice.treatmentCount }} trattamenti.
+    L'incasso è a saldo intero (€ {{ data.totalAmount | number:'1.2-2' }}) e alla
+    conferma tutti i trattamenti della fattura verranno segnati come pagati.
+  </p>
+
+  <div *ngIf="loading" class="hint">Caricamento metodi di pagamento…</div>
+  <div *ngIf="loadError" class="hint mismatch">{{ loadError }}</div>
+
+  <ng-container *ngIf="!loading">
+    <div class="tender-row" *ngFor="let row of rows; let i = index">
+      <mat-form-field appearance="outline" class="grow">
+        <mat-label>Metodo</mat-label>
+        <mat-select [(ngModel)]="row.selection" [name]="'sel' + i" required>
+          <!-- Modalità scontoFE: contanti + voucher FE -->
+          <ng-container *ngIf="data.scontoFE">
+            <mat-option value="method:cash">Contanti</mat-option>
+            <mat-optgroup label="Voucher FE" *ngIf="vouchersFe.length">
+              <mat-option *ngFor="let v of vouchersFe" [value]="'voucherfe:' + v.id">
+                {{ v.code }} — residuo € {{ v.residualAmount | number:'1.2-2' }}
+              </mat-option>
+            </mat-optgroup>
+          </ng-container>
+
+          <!-- Modalità accounting: metodi + voucher tipo 1/2 -->
+          <ng-container *ngIf="!data.scontoFE">
+            <mat-option *ngFor="let m of paymentMethods" [value]="'method:' + m.code">
+              {{ m.name }}
+            </mat-option>
+            <mat-optgroup label="Voucher" *ngIf="accountingVouchers.length">
+              <mat-option *ngFor="let v of accountingVouchers" [value]="'voucher:' + v.id">
+                {{ v.voucherCode }}
+                ({{ v.voucherType === 'TIPO_2' ? 'anticipo su fattura' : 'prepagato' }})
+                — residuo € {{ v.residualAmount }}
+              </mat-option>
+            </mat-optgroup>
+          </ng-container>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="amount">
+        <mat-label>Importo €</mat-label>
+        <input matInput type="number" [(ngModel)]="row.amount" [name]="'amt' + i"
+               min="0" step="0.01" required>
+      </mat-form-field>
+
+      <button mat-icon-button type="button" (click)="removeRow(i)"
+              [disabled]="rows.length <= 1" title="Rimuovi riga">
+        <mat-icon>delete</mat-icon>
+      </button>
+    </div>
+
+    <button mat-stroked-button type="button" class="add-row" (click)="addRow()">
+      <mat-icon>add</mat-icon> Aggiungi riga
+    </button>
+
+    <!-- Emissione riservata a segreteria/admin (BillingWriteGuard lato backend):
+         l'operatore può solo scalare i voucher esistenti dalle righe sopra. -->
+    <button *ngIf="data.scontoFE && data.patientId && data.canIssueVoucherFe"
+            mat-stroked-button type="button"
+            class="add-row" (click)="issueVoucherFe()" style="margin-left: 8px;">
+      <mat-icon>card_giftcard</mat-icon> Emetti voucher FE
+    </button>
+
+    <div class="totals">
+      <span [class.ok]="sumMatches" [class.mismatch]="!sumMatches">
+        Totale righe: € {{ sum() | number:'1.2-2' }} / € {{ data.totalAmount | number:'1.2-2' }}
+      </span>
+    </div>
+  </ng-container>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="onCancel()">Annulla</button>
+  <button mat-flat-button color="primary" type="button"
+          [disabled]="!canSubmit()" (click)="onConfirm()">
+    Registra pagamento
+  </button>
+</mat-dialog-actions>

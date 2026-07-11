@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { SettingsService, GeneralSetting } from '../../services/settings.service';
 
@@ -31,7 +32,7 @@ interface AutoAttendanceSettings {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './settings.component.html',
   styleUrls: ['./settings.component.scss'],
 })

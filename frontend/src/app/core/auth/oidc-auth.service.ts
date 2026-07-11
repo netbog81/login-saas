@@ -10,7 +10,7 @@ import { TenantResolverService } from './tenant-resolver.service';
  * Servizio di autenticazione basato su Keycloak OIDC.
  *
  * Flusso: Authorization Code + PKCE
- * 1. login() → redirect a Keycloak con hint del tenant (kc_org)
+ * 1. login() → redirect a Keycloak (senza hint kc_org: romperebbe il silent SSO)
  * 2. Keycloak autentica → redirect a /callback con ?code=...
  * 3. angular-oauth2-oidc scambia code → access_token JWT Keycloak
  * 4. loadCurrentUser() chiama GET /api/me → riceve schemaName, tenantStatus da OpenBao
@@ -27,6 +27,7 @@ export class OidcAuthService {
   readonly currentUser = signal<UserInfo | null>(null);
   /** True se il token è per un'org diversa dal subdomain corrente. */
   readonly isTenantMismatch = signal(false);
+  private sessionWatchersAttached = false;
 
   /**
    * Configura angular-oauth2-oidc con le coordinate Keycloak.
@@ -47,13 +48,13 @@ export class OidcAuthService {
       redirectUri: window.location.origin + '/callback',
       postLogoutRedirectUri: window.location.origin,
       responseType: 'code',
-      // `offline_access` chiede a Keycloak un refresh_token con vita lunga
-      // (definita server-side). Senza, dopo la scadenza del session token
-      // l'utente deve riloggare manualmente, e il silent SSO cross-modulo
-      // (es. login su registry → ritorno sul clinico) può fallire perché
-      // angular-oauth2-oidc non ha refresh_token utile in storage.
-      // Allineato col modulo registry per coerenza.
-      scope: 'openid profile email organization offline_access',
+      // NIENTE `offline_access`: gli offline token (30 giorni) sopravvivono
+      // alla sessione SSO, quindi il modulo sembrava loggato anche a sessione
+      // Keycloak morta — l'ingresso in un altro modulo chiedeva le credenziali
+      // e il logout non si propagava. Col refresh token legato alla sessione
+      // SSO (idle/max del realm, alzati a 10h/12h) tutti i moduli vivono e
+      // muoiono insieme.
+      scope: 'openid profile email organization',
       showDebugInformation: !environment.production,
       // NB: NON usiamo `kc_org` come customQueryParam.
       // È un hint di organizzazione che pre-seleziona un'org in Keycloak,
@@ -87,7 +88,48 @@ export class OidcAuthService {
     });
 
     this.oauthService.configure(authConfig);
+    // localStorage invece del default sessionStorage: una nuova tab riusa la
+    // sessione senza rifare il giro di redirect. Allineato al registry.
+    this.oauthService.setStorage(localStorage);
     this.oauthService.setupAutomaticSilentRefresh();
+    this.attachSessionWatchers();
+  }
+
+  /**
+   * Spegnimento proattivo a sessione SSO morta (logout da un altro modulo o
+   * idle/max del realm scaduti), allineato a registry e accounting.
+   * Senza, il clinico resta "zombie" con token scaduto finché l'utente non
+   * naviga o riceve un 401.
+   */
+  private attachSessionWatchers(): void {
+    if (this.sessionWatchersAttached) return;
+    this.sessionWatchersAttached = true;
+
+    // Punto unico di intercettazione: ogni refreshToken() fallito (timer del
+    // silent refresh, interceptor, visibilitychange) emette questo evento.
+    // Se non resta un access token valido, la sessione è finita → login.
+    this.oauthService.events.subscribe((event) => {
+      if (event.type === 'token_refresh_error' && !this.oauthService.hasValidAccessToken()) {
+        console.warn('[OIDC] Refresh fallito e token scaduto → redirect al login');
+        this.currentUser.set(null);
+        this.login();
+      }
+    });
+
+    // Tab in background: il browser throttla i timer, al rientro il token può
+    // essere già scaduto senza che il silent refresh sia mai partito.
+    // Al ritorno in foreground tentiamo subito il refresh; l'eventuale
+    // fallimento viene gestito dal listener token_refresh_error qui sopra.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        if (!this.oauthService.hasValidAccessToken() && this.oauthService.getRefreshToken()) {
+          this.oauthService.refreshToken().catch(() => {
+            /* gestito dal listener token_refresh_error */
+          });
+        }
+      });
+    }
   }
 
   /**

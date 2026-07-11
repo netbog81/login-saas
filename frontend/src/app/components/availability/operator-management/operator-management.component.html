@@ -222,6 +222,38 @@
           </div>
         </div>
 
+        <!-- Dati per i documenti generati (attestati di presenza) -->
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>Titolo / specializzazione</label>
+            <input type="text"
+                   [(ngModel)]="editingOperator.professionalTitle"
+                   class="form-control"
+                   placeholder="Es: Fisioterapista, Psicologo"
+                   maxlength="255">
+            <small class="form-text">Qualifica mostrata sui documenti generati (es. attestato di presenza)</small>
+          </div>
+          <div class="form-group flex-1">
+            <label>Codice fiscale</label>
+            <input type="text"
+                   [(ngModel)]="editingOperator.taxCode"
+                   class="form-control"
+                   placeholder="RSSMRA80A01L219X"
+                   maxlength="16"
+                   style="text-transform: uppercase">
+            <small class="form-text">CF del professionista</small>
+          </div>
+          <div class="form-group flex-1">
+            <label>Partita IVA</label>
+            <input type="text"
+                   [(ngModel)]="editingOperator.vatNumber"
+                   class="form-control"
+                   placeholder="01234567890"
+                   maxlength="11">
+            <small class="form-text">P.IVA del professionista</small>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" [(ngModel)]="editingOperator.isActive">

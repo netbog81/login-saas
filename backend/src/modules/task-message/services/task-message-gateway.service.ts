@@ -186,8 +186,13 @@ export class TaskMessageGatewayService {
     correlationId?: string,
   ): Promise<{ url: string; headers: Record<string, string> }> {
     const config = await this.configService.getConfig();
-    if (!config || !config.isActive) {
-      throw new Error('Gateway config not found or inactive');
+    // I messaggi task sono una feature INTERNA tra operatori: dipendono solo
+    // dalla presenza della config gateway + API key, NON dal flag `isActive`
+    // (che governa l'invio WhatsApp ai pazienti). Disaccoppiamento voluto
+    // (2026-07-08): così i task-message funzionano anche con WhatsApp OFF, e
+    // attivare WhatsApp non è un prerequisito per la messaggistica interna.
+    if (!config) {
+      throw new Error('Gateway config non trovata: configura il gateway per abilitare i messaggi task');
     }
 
     const apiKey = await this.configService.getDecryptedApiKey();

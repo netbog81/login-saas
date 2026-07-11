@@ -32,7 +32,11 @@ services:
     container_name: curandis-clinico-backend
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      # NODE_ENV FISSO a production: in development NestJS GraphQL tenta di
+      # scrivere lo schema in /app/src (non scrivibile dall'utente del
+      # container) → crash EACCES. In production scrive in /tmp. NON renderlo
+      # sovrascrivibile da .env per evitare il crash-loop.
+      NODE_ENV: production
       PORT: 3000
       # OpenBao Agent gira sull'host. 172.19.0.1 è il gateway del network
       # evolution_net (allineato al pattern accounting).
@@ -50,6 +54,10 @@ services:
       REGISTRY_DEFAULT_TENANT: ${REGISTRY_DEFAULT_TENANT:-bdq}
       REGISTRY_HTTP_TIMEOUT_MS: ${REGISTRY_HTTP_TIMEOUT_MS:-7000}
       REGISTRY_HTTP_RETRY_COUNT: ${REGISTRY_HTTP_RETRY_COUNT:-2}
+      # Accounting — proxy REST on-demand (metodi pagamento, voucher, PDF fattura).
+      # Prefisso globale accounting = /api/v1/accounting (NON solo /api).
+      ACCOUNTING_BASE_URL_PATTERN: ${ACCOUNTING_BASE_URL_PATTERN:-https://accounting.{tenant}.curandis.cloud/api/v1/accounting}
+      ACCOUNTING_HTTP_TIMEOUT_MS: ${ACCOUNTING_HTTP_TIMEOUT_MS:-15000}
       # RabbitMQ — config statica (host/port/user/password/vhost arrivano
       # da OpenBao kv/clinico/rabbitmq al bootstrap, vedi main.ts).
       RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
@@ -57,6 +65,14 @@ services:
       RABBITMQ_QUEUE_SUBJECTS: ${RABBITMQ_QUEUE_SUBJECTS:-q.clinico.subjects}
       RABBITMQ_BINDING_PATTERN: ${RABBITMQ_BINDING_PATTERN:-subject.*.*}
       RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+      # DLQ monitor — utente dedicato SOLO management API read-only (tag
+      # monitoring, permessi AMQP nulli). Senza queste vars il monitor
+      # ripiegava sull'utenza AMQP di OpenBao, che non ha il tag management
+      # → 401 "Not management user" su ogni check (monitor cieco).
+      RABBITMQ_MANAGEMENT_URL: ${RABBITMQ_MANAGEMENT_URL:-http://curandis-rabbitmq:15672}
+      RABBITMQ_MANAGEMENT_USER: ${RABBITMQ_MANAGEMENT_USER:-curandis-monitor-svc}
+      RABBITMQ_MANAGEMENT_PASS: ${RABBITMQ_MANAGEMENT_PASS}
+      RABBITMQ_MANAGEMENT_VHOST: ${RABBITMQ_MANAGEMENT_VHOST:-curandis}
     volumes:
       # Sink del token OpenBao Agent. Read-only: il container non scrive,
       # legge solo. Bind mount preserva i permessi 0640 root:openbao-agent;

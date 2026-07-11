@@ -2,6 +2,11 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AbsenceImpactPreview {
+  attendedWithoutTreatment: [AvailabilityAppointment!]!
+  conflicts: [AvailabilityAppointment!]!
+}
+
 type AbsenceTypeSnapshot {
   description: String
   id: ID!
@@ -127,6 +132,7 @@ type AvailabilityAppointment {
   closedAt: DateTime
   conflictDetectedAt: DateTime
   conflictReason: ConflictReason
+  conflictSourceExceptionId: ID
   createdAt: DateTime!
   createdBy: ID
   deletedAt: DateTime
@@ -168,16 +174,21 @@ type AvailabilityAppointment {
 }
 
 type AvailabilityException {
+  absenceTypeId: ID
+  absenceTypeSnapshot: AbsenceTypeSnapshot
   createdAt: DateTime!
   endTime: String
-  exceptionDate: DateTime!
+
+  """Data eccezione in formato YYYY-MM-DD"""
+  exceptionDate: String!
   exceptionType: ExceptionType!
   groupException: GroupException
   groupExceptionId: ID
   id: ID!
-  operator: Operator!
+  operator: Operator
   operatorId: ID!
   reason: String
+  sourceGroupId: ID
   startTime: String
 }
 
@@ -205,11 +216,17 @@ type AvailabilityTemplate {
   operator: Operator!
   operatorId: ID!
   patternDuration: Int!
-  patternStartDate: DateTime!
+
+  """Data inizio pattern in formato YYYY-MM-DD"""
+  patternStartDate: String!
   startTime: String!
   updatedAt: DateTime!
-  validFrom: DateTime!
-  validUntil: DateTime
+
+  """Data inizio validità in formato YYYY-MM-DD"""
+  validFrom: String!
+
+  """Data fine validità in formato YYYY-MM-DD"""
+  validUntil: String
   version: Int!
 }
 
@@ -385,6 +402,14 @@ input CreateDocumentInput {
   uploadedBy: ID
 }
 
+input CreateDocumentTemplateInput {
+  content: JSON!
+  isDefault: Boolean
+  name: String!
+  pageSettings: JSON
+  type: DocumentTemplateType
+}
+
 input CreateEvaluationInput {
   andamentoDolore: String
   bmi: Float
@@ -491,6 +516,16 @@ input CreateOperatorAbsenceTypeInput {
   name: String!
 }
 
+input CreateOperatorAbsencesInput {
+  absenceTypeId: ID
+  dateFrom: String!
+  dateTo: String!
+  endTime: String
+  operatorIds: [ID!]!
+  reason: String
+  startTime: String
+}
+
 input CreateOperatorInput {
   canCollectPayment: Boolean
   categoryId: String
@@ -504,9 +539,12 @@ input CreateOperatorInput {
   phone: String
   preferredDurations: [Int!]
   professionalRegistration: String
+  professionalTitle: String
   royaltyPercentage: Float
   surname: String
+  taxCode: String
   userId: ID
+  vatNumber: String
 }
 
 input CreatePatientAnamnesisInput {
@@ -718,6 +756,22 @@ enum DocumentCategory {
   REPORT
 }
 
+type DocumentTemplate {
+  content: JSON!
+  createdAt: DateTime!
+  id: ID!
+  isDefault: Boolean!
+  name: String!
+  pageSettings: JSON
+  type: DocumentTemplateType!
+  updatedAt: DateTime!
+}
+
+"""Tipo di documento generabile da template"""
+enum DocumentTemplateType {
+  ATTENDANCE_CERTIFICATE
+}
+
 """Type of attached document"""
 enum DocumentType {
   IMAGE
@@ -863,7 +917,9 @@ type GeneralSettings {
 type GroupException {
   appliesToAll: Boolean!
   createdAt: DateTime!
-  exceptionDate: DateTime!
+
+  """Data eccezione in formato YYYY-MM-DD"""
+  exceptionDate: String!
   exceptionType: String!
   exceptions: [AvailabilityException!]
   id: ID!
@@ -1077,6 +1133,12 @@ enum InstrumentStatus {
   UNAVAILABLE
 }
 
+type InvoiceLineSettings {
+  id: ID!
+  updatedAt: DateTime!
+  useOperatorCategories: Boolean!
+}
+
 type ItManager {
   appUser: AppUser!
   appUserId: ID!
@@ -1130,6 +1192,7 @@ input MarkObjectiveAchievedInput {
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
   addTestEvaluation(input: AddTestEvaluationInput!, operatorId: ID!, pathId: ID!, testId: ID!): EvaluationTest!
+  addTreatmentServiceLine(description: String, price: Float, serviceId: ID!, treatmentId: ID!): Treatment!
   anonymizeExpiredWhatsappLogs: WhatsappLogManagementResult!
   anonymizeWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   assignKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
@@ -1141,6 +1204,8 @@ type Mutation {
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
   cancelRecurringSeries(appointmentId: ID!, cancelledBy: ID!, fromDate: String!, reason: String!, scope: RecurringSeriesScope!): Int!
   cancelTreatment(id: ID!, reason: String!): Treatment!
+  cancelTreatmentPayment(id: ID!): Treatment!
+  cancelVoucherFe(voucherFeId: ID!): VoucherFe!
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTaskMessage(messageId: String!): Boolean!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
@@ -1149,6 +1214,7 @@ type Mutation {
   createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  createDocumentTemplate(input: CreateDocumentTemplateInput!): DocumentTemplate!
   createEvaluation(input: CreateEvaluationInput!): PatientEvaluation!
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
@@ -1163,7 +1229,8 @@ type Mutation {
   createKeycloakUser(input: CreateKeycloakUserInput!): KeycloakOrgMember!
   createOperator(input: CreateOperatorInput!): Operator!
   createOperatorAbsenceType(input: CreateOperatorAbsenceTypeInput!): OperatorAbsenceType!
-  createOperatorCategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
+  createOperatorAbsences(input: CreateOperatorAbsencesInput!): OperatorAbsencesResult!
+  createOperatorCategory(description: String, invoiceLineDescription: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
   createPathDocument(input: CreateDocumentInput!): PathDocument!
   createPatient(input: CreatePatientInput!): Patient!
 
@@ -1177,7 +1244,7 @@ type Mutation {
   createRoom(capacity: Int, color: String, name: String!): Room!
   createSecretary(input: CreateSecretaryInput!): Secretary!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, serviceCode: String!, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
-  createServiceSubcategory(description: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
+  createServiceSubcategory(description: String, invoiceLineDescription: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
   createTaskMessage(input: CreateTaskMessageInput!): TaskMessageResult!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
@@ -1190,10 +1257,12 @@ type Mutation {
   deactivateGymPatternGroup(id: ID!): GymPatternGroup!
   deactivatePatient(id: ID!): Boolean!
   deactivateTemplateAssignment(id: ID!): TemplateAssignment!
+  deleteAbsenceGroup(sourceGroupId: ID!): Int!
   deleteAllTreatments: Int!
   deleteAppUser(id: ID!): Boolean!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
+  deleteDocumentTemplate(id: ID!): Boolean!
   deleteEvaluation(id: ID!): Boolean!
   deleteEvaluationTest(evaluationId: ID!, testId: ID!): Boolean!
   deleteException(id: ID!): Boolean!
@@ -1246,21 +1315,27 @@ type Mutation {
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
   initializeDefaultSettings: Boolean!
+  issueVoucherFe(expiryDate: String, initialAmount: Float!, notes: String, patientId: ID!): VoucherFe!
   linkKeycloakUser(input: LinkKeycloakUserInput!): AppUser!
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   markAppointmentAttended(id: ID!): AvailabilityAppointment!
   markAppointmentNoShow(id: ID!): AvailabilityAppointment!
   markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): EvaluationObjective!
+  markScontoFeCashPayment(id: ID!, paid: Boolean!): Treatment!
   markTaskMessageAsRead(messageId: String!): Boolean!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
+
+  """Deprecato: provisioning dei tenant avviene dal TMS, non più da qui."""
   provisionTenantSchema: TenantSchemaStatus!
   purgeFromRecycleBin(entityType: RecycleBinEntityType!, id: ID!): Boolean!
+  reactivateVoucherFe(voucherFeId: ID!): VoucherFe!
   rebuildAvailabilityCache(endDate: String!, operatorId: ID!, startDate: String!): Boolean!
   recordPatientAttendance(appointmentId: ID, eventType: String!, reason: String, subjectId: ID!): Boolean!
   recordProductSale(input: RecordProductSaleInput!): SaleCompletedResult!
   recordTreatmentPayment(callerRole: TreatmentCallerRole, id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
+  removeTreatmentServiceLine(treatmentServiceId: ID!): Treatment!
   reopenTreatment(id: ID!): Treatment! @deprecated(reason: "Usa reopenTreatmentByOperator o reopenTreatmentBySecretary")
   reopenTreatmentByOperator(id: ID!): Treatment!
   reopenTreatmentBySecretary(id: ID!): Treatment!
@@ -1273,15 +1348,19 @@ type Mutation {
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   restoreFromRecycleBin(entityType: RecycleBinEntityType!, id: ID!): Boolean!
   restoreOperator(id: ID!): Operator!
+  resyncServicesToAccounting: Int!
+  retryTreatmentInvoice(id: ID!): Treatment!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
   revokeKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   revokePermissionFromRole(permissionId: ID!, roleId: ID!): Boolean!
   revokeRole(input: AssignRoleInput!): Boolean!
   sendAppointmentRecap(appointmentId: ID!): Boolean!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
+  setInvoiceLineUseOperatorCategories(useOperatorCategories: Boolean!): InvoiceLineSettings!
   setPatientPrivacyConsent(documentRef: String, given: Boolean!, id: ID!): Patient!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
   setTreatmentsReadyForBilling(ids: [ID!]!, immediateInvoice: Boolean = false, ready: Boolean!): [Treatment!]!
+  suspendVoucherFe(voucherFeId: ID!): VoucherFe!
   testWhatsappConnection: Boolean!
   testWhatsappDirect(message: String, name: String!, phone: String!): WhatsappTestResult!
   testWhatsappFullFlow(name: String!, phone: String!): WhatsappTestResult!
@@ -1290,6 +1369,7 @@ type Mutation {
   updateAppUser(id: ID!, input: UpdateAppUserInput!): AppUser!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  updateDocumentTemplate(id: ID!, input: UpdateDocumentTemplateInput!): DocumentTemplate!
   updateEvaluation(id: ID!, input: UpdateEvaluationInput!): PatientEvaluation!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
   updateGeneralSetting(key: String!, value: JSON!): GeneralSettings!
@@ -1303,7 +1383,7 @@ type Mutation {
   updateObjectiveProgress(input: UpdateObjectiveProgressInput!, objectiveId: ID!, operatorId: ID!, pathId: ID!): EvaluationObjective!
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorAbsenceType(id: ID!, input: UpdateOperatorAbsenceTypeInput!): OperatorAbsenceType!
-  updateOperatorCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
+  updateOperatorCategory(description: String, id: ID!, invoiceLineDescription: String, invoicePrefix: String, invoiceTemplate: String, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
 
   """Aggiorna anamnesi paziente"""
@@ -1312,11 +1392,12 @@ type Mutation {
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
   updateProduct(category: String, defaultPrice: Float, description: String, id: ID!, isActive: Boolean, name: String, productCode: String): Product!
+  updateRecurringSeries(input: UpdateRecurringSeriesInput!): RecurringSeriesOperationResult!
   updateRecurringSeriesTime(input: UpdateRecurringSeriesTimeInput!): RecurringSeriesOperationResult!
   updateRecycleBinSettings(retentionDays: Int): RecycleBinSettings!
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, serviceCode: String, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
-  updateServiceSubcategory(description: String, id: ID!, isActive: Boolean, name: String): ServiceSubcategory!
+  updateServiceSubcategory(description: String, id: ID!, invoiceLineDescription: String, isActive: Boolean, name: String): ServiceSubcategory!
   updateTaskMessage(input: UpdateTaskMessageInput!, messageId: String!): Boolean!
   updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
@@ -1327,6 +1408,7 @@ type Mutation {
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   updateTreatmentInvoiceLine(input: UpdateTreatmentInvoiceLineInput!): TreatmentInvoiceLine!
   updateTreatmentServiceInvoiceDescription(input: UpdateTreatmentServiceInvoiceDescriptionInput!): TreatmentService!
+  updateVoucherFeAmount(amount: Float!, voucherFeId: ID!): VoucherFe!
   updateWaitingListEntry(id: ID!, input: UpdateWaitingListEntryInput!): WaitingListEntry!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
 
@@ -1403,12 +1485,15 @@ type Operator {
   phone: String
   preferredDurations: [Int!]
   professionalRegistration: String
+  professionalTitle: String
   royaltyPercentage: Float!
   services: [OperatorService!]
   surname: String
+  taxCode: String
   templateAssignments: [TemplateAssignment!]
   updatedAt: DateTime!
   userId: ID
+  vatNumber: String
 }
 
 type OperatorAbsenceType {
@@ -1418,6 +1503,13 @@ type OperatorAbsenceType {
   isActive: Boolean!
   name: String!
   updatedAt: DateTime!
+}
+
+type OperatorAbsencesResult {
+  conflictCount: Int!
+  exceptions: [AvailabilityException!]!
+  skippedOverlaps: Int!
+  sourceGroupId: ID!
 }
 
 type OperatorAvailabilityResult {
@@ -1434,6 +1526,9 @@ type OperatorCategory {
   createdAt: DateTime!
   description: String
   id: ID!
+  invoiceLineDescription: String
+  invoicePrefix: String
+  invoiceTemplate: String
   isActive: Boolean!
   macroCategory: OperatorMacroCategory!
   name: String!
@@ -1760,6 +1855,7 @@ type Query {
   activeTherapeuticPathsByPatient(patientId: ID!): [TherapeuticPath!]!
   allOperatorServices: [OperatorService!]!
   allTemplatePatterns: [TemplatePattern!]!
+  allVouchersFe(from: String, to: String): [VoucherFe!]!
   appUser(id: ID!): AppUser
   appUserByKeycloakId(keycloakId: String!): AppUser
   appUserPermissions(appUserId: ID!): [String!]!
@@ -1784,7 +1880,10 @@ type Query {
   conflictedAppointmentsCount: Int!
   currentGymPatternGroup(gymRoomId: ID!): GymPatternGroup
   currentTemplateAssignments(date: String, operatorId: ID!): [TemplateAssignment!]!
+  defaultDocumentTemplate(type: DocumentTemplateType!): DocumentTemplate
   dlqStatus: DlqStatusGql!
+  documentTemplate(id: ID!): DocumentTemplate
+  documentTemplates(type: DocumentTemplateType): [DocumentTemplate!]!
   documentsByPath(pathId: ID!): [PathDocument!]!
   documentsByPathAndCategory(category: DocumentCategory!, pathId: ID!): [PathDocument!]!
   evaluationByPath(pathId: ID!): PatientEvaluation
@@ -1818,6 +1917,7 @@ type Query {
   instrumentCategories(macroCategory: OperatorMacroCategory): [InstrumentCategory!]!
   instrumentCategory(id: ID!): InstrumentCategory
   instruments(categoryId: ID, status: InstrumentStatus): [Instrument!]!
+  invoiceLineSettings: InvoiceLineSettings!
   isHoliday(date: String!): Boolean!
   isInstrumentAvailable(appointmentDate: String!, endOffsetMinutes: Float!, excludeAppointmentId: ID, instrumentId: ID!, startOffsetMinutes: Float!, startTime: String!): Boolean!
   itManager(id: ID!): ItManager
@@ -1857,6 +1957,7 @@ type Query {
   permissions: [Permission!]!
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
   physiotherapistAvailableSlotsBatch(customInstrumentSlots: [InstrumentSlotInput!], dates: [String!]!, durationMinutes: Int!, instrumentOrderMatters: Boolean, operatorIds: [ID!]!): [PhysiotherapistSlotBatchOutput!]!
+  previewOperatorAbsenceImpact(dateFrom: String!, dateTo: String!, endTime: String, operatorIds: [ID!]!, startTime: String): AbsenceImpactPreview!
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
   product(id: ID!): Product
@@ -1887,6 +1988,8 @@ type Query {
   templateAssignment(id: ID!): TemplateAssignment
   templateAssignments(onlyCurrent: Boolean = true, operatorId: ID): [TemplateAssignment!]!
   templateAssignmentsByOperator(onlyCurrent: Boolean = true, operatorId: ID!): [TemplateAssignment!]!
+
+  """Deprecato: nel mondo DB-per-tenant ritorna sempre healthy."""
   tenantSchemaStatus: TenantSchemaStatus!
   testEvaluationHistory(testId: ID!): [TestEvaluationHistory!]!
   testsByEvaluation(evaluationId: ID!): [EvaluationTest!]!
@@ -1906,11 +2009,14 @@ type Query {
   treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
   treatmentsForOperator(dateFrom: String, dateTo: String, limit: Int, offset: Int, operatorId: ID!, statuses: [TreatmentStatus!]): [Treatment!]!
   treatmentsForSecretary(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, limit: Int, offset: Int, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!]): [Treatment!]!
+  treatmentsForSecretaryCount(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!]): Int!
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
   treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
   treatmentsPendingClosure: [Treatment!]!
   unlinkedAppUsers(userType: AppUserType): [AppUser!]!
+  usableVouchersFe(patientId: ID!): [VoucherFe!]!
   userRoles(appUserId: ID!): [Role!]!
+  vouchersFeByPatient(patientId: ID!): [VoucherFe!]!
   waitingListEntries(status: WaitingListStatus): [WaitingListEntry!]!
   waitingListEntry(id: ID!): WaitingListEntry
   whatsappConfig: WhatsappTenantConfig
@@ -1939,6 +2045,9 @@ input RecordPaymentInput {
   amount: Float
   collectedBy: ID!
   paymentMethod: PaymentMethod!
+  replaceExisting: Boolean
+  tenderLines: [TenderLineInput!]
+  voucherFeId: ID
 }
 
 input RecordProductSaleInput {
@@ -1959,7 +2068,26 @@ enum RecurringEndType {
   UNTIL
 }
 
-"""Scope delle operazioni bulk su serie ricorrenti"""
+type RecurringOccurrenceConflict {
+  appointmentId: ID
+  conflictingEndTime: String
+  conflictingStartTime: String
+  date: String!
+  endTime: String!
+  reason: String!
+  startTime: String!
+  type: String!
+}
+
+type RecurringSeriesOperationResult {
+  affectedCount: Int!
+  applied: Boolean!
+  conflicts: [RecurringOccurrenceConflict!]!
+}
+
+"""
+Scope delle operazioni bulk su serie ricorrenti: solo corrente, corrente+successivi, intera serie, intervallo di date
+"""
 enum RecurringSeriesScope {
   ALL
   CURRENT_ONLY
@@ -1990,23 +2118,6 @@ input RecycleBinFilterInput {
 
   """Stringa libera (matching su title/subtitle)"""
   search: String
-}
-
-type RecurringOccurrenceConflict {
-  appointmentId: ID
-  conflictingEndTime: String
-  conflictingStartTime: String
-  date: String!
-  endTime: String!
-  reason: String!
-  startTime: String!
-  type: String!
-}
-
-type RecurringSeriesOperationResult {
-  affectedCount: Int!
-  applied: Boolean!
-  conflicts: [RecurringOccurrenceConflict!]!
 }
 
 type RecycleBinItem {
@@ -2314,6 +2425,7 @@ type ServiceInvoicePrefix {
   id: ID!
   macroCategory: OperatorMacroCategory!
   prefix: String!
+  template: String
   updatedAt: DateTime!
 }
 
@@ -2321,6 +2433,7 @@ type ServiceSubcategory {
   createdAt: DateTime!
   description: String
   id: ID!
+  invoiceLineDescription: String
   isActive: Boolean!
   macroCategory: OperatorMacroCategory!
   name: String!
@@ -2378,7 +2491,7 @@ type TemplateAssignment {
   createdAt: DateTime!
   id: ID!
   isCurrent: Boolean!
-  operator: Operator!
+  operator: Operator
   operatorId: ID!
   patternGroup: PatternGroup!
   patternGroupId: ID!
@@ -2411,6 +2524,14 @@ type TenantSchemaStatus {
   message: String
   schemaName: String!
   tenantStatus: String!
+}
+
+input TenderLineInput {
+  amount: Float!
+  kind: String!
+  paymentMethodId: String
+  voucherFeId: ID
+  voucherId: ID
 }
 
 type TestEvaluationHistory {
@@ -2459,7 +2580,7 @@ type TherapeuticPath {
   notes: String
   patient: Patient
   patientId: ID!
-  primaryOperator: Operator!
+  primaryOperator: Operator
   primaryOperatorId: ID!
   status: TherapeuticPathStatus!
   treatments: [Treatment!]
@@ -2486,16 +2607,23 @@ type Treatment {
   accountingBillableEventId: ID
   accountingCreditNoteIssuedAt: DateTime
   accountingCreditNoteNumber: String
+  accountingDocumentId: ID
+  accountingDocumentTreatmentCount: Int
   accountingDocumentType: String
   accountingInvoiceIssuedAt: DateTime
   accountingInvoiceUrl: String
   accountingRefundReason: String
+  accountingTotalAmount: Float
+  accountingTreatmentLinesAmount: Float
   amendmentRevision: Int!
-  appointment: AvailabilityAppointment!
-  appointmentId: ID!
+  appointment: AvailabilityAppointment
+  appointmentId: ID
   billingAlertAt: DateTime
   billingAlertDismissedAt: DateTime
   billingAlertMessage: String
+  billingHoldReason: String
+  billingHoldReasonAt: DateTime
+  billingHoldReasonCode: String
   billingStatus: TreatmentBillingStatus!
   cancellationReason: String
   cancelledAt: DateTime
@@ -2520,7 +2648,7 @@ type Treatment {
   isTest: Boolean!
   lastRecallRejectionAt: DateTime
   lastRecallRejectionMessage: String
-  operator: Operator!
+  operator: Operator
   operatorId: ID!
   operatorInvoiceNumber: String
   operatorNotes: String
@@ -2532,7 +2660,9 @@ type Treatment {
   patientId: ID
   patientInvoiceNumber: String
   patientNotes: String
+  paymentId: ID
   paymentMethod: PaymentMethod
+  paymentRecordedSource: String
   price: Float!
   readyForBilling: Boolean!
   readyForBillingAt: DateTime
@@ -2706,6 +2836,13 @@ input UpdateAvailabilityAppointmentInput {
   startTime: String
 }
 
+input UpdateDocumentTemplateInput {
+  content: JSON
+  isDefault: Boolean
+  name: String
+  pageSettings: JSON
+}
+
 input UpdateEvaluationInput {
   andamentoDolore: String
   bmi: Float
@@ -2795,9 +2932,12 @@ input UpdateOperatorInput {
   phone: String
   preferredDurations: [Int!]
   professionalRegistration: String
+  professionalTitle: String
   royaltyPercentage: Float
   surname: String
+  taxCode: String
   userId: ID
+  vatNumber: String
 }
 
 input UpdatePatientAnamnesisInput {
@@ -2840,6 +2980,25 @@ input UpdatePatternGroupInput {
   name: String
   patternDuration: Float
   patterns: [PatternInput!]
+}
+
+input UpdateRecurringSeriesInput {
+  appointmentId: ID!
+  clientName: String
+  endTime: String!
+  includeCurrent: Boolean
+  instrumentOrderMatters: Boolean
+  instruments: [AppointmentInstrumentInput!]
+  newDate: String
+  nonRetribuito: Boolean
+  notes: String
+  operatorId: ID
+  patientId: ID
+  rangeFrom: String
+  rangeTo: String
+  scope: RecurringSeriesScope!
+  services: [ServiceInputItem!]
+  startTime: String!
 }
 
 input UpdateRecurringSeriesTimeInput {
@@ -2974,6 +3133,7 @@ input UpsertRelationshipExtensionInput {
 input UpsertServiceInvoicePrefixInput {
   macroCategory: OperatorMacroCategory!
   prefix: String!
+  template: String
 }
 
 type UserRole {
@@ -2982,6 +3142,21 @@ type UserRole {
   assignedAt: DateTime!
   role: Role!
   roleId: ID!
+}
+
+type VoucherFe {
+  code: String!
+  createdAt: DateTime!
+  createdByUserId: ID
+  expiryDate: String
+  id: ID!
+  initialAmount: Float!
+  notes: String
+  patient: Patient
+  patientId: ID!
+  residualAmount: Float!
+  status: String!
+  updatedAt: DateTime!
 }
 
 type WaitingListEntry {

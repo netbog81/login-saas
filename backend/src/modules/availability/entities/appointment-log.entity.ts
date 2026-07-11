@@ -9,7 +9,8 @@ export enum AppointmentLogEventType {
   CANCELLED = 'cancelled',          // Disdetto dal paziente
   NO_SHOW = 'no_show',              // Paziente non presentato
   OPERATOR_ABSENT = 'operator_absent', // Operatore assente (malattia/ferie/imprevisto)
-  RESCHEDULED = 'rescheduled'       // Appuntamento riprogrammato
+  RESCHEDULED = 'rescheduled',      // Appuntamento riprogrammato
+  OPERATOR_SUBSTITUTED = 'operator_substituted' // Riassegnato al sostituto per eccezione palestra
 }
 
 registerEnumType(AppointmentLogEventType, {
@@ -85,9 +86,11 @@ export class AppointmentLog {
   performedBy?: string;
 
   /**
-   * Data originale dell'appuntamento
+   * Data originale dell'appuntamento. String, non DateTime: TypeORM idrata
+   * le colonne `date` come stringhe e GraphQLISODateTime.serialize le
+   * rifiuta (vedi utils/date-string.util.ts).
    */
-  @Field()
+  @Field(() => String, { description: 'Data originale in formato YYYY-MM-DD' })
   @Column('date')
   originalDate: Date;
 
@@ -101,7 +104,7 @@ export class AppointmentLog {
   /**
    * Nuova data (se riprogrammato)
    */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true, description: 'Nuova data in formato YYYY-MM-DD' })
   @Column('date', { nullable: true })
   newDate?: Date;
 

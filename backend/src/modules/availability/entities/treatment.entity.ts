@@ -30,10 +30,14 @@ export class Treatment {
 
   // ==================== RELATIONS ====================
 
-  @Field(() => ID)
-  @Column('uuid')
+  // Nullable dal 2026-07-04 (migration 1798): la cancellazione fisica di un
+  // appuntamento NON deve mai eliminare il trattamento collegato (la FK era
+  // ON DELETE CASCADE e ha cancellato in silenzio trattamenti già fatturati).
+  // Ora la FK è ON DELETE SET NULL e il trattamento sopravvive orfano.
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
   @Index('IDX_treatments_appointment')
-  appointmentId: string;
+  appointmentId: string | null;
 
   @Field(() => ID)
   @Column('uuid')
@@ -160,6 +164,40 @@ export class Treatment {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   price: number;
 
+  /**
+   * Totale REALE della fattura calcolato e confermato da accounting (marca da
+   * bollo INCLUSA). Popolato dal consumer `billable.invoiced` con
+   * `payload.totalAmount`. NULL finché il treatment non è stato fatturato.
+   *
+   * Il clinico NON calcola il bollo: lo riceve qui da accounting e lo mostra.
+   * La UI usa `accountingTotalAmount ?? price` come totale da incassare. Sul
+   * totale CONFERMATO si registra poi il pagamento ("Incassa").
+   */
+  @Field(() => Float, { nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  accountingTotalAmount?: number;
+
+  /**
+   * 2026-07-08 — Fatture multi-trattamento. Quota di QUESTO treatment nel
+   * documento (somma delle sue righe, netto+IVA, SENZA bollo), come fatturata
+   * da accounting — può differire da `price` se accounting ha modificato le
+   * righe (quantità, importi). NULL se il producer accounting è vecchio o il
+   * treatment non è fatturato. Invariante come accountingTotalAmount:
+   * non-null ⟺ documento accounting corrente.
+   */
+  @Field(() => Float, { nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  accountingTreatmentLinesAmount?: number;
+
+  /**
+   * Quanti treatment clinici distinti copre il documento corrente (1 =
+   * fattura singola). > 1 ⇒ la UI mostra l'icona "fattura cumulativa" e
+   * l'incasso avviene a saldo intero documento su tutti i treatment insieme.
+   */
+  @Field(() => Int, { nullable: true })
+  @Column({ type: 'int', nullable: true })
+  accountingDocumentTreatmentCount?: number;
+
   @Field()
   @Column({ default: false })
   @Index('IDX_treatments_is_paid', { where: '"isPaid" = false' })
@@ -180,6 +218,26 @@ export class Treatment {
   @Field(() => ID, { nullable: true })
   @Column('uuid', { nullable: true })
   collectedBy?: string;
+
+  /**
+   * UUID dell'incasso "vincitore" (first-write-wins). NULL = mai incassato.
+   * È la chiave logica di idempotenza condivisa: la registrazione del
+   * pagamento (clinico o accounting) avviene solo se isPaid passa da false a
+   * true (UPDATE ... WHERE isPaid=false), e questo paymentId identifica
+   * univocamente l'incasso vincente. Echeggiato nel payload degli eventi.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { name: 'paymentId', nullable: true })
+  paymentId?: string;
+
+  /**
+   * Sorgente che ha registrato per prima l'incasso: 'clinical' | 'accounting'.
+   * Solo audit/UI: il vincitore first-write-wins è determinato dalla guardia
+   * atomica su isPaid, questo campo traccia chi ha vinto.
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'paymentRecordedSource', length: 20, nullable: true })
+  paymentRecordedSource?: string;
 
   // ==================== PATIENT INVOICE ====================
 
@@ -293,6 +351,16 @@ export class Treatment {
   @Column('uuid', { name: 'accountingBillableEventId', nullable: true })
   accountingBillableEventId?: string;
 
+  /**
+   * ID del SalesDocument (fattura) lato accounting, popolato da billable.invoiced.
+   * Serve a recuperare on-demand il PDF stampabile via il proxy clinico
+   * (GET /treatments/:id/invoice-pdf → accounting GET /sales-documents/:id/pdf).
+   * Distinto da accountingInvoiceUrl (campo legacy mai popolato da accounting).
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { name: 'accountingDocumentId', nullable: true })
+  accountingDocumentId?: string;
+
   /** URL al PDF del documento fiscale (popolato da billable.invoiced). */
   @Field({ nullable: true })
   @Column('text', { name: 'accountingInvoiceUrl', nullable: true })
@@ -352,6 +420,31 @@ export class Treatment {
   @Field({ nullable: true })
   @Column('timestamptz', { name: 'billingAlertDismissedAt', nullable: true })
   billingAlertDismissedAt?: Date;
+
+  // ==================== BILLING HOLD — invoice-blocked (2026-06-30) ====================
+  //
+  // Motivo per cui l'auto-emissione fattura è BLOCCATA lato accounting (causa
+  // risolvibile: indirizzo paziente mancante, P.IVA mancante, mapping pending).
+  // Popolato dal consumer `billable.invoice-blocked`. Distinto da
+  // `billingAlertMessage` (race cancellation-rejected, dismissibile): il blocco
+  // NON è dismissibile, sparisce solo quando la fattura viene emessa
+  // (azzerato in `handleBillableInvoiced`). Mostrato come banner con il motivo
+  // reale + pulsante "Verifica risoluzione e riprova".
+
+  /** Codice motivo blocco (MISSING_ADDRESS, MISSING_VAT, MAPPING_PENDING, ...). NULL = nessun blocco. */
+  @Field({ nullable: true })
+  @Column({ name: 'billingHoldReasonCode', length: 40, nullable: true })
+  billingHoldReasonCode?: string;
+
+  /** Messaggio human-friendly del blocco (da mostrare all'operatore). */
+  @Field({ nullable: true })
+  @Column('text', { name: 'billingHoldReason', nullable: true })
+  billingHoldReason?: string;
+
+  /** Timestamp dell'ultimo blocco registrato. */
+  @Field({ nullable: true })
+  @Column('timestamptz', { name: 'billingHoldReasonAt', nullable: true })
+  billingHoldReasonAt?: Date;
 
   // ==================== RECALL / RETURN-TO-CLINICAL (sessione 7) ====================
 
@@ -428,12 +521,24 @@ export class Treatment {
 
   // ==================== RELATIONS ====================
 
-  @Field(() => AvailabilityAppointment)
-  @OneToOne(() => AvailabilityAppointment, { onDelete: 'CASCADE' })
+  // NULLABLE in GraphQL per lo stesso motivo di `operator` (vedi sotto):
+  // se l'appointment collegato è soft-deleted (deletedAt) o è stato
+  // cancellato fisicamente (FK SET NULL, migration 1798), il leftJoin lo
+  // esclude → appointment = null e con campo non-nullable GraphQL faceva
+  // fallire l'INTERA lista trattamenti. Il frontend gestisce null
+  // mostrando un fallback su data/ora.
+  @Field(() => AvailabilityAppointment, { nullable: true })
+  @OneToOne(() => AvailabilityAppointment, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'appointmentId' })
-  appointment: AvailabilityAppointment;
+  appointment: AvailabilityAppointment | null;
 
-  @Field(() => Operator)
+  // NULLABLE in GraphQL: se l'operatore del trattamento è stato soft-deleted
+  // (operators.deletedAt), TypeORM lo esclude dal join → operator = null. Con
+  // il campo non-nullable, GraphQL faceva fallire l'INTERA query "Cannot return
+  // null for non-nullable field Treatment.operator" (es. lista con "tutti gli
+  // operatori" che includeva un trattamento di un operatore rimosso). Il
+  // frontend gestisce null mostrando "Operatore rimosso".
+  @Field(() => Operator, { nullable: true })
   @ManyToOne(() => Operator, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'operatorId' })
   operator: Operator;

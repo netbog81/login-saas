@@ -32,6 +32,17 @@ export class ServiceInvoicePrefix {
   @Column('text')
   prefix: string;
 
+  /**
+   * Template componibile della descrizione riga fattura per la categoria.
+   * Segnaposto supportati: {prefisso} {data} {codice_servizio} {nome_servizio}
+   * {descrizione_servizio} {descrizione_fattura_sottocategoria} {operatore}
+   * {albo} {descrizione_fattura_categoria} {strumenti}.
+   * NULL/vuoto → si usa la composizione legacy basata sul solo prefisso.
+   */
+  @Field({ nullable: true })
+  @Column({ type: 'text', nullable: true })
+  template?: string | null;
+
   @Field()
   @CreateDateColumn()
   createdAt: Date;

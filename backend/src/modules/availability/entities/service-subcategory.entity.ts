@@ -24,6 +24,14 @@ export class ServiceSubcategory {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
+  /**
+   * Descrizione che sarà inserita nelle righe fattura per i servizi di
+   * questa sottocategoria (distinta dalla description libera).
+   */
+  @Field({ nullable: true })
+  @Column({ type: 'text', nullable: true })
+  invoiceLineDescription?: string;
+
   @Field()
   @Column({ default: true })
   isActive: boolean;

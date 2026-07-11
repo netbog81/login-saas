@@ -33,6 +33,7 @@ import {
   CLOSE_TREATMENT,
   REOPEN_TREATMENT,
   RECORD_TREATMENT_PAYMENT,
+  CANCEL_TREATMENT_PAYMENT,
   MARK_TREATMENT_INVOICED_TO_PATIENT,
   MARK_TREATMENT_INVOICED_BY_OPERATOR,
   UPDATE_TREATMENT_INSTRUMENTS,
@@ -217,9 +218,23 @@ export class TreatmentService extends BaseGraphQLService {
   /**
    * Record payment for treatment
    */
-  recordPayment(id: string, input: RecordPaymentInput): Observable<Treatment> {
-    return this.mutate<{ recordTreatmentPayment: Treatment }>(RECORD_TREATMENT_PAYMENT, { id, input })
+  recordPayment(
+    id: string,
+    input: RecordPaymentInput,
+    callerRole?: 'OPERATOR' | 'SECRETARY',
+  ): Observable<Treatment> {
+    return this.mutate<{ recordTreatmentPayment: Treatment }>(RECORD_TREATMENT_PAYMENT, { id, input, callerRole })
       .pipe(map((result) => mapEmbeddedPatient(result.recordTreatmentPayment)));
+  }
+
+  /**
+   * Annulla un pagamento registrato (workspace operatore: correzione incasso).
+   * Il backend consente l'annullo solo se la fattura non è stata emessa e,
+   * per gli operatori, se canCollectPayment=true.
+   */
+  cancelPayment(id: string): Observable<Treatment> {
+    return this.mutate<{ cancelTreatmentPayment: Treatment }>(CANCEL_TREATMENT_PAYMENT, { id })
+      .pipe(map((result) => mapEmbeddedPatient(result.cancelTreatmentPayment)));
   }
 
   /**

@@ -66,9 +66,39 @@ export class TaskMessageService {
       input.availableFrom ? new Date(input.availableFrom) : undefined,
     );
 
+    const status = (result.status?.toUpperCase() as TaskMessageStatus) || TaskMessageStatus.SCHEDULED;
+
+    // HARDENING: scrittura ottimistica locale. Il gateway ha già accettato
+    // (risposta con messageId), quindi il messaggio ESISTE. Non aspettiamo il
+    // webhook `task_message.created` per renderlo visibile: se quel webhook si
+    // perde (gateway riavviato, delivery fallita, Redis giù dopo l'accept) il
+    // messaggio comparirebbe comunque in "Inviati"/"Ricevuti". INSERT ... ON
+    // CONFLICT DO NOTHING → idempotente rispetto al webhook, che resta la
+    // fonte autoritativa e aggiornerà stato/campi via gateway_message_id.
+    try {
+      await this.taskMessageRepo
+        .createQueryBuilder()
+        .insert()
+        .values({
+          gatewayMessageId: result.messageId,
+          tenantId,
+          senderUserId: senderAppUserId,
+          recipientUserId: input.recipientUserId,
+          content: input.content.trim(),
+          status,
+          availableFrom: input.availableFrom ? new Date(input.availableFrom) : undefined,
+        })
+        .orIgnore()
+        .execute();
+    } catch (err: any) {
+      // Non bloccare la mutation: il gateway ha già il messaggio e il webhook
+      // lo riconcilierà. Logghiamo per visibilità.
+      this.logger.error(`[TASK-MSG] optimistic local write failed gateway_id=${result.messageId}: ${err?.message}`);
+    }
+
     return {
       messageId: result.messageId,
-      status: result.status.toUpperCase() as TaskMessageStatus,
+      status,
     };
   }
 

@@ -130,8 +130,10 @@ export class AppointmentConflictService {
         statuses: [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED]
       });
 
-    // Se l'eccezione ha orari specifici (MODIFIED), verifica solo overlap
-    if (startTime && endTime && exceptionType === ExceptionType.MODIFIED) {
+    // Se l'eccezione ha una finestra oraria (assenza parziale di qualunque
+    // tipo, non solo MODIFIED), contano solo gli appuntamenti che la
+    // toccano. Senza orari = giornata intera → tutti gli appuntamenti.
+    if (startTime && endTime) {
       queryBuilder.andWhere(
         '(apt.startTime < :endTime AND apt.endTime > :startTime)',
         { startTime, endTime }
@@ -140,7 +142,6 @@ export class AppointmentConflictService {
 
     const appointments = await queryBuilder.getMany();
 
-    const conflictReason = this.getConflictReasonFromExceptionType(exceptionType);
     const conflicts: ConflictedAppointment[] = appointments.map(apt => ({
       appointment: apt,
       reason: this.getExceptionReasonText(exceptionType),
@@ -235,6 +236,27 @@ export class AppointmentConflictService {
    * ricalcolare i conflitti. Non tocca appuntamenti con altri conflictReason
    * (es. TEMPLATE_CHANGE).
    */
+  /**
+   * Clear CHIRURGICO: azzera i flag di conflitto sui soli appuntamenti
+   * marcati da una specifica eccezione (conflictSourceExceptionId).
+   * Usato al ripristino/cancellazione di un'assenza operatore.
+   */
+  async clearConflictsBySourceException(exceptionId: string): Promise<number> {
+    const result = await this.appointmentRepo
+      .createQueryBuilder()
+      .update(AvailabilityAppointment)
+      .set({
+        hasConflict: false,
+        conflictReason: null as any,
+        conflictDetectedAt: null as any,
+        conflictSourceExceptionId: null as any,
+      })
+      .where('conflictSourceExceptionId = :exceptionId', { exceptionId })
+      .andWhere('hasConflict = true')
+      .execute();
+    return result.affected ?? 0;
+  }
+
   async clearOperatorAbsenceConflicts(
     operatorId: string,
     date: Date,
@@ -283,7 +305,13 @@ export class AppointmentConflictService {
   async markExceptionConflicts(
     conflicts: ConflictedAppointment[],
     exceptionType: ExceptionType,
-    performedBy?: string
+    performedBy?: string,
+    /**
+     * Id dell'eccezione sorgente: persistito su
+     * appointment.conflictSourceExceptionId per il clear chirurgico
+     * al ripristino. Se omesso viene usato il sourceId del conflitto.
+     */
+    sourceExceptionId?: string,
   ): Promise<void> {
     const conflictReason = this.getConflictReasonFromExceptionType(exceptionType);
     const year = new Date().getFullYear();
@@ -293,7 +321,10 @@ export class AppointmentConflictService {
       await this.appointmentRepo.update(conflict.appointment.id, {
         hasConflict: true,
         conflictReason,
-        conflictDetectedAt: new Date()
+        conflictDetectedAt: new Date(),
+        conflictSourceExceptionId:
+          sourceExceptionId ??
+          (conflict.sourceType === 'exception' ? conflict.sourceId : undefined),
       });
 
       // 2. Crea log per statistiche

@@ -194,6 +194,19 @@ export class TrattamentiStateService {
       const raw = localStorage.getItem(TrattamentiStateService.LS_FILTERS_KEY);
       if (!raw) return { ...TrattamentiStateService.DEFAULT_FILTERS };
       const parsed = JSON.parse(raw) as Partial<TrattamentiFilters>;
+      // I filtri "fatturazione" (billingStatuses client-side + flag
+      // tri-state server-side) NON vengono ripristinati tra sessioni:
+      // restano attivi in modo invisibile e, combinati con un cambio di
+      // operatore/periodo, producono liste vuote inspiegabili. Sono
+      // quindi session-scoped: persistiamo solo statuses/date/operatore.
+      delete parsed.billingStatuses;
+      delete parsed.readyForBilling;
+      delete parsed.isInvoicedToPatient;
+      delete parsed.scontoFE;
+      // Idem per patientId: l'autocomplete paziente NON ripristina il testo
+      // (patientSearchText riparte vuoto), quindi un patientId persistito
+      // diventa un filtro fantasma invisibile che svuota la lista.
+      delete parsed.patientId;
       // Merge col default per essere robusti a chiavi mancanti (es. dopo
       // aggiornamenti del modello filtri non ancora migrate).
       return { ...TrattamentiStateService.DEFAULT_FILTERS, ...parsed };

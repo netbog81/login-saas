@@ -42,11 +42,13 @@ export class OperatorCategoryService {
     macroCategory: OperatorMacroCategory,
     name: string,
     description?: string,
+    invoiceLineDescription?: string,
   ): Promise<OperatorCategory> {
     const category = this.categoryRepo.create({
       macroCategory,
       name,
       description,
+      invoiceLineDescription,
       isActive: true,
     });
     return this.categoryRepo.save(category);
@@ -54,7 +56,7 @@ export class OperatorCategoryService {
 
   async update(
     id: string,
-    data: Partial<Pick<OperatorCategory, 'name' | 'description' | 'macroCategory' | 'isActive'>>,
+    data: Partial<Pick<OperatorCategory, 'name' | 'description' | 'invoiceLineDescription' | 'invoicePrefix' | 'invoiceTemplate' | 'macroCategory' | 'isActive'>>,
   ): Promise<OperatorCategory> {
     await this.categoryRepo.update(id, data);
     return this.findOne(id);

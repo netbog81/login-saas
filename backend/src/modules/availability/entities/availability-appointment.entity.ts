@@ -197,6 +197,15 @@ export class AvailabilityAppointment {
   @Column('timestamp', { nullable: true })
   conflictDetectedAt?: Date;
 
+  /**
+   * Eccezione (AvailabilityException o GymException) che ha generato il
+   * conflitto. Permette il clear chirurgico al ripristino: si azzerano solo
+   * i conflitti di QUELLA eccezione, non tutti quelli di operatore+data.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  conflictSourceExceptionId?: string;
+
   // ==================== SUBSTITUTION FIELDS ====================
 
   /**
@@ -212,6 +221,15 @@ export class AvailabilityAppointment {
   @Field()
   @Column({ default: false })
   isSubstitution: boolean;
+
+  /**
+   * Eccezione palestra (GymException) che ha riassegnato questo appuntamento
+   * al sostituto. Marker per il ripristino: quando l'eccezione viene
+   * cancellata/modificata, solo gli appuntamenti con questo id vengono
+   * ripristinati all'operatore originale. Non esposto in GraphQL.
+   */
+  @Column('uuid', { nullable: true })
+  reassignedByGymExceptionId?: string;
 
   /**
    * Motivo della sostituzione (facoltativo)
