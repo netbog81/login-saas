@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { TrattamentiContainer } from './trattamenti.container';
 
 /**
@@ -13,7 +14,7 @@ import { TrattamentiContainer } from './trattamenti.container';
   imports: [CommonModule, TrattamentiContainer],
   template: `
     <div class="page">
-      <app-trattamenti-container></app-trattamenti-container>
+      <app-trattamenti-container [openTreatmentId]="openTreatmentId"></app-trattamenti-container>
     </div>
   `,
   styles: [`
@@ -26,4 +27,7 @@ import { TrattamentiContainer } from './trattamenti.container';
     }
   `],
 })
-export class TrattamentiPageContainer {}
+export class TrattamentiPageContainer {
+  /** Deep-link /trattamenti/:treatmentId (es. "apri nel clinico" da accounting). */
+  readonly openTreatmentId = inject(ActivatedRoute).snapshot.paramMap.get('treatmentId');
+}

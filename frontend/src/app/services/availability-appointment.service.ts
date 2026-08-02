@@ -16,6 +16,8 @@ import {
   DELETE_AVAILABILITY_APPOINTMENT,
   CONFIRM_AVAILABILITY_APPOINTMENT,
   MARK_APPOINTMENT_AS_NO_SHOW,
+  MARK_APPOINTMENT_LATE_ARRIVAL,
+  CLEAR_APPOINTMENT_LATE_ARRIVAL,
   CANCEL_APPOINTMENT_WITH_NOTICE,
   MARK_APPOINTMENT_ATTENDED,
   REVERT_APPOINTMENT_ATTENDED,
@@ -214,6 +216,31 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
   }
 
   /**
+   * Registra a posteriori l'arrivo in ritardo del paziente.
+   *
+   * Serve quando il cambio automatico di stato ha già portato
+   * l'appuntamento a "presentato" all'orario previsto: senza questo gesto
+   * il ritardo non verrebbe mai misurato. Se `lateMinutes` non è passato,
+   * il backend lo calcola sull'ora corrente.
+   */
+  markLateArrival(id: string, lateMinutes?: number): Observable<AvailabilityAppointment> {
+    return this.mutate<{ markAppointmentLateArrival: AvailabilityAppointment }>(
+      MARK_APPOINTMENT_LATE_ARRIVAL,
+      { id, lateMinutes: lateMinutes ?? null }
+    ).pipe(map((result) => result.markAppointmentLateArrival));
+  }
+
+  /**
+   * Annulla la registrazione del ritardo (click sbagliato).
+   */
+  clearLateArrival(id: string): Observable<AvailabilityAppointment> {
+    return this.mutate<{ clearAppointmentLateArrival: AvailabilityAppointment }>(
+      CLEAR_APPOINTMENT_LATE_ARRIVAL,
+      { id }
+    ).pipe(map((result) => result.clearAppointmentLateArrival));
+  }
+
+  /**
    * Cancella con calcolo automatico del preavviso
    * - >24h → cancelled_early
    * - <24h → cancelled_late (incrementa contatore paziente)
@@ -381,6 +408,8 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
     operatorId?: string;
     patientId?: string;
     clientName?: string;
+    clientPhone?: string;
+    clientEmail?: string;
     notes?: string;
     nonRetribuito?: boolean;
     instrumentOrderMatters?: boolean;

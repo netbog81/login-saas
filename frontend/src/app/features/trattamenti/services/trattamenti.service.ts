@@ -42,6 +42,7 @@ import {
   MARK_SCONTOFE_CASH_PAYMENT,
   CANCEL_TREATMENT_PAYMENT,
   ADD_TREATMENT_SERVICE_LINE,
+  UPDATE_TREATMENT_SERVICE_EXECUTOR,
   REMOVE_TREATMENT_SERVICE_LINE,
   TREATMENT_BY_ID,
   USABLE_VOUCHERS_FE,
@@ -301,11 +302,36 @@ export class TrattamentiService extends BaseGraphQLService {
     serviceId: string,
     description?: string,
     price?: number,
+    executorOperatorId?: string | null,
   ): Observable<Trattamento> {
     return this.mutate<{ addTreatmentServiceLine: Trattamento }>(
       ADD_TREATMENT_SERVICE_LINE,
-      { treatmentId, serviceId, description, price },
+      { treatmentId, serviceId, description, price, executorOperatorId },
     ).pipe(map(r => flattenPatient(r.addTreatmentServiceLine)));
+  }
+
+  /**
+   * 2026-07-15 — Cambia l'operatore esecutore di una riga servizio
+   * ("Eseguito da"). null = fallback all'operatore del trattamento.
+   */
+  updateTreatmentServiceExecutor(
+    treatmentServiceId: string,
+    executorOperatorId: string | null,
+  ): Observable<{
+    id: string;
+    executorOperatorId?: string | null;
+    executorOperator?: { id: string; name: string; surname?: string | null } | null;
+  }> {
+    return this.mutate<{
+      updateTreatmentServiceExecutor: {
+        id: string;
+        executorOperatorId?: string | null;
+        executorOperator?: { id: string; name: string; surname?: string | null } | null;
+      };
+    }>(UPDATE_TREATMENT_SERVICE_EXECUTOR, {
+      treatmentServiceId,
+      executorOperatorId,
+    }).pipe(map(r => r.updateTreatmentServiceExecutor));
   }
 
   /** 2026-07-02 — Rimuove una riga servizio del trattamento. */

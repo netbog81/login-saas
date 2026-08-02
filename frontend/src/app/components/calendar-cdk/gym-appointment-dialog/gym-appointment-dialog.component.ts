@@ -866,6 +866,80 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
     return status === 'attended';
   }
 
+  // ==================== RITARDO ====================
+
+  /**
+   * Il ritardo si registra su un appuntamento già "presentato": col cambio
+   * automatico di stato l'appuntamento risulta presentato all'orario
+   * previsto anche se il paziente è entrato in palestra molto dopo.
+   */
+  get canMarkLateArrival(): boolean {
+    if (!this.isEditMode || this.processingStatus) return false;
+    return (
+      this.normalizeStatus(this.bookingStatus) === 'attended' &&
+      this.registeredLateMinutes === null
+    );
+  }
+
+  /** Minuti di ritardo già registrati su questo appuntamento. */
+  get registeredLateMinutes(): number | null {
+    return (this.data.appointment as any)?.lateMinutes ?? null;
+  }
+
+  /** Minuti trascorsi dall'orario di inizio: proposta di default. */
+  private get minutesSinceStart(): number {
+    const start = new Date(`${this.data.date}T${this.data.startTime}`);
+    if (Number.isNaN(start.getTime())) return 0;
+    return Math.max(0, Math.round((Date.now() - start.getTime()) / 60000));
+  }
+
+  async onMarkLateArrival(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+
+    const answer = prompt(
+      'Con quanti minuti di ritardo è arrivato il paziente?',
+      String(this.minutesSinceStart),
+    );
+    if (answer === null) return;
+
+    const minutes = Number(answer);
+    if (!Number.isFinite(minutes) || minutes < 0) {
+      alert('Inserisci un numero di minuti valido.');
+      return;
+    }
+
+    this.processingStatus = true;
+    try {
+      const updated = await firstValueFrom(
+        this.appointmentService.markLateArrival(String(this.data.appointment.id), minutes),
+      );
+      this.data.appointment = { ...this.data.appointment, ...updated } as any;
+    } catch (error) {
+      console.error('Error marking late arrival:', error);
+      alert('Errore nel registrare il ritardo');
+    } finally {
+      this.processingStatus = false;
+    }
+  }
+
+  async onClearLateArrival(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+    if (!confirm('Vuoi rimuovere il ritardo registrato su questo appuntamento?')) return;
+
+    this.processingStatus = true;
+    try {
+      const updated = await firstValueFrom(
+        this.appointmentService.clearLateArrival(String(this.data.appointment.id)),
+      );
+      this.data.appointment = { ...this.data.appointment, ...updated } as any;
+    } catch (error) {
+      console.error('Error clearing late arrival:', error);
+      alert('Errore nel rimuovere il ritardo');
+    } finally {
+      this.processingStatus = false;
+    }
+  }
+
   get statusLabel(): string {
     const status = this.normalizeStatus(this.bookingStatus);
     const labels: Record<string, string> = {

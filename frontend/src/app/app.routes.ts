@@ -1,7 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard, linkedGuard, homeRedirectGuard } from './core/auth/auth.guard';
 import { schemaGuard } from './core/auth/schema.guard';
-import { CalendarContainerComponent } from './components/calendar-cdk/calendar-container/calendar-container.component';
 import { AvailabilityDashboardComponent } from './components/availability/availability-dashboard/availability-dashboard.component';
 import { ConflictDashboardComponent } from './components/conflict-dashboard/conflict-dashboard.component';
 import { SettingsComponent } from './components/settings/settings.component';
@@ -18,6 +17,7 @@ import { AdminComponent } from './features/admin/admin.component';
 import { WhatsappLayoutComponent } from './features/whatsapp/whatsapp-layout.component';
 import { WhatsappMonitorContainer } from './features/whatsapp/containers/whatsapp-monitor.container';
 import { WhatsappSettingsContainer } from './features/whatsapp/containers/whatsapp-settings.container';
+import { WhatsappScheduledContainer } from './features/whatsapp/containers/whatsapp-scheduled.container';
 import { WhatsappLogManagementContainer } from './features/whatsapp/containers/whatsapp-log-management.container';
 import { InstructorsLayoutComponent } from './features/instructors/layout/instructors-layout.component';
 import { InstructorAppointmentsContainer } from './features/instructors/containers/instructor-appointments.container';
@@ -62,28 +62,20 @@ export const routes: Routes = [
 
   // --- Rotte protette (auth + mapping attivo + schema pronto) ---
   {
+    // Il calendario (ex calendar-v3) è accessibile anche a operatore/medico/
+    // istruttore: per loro è la home in modalità SOLA LETTURA del proprio
+    // calendario (lo decide il container in base al ruolo). Segreteria/admin
+    // lo usano in modalità piena.
     path: 'calendar',
-    component: CalendarContainerComponent,
-    canActivate: [authGuard, linkedGuard, schemaGuard],
-    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
-    title: 'Calendario',
-  },
-  {
-    path: 'calendar2',
-    canActivate: [authGuard, linkedGuard, schemaGuard],
-    data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
-    loadChildren: () => import('./features/calendar-v2/calendar-v2.routes').then(m => m.CALENDAR_V2_ROUTES),
-    title: 'Calendario V2',
-  },
-  {
-    // calendar3 è accessibile anche a operatore/medico/istruttore: per loro è
-    // la home in modalità SOLA LETTURA del proprio calendario (lo decide il
-    // container in base al ruolo). Segreteria/admin lo usano in modalità piena.
-    path: 'calendar3',
     canActivate: [authGuard, linkedGuard, schemaGuard],
     data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin', 'operatore', 'medico', 'istruttore'] },
     loadChildren: () => import('./features/calendar-v3/calendar-v3.routes').then(m => m.CALENDAR_V3_ROUTES),
-    title: 'Calendario V3',
+    title: 'Calendario',
+  },
+  {
+    // Retro-compat: bookmark e link salvati sul vecchio path calendar3.
+    path: 'calendar3',
+    redirectTo: 'calendar',
   },
   {
     path: 'trattamenti',
@@ -110,7 +102,7 @@ export const routes: Routes = [
     path: 'statistiche',
     canActivate: [authGuard, linkedGuard, schemaGuard],
     data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
-    loadChildren: () => import('./features/voucher-fe/voucher-fe.routes').then(m => m.VOUCHER_FE_ROUTES),
+    loadChildren: () => import('./features/statistiche/statistiche.routes').then(m => m.STATISTICHE_ROUTES),
     title: 'Statistiche',
   },
   {
@@ -121,7 +113,10 @@ export const routes: Routes = [
       import('./features/availability/absence-management/absence-management.routes').then(
         (m) => m.ABSENCE_MANAGEMENT_ROUTES,
       ),
-    title: 'Gestione assenze',
+    // La rotta resta /gestione-assenze: è già nei preferiti degli utenti e
+    // rinominarla romperebbe i link salvati. Cambia solo l'etichetta, ora che
+    // la pagina gestisce anche le disponibilità straordinarie.
+    title: 'Assenze e disponibilità',
   },
   {
     path: 'operatori-new',
@@ -193,7 +188,7 @@ export const routes: Routes = [
     component: AvailabilityDashboardComponent,
     canActivate: [authGuard, linkedGuard, schemaGuard],
     data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
-    title: 'Gestione Disponibilita',
+    title: 'Configurazioni',
   },
   {
     path: 'conflicts',
@@ -227,6 +222,7 @@ export const routes: Routes = [
     children: [
       { path: '', redirectTo: 'monitor', pathMatch: 'full' },
       { path: 'monitor', component: WhatsappMonitorContainer, title: 'Monitor Messaggi' },
+      { path: 'scheduled', component: WhatsappScheduledContainer, title: 'Messaggi in Programma' },
       { path: 'settings', component: WhatsappSettingsContainer, title: 'Configurazione WhatsApp' },
       { path: 'log-management', component: WhatsappLogManagementContainer, title: 'Gestione Log' },
     ],

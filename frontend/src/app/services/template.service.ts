@@ -23,6 +23,7 @@ import {
   CREATE_PATTERN_GROUP,
   UPDATE_PATTERN_GROUP,
   DELETE_PATTERN_GROUP,
+  SET_PATTERN_GROUP_ACTIVE,
   UPDATE_TEMPLATE_ASSIGNMENT,
   DEACTIVATE_TEMPLATE_ASSIGNMENT,
   DELETE_TEMPLATE_ASSIGNMENT,
@@ -107,16 +108,79 @@ export class TemplateService extends BaseGraphQLService {
   }
 
   /**
-   * Verifica se un nome template esiste già
+   * Verifica se un nome template esiste già.
+   * Confronta i nomi dei pattern group (non delle singole fasce): così
+   * intercetta anche i gruppi senza fasce orarie, che altrimenti
+   * risulterebbero "inesistenti" pur occupando il nome.
    */
   checkTemplateName(name: string): Observable<boolean> {
-    return this.getAllTemplates().pipe(
-      map((templates) =>
-        templates.some(
-          (t) => t.name?.toLowerCase() === name.toLowerCase() && t.isCurrent
-        )
+    return this.getAllPatternGroups().pipe(
+      map((groups) =>
+        groups.some((g) => g.name?.toLowerCase() === name.toLowerCase())
       )
     );
+  }
+
+  /**
+   * Converte le fasce di un PatternGroup in Partial<AvailabilityTemplate>[]
+   * per compatibilità con la UI esistente (stessa mappatura di getAllTemplates,
+   * ma per un singolo gruppo).
+   */
+  convertGroupToTemplates(group: PatternGroup): Partial<AvailabilityTemplate>[] {
+    return (group.patterns || []).map((p) => ({
+      id: p.id,
+      operatorId: '', // No operator for generic patterns
+      name: p.name,
+      description: p.description,
+      dayInPattern: p.dayInPattern,
+      patternDuration: p.patternDuration,
+      patternStartDate: new Date(),
+      startTime: p.startTime,
+      endTime: p.endTime,
+      version: 1,
+      isCurrent: true,
+      validFrom: new Date(),
+      validUntil: undefined,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      patternGroupId: group.id,
+    } as any));
+  }
+
+  /**
+   * Converte un PatternGroup nella struttura UI (TemplatePattern).
+   * Per i gruppi SENZA fasce orarie (orfani) sintetizza le settimane vuote,
+   * così il builder può aprirli in modifica e permettere di aggiungere fasce.
+   */
+  convertGroupToUiPattern(group: PatternGroup): TemplatePattern {
+    const templates = this.convertGroupToTemplates(group);
+
+    if (templates.length > 0) {
+      return this.convertBackendToPattern(templates)!;
+    }
+
+    // Clamp a 1-4: il builder supporta pattern fino a 4 settimane e alcuni
+    // gruppi orfani legacy hanno durate anomale (es. 60 giorni).
+    const patternWeeks = Math.min(
+      4,
+      Math.max(1, Math.ceil((group.patternDuration || 7) / 7))
+    );
+    const weeks: WeekSchedule[] = [];
+    for (let weekNumber = 1; weekNumber <= patternWeeks; weekNumber++) {
+      weeks.push({ weekNumber, days: [] });
+    }
+
+    return {
+      id: undefined,
+      name: group.name || '',
+      operatorId: undefined,
+      patternWeeks,
+      weeks,
+      validFrom: this.getTodayString(),
+      validUntil: undefined,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+    };
   }
 
   /**
@@ -201,13 +265,13 @@ export class TemplateService extends BaseGraphQLService {
       description: backendPattern.description,
       dayInPattern: backendPattern.dayInPattern,
       patternDuration: backendPattern.patternDuration,
-      patternStartDate: new Date(), // Not applicable for patterns
+      patternStartDate: this.getTodayString(), // Not applicable for patterns
       startTime: backendPattern.startTime,
       endTime: backendPattern.endTime,
       version: 1,
       isCurrent: false, // Not applicable for patterns
-      validFrom: new Date(uiPattern.validFrom || this.getTodayString()),
-      validUntil: uiPattern.validUntil ? new Date(uiPattern.validUntil) : undefined,
+      validFrom: uiPattern.validFrom || this.getTodayString(),
+      validUntil: uiPattern.validUntil || undefined,
       createdAt: backendPattern.createdAt,
       updatedAt: backendPattern.updatedAt,
     };
@@ -626,5 +690,32 @@ export class TemplateService extends BaseGraphQLService {
       { id: patternGroupId, input },
       [{ query: GET_ALL_PATTERN_GROUPS }]
     ).pipe(map((result) => result.updatePatternGroup));
+  }
+
+  /**
+   * Elimina un pattern group per ID (anche senza fasce orarie).
+   * A differenza di deleteTemplate(patternId) non richiede di risalire al
+   * gruppo da una fascia — indispensabile per i gruppi orfani con 0 fasce.
+   */
+  deletePatternGroup(patternGroupId: string): Observable<boolean> {
+    return this.mutate<{ deletePatternGroup: boolean }>(
+      DELETE_PATTERN_GROUP,
+      { id: patternGroupId },
+      [{ query: GET_ALL_PATTERN_GROUPS }]
+    ).pipe(map((result) => result.deletePatternGroup));
+  }
+
+  /**
+   * Attiva/disattiva un pattern group (soft-delete reversibile).
+   */
+  setPatternGroupActive(
+    patternGroupId: string,
+    isActive: boolean
+  ): Observable<PatternGroup> {
+    return this.mutate<{ setPatternGroupActive: PatternGroup }>(
+      SET_PATTERN_GROUP_ACTIVE,
+      { id: patternGroupId, isActive },
+      [{ query: GET_ALL_PATTERN_GROUPS }]
+    ).pipe(map((result) => result.setPatternGroupActive));
   }
 }

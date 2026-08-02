@@ -57,6 +57,12 @@ export class PatternGroupService {
   }
 
   async create(input: CreatePatternGroupInput): Promise<PatternGroup> {
+    if (!input.patterns || input.patterns.length === 0) {
+      throw new BadRequestException(
+        'Il template deve avere almeno una fascia oraria'
+      );
+    }
+
     // Validate pattern duration consistency
     for (const pattern of input.patterns) {
       if (pattern.dayInPattern < 0 || pattern.dayInPattern >= input.patternDuration) {
@@ -66,26 +72,31 @@ export class PatternGroupService {
       }
     }
 
-    // Create pattern group
-    const group = this.patternGroupRepo.create({
-      name: input.name,
-      description: input.description,
-      patternDuration: input.patternDuration,
-      isActive: true,
-    });
-
-    const savedGroup = await this.patternGroupRepo.save(group);
-
-    // Create associated patterns
-    const patterns = input.patterns.map(p =>
-      this.patternRepo.create({
-        ...p,
-        patternGroupId: savedGroup.id,
+    // Gruppo e fasce nella stessa transazione: un fallimento sul save delle
+    // fasce non deve lasciare in giro un gruppo "guscio vuoto" (invisibile
+    // nell'elenco template ma assegnabile agli operatori).
+    const savedGroup = await this.dataSource.transaction(async (manager) => {
+      const group = manager.getRepository(PatternGroup).create({
+        name: input.name,
+        description: input.description,
         patternDuration: input.patternDuration,
-      })
-    );
+        isActive: true,
+      });
 
-    await this.patternRepo.save(patterns);
+      const saved = await manager.getRepository(PatternGroup).save(group);
+
+      const patterns = input.patterns.map(p =>
+        manager.getRepository(TemplatePattern).create({
+          ...p,
+          patternGroupId: saved.id,
+          patternDuration: input.patternDuration,
+        })
+      );
+
+      await manager.getRepository(TemplatePattern).save(patterns);
+
+      return saved;
+    });
 
     // Reload with relations
     return this.findOne(savedGroup.id);
@@ -114,15 +125,21 @@ export class PatternGroupService {
   ): Promise<PatternGroupUpdateResult> {
     const group = await this.findOne(id);
 
+    // Un update non può svuotare il template: un gruppo senza fasce orarie
+    // azzererebbe la disponibilità degli operatori assegnati. Per "spegnere"
+    // un template esiste setActive(false).
+    if (input.patterns && input.patterns.length === 0) {
+      throw new BadRequestException(
+        'Il template deve avere almeno una fascia oraria. Per non usarlo più, disattivalo invece di svuotarlo.'
+      );
+    }
+
     if (input.name !== undefined) group.name = input.name;
     if (input.description !== undefined) group.description = input.description;
     if (input.patternDuration !== undefined) {
       group.patternDuration = input.patternDuration;
     }
 
-    await this.patternGroupRepo.save(group);
-
-    // If patterns are provided, replace existing patterns
     if (input.patterns) {
       // Validate pattern duration consistency
       for (const pattern of input.patterns) {
@@ -135,21 +152,27 @@ export class PatternGroupService {
           );
         }
       }
-
-      // Delete existing patterns
-      await this.patternRepo.delete({ patternGroupId: id });
-
-      // Create new patterns
-      const patterns = input.patterns.map(p =>
-        this.patternRepo.create({
-          ...p,
-          patternGroupId: id,
-          patternDuration: group.patternDuration,
-        })
-      );
-
-      await this.patternRepo.save(patterns);
     }
+
+    // Update gruppo + replace fasce nella stessa transazione: un fallimento a
+    // metà (fasce cancellate ma non ricreate) lascerebbe un guscio vuoto.
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(PatternGroup).save(group);
+
+      if (input.patterns) {
+        await manager.getRepository(TemplatePattern).delete({ patternGroupId: id });
+
+        const patterns = input.patterns.map(p =>
+          manager.getRepository(TemplatePattern).create({
+            ...p,
+            patternGroupId: id,
+            patternDuration: group.patternDuration,
+          })
+        );
+
+        await manager.getRepository(TemplatePattern).save(patterns);
+      }
+    });
 
     // Verifica conflitti con appuntamenti esistenti
     const conflicts = await this.conflictService.checkConflictsOnTemplateChange(id);
@@ -178,8 +201,22 @@ export class PatternGroupService {
 
     if (assignmentCount > 0) {
       throw new ConflictException(
-        `Cannot delete pattern group: it is currently assigned to ${assignmentCount} operator(s). ` +
-        `Please remove the assignments first.`
+        `Impossibile eliminare il template: è attualmente assegnato a ${assignmentCount} operatore/i. ` +
+        `Rimuovi prima le assegnazioni.`
+      );
+    }
+
+    // La FK di template_assignments è RESTRICT: con assegnazioni storiche
+    // (isCurrent=false) il DELETE fallirebbe con un errore DB grezzo. Meglio
+    // un messaggio chiaro che indirizzi alla disattivazione.
+    const historicalCount = await this.assignmentRepo.count({
+      where: { patternGroupId: id }
+    });
+
+    if (historicalCount > 0) {
+      throw new ConflictException(
+        `Impossibile eliminare il template: ha ${historicalCount} assegnazioni storiche a operatori. ` +
+        `Disattivalo per non renderlo più assegnabile.`
       );
     }
 

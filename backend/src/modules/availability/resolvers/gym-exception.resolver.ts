@@ -1,3 +1,4 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID, Context, ObjectType, Field } from '@nestjs/graphql';
 import { GymException } from '../entities/gym-exception.entity';
 import { GymRoom } from '../entities/gym-room.entity';
@@ -8,6 +9,7 @@ import {
   CreateGymExceptionInput,
   UpdateGymExceptionInput,
 } from '../dto/gym-exception.input';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
 /**
  * Rappresenta uno slot di disponibilità di un operatore in una palestra in
@@ -26,6 +28,7 @@ export class OperatorSlotOnDate {
   endTime: string;
 }
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => GymException)
 export class GymExceptionResolver {
   constructor(

@@ -14,6 +14,7 @@ import {
   WhatsappTestResult,
   WhatsappRetentionStats,
   WhatsappLogManagementResult,
+  WhatsappScheduledMessage,
 } from '../models/whatsapp.models';
 
 // ==================== QUERIES ====================
@@ -27,6 +28,8 @@ const GET_WHATSAPP_CONFIG = gql`
       maskedApiKey
       isActive
       sendCancelNotification
+      sendUpdateNotification
+      recapBufferSeconds
       retentionDays
       createdAt
       updatedAt
@@ -210,6 +213,8 @@ const UPSERT_WHATSAPP_CONFIG = gql`
       maskedApiKey
       isActive
       sendCancelNotification
+      sendUpdateNotification
+      recapBufferSeconds
       retentionDays
       createdAt
       updatedAt
@@ -266,6 +271,28 @@ const UPSERT_WHATSAPP_TEMPLATE = gql`
   }
 `;
 
+const GET_WHATSAPP_SCHEDULED = gql`
+  query GetWhatsappScheduledMessages {
+    whatsappScheduledMessages {
+      jobId
+      type
+      phone
+      patientName
+      appointmentIds
+      content
+      bufferedCount
+      scheduledFor
+      state
+    }
+  }
+`;
+
+const CANCEL_WHATSAPP_SCHEDULED = gql`
+  mutation CancelWhatsappScheduledMessage($jobId: String!) {
+    cancelWhatsappScheduledMessage(jobId: $jobId)
+  }
+`;
+
 @Injectable({
   providedIn: 'root',
 })
@@ -312,6 +339,22 @@ export class WhatsappService extends BaseGraphQLService {
       TEST_WHATSAPP_FULL_FLOW,
       { phone, name },
     ).pipe(map((result) => result.testWhatsappFullFlow));
+  }
+
+  /** Messaggi in coda sul gateway, non ancora inviati. */
+  getScheduledMessages(): Observable<WhatsappScheduledMessage[]> {
+    return this.query<{ whatsappScheduledMessages: WhatsappScheduledMessage[] }>(
+      GET_WHATSAPP_SCHEDULED,
+      undefined,
+      'network-only',
+    ).pipe(map((result) => result.whatsappScheduledMessages ?? []));
+  }
+
+  cancelScheduledMessage(jobId: string): Observable<boolean> {
+    return this.mutate<{ cancelWhatsappScheduledMessage: boolean }>(
+      CANCEL_WHATSAPP_SCHEDULED,
+      { jobId },
+    ).pipe(map((result) => result.cancelWhatsappScheduledMessage));
   }
 
   getTemplates(): Observable<WhatsappTemplate[]> {

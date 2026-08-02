@@ -39,10 +39,15 @@ import {
  *     requestImmediateInvoice: false,
  *   });
  *
- * Importante (vedi spec §22 + decisioni Step 7):
- *  - executedByUserId: se la riga TreatmentService ha
- *    executedByOperatorId = NULL (operator hard-deleted, vedi Step 1),
- *    mappa esplicitamente `null` nel payload — NON omettere il campo.
+ * Importante (vedi spec §22 + decisioni Step 7, rivisto 2026-07-15):
+ *  - L'esecutore di una riga SERVICE è l'OPERATORE che l'ha eseguita:
+ *    `ts.executorOperator` (override esplicito "Eseguito da") altrimenti
+ *    l'operatore del trattamento. Il payload porta sia
+ *    `executedByOperatorId`/`executedByOperatorName` (id clinico, chiave
+ *    per i conteggi accounting) sia `executedByUserId` (sub Keycloak
+ *    dell'operatore, null se non collegato) — NON omettere i campi null.
+ *    La colonna legacy `ts.executedByOperatorId` (app_users.id) NON viene
+ *    più letta: era inquinata dall'utente loggato (segreteria).
  *  - quantity SERVICE = "1" hardcoded per MVP (modello clinico non
  *    supporta qty>1 per TreatmentService).
  *  - quantity CUSTOM = "1" hardcoded (TreatmentInvoiceLine non ha qty).
@@ -73,6 +78,7 @@ export class TreatmentEventMapper {
         therapeuticPath: true,
         treatmentServices: {
           service: { subcategory: true },
+          executorOperator: true,
         },
         invoiceLines: true,
       },
@@ -247,13 +253,17 @@ export class TreatmentEventMapper {
   ): TreatmentLineService {
     const service: ServiceEntity | undefined = ts.service;
 
-    // executedByUserId: prima TreatmentService.executedByOperatorId
-    // (campo nuovo Step 1), fallback a operator.appUserId del treatment.
-    // Se nessuno dei due risolve un keycloakId, mappa esplicitamente null
-    // (NON undefined: lo schema TS è `string | null`).
-    const executedAppUserId =
-      ts.executedByOperatorId ?? operator?.appUserId ?? null;
-    const executedByUserId = this.resolveSub(subMap, executedAppUserId);
+    // Esecutore della riga: override esplicito "Eseguito da"
+    // (ts.executorOperator) altrimenti l'operatore del trattamento.
+    // executedByUserId = sub Keycloak dell'OPERATORE esecutore (null se
+    // l'operatore non è collegato a un utente — mappare esplicitamente
+    // null, NON undefined). La colonna legacy ts.executedByOperatorId
+    // (app_users.id) non viene più letta: era valorizzata con l'utente
+    // loggato e attribuiva i compensi a segreteria/admin.
+    const executor: Operator | undefined = ts.executorOperator ?? operator;
+    const executedByUserId = this.resolveSub(subMap, executor?.appUserId ?? null);
+    const executorName =
+      [executor?.name, executor?.surname].filter(Boolean).join(' ').trim() || null;
 
     // invoiceLineDescription: NEVER null (lato accounting `itemDescription`
     // è NOT NULL → INSERT fallisce). Senza override manuale usa la
@@ -272,7 +282,10 @@ export class TreatmentEventMapper {
       serviceId: ts.serviceId,
       serviceCode: service?.serviceCode ?? this.fallbackServiceCode(ts.serviceId),
       executedByUserId,
-      professionalRegistration: operator?.professionalRegistration ?? null,
+      executedByOperatorId: executor?.id ?? null,
+      executedByOperatorName: executorName,
+      professionalRegistration:
+        executor?.professionalRegistration ?? operator?.professionalRegistration ?? null,
       macroCategory: service?.macroCategory ?? operator?.macroCategory ?? null,
       quantity: '1', // hardcoded MVP: TreatmentService non supporta qty>1
       duration: ts.duration ?? null,
@@ -328,7 +341,9 @@ export class TreatmentEventMapper {
     if (treatment.collectedBy) ids.add(treatment.collectedBy);
     if (treatment.operator?.appUserId) ids.add(treatment.operator.appUserId);
     for (const ts of treatment.treatmentServices ?? []) {
-      if (ts.executedByOperatorId) ids.add(ts.executedByOperatorId);
+      // Esecutore esplicito della riga (operators.appUserId, NON la
+      // colonna legacy executedByOperatorId che era inquinata dall'attore).
+      if (ts.executorOperator?.appUserId) ids.add(ts.executorOperator.appUserId);
     }
     for (const il of treatment.invoiceLines ?? []) {
       if (il.createdBy) ids.add(il.createdBy);

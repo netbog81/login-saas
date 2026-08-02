@@ -32,6 +32,7 @@ import { PatientTableComponent } from '../components/patients-list/patient-table
 import { PatientFolderDialogComponent } from '../components/patient-folder-dialog/patient-folder-dialog.component';
 import { PatientAppointmentsDialogComponent } from './patient-appointments-dialog.component';
 import { OperatorWorkspaceStateService } from '../services/operator-workspace-state.service';
+import { tokenizeQuery, matchesAllTokens } from '../../../shared/utils/token-match';
 
 import {
   PatientsListUIState,
@@ -264,12 +265,11 @@ export class OperatorsPatientsContainer implements OnInit, OnDestroy {
     // Il registry richiede min 3 char per global-search; sotto la soglia
     // mostriamo il filtro client-side della lista già caricata (50/100).
     if (trimmed.length < 3) {
-      const lower = trimmed.toLowerCase();
-      this.displayedPatients = this.patients.filter((p) => {
-        const name = `${p.nome ?? ''} ${p.cognome ?? ''}`.toLowerCase();
-        const phone = (p.cellulare || p.telefono || '').toLowerCase();
-        return name.includes(lower) || phone.includes(lower);
-      });
+      // Match a token: l'ordine nome/cognome digitato è indifferente.
+      const tokens = tokenizeQuery(trimmed);
+      this.displayedPatients = this.patients.filter((p) =>
+        matchesAllTokens([p.nome, p.cognome, p.cellulare, p.telefono], tokens),
+      );
       this.uiState = { ...this.uiState, searching: false };
       this.cdr.markForCheck();
       return;

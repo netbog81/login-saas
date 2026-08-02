@@ -2,7 +2,6 @@ import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import {
   TherapeuticPath,
-  PathDocument,
   Anamnesis,
   PathStatus,
 } from '../models/therapeutic-path.model';
@@ -17,8 +16,6 @@ import {
   GET_THERAPEUTIC_PATHS_BY_OPERATOR,
   GET_PATIENT_EVALUATION,
   GET_EVALUATIONS_BY_PATH,
-  GET_DOCUMENTS_BY_PATH,
-  GET_DOCUMENTS_BY_PATH_AND_CATEGORY,
 } from '../graphql/operations/therapeutic-path.queries';
 
 // Mutations
@@ -29,8 +26,6 @@ import {
   CREATE_PATIENT_EVALUATION,
   UPDATE_PATIENT_EVALUATION,
   DELETE_PATIENT_EVALUATION,
-  CREATE_PATH_DOCUMENT,
-  DELETE_PATH_DOCUMENT,
 } from '../graphql/operations/therapeutic-path.mutations';
 
 // Backend types (from GraphQL)
@@ -55,7 +50,6 @@ interface BackendTherapeuticPath {
     appUserId?: string | null;
   };
   evaluations?: BackendPatientEvaluation[];
-  documents?: BackendPathDocument[];
 }
 
 interface BackendPatientEvaluation {
@@ -79,24 +73,6 @@ interface BackendPatientEvaluation {
     name: string;
     surname: string;
   };
-}
-
-interface BackendPathDocument {
-  id: string;
-  therapeuticPathId: string;
-  type: 'pdf' | 'image' | 'video' | 'other';
-  category: 'prescription' | 'report' | 'radiology' | 'consent' | 'other';
-  fileName: string;
-  originalFileName?: string;
-  mimeType: string;
-  fileSize: number;
-  storagePath: string;
-  thumbnailPath?: string;
-  externalDoctorName?: string;
-  notes?: string;
-  description?: string;
-  uploadedBy?: string;
-  uploadedAt: string;
 }
 
 // Input types for mutations
@@ -148,22 +124,6 @@ export interface UpdateEvaluationInput {
   fieldValues?: Record<string, unknown>;
 }
 
-export interface CreateDocumentInput {
-  therapeuticPathId: string;
-  type: 'pdf' | 'image' | 'video' | 'other';
-  category: 'prescription' | 'report' | 'radiology' | 'consent' | 'other';
-  fileName: string;
-  originalFileName?: string;
-  mimeType: string;
-  fileSize: number;
-  storagePath: string;
-  thumbnailPath?: string;
-  externalDoctorName?: string;
-  notes?: string;
-  description?: string;
-  uploadedBy?: string;
-}
-
 /**
  * Servizio per gestire i Percorsi Terapeutici
  * Collegato alle API GraphQL reali
@@ -201,7 +161,6 @@ export class TherapeuticPathService extends BaseGraphQLService {
       startDate: backend.createdAt,
       actualEndDate: backend.closedAt,
       anamnesis: this.mapEvaluationToAnamnesis(backend.evaluations?.[0]),
-      documents: backend.documents?.map((d) => this.mapBackendDocument(d)),
       notes: backend.notes,
       createdAt: backend.createdAt,
       updatedAt: backend.updatedAt,
@@ -235,34 +194,8 @@ export class TherapeuticPathService extends BaseGraphQLService {
     };
   }
 
-  /**
-   * Converte il documento backend nel formato frontend
-   */
-  private mapBackendDocument(doc: BackendPathDocument): PathDocument {
-    // Map backend category to frontend category string
-    const categoryMap: Record<string, string> = {
-      prescription: 'prescrizione',
-      report: 'referti',
-      radiology: 'radiografia',
-      consent: 'consensi',
-      other: 'altro',
-    };
-
-    return {
-      id: doc.id,
-      pathId: doc.therapeuticPathId,
-      name: doc.originalFileName || doc.fileName,
-      type: doc.type,
-      url: doc.storagePath, // In futuro sara un URL firmato
-      thumbnailUrl: doc.thumbnailPath,
-      mimeType: doc.mimeType,
-      sizeBytes: doc.fileSize,
-      uploadedAt: doc.uploadedAt,
-      uploadedBy: doc.uploadedBy,
-      notes: doc.notes,
-      category: categoryMap[doc.category] || doc.category,
-    };
-  }
+  // NOTA: mapBackendDocument rimosso — i documenti sono ora della scheda
+  // paziente (features/patient-documents, entity patient_documents).
 
   // ==================== PATH QUERIES ====================
 
@@ -367,20 +300,6 @@ export class TherapeuticPathService extends BaseGraphQLService {
     );
   }
 
-  // ==================== DOCUMENT QUERIES ====================
-
-  /**
-   * Ottiene i documenti di un percorso
-   */
-  getDocumentsByPath(pathId: string): Observable<PathDocument[]> {
-    return this.query<{ documentsByPath: BackendPathDocument[] }>(
-      GET_DOCUMENTS_BY_PATH,
-      { pathId }
-    ).pipe(
-      map((result) => (result.documentsByPath ?? []).map((d) => this.mapBackendDocument(d)))
-    );
-  }
-
   // ==================== EVALUATION QUERIES ====================
 
   /**
@@ -467,25 +386,7 @@ export class TherapeuticPathService extends BaseGraphQLService {
     ).pipe(map((result) => result.deleteEvaluation));
   }
 
-  // ==================== DOCUMENT MUTATIONS ====================
-
-  /**
-   * Crea un nuovo documento
-   */
-  createDocument(input: CreateDocumentInput): Observable<PathDocument> {
-    return this.mutate<{ createPathDocument: BackendPathDocument }>(
-      CREATE_PATH_DOCUMENT,
-      { input }
-    ).pipe(map((result) => this.mapBackendDocument(result.createPathDocument)));
-  }
-
-  /**
-   * Elimina un documento
-   */
-  deleteDocument(id: string): Observable<boolean> {
-    return this.mutate<{ deletePathDocument: boolean }>(
-      DELETE_PATH_DOCUMENT,
-      { id }
-    ).pipe(map((result) => result.deletePathDocument));
-  }
+  // NOTA: le DOCUMENT MUTATIONS (createDocument/deleteDocument) sono state
+  // sostituite dalla feature patient-documents (upload REST multipart +
+  // mutation GraphQL su patient_documents).
 }

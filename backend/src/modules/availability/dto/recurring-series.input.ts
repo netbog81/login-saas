@@ -94,6 +94,12 @@ export class UpdateRecurringSeriesInput {
   clientName?: string;
 
   @Field({ nullable: true })
+  clientPhone?: string;
+
+  @Field({ nullable: true })
+  clientEmail?: string;
+
+  @Field({ nullable: true })
   notes?: string;
 
   @Field({ nullable: true })

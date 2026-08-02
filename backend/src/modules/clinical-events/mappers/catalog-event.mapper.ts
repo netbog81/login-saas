@@ -4,11 +4,13 @@ import { EntityManager } from 'typeorm';
 
 import { Service as ServiceEntity } from '../../availability/entities/service.entity';
 import { Product } from '../../availability/entities/product.entity';
+import { Operator } from '../../availability/entities/operator.entity';
 import { ServiceSubcategory } from '../../availability/entities/service-subcategory.entity';
 import { ServiceInvoicePrefix } from '../../availability/entities/service-invoice-prefix.entity';
 import { OperatorMacroCategory } from '../../availability/entities/operator-macro-category.enum';
 import { ServiceInvoicePrefixService } from '../../availability/services/service-invoice-prefix.service';
 import {
+  OperatorUpsertedPayload,
   ProductDeletedPayload,
   ProductUpsertedPayload,
   ServiceDeletedPayload,
@@ -74,6 +76,29 @@ export class CatalogEventMapper {
     };
   }
 
+  /**
+   * 2026-07-11 — Operatore → payload `operator.upserted.<tenant>` per i
+   * conti operatori dell'accounting. `keycloakUserId` (AppUser.keycloakId)
+   * è la chiave di join con `executedByUserId` dei billable events: lo
+   * risolve il chiamante (batch per il resync).
+   */
+  mapOperatorUpserted(
+    operator: Operator,
+    keycloakUserId: string | null,
+  ): OperatorUpsertedPayload {
+    return {
+      operatorId: operator.id,
+      appUserId: operator.appUserId ?? null,
+      keycloakUserId,
+      displayName: [operator.name, operator.surname].filter(Boolean).join(' '),
+      royaltyPercentage: this.toDecimalString(operator.royaltyPercentage ?? 0),
+      macroCategory: operator.macroCategory ?? null,
+      taxCode: operator.taxCode ?? null,
+      vatNumber: operator.vatNumber ?? null,
+      isActive: operator.isActive,
+    };
+  }
+
   mapProductUpserted(product: Product): ProductUpsertedPayload {
     return {
       productId: product.id,
@@ -94,14 +119,35 @@ export class CatalogEventMapper {
   }
 
   /**
+   * Segnaposto risolvibili SOLO nel contesto di un trattamento (data di
+   * esecuzione, operatore, albo, strumenti, categoria operatore). Un
+   * template che li usa non è renderizzabile a livello di solo servizio:
+   * i valori vuoti lascerebbero in piedi le parole del template ("del
+   * eseguita da iscritto all'albo") — testo monco che poi finisce come
+   * prefill nelle righe manuali dell'accounting e da lì nello snapshot
+   * stampato in fattura (caso reale: R2026-00027 riga 3, 2026-07-15).
+   */
+  private static readonly TREATMENT_ONLY_PLACEHOLDERS =
+    /\{(data|operatore|albo|strumenti|descrizione_fattura_categoria)\}/;
+
+  /**
+   * Toglie la preposizione finale rimasta appesa quando il prefisso è
+   * pensato per essere seguito dalla data ("Prestazione sanitaria di
+   * massoterapia del" → senza data il "del" resta orfano).
+   */
+  private static stripDanglingPreposition(prefix: string): string {
+    return prefix.replace(/\s+(del|della|dello|dei|degli|delle|di|da|in data)\s*$/i, '').trim();
+  }
+
+  /**
    * Descrizione riga fattura DEFAULT a livello di solo servizio.
    *
    * Stessa config di macro-categoria usata dal TreatmentEventMapper
    * (`service_invoice_prefixes` + resolveConfig), ma SENZA contesto
-   * operatore: `useOperatorCategories` è forzato a false (nessuna categoria
-   * operatore da cui pescare) e i segnaposto {data}, {operatore}, {albo},
-   * {strumenti}, {descrizione_fattura_categoria} restano vuoti — il renderer
-   * ripulisce i separatori orfani.
+   * operatore. Se il template configurato usa segnaposto che esistono solo
+   * nel trattamento NON viene usato (produrrebbe frasi monche): si ripiega
+   * su descrizione fattura di sottocategoria, altrimenti su
+   * "prefisso (ripulito) — nome servizio".
    *
    * Best-effort: qualsiasi errore qui NON deve bloccare l'upsert del
    * catalogo → ritorna null e logga un warn.
@@ -134,18 +180,33 @@ export class CatalogEventMapper {
         macroSaved: macroSaved ?? null,
       });
 
-      const description = ServiceInvoicePrefixService.composeAuto(config, {
-        prefisso: config.prefix,
-        data: '',
-        codiceServizio: service.serviceCode ?? '',
-        nomeServizio: service.name ?? '',
-        descrizioneServizio: service.description ?? '',
-        descrizioneFatturaSottocategoria: subcategory?.invoiceLineDescription ?? '',
-        operatore: '',
-        albo: '',
-        descrizioneFatturaCategoria: '',
-        strumenti: '',
-      });
+      let description: string;
+      const templateNeedsTreatment =
+        !!config.template &&
+        CatalogEventMapper.TREATMENT_ONLY_PLACEHOLDERS.test(config.template);
+
+      if (config.template && !templateNeedsTreatment) {
+        // Template auto-sufficiente a livello servizio: si usa così com'è.
+        description = ServiceInvoicePrefixService.composeAuto(config, {
+          prefisso: config.prefix,
+          data: '',
+          codiceServizio: service.serviceCode ?? '',
+          nomeServizio: service.name ?? '',
+          descrizioneServizio: service.description ?? '',
+          descrizioneFatturaSottocategoria: subcategory?.invoiceLineDescription ?? '',
+          operatore: '',
+          albo: '',
+          descrizioneFatturaCategoria: '',
+          strumenti: '',
+        });
+      } else {
+        // Template col contesto trattamento (o nessun template): fallback a
+        // testo pulito senza segnaposto irrisolti né preposizioni orfane.
+        const cleanPrefix = CatalogEventMapper.stripDanglingPreposition(config.prefix);
+        description =
+          subcategory?.invoiceLineDescription?.trim() ||
+          [cleanPrefix, service.name ?? ''].filter(Boolean).join(' — ');
+      }
 
       const trimmed = description.trim();
       return trimmed.length > 0 ? trimmed : null;

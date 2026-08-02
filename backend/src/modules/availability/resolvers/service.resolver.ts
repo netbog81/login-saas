@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException, UseInterceptors } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Service } from '../entities/service.entity';
@@ -8,6 +8,7 @@ import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer
 import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
 import { CatalogEventMapper } from '../../clinical-events/mappers/catalog-event.mapper';
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
 /**
  * Resolver del catalogo Service.
@@ -25,6 +26,7 @@ import { TenantContextService } from '@curandis/tenant-datasource';
  * Lo script `sync:services` ha popolato i 17 service esistenti con
  * `TMP-<id8>`; l'operatore corregge poi via UI.
  */
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => Service)
 export class ServiceResolver {
   private readonly logger = new Logger(ServiceResolver.name);

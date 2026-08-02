@@ -38,6 +38,25 @@ export class WhatsappTenantConfig {
   @Column({ default: false })
   sendCancelNotification: boolean;
 
+  /**
+   * Notifica al paziente lo spostamento di un appuntamento. A differenza della
+   * cancellazione è attiva di default: uno spostamento riguarda sempre il
+   * paziente. Quando è off il gateway riprogramma comunque il reminder 24h.
+   */
+  @Field()
+  @Column({ default: true })
+  sendUpdateNotification: boolean;
+
+  /**
+   * Finestra entro cui gli appuntamenti presi per lo stesso numero vengono
+   * accorpati in un unico messaggio di recap (30-600s). Il conteggio riparte a
+   * ogni nuovo appuntamento; il gateway non lo rinvia oltre 5 volte la finestra
+   * (max 15 minuti).
+   */
+  @Field(() => Int)
+  @Column({ type: 'int', default: 60 })
+  recapBufferSeconds: number;
+
   @Field(() => Int)
   @Column({ type: 'int', default: 730 })
   retentionDays: number;

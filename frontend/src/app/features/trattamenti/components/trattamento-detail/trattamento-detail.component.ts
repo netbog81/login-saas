@@ -219,6 +219,31 @@ export interface DetailDialogData {
                   </div>
                 </td>
               </ng-container>
+              <!-- ESEGUITO DA: a chi va il compenso della riga nei conteggi.
+                   Default (—) = operatore del trattamento; override esplicito
+                   per righe eseguite da un altro operatore. -->
+              <ng-container matColumnDef="executor">
+                <th mat-header-cell *matHeaderCellDef class="col-executor">Eseguito da</th>
+                <td mat-cell *matCellDef="let ts" class="col-executor">
+                  @if (canEditEconomics && operatorCatalog.length > 0) {
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="executor-select">
+                      <mat-select [ngModel]="ts.executorOperatorId ?? null"
+                                  (ngModelChange)="onExecutorChange(ts, $event)"
+                                  [matTooltip]="'A questo operatore va il compenso della riga'">
+                        <mat-option [value]="null">{{ treatmentOperatorLabel }} — op. trattamento</mat-option>
+                        @for (o of executorOptions; track o.id) {
+                          <mat-option [value]="o.id">{{ o.label }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  } @else {
+                    <span [class.executor-override]="!!ts.executorOperator"
+                          [matTooltip]="ts.executorOperator ? 'Riga attribuita a un operatore diverso da quello del trattamento' : 'Operatore del trattamento'">
+                      {{ executorLabelFor(ts) }}
+                    </span>
+                  }
+                </td>
+              </ng-container>
               <ng-container matColumnDef="price">
                 <th mat-header-cell *matHeaderCellDef class="col-price">Importo</th>
                 <td mat-cell *matCellDef="let ts" class="col-price">
@@ -274,6 +299,18 @@ export interface DetailDialogData {
                          (ngModelChange)="onNewServicePriceChange($event)"
                          placeholder="Tariffa servizio"/>
                 </mat-form-field>
+                @if (operatorCatalog.length > 0) {
+                  <mat-form-field appearance="outline" class="svc-select">
+                    <mat-label>Eseguito da</mat-label>
+                    <mat-select [(ngModel)]="newServiceExecutorId">
+                      <mat-option [value]="null">{{ treatmentOperatorLabel }} — op. trattamento</mat-option>
+                      @for (o of executorOptions; track o.id) {
+                        <mat-option [value]="o.id">{{ o.label }}</mat-option>
+                      }
+                    </mat-select>
+                    <mat-hint>A chi va il compenso della riga</mat-hint>
+                  </mat-form-field>
+                }
                 <button mat-flat-button color="primary"
                         (click)="confirmNewServiceLine()" [disabled]="!newServiceId">
                   Aggiungi
@@ -669,8 +706,13 @@ export interface DetailDialogData {
        esplicita = spazio rimanente. */
     .mini-table .col-service { width: 170px; }
     .mini-table .col-description { /* width auto = fills remaining */ }
+    .mini-table .col-executor { width: 190px; }
     .mini-table .col-price { width: 110px; text-align: right; }
     .mini-table .col-actions { width: 50px; }
+    .executor-select { width: 100%; }
+    /* Evidenzia le righe attribuite a un operatore DIVERSO da quello del
+       trattamento: attribuzione compenso non standard, deve saltare all'occhio. */
+    .executor-override { font-weight: 500; color: #7b1fa2; }
     .desc-input { width: 100%; }
     /* textarea: solo resize verticale (gestito da cdkTextareaAutosize);
        disabilitiamo il resize manuale che creerebbe inconsistenza. */
@@ -866,15 +908,31 @@ export class TrattamentoDetailComponent {
     defaultPrice?: number;
     discountFE?: number;
   }[] = [];
+  /**
+   * 2026-07-15 — Catalogo operatori per il selettore "Eseguito da" (a chi
+   * va il compenso della riga). Vuoto per i non-segreteria: la riga resta
+   * attribuita all'operatore del trattamento.
+   */
+  @Input() operatorCatalog: { id: string; label: string }[] = [];
 
   @Output() updateServiceDescription = new EventEmitter<DetailUpdateServiceDescriptionPayload>();
   @Output() createInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
   @Output() updateInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
   @Output() deleteInvoiceLine = new EventEmitter<DetailEditInvoiceLinePayload>();
   /** 2026-07-02 — Aggiungi riga servizio (dal catalogo). */
-  @Output() addServiceLine = new EventEmitter<{ serviceId: string; description?: string; price?: number }>();
+  @Output() addServiceLine = new EventEmitter<{
+    serviceId: string;
+    description?: string;
+    price?: number;
+    executorOperatorId?: string | null;
+  }>();
   /** 2026-07-02 — Rimuovi riga servizio. Emette il TreatmentService.id. */
   @Output() removeServiceLine = new EventEmitter<string>();
+  /** 2026-07-15 — Cambia l'operatore esecutore di una riga ("Eseguito da"). */
+  @Output() changeServiceLineExecutor = new EventEmitter<{
+    treatmentServiceId: string;
+    executorOperatorId: string | null;
+  }>();
   @Output() updateEconomics = new EventEmitter<DetailUpdateEconomicsPayload>();
   /** Toggle "Segna come incassato in contanti" (sconto FE). Emette il nuovo stato. */
   @Output() markScontoFeCash = new EventEmitter<boolean>();
@@ -941,7 +999,7 @@ export class TrattamentoDetailComponent {
   /** Emette la richiesta di force-close (segreteria/admin). */
   @Output() forceCloseTreatment = new EventEmitter<void>();
 
-  svcCols = ['service', 'description', 'price', 'sactions'];
+  svcCols = ['service', 'description', 'executor', 'price', 'sactions'];
   customCols = ['cdescription', 'camount', 'cactions'];
 
   newLineOpen = false;
@@ -953,6 +1011,8 @@ export class TrattamentoDetailComponent {
   newServiceId: string | null = null;
   newServiceDescription = '';
   newServicePrice: number | null = null;
+  /** Esecutore della riga in creazione. null = operatore del trattamento. */
+  newServiceExecutorId: string | null = null;
   /**
    * 2026-07-04 — True se l'operatore ha modificato a mano il prezzo della riga
    * in creazione. Finché è false, il toggle scontoFE riallinea il prezzo alla
@@ -1264,6 +1324,7 @@ export class TrattamentoDetailComponent {
     this.newServiceDescription = '';
     this.newServicePrice = null;
     this.newServicePriceEdited = false;
+    this.newServiceExecutorId = null;
   }
 
   cancelNewServiceLine(): void {
@@ -1272,6 +1333,40 @@ export class TrattamentoDetailComponent {
     this.newServiceDescription = '';
     this.newServicePrice = null;
     this.newServicePriceEdited = false;
+    this.newServiceExecutorId = null;
+  }
+
+  /** Etichetta dell'operatore del trattamento (default "Eseguito da"). */
+  get treatmentOperatorLabel(): string {
+    const op = this.treatment?.operator;
+    if (!op) return 'Operatore del trattamento';
+    return `${op.name} ${op.surname ?? ''}`.trim();
+  }
+
+  /**
+   * Opzioni del selettore "Eseguito da": tutti gli operatori tranne quello
+   * del trattamento (rappresentato dall'opzione null di default).
+   */
+  get executorOptions(): { id: string; label: string }[] {
+    const treatmentOpId = this.treatment?.operator?.id;
+    return this.operatorCatalog.filter((o) => o.id !== treatmentOpId);
+  }
+
+  /** Nome mostrato in sola lettura nella colonna "Eseguito da". */
+  executorLabelFor(ts: {
+    executorOperator?: { name: string; surname?: string | null } | null;
+  }): string {
+    if (ts.executorOperator) {
+      return `${ts.executorOperator.name} ${ts.executorOperator.surname ?? ''}`.trim();
+    }
+    return this.treatmentOperatorLabel;
+  }
+
+  onExecutorChange(ts: { id: string }, executorOperatorId: string | null): void {
+    this.changeServiceLineExecutor.emit({
+      treatmentServiceId: ts.id,
+      executorOperatorId,
+    });
   }
 
   /**
@@ -1334,6 +1429,7 @@ export class TrattamentoDetailComponent {
       serviceId: this.newServiceId,
       description: desc || undefined,
       price: isCustom ? entered : undefined,
+      executorOperatorId: this.newServiceExecutorId,
     });
     this.cancelNewServiceLine();
   }

@@ -10,6 +10,7 @@ import {
   STATUS_LABELS,
   STATUS_ICONS,
   STATUS_COLORS,
+  RECIPIENT_GROUP_LABELS,
 } from '../models/task-message.models';
 
 @Component({
@@ -39,16 +40,22 @@ import {
                 }
                 @if (listType === 'sent') {
                   <span class="label">A:</span>
-                  <span class="user-name">{{ getUserName(msg.recipientUser) }}</span>
+                  <span class="user-name">{{ getRecipientLabel(msg) }}</span>
                 }
                 @if (listType === 'completed') {
                   @if (msg.senderUserId === currentUserId) {
                     <span class="label">A:</span>
-                    <span class="user-name">{{ getUserName(msg.recipientUser) }}</span>
+                    <span class="user-name">{{ getRecipientLabel(msg) }}</span>
                   } @else {
                     <span class="label">Da:</span>
                     <span class="user-name">{{ getUserName(msg.senderUser) }}</span>
                   }
+                }
+                @if (showGroupBadge(msg)) {
+                  <span class="group-badge">
+                    <mat-icon class="group-badge-icon">groups</mat-icon>
+                    {{ getGroupLabel(msg) }}
+                  </span>
                 }
               </div>
               <div class="card-meta">
@@ -76,6 +83,9 @@ import {
               <div class="status-chip" [style.color]="getStatusColor(msg.status)">
                 <mat-icon class="status-icon">{{ getStatusIcon(msg.status) }}</mat-icon>
                 <span>{{ getStatusLabel(msg.status) }}</span>
+                @if (msg.status === 'COMPLETED' && msg.completedByUser) {
+                  <span class="completed-by">da {{ getUserName(msg.completedByUser) }}</span>
+                }
               </div>
 
               <div class="card-actions" (click)="$event.stopPropagation()">
@@ -142,6 +152,21 @@ import {
     .card-user { font-size: 13px; }
     .label { color: #999; margin-right: 4px; }
     .user-name { font-weight: 500; color: #333; }
+    .group-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 8px;
+      padding: 1px 8px;
+      border-radius: 12px;
+      background: #e3f2fd;
+      color: #1565c0;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .group-badge-icon { font-size: 14px; width: 14px; height: 14px; }
+    .completed-by { color: #666; font-weight: 400; margin-left: 4px; }
     .card-meta { display: flex; align-items: center; gap: 8px; }
     .card-date { font-size: 12px; color: #999; }
     .scheduled-label { color: #ff9800; font-weight: 500; }
@@ -196,9 +221,26 @@ export class TaskMessageListComponent {
 
   readonly TaskMessageStatus = TaskMessageStatus;
 
-  getUserName(user?: { name: string; surname?: string }): string {
+  getUserName(user?: { name: string; surname?: string } | null): string {
     if (!user) return 'Utente sconosciuto';
     return `${user.name}${user.surname ? ' ' + user.surname : ''}`;
+  }
+
+  getGroupLabel(msg: TaskMessage): string {
+    return msg.recipientGroup ? (RECIPIENT_GROUP_LABELS[msg.recipientGroup] || msg.recipientGroup) : '';
+  }
+
+  getRecipientLabel(msg: TaskMessage): string {
+    if (msg.recipientGroup) return this.getGroupLabel(msg);
+    return this.getUserName(msg.recipientUser);
+  }
+
+  /** Badge gruppo solo dove l'intestazione non mostra già "A: Segreteria" */
+  showGroupBadge(msg: TaskMessage): boolean {
+    if (!msg.recipientGroup) return false;
+    if (this.listType === 'sent') return false;
+    if (this.listType === 'completed' && msg.senderUserId === this.currentUserId) return false;
+    return true;
   }
 
   getStatusLabel(status: TaskMessageStatus): string {

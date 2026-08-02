@@ -1,7 +1,10 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { GymSchedule } from '../entities/gym-schedule.entity';
 import { GymScheduleService } from '../services/gym-schedule.service';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => GymSchedule)
 export class GymScheduleResolver {
   constructor(private readonly scheduleService: GymScheduleService) {}

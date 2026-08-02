@@ -1,9 +1,12 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID, GraphQLISODateTime } from '@nestjs/graphql';
 import { Instrument } from '../entities/instrument.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
 import { InstrumentService } from '../services/instrument.service';
 import GraphQLJSON from 'graphql-type-json';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => Instrument)
 export class InstrumentResolver {
   constructor(private readonly instrumentService: InstrumentService) {}

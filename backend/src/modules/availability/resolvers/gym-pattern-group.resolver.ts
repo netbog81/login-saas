@@ -1,8 +1,11 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { GymPatternGroup } from '../entities/gym-pattern-group.entity';
 import { GymPatternGroupService } from '../services/gym-pattern-group.service';
 import { CreateGymPatternGroupInput, UpdateGymPatternGroupInput } from '../dto/gym-pattern-group.input';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => GymPatternGroup)
 export class GymPatternGroupResolver {
   constructor(

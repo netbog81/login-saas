@@ -102,6 +102,22 @@ import { Treatment } from '../../../../models/treatment.model';
             </button>
           }
 
+          <!-- Ritardo: l'istruttore è chi vede davvero entrare il paziente,
+               e col cambio automatico di stato l'appuntamento risulta già
+               "presentato" all'orario previsto. -->
+          @if (registeredLateMinutes !== null) {
+            <div class="late-registered">
+              <mat-icon>schedule</mat-icon>
+              <span>Arrivato con {{ registeredLateMinutes }} min di ritardo</span>
+            </div>
+          } @else {
+            <button mat-stroked-button class="full-width mark-btn late-btn"
+                    (click)="onMarkLateArrival()">
+              <mat-icon>schedule</mat-icon>
+              Arrivato in ritardo
+            </button>
+          }
+
           <!-- Bottone segna non presentato -->
           <button mat-stroked-button color="warn" class="full-width mark-btn"
                   (click)="onMarkNoShow()">
@@ -209,6 +225,29 @@ import { Treatment } from '../../../../models/treatment.model';
       margin-top: 4px;
     }
 
+    /* Ritardo: informativo, distinto dal rosso del non presentato */
+    .late-btn {
+      color: #1565c0;
+    }
+
+    .late-registered {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      padding: 6px 8px;
+      background: #e3f2fd;
+      border-radius: 4px;
+      color: #0d47a1;
+      font-size: 12.5px;
+    }
+
+    .late-registered mat-icon {
+      font-size: 17px;
+      width: 17px;
+      height: 17px;
+    }
+
     .no-path-warning {
       display: flex;
       flex-direction: column;
@@ -271,6 +310,7 @@ export class InProgressColumnComponent implements OnInit {
   @Output() openTreatment = new EventEmitter<Treatment>();
   @Output() markNoShow = new EventEmitter<string>();
   @Output() markAttended = new EventEmitter<string>();
+  @Output() markLateArrival = new EventEmitter<{ appointmentId: string; lateMinutes: number }>();
   @Output() openPatientFolder = new EventEmitter<string>();
 
   selectedPathId: string | null = null;
@@ -303,6 +343,35 @@ export class InProgressColumnComponent implements OnInit {
 
   onMarkAttended(): void {
     this.markAttended.emit(this.appointment.id);
+  }
+
+  /** Minuti di ritardo già registrati sull'appuntamento. */
+  get registeredLateMinutes(): number | null {
+    return (this.appointment as any)?.lateMinutes ?? null;
+  }
+
+  onMarkLateArrival(): void {
+    const suggested = this.minutesSinceStart();
+    const answer = prompt(
+      'Con quanti minuti di ritardo è arrivato il paziente?',
+      String(suggested),
+    );
+    if (answer === null) return;
+
+    const lateMinutes = Number(answer);
+    if (!Number.isFinite(lateMinutes) || lateMinutes < 0) return;
+
+    this.markLateArrival.emit({
+      appointmentId: this.appointment.id,
+      lateMinutes,
+    });
+  }
+
+  /** Minuti trascorsi dall'orario di inizio: proposta di default. */
+  private minutesSinceStart(): number {
+    const start = new Date(`${this.appointment.appointmentDate}T${this.appointment.startTime}`);
+    if (Number.isNaN(start.getTime())) return 0;
+    return Math.max(0, Math.round((Date.now() - start.getTime()) / 60000));
   }
 
   onOpenPatientFolder(): void {

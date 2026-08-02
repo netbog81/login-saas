@@ -262,6 +262,11 @@ enum BookingStatus {
   SCHEDULED
 }
 
+type BulkDeleteOperatorFeSettlementsResult {
+  deleted: Int!
+  skippedPaid: Int!
+}
+
 type CalendarSettings {
   blockAppointmentsOutsideAvailability: Boolean!
   defaultOperatorCategory: String!
@@ -770,6 +775,7 @@ type DocumentTemplate {
 """Tipo di documento generabile da template"""
 enum DocumentTemplateType {
   ATTENDANCE_CERTIFICATE
+  SETTLEMENT_FE
 }
 
 """Type of attached document"""
@@ -928,6 +934,13 @@ type GroupException {
   reason: String
 }
 
+type GymAppointmentCreationResult {
+  appointment: AvailabilityAppointment!
+  conflicts: [RecurringOccurrenceConflict!]!
+  createdCount: Int!
+  skippedCount: Int!
+}
+
 type GymException {
   absenceTypeId: ID
   absenceTypeSnapshot: AbsenceTypeSnapshot
@@ -960,6 +973,14 @@ type GymExceptionSubstitute {
   startTime: String!
   substituteOperator: Operator
   substituteOperatorId: ID
+}
+
+input GenerateOperatorFeSettlementsInput {
+  from: String!
+  includeOpen: Boolean! = false
+  includeUnpaid: Boolean! = false
+  operatorAppUserIds: [ID!]!
+  to: String!
 }
 
 input GymExceptionSubstituteInput {
@@ -1192,7 +1213,7 @@ input MarkObjectiveAchievedInput {
 type Mutation {
   activateGymPatternGroup(id: ID!): GymPatternGroup!
   addTestEvaluation(input: AddTestEvaluationInput!, operatorId: ID!, pathId: ID!, testId: ID!): EvaluationTest!
-  addTreatmentServiceLine(description: String, price: Float, serviceId: ID!, treatmentId: ID!): Treatment!
+  addTreatmentServiceLine(description: String, executorOperatorId: ID, price: Float, serviceId: ID!, treatmentId: ID!): Treatment!
   anonymizeExpiredWhatsappLogs: WhatsappLogManagementResult!
   anonymizeWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
   assignKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
@@ -1200,6 +1221,7 @@ type Mutation {
   assignRole(input: AssignRoleInput!): UserRole!
   assignServiceToOperator(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
   assignTemplateToOperator(input: AssignTemplateToOperatorInput!): [TemplateAssignment!]!
+  bulkDeleteOperatorFeSettlements(ids: [ID!]!): BulkDeleteOperatorFeSettlementsResult!
   cancelAppointmentWithNotice(cancelledBy: ID!, id: ID!, reason: String!): AvailabilityAppointment!
   cancelAvailabilityAppointment(cancellationReason: String, id: ID!): AvailabilityAppointment!
   cancelRecurringSeries(appointmentId: ID!, cancelledBy: ID!, fromDate: String!, reason: String!, scope: RecurringSeriesScope!): Int!
@@ -1219,6 +1241,7 @@ type Mutation {
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
   createGroupException(appliesToAll: Boolean, exceptionDate: String!, exceptionType: String!, name: String!, operatorIds: [ID!], reason: String): GroupException!
   createGymAppointment(input: CreateGymAppointmentInput!): AvailabilityAppointment!
+  createGymAppointmentWithReport(input: CreateGymAppointmentInput!): GymAppointmentCreationResult!
   createGymException(input: CreateGymExceptionInput!): GymException!
   createGymPatternGroup(input: CreateGymPatternGroupInput!): GymPatternGroup!
   createGymRoom(color: String, defaultEndTime: String, defaultStartTime: String, maxCapacity: Int, name: String!, slotDuration: Int): GymRoom!
@@ -1314,6 +1337,7 @@ type Mutation {
   forceCloseTreatment(id: ID!, secretaryNotes: String): Treatment!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
+  generateOperatorFeSettlements(input: GenerateOperatorFeSettlementsInput!): [OperatorFeSettlement!]!
   initializeDefaultSettings: Boolean!
   issueVoucherFe(expiryDate: String, initialAmount: Float!, notes: String, patientId: ID!): VoucherFe!
   linkKeycloakUser(input: LinkKeycloakUserInput!): AppUser!
@@ -1325,6 +1349,7 @@ type Mutation {
   markTaskMessageAsRead(messageId: String!): Boolean!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
+  patchOperatorFeSettlement(id: ID!, input: PatchOperatorFeSettlementInput!): OperatorFeSettlement!
 
   """Deprecato: provisioning dei tenant avviene dal TMS, non più da qui."""
   provisionTenantSchema: TenantSchemaStatus!
@@ -1336,6 +1361,7 @@ type Mutation {
   recordTreatmentPayment(callerRole: TreatmentCallerRole, id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   removeTreatmentServiceLine(treatmentServiceId: ID!): Treatment!
+  updateTreatmentServiceExecutor(executorOperatorId: ID, treatmentServiceId: ID!): TreatmentService!
   reopenTreatment(id: ID!): Treatment! @deprecated(reason: "Usa reopenTreatmentByOperator o reopenTreatmentBySecretary")
   reopenTreatmentByOperator(id: ID!): Treatment!
   reopenTreatmentBySecretary(id: ID!): Treatment!
@@ -1384,6 +1410,7 @@ type Mutation {
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorAbsenceType(id: ID!, input: UpdateOperatorAbsenceTypeInput!): OperatorAbsenceType!
   updateOperatorCategory(description: String, id: ID!, invoiceLineDescription: String, invoicePrefix: String, invoiceTemplate: String, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): OperatorCategory!
+  updateOperatorFeAccountSettings(input: UpdateOperatorFeAccountSettingsInput!): OperatorFeAccountSettings!
   updateOperatorService(customBufferTime: Int, customDuration: Int, operatorId: ID!, serviceId: ID!): OperatorService!
 
   """Aggiorna anamnesi paziente"""
@@ -1557,6 +1584,104 @@ type OperatorDependencyCount {
 """
 Macro category defining what an operator can do (use instruments, manage gym, etc.)
 """
+type OperatorFeAccountSettings {
+  cutoffDay: Int!
+  periodMode: String!
+}
+
+type OperatorFeAnalysis {
+  counts: OperatorFeAnalysisCounts!
+  hasOperator: Boolean!
+  operatorAppUserId: ID!
+  operatorName: String!
+  rows: [OperatorFeAnalysisRow!]!
+  royaltyPercentage: Float!
+  totals: OperatorFeAnalysisTotals!
+}
+
+type OperatorFeAnalysisCounts {
+  open: Int!
+  paid: Int!
+  total: Int!
+  unpaid: Int!
+}
+
+type OperatorFeAnalysisRow {
+  baseAmount: Float!
+  compensationAmount: Float!
+  description: String!
+  executionDate: String!
+  isCustomPrice: Boolean!
+  missingBreakdown: Boolean!
+  patientName: String
+  percentage: Float!
+  serviceName: String
+  state: String!
+  studioExtraAmount: Float!
+  studioShareAmount: Float!
+  treatmentId: ID!
+  treatmentServiceId: ID!
+  unitPrice: Float!
+}
+
+type OperatorFeAnalysisTotals {
+  base: Float!
+  compensation: Float!
+  gross: Float!
+  studioExtra: Float!
+  studioShare: Float!
+}
+
+type OperatorFeSettlement {
+  baseAmount: Float!
+  batchId: ID
+  communicatedAt: DateTime
+  compensationAmount: Float!
+  countOpen: Int!
+  countPaid: Int!
+  countTotal: Int!
+  countUnpaid: Int!
+  createdAt: DateTime!
+  createdByEmail: String
+  createdByUserId: ID
+  grossAmount: Float!
+  id: ID!
+  includeOpen: Boolean!
+  includeUnpaid: Boolean!
+  lines: [OperatorFeSettlementLine!]
+  notes: String
+  operatorAppUserId: ID!
+  operatorName: String!
+  paidAt: DateTime
+  paymentDate: String
+  periodFrom: String!
+  periodTo: String!
+  studioExtraAmount: Float!
+  studioShareAmount: Float!
+  updatedAt: DateTime!
+  verifiedAt: DateTime
+}
+
+type OperatorFeSettlementLine {
+  baseAmount: Float!
+  compensationAmount: Float!
+  createdAt: DateTime!
+  description: String!
+  executionDate: String!
+  id: ID!
+  isCustomPrice: Boolean!
+  patientName: String
+  percentage: Float!
+  serviceName: String
+  settlementId: ID!
+  state: String!
+  studioExtraAmount: Float!
+  studioShareAmount: Float!
+  treatmentId: ID!
+  treatmentServiceId: ID!
+  unitPrice: Float!
+}
+
 enum OperatorMacroCategory {
   DOCTOR
   GYM_INSTRUCTOR
@@ -1783,6 +1908,14 @@ type PatternGroupUpdateOutput {
   patternGroup: PatternGroup!
 }
 
+input PatchOperatorFeSettlementInput {
+  communicated: Boolean
+  notes: String
+  paid: Boolean
+  paymentDate: String
+  verified: Boolean
+}
+
 input PatternInput {
   dayInPattern: Int!
   description: String
@@ -1938,6 +2071,10 @@ type Query {
   operatorCategory(id: ID!): OperatorCategory
   operatorDependencies(id: ID!): OperatorDependencyCount!
   operatorExceptions(endDate: String, operatorId: ID!, startDate: String): [AvailabilityException!]!
+  operatorFeAccountSettings: OperatorFeAccountSettings!
+  operatorFeAnalysis(from: String!, operatorAppUserIds: [ID!], to: String!): [OperatorFeAnalysis!]!
+  operatorFeSettlement(id: ID!): OperatorFeSettlement
+  operatorFeSettlements(operatorAppUserId: ID): [OperatorFeSettlement!]!
   operatorPatternsOnDate(date: String!, operatorId: ID!): [OperatorSlotOnDate!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
   operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
@@ -2762,6 +2899,8 @@ type TreatmentService {
   duration: Int
   executedByOperator: AppUser
   executedByOperatorId: ID
+  executorOperator: Operator
+  executorOperatorId: ID
   id: ID!
   invoiceLineDescription: String
   invoiceLineDescriptionAuto: String
@@ -2920,6 +3059,11 @@ input UpdateOperatorAbsenceTypeInput {
   name: String
 }
 
+input UpdateOperatorFeAccountSettingsInput {
+  cutoffDay: Int
+  periodMode: String
+}
+
 input UpdateOperatorInput {
   canCollectPayment: Boolean
   categoryId: String
@@ -2984,7 +3128,9 @@ input UpdatePatternGroupInput {
 
 input UpdateRecurringSeriesInput {
   appointmentId: ID!
+  clientEmail: String
   clientName: String
+  clientPhone: String
   endTime: String!
   includeCurrent: Boolean
   instrumentOrderMatters: Boolean
@@ -3188,6 +3334,7 @@ input WhatsappBulkLogIdsInput {
 
 input WhatsappConfigInput {
   apiKey: String
+  evolutionApiKey: String
   gatewayUrl: String!
   isActive: Boolean
   retentionDays: Int

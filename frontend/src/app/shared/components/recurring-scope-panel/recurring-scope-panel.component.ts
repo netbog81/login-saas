@@ -87,10 +87,12 @@ export interface RecurringScopeSelection {
         </div>
       } @else {
         <div class="action-buttons">
-          <button mat-stroked-button color="primary" (click)="askEdit()"
-                  [disabled]="!isScopeValid()">
-            <mat-icon>edit</mat-icon> Applica modifiche
-          </button>
+          @if (showEditButton) {
+            <button mat-stroked-button color="primary" (click)="askEdit()"
+                    [disabled]="!isScopeValid()">
+              <mat-icon>edit</mat-icon> Applica modifiche
+            </button>
+          }
           <button mat-stroked-button color="warn" (click)="askDelete()"
                   [disabled]="!isScopeValid()">
             <mat-icon>delete</mat-icon> Elimina
@@ -131,6 +133,8 @@ export class RecurringScopePanelComponent {
   @Input() futureCount: number | null = null;
   /** Data dell'occorrenza corrente (YYYY-MM-DD), default per il range. */
   @Input() currentDate = '';
+  /** Se false nasconde "Applica modifiche" (contesti di sola eliminazione). */
+  @Input() showEditButton = true;
 
   @Output() applyEdit = new EventEmitter<RecurringScopeSelection>();
   @Output() applyDelete = new EventEmitter<RecurringScopeSelection>();

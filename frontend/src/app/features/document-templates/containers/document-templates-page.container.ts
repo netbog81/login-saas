@@ -8,8 +8,12 @@ import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatMenuModule } from '@angular/material/menu';
 
-import { DocumentTemplate } from '../models/document-template.model';
+import {
+  DOCUMENT_TEMPLATE_TYPE_LABELS,
+  DocumentTemplate,
+} from '../models/document-template.model';
 import { DocumentTemplateService } from '../services/document-template.service';
 import { ConfirmMatDialogComponent } from '../../../shared/components/confirm-mat-dialog/confirm-mat-dialog.component';
 
@@ -32,6 +36,7 @@ import { ConfirmMatDialogComponent } from '../../../shared/components/confirm-ma
     MatProgressSpinnerModule,
     MatSnackBarModule,
     MatDialogModule,
+    MatMenuModule,
   ],
   template: `
     <div class="page">
@@ -43,14 +48,25 @@ import { ConfirmMatDialogComponent } from '../../../shared/components/confirm-ma
           </h1>
           <p class="subtitle">
             Modelli personalizzabili per i documenti generati dal gestionale
-            (attestati di presenza). Il template <strong>predefinito</strong> è
-            quello usato dall'azione rapida nell'elenco trattamenti.
+            (attestati di presenza, conti operatore FE). Il template
+            <strong>predefinito</strong> di ogni tipo è quello usato
+            dall'azione rapida corrispondente.
           </p>
         </div>
-        <button mat-flat-button color="primary" routerLink="new">
+        <button mat-flat-button color="primary" [matMenuTriggerFor]="newMenu">
           <mat-icon>add</mat-icon>
           Nuovo template
         </button>
+        <mat-menu #newMenu="matMenu">
+          <button mat-menu-item routerLink="new" [queryParams]="{ type: 'ATTENDANCE_CERTIFICATE' }">
+            <mat-icon>badge</mat-icon>
+            Attestato di presenza
+          </button>
+          <button mat-menu-item routerLink="new" [queryParams]="{ type: 'SETTLEMENT_FE' }">
+            <mat-icon>groups</mat-icon>
+            Conto operatore FE
+          </button>
+        </mat-menu>
       </div>
 
       @if (loading()) {
@@ -64,7 +80,8 @@ import { ConfirmMatDialogComponent } from '../../../shared/components/confirm-ma
               Crea il primo template di attestato di presenza: partirai da un
               modello già impostato, da personalizzare con logo e colori.
             </p>
-            <button mat-flat-button color="primary" routerLink="new">
+            <button mat-flat-button color="primary" routerLink="new"
+                    [queryParams]="{ type: 'ATTENDANCE_CERTIFICATE' }">
               <mat-icon>add</mat-icon>
               Crea il primo template
             </button>
@@ -84,7 +101,7 @@ import { ConfirmMatDialogComponent } from '../../../shared/components/confirm-ma
                   }
                 </mat-card-title>
                 <mat-card-subtitle>
-                  Attestato di presenza · aggiornato il {{ t.updatedAt | date:'dd/MM/yyyy HH:mm' }}
+                  {{ typeLabels[t.type] || t.type }} · aggiornato il {{ t.updatedAt | date:'dd/MM/yyyy HH:mm' }}
                 </mat-card-subtitle>
               </mat-card-header>
               <mat-card-actions align="end">
@@ -144,6 +161,7 @@ import { ConfirmMatDialogComponent } from '../../../shared/components/confirm-ma
 export class DocumentTemplatesPageContainer implements OnInit {
   readonly templates = signal<DocumentTemplate[]>([]);
   readonly loading = signal(true);
+  readonly typeLabels = DOCUMENT_TEMPLATE_TYPE_LABELS;
 
   constructor(
     private readonly templateService: DocumentTemplateService,

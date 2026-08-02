@@ -74,6 +74,24 @@ export class ServiceManagementComponent implements OnInit, OnDestroy {
   allSubcategories: ServiceSubcategory[] = [];
   filteredSubcategories: ServiceSubcategory[] = [];
 
+  /** Sync manuale catalogo → contabilità (mapping/tariffe/extra studio). */
+  resyncing = false;
+
+  resyncToAccounting(): void {
+    if (this.resyncing) return;
+    this.resyncing = true;
+    this.serviceService.resyncServicesToAccounting().subscribe({
+      next: (count) => {
+        this.resyncing = false;
+        alert(`Sincronizzati ${count} servizi con la contabilità.`);
+      },
+      error: () => {
+        this.resyncing = false;
+        alert('Sincronizzazione non riuscita: riprova o controlla i log.');
+      },
+    });
+  }
+
   constructor(
     private availabilityState: AvailabilityStateService,
     private serviceService: ServiceService,

@@ -95,6 +95,17 @@ export interface TrattamentoServizio {
     defaultPrice?: number | null;
     discountFE?: number | null;
   };
+  /**
+   * 2026-07-15 — Operatore esecutore esplicito della riga ("Eseguito da").
+   * Null = la riga è attribuita all'operatore del trattamento. Determina
+   * a chi va il compenso nei conteggi (accounting e Conti FE).
+   */
+  executorOperatorId?: string | null;
+  executorOperator?: {
+    id: string;
+    name: string;
+    surname?: string | null;
+  } | null;
 }
 
 // ==================== STRUMENTO UTILIZZATO ====================

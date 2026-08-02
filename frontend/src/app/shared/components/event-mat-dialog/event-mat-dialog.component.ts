@@ -29,6 +29,7 @@ import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } f
 import { RecurringScopePanelComponent, RecurringScopeSelection } from '../recurring-scope-panel/recurring-scope-panel.component';
 import { RecurringConflictsDialogComponent } from '../recurring-scope-panel/recurring-conflicts-dialog.component';
 import { NewPatientDialogComponent, NewPatientDialogResult } from '../new-patient-dialog';
+import { tokenizeQuery, matchesAllTokens } from '../../utils/token-match';
 
 /**
  * Dati passati al dialog per la creazione/modifica di un appuntamento.
@@ -325,14 +326,11 @@ export class EventMatDialogComponent implements OnInit {
     if (!search) {
       return this.patients.slice(0, 50);
     }
-    const lowerSearch = search.toLowerCase();
+    // Match a token: "rossi mario" e "mario rossi" trovano entrambi.
+    const tokens = tokenizeQuery(search);
     return this.patients
-      .filter(
-        (p) =>
-          (p.nome || '').toLowerCase().includes(lowerSearch) ||
-          (p.cognome || '').toLowerCase().includes(lowerSearch) ||
-          (p.telefono || '').includes(search) ||
-          (p.cellulare || '').includes(search),
+      .filter((p) =>
+        matchesAllTokens([p.nome, p.cognome, p.telefono, p.cellulare], tokens),
       )
       .slice(0, 50);
   }

@@ -14,7 +14,8 @@ import {
 export type RecycleBinEntityType =
   | 'therapeutic_path'
   | 'treatment'
-  | 'patient_evaluation';
+  | 'patient_evaluation'
+  | 'patient_document';
 
 export interface RecycleBinItem {
   id: string;

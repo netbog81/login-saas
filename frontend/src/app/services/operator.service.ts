@@ -30,6 +30,7 @@ import {
   RESTORE_OPERATOR,
 } from '../graphql/operations/operator.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
+import { gql } from 'apollo-angular';
 
 /**
  * Conteggio dipendenze storiche dell'operatore. Una qualunque > 0
@@ -54,12 +55,29 @@ export interface DeleteOperatorResult {
   dependencies: OperatorDependencyCount;
 }
 
+const RESYNC_OPERATORS_TO_ACCOUNTING = gql`
+  mutation ResyncOperatorsToAccounting {
+    resyncOperatorsToAccounting
+  }
+`;
+
 @Injectable({
   providedIn: 'root',
 })
 export class OperatorService extends BaseGraphQLService {
   constructor(injector: Injector) {
     super(injector);
+  }
+
+  /**
+   * Ri-emette operator.upserted per tutti gli operatori del tenant
+   * (bootstrap/riallineamento conti operatori in contabilità).
+   */
+  resyncOperatorsToAccounting(): Observable<number> {
+    return this.mutate<{ resyncOperatorsToAccounting: number }>(
+      RESYNC_OPERATORS_TO_ACCOUNTING,
+      {},
+    ).pipe(map((r) => r.resyncOperatorsToAccounting));
   }
 
   /**

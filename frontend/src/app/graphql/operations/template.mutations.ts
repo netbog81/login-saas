@@ -158,6 +158,16 @@ export const DELETE_PATTERN_GROUP = gql`
   }
 `;
 
+export const SET_PATTERN_GROUP_ACTIVE = gql`
+  mutation SetPatternGroupActive($id: ID!, $isActive: Boolean!) {
+    setPatternGroupActive(id: $id, isActive: $isActive) {
+      id
+      isActive
+      updatedAt
+    }
+  }
+`;
+
 /**
  * @deprecated Use DELETE_PATTERN_GROUP instead
  */

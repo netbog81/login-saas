@@ -13,9 +13,18 @@ export class AttendanceStatsModel {
   })
   cancellationsByYear: Record<string, number>;
 
+  @Field(() => GraphQLJSON, {
+    description:
+      'Ritardi per anno solare (era no-show, poi presentato). Formato: { "2026": 1 }',
+  })
+  lateArrivalsByYear: Record<string, number>;
+
   @Field(() => Int)
   totalNoShows: number;
 
   @Field(() => Int)
   totalCancellations: number;
+
+  @Field(() => Int)
+  totalLateArrivals: number;
 }

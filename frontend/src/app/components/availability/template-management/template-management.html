@@ -17,6 +17,29 @@
         placeholder="Cerca template per nome..."
       />
     </div>
+    <div class="status-filter">
+      <button
+        class="filter-btn"
+        [class.active]="statusFilter === 'active'"
+        (click)="setStatusFilter('active')"
+      >
+        Attivi
+      </button>
+      <button
+        class="filter-btn"
+        [class.active]="statusFilter === 'inactive'"
+        (click)="setStatusFilter('inactive')"
+      >
+        Disattivati
+      </button>
+      <button
+        class="filter-btn"
+        [class.active]="statusFilter === 'all'"
+        (click)="setStatusFilter('all')"
+      >
+        Tutti
+      </button>
+    </div>
   </div>
 
   <!-- Loading State -->
@@ -36,6 +59,8 @@
         *ngFor="let group of filteredGroups; trackBy: trackByGroupName"
         class="template-card"
         [class.selected]="selectedGroup === group"
+        [class.inactive]="!group.isActive"
+        [class.empty-template]="group.slotCount === 0"
         (click)="selectGroup(group)"
       >
         <!-- Card Header -->
@@ -45,6 +70,16 @@
             <span class="operator-badge" *ngIf="group.operatorCount > 0">
               {{ group.operatorCount }} operatore{{ group.operatorCount > 1 ? 'i' : '' }}
             </span>
+            <span class="inactive-badge" *ngIf="!group.isActive">
+              Disattivato
+            </span>
+          </div>
+          <div
+            class="warning-banner"
+            *ngIf="group.slotCount === 0"
+            title="Questo template non ha fasce orarie: non è assegnabile agli operatori. Modificalo per aggiungerle, oppure eliminalo."
+          >
+            ⚠️ Nessuna fascia oraria impostata — non assegnabile
           </div>
         </div>
 
@@ -79,6 +114,13 @@
             title="Duplica template"
           >
             Duplica
+          </button>
+          <button
+            class="btn btn-sm btn-secondary"
+            (click)="toggleActive(group)"
+            [title]="group.isActive ? 'Disattiva: il template non sarà più assegnabile agli operatori' : 'Riattiva template'"
+          >
+            {{ group.isActive ? 'Disattiva' : 'Riattiva' }}
           </button>
           <button
             class="btn btn-sm btn-danger"

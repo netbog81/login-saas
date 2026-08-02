@@ -13,7 +13,7 @@ export type BookingStatus =
   | 'no_show'          // Non presentato
   | 'attended';        // Paziente presentato → può iniziare trattamento
 export type TreatmentStatus = 'waiting' | 'in_progress' | 'operator_completed' | 'closed';
-export type ConflictReason = 'template_change' | 'operator_sick' | 'operator_vacation' | 'operator_unavailable';
+export type ConflictReason = 'template_change' | 'operator_sick' | 'operator_vacation' | 'operator_unavailable' | 'availability_removed';
 
 // ==================== INTERFACES ====================
 

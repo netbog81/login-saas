@@ -420,6 +420,15 @@
         <button class="btn-status btn-revert" (click)="onRevertAttended()">
           ↩ Annulla Presentato
         </button>
+        <button *ngIf="canMarkLateArrival" class="btn-status btn-late" (click)="onMarkLateArrival()">
+          ⏱ Arrivato in ritardo
+        </button>
+      </div>
+
+      <!-- Ritardo gia registrato -->
+      <div class="late-registered" *ngIf="registeredLateMinutes !== null">
+        ⏱ Arrivato con {{ registeredLateMinutes }} min di ritardo
+        <button class="btn-link" (click)="onClearLateArrival()">rimuovi</button>
       </div>
 
       <!-- Bottoni azione solo per stati attivi -->

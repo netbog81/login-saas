@@ -9,6 +9,7 @@ export enum RecycleBinEntityType {
   THERAPEUTIC_PATH = 'therapeutic_path',
   TREATMENT = 'treatment',
   PATIENT_EVALUATION = 'patient_evaluation',
+  PATIENT_DOCUMENT = 'patient_document',
 }
 
 registerEnumType(RecycleBinEntityType, {

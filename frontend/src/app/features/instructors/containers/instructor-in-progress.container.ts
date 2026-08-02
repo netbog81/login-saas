@@ -100,6 +100,7 @@ import { MultiTreatmentDialogData } from '../models/instructor-workspace.model';
               (openTreatment)="onOpenTreatment($event)"
               (markNoShow)="onMarkNoShow($event)"
               (markAttended)="onMarkAttended($event)"
+              (markLateArrival)="onMarkLateArrival($event)"
               (openPatientFolder)="onOpenPatientFolder($event)">
             </app-in-progress-column>
           }
@@ -363,6 +364,23 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
         next: () => this.refreshColumns(),
         error: (err) => {
           console.error('[InProgressContainer] Error marking attended:', err);
+        },
+      });
+  }
+
+  /**
+   * Registra il ritardo: l'istruttore è chi vede davvero entrare il
+   * paziente, e col cambio automatico di stato l'appuntamento risulta già
+   * "presentato" all'orario previsto anche se è arrivato molto dopo.
+   */
+  onMarkLateArrival(event: { appointmentId: string; lateMinutes: number }): void {
+    this.appointmentService
+      .markLateArrival(event.appointmentId, event.lateMinutes)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => this.refreshColumns(),
+        error: (err) => {
+          console.error('[InProgressContainer] Error marking late arrival:', err);
         },
       });
   }

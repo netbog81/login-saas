@@ -17,12 +17,17 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json* ./
+# Tarball dei pacchetti @curandis (template-core/template-editor): le
+# dipendenze `file:local-libs/...` devono esistere PRIMA di npm ci.
+COPY frontend/local-libs ./local-libs
 # Cache mount BuildKit: la cache npm persiste tra i build, così quando
 # cambia il lockfile i pacchetti non vengono riscaricati da zero.
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY frontend/. .
-RUN npm run build -- --configuration=production
+# Cache di build Angular persistente tra i build (esbuild/webpack cache):
+# accorcia sensibilmente i rebuild con sorgenti quasi identici.
+RUN --mount=type=cache,target=/app/.angular/cache npm run build -- --configuration=production
 
 # ──────────────────────────────────────────────────────────────
 # Stage 2 — serve con nginx

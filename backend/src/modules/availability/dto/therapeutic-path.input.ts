@@ -1,6 +1,6 @@
 import { InputType, Field, ID, Int } from '@nestjs/graphql';
 import { IsOptional, IsString, IsUUID, IsEnum, MaxLength, IsInt } from 'class-validator';
-import { TherapeuticPathStatus, DocumentType, DocumentCategory } from '../entities/therapeutic-path-enums';
+import { TherapeuticPathStatus } from '../entities/therapeutic-path-enums';
 
 /**
  * Input per creare un percorso terapeutico
@@ -98,72 +98,5 @@ export class UpdateTherapeuticPathInput {
   notes?: string;
 }
 
-/**
- * Input per creare un documento
- */
-@InputType()
-export class CreateDocumentInput {
-  @Field(() => ID)
-  @IsUUID('4')
-  therapeuticPathId: string;
-
-  @Field(() => DocumentType)
-  @IsEnum(DocumentType)
-  type: DocumentType;
-
-  @Field(() => DocumentCategory)
-  @IsEnum(DocumentCategory)
-  category: DocumentCategory;
-
-  @Field()
-  @IsString()
-  @MaxLength(255)
-  fileName: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  originalFileName?: string;
-
-  @Field()
-  @IsString()
-  @MaxLength(100)
-  mimeType: string;
-
-  @Field(() => Int)
-  @IsInt()
-  fileSize: number;
-
-  @Field()
-  @IsString()
-  storagePath: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  thumbnailPath?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  externalDoctorName?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  notes?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  description?: string;
-
-  @Field(() => ID, { nullable: true })
-  @IsOptional()
-  @IsUUID('4')
-  uploadedBy?: string;
-}
+// NOTA: CreateDocumentInput (path_documents) rimosso — l'upload documenti
+// ora passa dal modulo patient-documents (REST multipart + patient_documents).

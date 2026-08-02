@@ -16,6 +16,8 @@ import { GraphQLJSON } from 'graphql-type-json';
  */
 export enum DocumentTemplateType {
   ATTENDANCE_CERTIFICATE = 'ATTENDANCE_CERTIFICATE',
+  /** Statement "Conto operatore FE" (Statistiche → Conti FE). */
+  SETTLEMENT_FE = 'SETTLEMENT_FE',
 }
 
 registerEnumType(DocumentTemplateType, {

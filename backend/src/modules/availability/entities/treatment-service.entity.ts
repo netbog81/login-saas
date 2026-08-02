@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDa
 import { ObjectType, Field, ID, Int, Float } from '@nestjs/graphql';
 import { Treatment } from './treatment.entity';
 import { Service } from './service.entity';
+import { Operator } from './operator.entity';
 import { AppUser } from '../../users/entities/app-user.entity';
 
 /**
@@ -35,15 +36,29 @@ export class TreatmentService {
   serviceId: string;
 
   /**
-   * Operatore che ha materialmente eseguito QUESTA riga di servizio.
-   * Default UI: precompilato con `treatment.operator.appUserId`, ma editabile
-   * (cambio turno, consulenza specialistica, prodotto venduto da segretaria).
-   * Valorizzato come `executedByUserId` nel payload `treatment.closed.lines[]`
-   * dopo mapping AppUser.id → AppUser.keycloakId nel publisher.
+   * @deprecated 2026-07-15 — NON usare per l'attribuzione dei compensi.
+   * FK app_users.id, storicamente valorizzata da addTreatmentServiceLine con
+   * l'utente LOGGATO (segreteria inclusa), quindi inquinata: le righe
+   * aggiunte a mano risultavano "eseguite" da chi le inseriva. Sostituita
+   * da `executorOperatorId` (FK operators.id). Mantenuta solo per lo
+   * storico; non viene più scritta né letta.
    */
   @Field(() => ID, { nullable: true })
   @Column({ type: 'uuid', nullable: true })
   executedByOperatorId?: string;
+
+  /**
+   * 2026-07-15 — Operatore (operators.id) che ha materialmente eseguito
+   * QUESTA riga quando diverso dall'operatore del trattamento. Scelto
+   * esplicitamente in UI ("Eseguito da") all'aggiunta/modifica riga.
+   * NULL = la riga è dell'operatore del trattamento (fallback).
+   * Nel payload `treatment.closed.lines[]` diventa `executedByOperatorId`
+   * (id clinico) + `executedByUserId` (sub Keycloak dell'operatore, se
+   * collegato) per i conteggi accounting.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  executorOperatorId?: string;
 
   // ==================== SERVICE DATA ====================
 
@@ -124,4 +139,10 @@ export class TreatmentService {
   @ManyToOne(() => AppUser, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'executedByOperatorId' })
   executedByOperator?: AppUser;
+
+  /** Operatore esecutore esplicito della riga (vedi executorOperatorId). */
+  @Field(() => Operator, { nullable: true })
+  @ManyToOne(() => Operator, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'executorOperatorId' })
+  executorOperator?: Operator;
 }

@@ -730,12 +730,36 @@ export class TreatmentResolver {
     @Args('serviceId', { type: () => ID }) serviceId: string,
     @Args('description', { type: () => String, nullable: true }) description?: string,
     @Args('price', { type: () => Float, nullable: true }) price?: number,
-    @CurrentUser() user?: CurrentUserContext,
+    /**
+     * 2026-07-15 — Operatore esecutore esplicito ("Eseguito da"). Assente =
+     * la riga è attribuita all'operatore del trattamento. NON viene più
+     * usato l'utente loggato: attribuiva i compensi a segreteria/admin.
+     */
+    @Args('executorOperatorId', { type: () => ID, nullable: true })
+    executorOperatorId?: string,
   ): Promise<Treatment> {
-    const actorUserId = await this.resolveAppUserId(user);
-    return this.treatmentService.addTreatmentServiceLine(
-      { treatmentId, serviceId, description, price },
-      actorUserId ?? undefined,
+    return this.treatmentService.addTreatmentServiceLine({
+      treatmentId,
+      serviceId,
+      description,
+      price,
+      executorOperatorId: executorOperatorId ?? null,
+    });
+  }
+
+  /**
+   * Mutation: 2026-07-15 — Cambia l'operatore esecutore di una riga servizio
+   * ("Eseguito da"). null = torna al fallback sull'operatore del trattamento.
+   */
+  @Mutation(() => TreatmentServiceEntity, { name: 'updateTreatmentServiceExecutor' })
+  async updateTreatmentServiceExecutor(
+    @Args('treatmentServiceId', { type: () => ID }) treatmentServiceId: string,
+    @Args('executorOperatorId', { type: () => ID, nullable: true })
+    executorOperatorId?: string,
+  ): Promise<TreatmentServiceEntity> {
+    return this.treatmentService.updateTreatmentServiceExecutor(
+      treatmentServiceId,
+      executorOperatorId ?? null,
     );
   }
 

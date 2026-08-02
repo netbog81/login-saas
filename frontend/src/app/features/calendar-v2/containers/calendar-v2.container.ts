@@ -736,6 +736,10 @@ export class CalendarV2Container implements OnInit, OnDestroy {
             // Ricarica trattamenti
             this.reloadCurrentView();
           }
+          // Struttura orari cambiata da un altro utente
+          if (event.type === 'availability_changed' && this.config.viewMode === 'operators') {
+            this.reloadCurrentView();
+          }
         },
       });
   }

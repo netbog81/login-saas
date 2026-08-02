@@ -736,6 +736,39 @@ textarea.form-input {
       background: #757575;
     }
   }
+
+  // Ritardo: informativo, non è una penalità come il no-show
+  &.btn-late {
+    background: #1976d2;
+    color: white;
+
+    &:hover {
+      background: #1565c0;
+    }
+  }
+}
+
+.late-registered {
+  margin-top: 10px;
+  padding: 7px 12px;
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+  font-size: 12.5px;
+  color: #0d47a1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .btn-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: #0d47a1;
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+  }
 }
 
 .late-warning {

@@ -236,6 +236,14 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
    */
   @Input() readOnlyMode = false;
 
+  /**
+   * 2026-07-27 — Deep-link: id trattamento da aprire subito nel riquadro
+   * dettagli (route /trattamenti/:treatmentId, es. "apri il trattamento nel
+   * clinico" dall'elenco Da fatturare dell'accounting). Fetch mirato by id:
+   * il trattamento può non essere nella lista per via dei filtri correnti.
+   */
+  @Input() openTreatmentId: string | null = null;
+
   @Output() closed = new EventEmitter<void>();
 
   isSecretary = false;
@@ -342,6 +350,31 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
       this.loadOperatorsOptions();
       this.subscribeToReload();
       this.subscribeToSse();
+    }
+
+    // Deep-link /trattamenti/:id → apri direttamente il riquadro dettagli.
+    // La lista si carica in parallelo per conto suo; qui basta il fetch
+    // mirato del singolo trattamento.
+    if (this.openTreatmentId) {
+      this.service.getById(this.openTreatmentId).subscribe({
+        next: (t) => {
+          if (t) {
+            this.openDetail(t);
+          } else {
+            this.snackBar.open(
+              'Trattamento non trovato: forse è stato eliminato o il link non è più valido.',
+              'OK',
+              { duration: 6000 },
+            );
+          }
+        },
+        error: () =>
+          this.snackBar.open(
+            'Errore nel caricamento del trattamento dal link.',
+            'OK',
+            { duration: 6000 },
+          ),
+      });
     }
   }
 
@@ -853,6 +886,9 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     const inst = ref.componentInstance;
     inst.canForceCloseTreatment = canForceCloseTreatment;
     inst.serviceCatalog = this.serviceCatalog;
+    // Catalogo operatori per il selettore "Eseguito da" (attribuzione
+    // compenso riga). Popolato solo per segreteria/admin.
+    inst.operatorCatalog = this.operatorOptions;
 
     // Helper definito qui sopra (vs in basso) per essere referenziabile
     // dalla subscription state.treatments$ → fresh update.
@@ -979,14 +1015,46 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     });
 
     // 2026-07-02 — Aggiungi riga servizio (dal catalogo).
-    inst.addServiceLine.subscribe((p: { serviceId: string; description?: string; price?: number }) => {
-      this.service.addTreatmentServiceLine(treatment.id, p.serviceId, p.description, p.price).subscribe({
+    inst.addServiceLine.subscribe((p: {
+      serviceId: string;
+      description?: string;
+      price?: number;
+      executorOperatorId?: string | null;
+    }) => {
+      this.service.addTreatmentServiceLine(
+        treatment.id, p.serviceId, p.description, p.price, p.executorOperatorId ?? null,
+      ).subscribe({
         next: (updated) => {
           this.state.updateTreatment(updated);
           ref.componentInstance.treatment = updated;
           this.snackBar.open('Riga servizio aggiunta', 'OK', { duration: 2000 });
         },
         error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 5000 }),
+      });
+    });
+
+    // 2026-07-15 — Cambia "Eseguito da" su una riga esistente: a quell'
+    // operatore va il compenso della riga nei conteggi.
+    inst.changeServiceLineExecutor.subscribe((p: {
+      treatmentServiceId: string;
+      executorOperatorId: string | null;
+    }) => {
+      this.service.updateTreatmentServiceExecutor(p.treatmentServiceId, p.executorOperatorId).subscribe({
+        next: (updatedTs) => {
+          const current = ref.componentInstance.treatment;
+          const nextServices = (current.treatmentServices || []).map(ts =>
+            ts.id === updatedTs.id
+              ? { ...ts,
+                  executorOperatorId: updatedTs.executorOperatorId ?? null,
+                  executorOperator: updatedTs.executorOperator ?? null }
+              : ts
+          );
+          const nextTreatment = { ...current, treatmentServices: nextServices };
+          ref.componentInstance.treatment = nextTreatment;
+          this.state.updateTreatment(nextTreatment);
+          this.snackBar.open('Operatore esecutore aggiornato', 'OK', { duration: 2000 });
+        },
+        error: (e) => this.snackBar.open(this.extractError(e), 'OK', { duration: 4000 }),
       });
     });
 

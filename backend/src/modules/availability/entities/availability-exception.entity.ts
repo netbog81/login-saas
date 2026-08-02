@@ -10,7 +10,16 @@ export enum ExceptionType {
   HOLIDAY = 'holiday',
   SICK = 'sick',
   VACATION = 'vacation',
-  PERSONAL_LEAVE = 'personal_leave'
+  PERSONAL_LEAVE = 'personal_leave',
+  /**
+   * Disponibilità straordinaria: la finestra SI SOMMA al template invece di
+   * sostituirlo. Serve al caso "il mercoledì pomeriggio è sempre stato
+   * libero, questa settimana l'operatore c'è dalle 14 alle 18".
+   *
+   * Da non confondere con MODIFIED, che è restrittivo (lavora SOLO nella
+   * finestra indicata). Vedi day-exception-semantics.util.ts.
+   */
+  EXTRA = 'extra'
 }
 
 registerEnumType(ExceptionType, {

@@ -8,6 +8,7 @@ export enum OperatorMacroCategory {
 
 export enum ExceptionType {
   Unavailable = 'UNAVAILABLE',
+  Extra = 'EXTRA',
   Modified = 'MODIFIED',
   Holiday = 'HOLIDAY',
   Sick = 'SICK',

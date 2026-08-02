@@ -28,18 +28,22 @@ import { MatBadgeModule } from '@angular/material/badge';
 import {
   TherapeuticPath,
   Anamnesis,
-  PathDocument,
   getPathStatusLabel,
   getPathStatusColor,
   formatPathProgress
 } from '../../../../models/therapeutic-path.model';
+import { PatientDocument } from '../../../patient-documents/models/patient-document.model';
+import {
+  PatientDocumentsTabComponent,
+  PathOption,
+  TreatmentOption,
+} from '../../../patient-documents/components/patient-documents-tab/patient-documents-tab.component';
 import { Treatment } from '../../../../models/treatment.model';
 import { AnamnesisComplete } from '../../models/anamnesis.model';
 
 import { TreatmentsTabComponent } from '../treatments-tab/treatments-tab.component';
 import { EvaluationTabComponent } from '../evaluation-tab/evaluation-tab.component';
 import { ObjectivesTabComponent } from '../objectives-tab/objectives-tab.component';
-import { DocumentsTabComponent } from '../documents-tab/documents-tab.component';
 import { PatientAnamnesisTabComponent } from '../patient-anamnesis-tab/patient-anamnesis-tab.component';
 import {
   ObjectiveWithProgress,
@@ -67,16 +71,17 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
     TreatmentsTabComponent,
     EvaluationTabComponent,
     ObjectivesTabComponent,
-    DocumentsTabComponent,
+    PatientDocumentsTabComponent,
     PatientAnamnesisTabComponent
   ],
   template: `
     <div class="path-content" [class.no-path]="!path">
       @if (!path) {
-        <div class="empty-state">
-          <mat-icon>folder_off</mat-icon>
-          <h3>Nessun percorso selezionato</h3>
-          <p>Seleziona un percorso dalla sidebar per visualizzare i dettagli</p>
+        <!-- Nessun percorso: Anamnesi paziente e Documenti restano
+             disponibili (sono a livello scheda paziente, non di percorso) -->
+        <div class="no-path-banner">
+          <mat-icon>info</mat-icon>
+          <span>Nessun percorso selezionato — Anamnesi e Documenti della scheda paziente sono comunque disponibili</span>
         </div>
       } @else {
         <!-- Path header -->
@@ -127,8 +132,10 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
             </button>
           </div>
         </header>
+      }
 
-        <!-- Tabs -->
+        <!-- Tabs — sempre visibili: i tab di percorso sono disabilitati
+             senza percorso, Anamnesi e Documenti sono a livello paziente -->
         <mat-tab-group
           class="content-tabs"
           [selectedIndex]="getTabIndex()"
@@ -155,8 +162,8 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
             </div>
           </mat-tab>
 
-          <!-- Tab 1: Trattamenti -->
-          <mat-tab>
+          <!-- Tab 1: Trattamenti (solo con percorso selezionato) -->
+          <mat-tab [disabled]="!path">
             <ng-template mat-tab-label>
               <mat-icon>medical_services</mat-icon>
               <span>Trattamenti</span>
@@ -177,7 +184,7 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
             </div>
           </mat-tab>
 
-          <mat-tab>
+          <mat-tab [disabled]="!path">
             <ng-template mat-tab-label>
               <mat-icon>assignment</mat-icon>
               <span>Valutazione</span>
@@ -199,7 +206,7 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
             </div>
           </mat-tab>
 
-          <mat-tab>
+          <mat-tab [disabled]="!path">
             <ng-template mat-tab-label>
               <mat-icon>track_changes</mat-icon>
               <span>Obiettivi</span>
@@ -233,18 +240,22 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
               }
             </ng-template>
             <div class="tab-content">
-              <app-documents-tab
+              <!-- Documenti della SCHEDA PAZIENTE (tutti i livelli), con
+                   filtri per scope e default sul percorso selezionato -->
+              <app-patient-documents-tab
                 [documents]="documents"
                 [loading]="loadingDocuments"
-                (documentOpen)="onDocumentOpen($event)"
-                (documentUpload)="onDocumentUpload()"
-                (documentDownload)="onDocumentDownload($event)"
-                (documentDelete)="onDocumentDelete($event)">
-              </app-documents-tab>
+                [paths]="documentPathOptions"
+                [treatments]="documentTreatmentOptions"
+                [currentPathId]="path?.id || null"
+                (upload)="onDocumentUpload()"
+                (open)="onDocumentOpen($event)"
+                (download)="onDocumentDownload($event)"
+                (delete)="onDocumentDelete($event)">
+              </app-patient-documents-tab>
             </div>
           </mat-tab>
         </mat-tab-group>
-      }
     </div>
   `,
   styles: [`
@@ -260,36 +271,25 @@ export type PathContentTab = 'patient-anamnesis' | 'treatments' | 'anamnesis' | 
       flex-direction: column;
       height: 100%;
       min-height: 0;  // Critico per propagare il constraint di scroll ai figli
-
-      &.no-path {
-        justify-content: center;
-        align-items: center;
-      }
     }
 
-    .empty-state {
-      text-align: center;
-      padding: 48px 24px;
+    .no-path-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      margin-bottom: 8px;
+      background: #f1f5f9;
+      border-radius: 10px;
       color: #64748b;
+      font-size: 0.8125rem;
 
       mat-icon {
-        font-size: 64px;
-        width: 64px;
-        height: 64px;
-        color: #cbd5e1;
-        margin-bottom: 16px;
-      }
-
-      h3 {
-        margin: 0 0 8px;
-        font-weight: 500;
-        color: #64748b;
-      }
-
-      p {
-        margin: 0;
-        font-size: 0.875rem;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
         color: #94a3b8;
+        flex-shrink: 0;
       }
     }
 
@@ -502,7 +502,11 @@ export class PathContentComponent {
   @Input() treatments: Treatment[] = [];
   @Input() anamnesis: Anamnesis | null = null;
   @Input() anamnesisComplete: AnamnesisComplete | null = null;
-  @Input() documents: PathDocument[] = [];
+  /** Documenti dell'INTERA scheda paziente (generali + percorsi + trattamenti) */
+  @Input() documents: PatientDocument[] = [];
+  /** Opzioni per filtri e chip del tab documenti */
+  @Input() documentPathOptions: PathOption[] = [];
+  @Input() documentTreatmentOptions: TreatmentOption[] = [];
   @Input() selectedTreatmentId: string | null = null;
   @Input() loadingTreatments = false;
   @Input() loadingAnamnesis = false;
@@ -522,10 +526,10 @@ export class PathContentComponent {
   @Output() editEvaluation = new EventEmitter<void>();
   @Output() deleteEvaluation = new EventEmitter<void>();
   @Output() expandEvaluation = new EventEmitter<void>();
-  @Output() documentOpen = new EventEmitter<PathDocument>();
+  @Output() documentOpen = new EventEmitter<PatientDocument>();
   @Output() documentUpload = new EventEmitter<void>();
-  @Output() documentDownload = new EventEmitter<PathDocument>();
-  @Output() documentDelete = new EventEmitter<PathDocument>();
+  @Output() documentDownload = new EventEmitter<PatientDocument>();
+  @Output() documentDelete = new EventEmitter<PatientDocument>();
   @Output() deletePath = new EventEmitter<void>();
   // Obiettivi tab outputs
   @Output() objectiveProgressChanged = new EventEmitter<ObjectiveProgressChangeEvent>();
@@ -543,7 +547,15 @@ export class PathContentComponent {
 
   private readonly tabIndexMap: PathContentTab[] = ['patient-anamnesis', 'treatments', 'anamnesis', 'obiettivi', 'documents'];
 
+  /** Tab che hanno senso solo con un percorso selezionato. */
+  private readonly pathOnlyTabs: PathContentTab[] = ['treatments', 'anamnesis', 'obiettivi'];
+
   getTabIndex(): number {
+    // Senza percorso i tab di percorso sono disabilitati: se il tab attivo
+    // è uno di quelli, atterra su Documenti (livello scheda paziente)
+    if (!this.path && this.pathOnlyTabs.includes(this.activeTab)) {
+      return this.tabIndexMap.indexOf('documents');
+    }
     return this.tabIndexMap.indexOf(this.activeTab);
   }
 
@@ -596,7 +608,7 @@ export class PathContentComponent {
     this.expandEvaluation.emit();
   }
 
-  onDocumentOpen(doc: PathDocument): void {
+  onDocumentOpen(doc: PatientDocument): void {
     this.documentOpen.emit(doc);
   }
 
@@ -604,11 +616,11 @@ export class PathContentComponent {
     this.documentUpload.emit();
   }
 
-  onDocumentDownload(doc: PathDocument): void {
+  onDocumentDownload(doc: PatientDocument): void {
     this.documentDownload.emit(doc);
   }
 
-  onDocumentDelete(doc: PathDocument): void {
+  onDocumentDelete(doc: PatientDocument): void {
     this.documentDelete.emit(doc);
   }
 

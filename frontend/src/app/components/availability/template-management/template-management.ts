@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { TemplateBuilder } from '../template-builder/template-builder';
 import { TemplateService } from '../../../services/template.service';
 import { AvailabilityTemplate } from '../../../graphql/generated/types';
-import { TemplatePattern } from '../../../graphql/types';
+import { PatternGroup, TemplateAssignment, TemplatePattern } from '../../../graphql/types';
 import { catchError, finalize, forkJoin, of, Subject, takeUntil } from 'rxjs';
 
 interface TemplateGroup {
@@ -12,8 +12,12 @@ interface TemplateGroup {
   templates: Partial<AvailabilityTemplate>[];
   pattern: TemplatePattern | null;
   operatorCount: number;
-  patternGroupId?: string; // ID of the pattern group for updates
+  patternGroupId: string; // ID of the pattern group for updates
+  slotCount: number; // numero fasce orarie: 0 = gruppo orfano da sistemare
+  isActive: boolean;
 }
+
+type StatusFilter = 'active' | 'inactive' | 'all';
 
 @Component({
   selector: 'app-template-management',
@@ -30,6 +34,7 @@ export class TemplateManagement implements OnInit, OnDestroy {
   error: string | null = null;
 
   searchTerm = '';
+  statusFilter: StatusFilter = 'active';
   selectedGroup: TemplateGroup | null = null;
 
   showBuilderModal = false;
@@ -58,47 +63,51 @@ export class TemplateManagement implements OnInit, OnDestroy {
     this.loading = true;
     this.error = null;
 
-    this.templateService
-      .getAllTemplates()
+    // Le assegnazioni correnti servono per il conteggio operatori per gruppo
+    // (gate di modifica/eliminazione, allineato al blocco lato backend).
+    forkJoin({
+      groups: this.templateService.getAllPatternGroups(),
+      assignments: this.templateService.getTemplateAssignments(undefined, true),
+    })
       .pipe(
         takeUntil(this.destroy$),
         catchError((err) => {
           this.error = 'Errore nel caricamento dei template: ' + err.message;
-          return of([]);
+          return of({ groups: [] as PatternGroup[], assignments: [] as TemplateAssignment[] });
         }),
         finalize(() => (this.loading = false))
       )
-      .subscribe((templates) => {
-        this.buildTemplateGroups(templates);
+      .subscribe(({ groups, assignments }) => {
+        this.buildTemplateGroups(groups, assignments);
         this.applyFilters();
       });
   }
 
-  private buildTemplateGroups(templates: Partial<AvailabilityTemplate>[]) {
-    const grouped = this.templateService.groupTemplatesByName(templates);
-    this.templateGroups = [];
+  private buildTemplateGroups(
+    groups: PatternGroup[],
+    assignments: TemplateAssignment[]
+  ) {
+    // Una card per pattern group, INCLUSI i gruppi senza fasce orarie: se
+    // venissero nascosti resterebbero orfani non modificabili né eliminabili
+    // (ma comunque presenti a DB).
+    this.templateGroups = groups.map((group) => {
+      const templates = this.templateService.convertGroupToTemplates(group);
 
-    grouped.forEach((groupTemplates, name) => {
-      // Only show current templates
-      const currentTemplates = groupTemplates.filter((t) => t.isCurrent);
-      if (currentTemplates.length === 0) return;
-
-      const pattern = this.templateService.convertBackendToPattern(currentTemplates);
-
-      // Count unique operators using this template (exclude empty operatorId for generic patterns)
       const operatorIds = new Set(
-        currentTemplates
-          .map((t) => t.operatorId)
-          .filter((id) => id && id.trim() !== '')
+        assignments
+          .filter((a) => a.patternGroupId === group.id && a.isCurrent)
+          .map((a) => a.operatorId)
       );
 
-      this.templateGroups.push({
-        name,
-        templates: currentTemplates,
-        pattern,
+      return {
+        name: group.name || 'Senza Nome',
+        templates,
+        pattern: this.templateService.convertGroupToUiPattern(group),
         operatorCount: operatorIds.size,
-        patternGroupId: (currentTemplates[0] as any)?.patternGroupId, // Get pattern group ID for updates
-      });
+        patternGroupId: group.id,
+        slotCount: group.patterns?.length || 0,
+        isActive: group.isActive,
+      };
     });
 
     // Sort by name
@@ -106,18 +115,33 @@ export class TemplateManagement implements OnInit, OnDestroy {
   }
 
   applyFilters() {
-    if (!this.searchTerm.trim()) {
-      this.filteredGroups = [...this.templateGroups];
-    } else {
+    let groups = this.templateGroups;
+
+    if (this.statusFilter === 'active') {
+      groups = groups.filter((g) => g.isActive);
+    } else if (this.statusFilter === 'inactive') {
+      groups = groups.filter((g) => !g.isActive);
+    }
+
+    if (this.searchTerm.trim()) {
       const term = this.searchTerm.toLowerCase();
-      this.filteredGroups = this.templateGroups.filter((group) =>
+      groups = groups.filter((group) =>
         group.name.toLowerCase().includes(term)
       );
     }
+
+    this.filteredGroups = [...groups];
   }
 
   onSearchChange() {
     this.applyFilters();
+  }
+
+  setStatusFilter(filter: StatusFilter) {
+    this.ngZone.run(() => {
+      this.statusFilter = filter;
+      this.applyFilters();
+    });
   }
 
   selectGroup(group: TemplateGroup) {
@@ -208,13 +232,10 @@ export class TemplateManagement implements OnInit, OnDestroy {
       this.loading = true;
       this.error = null;
 
-      // Delete all templates in the group
-      const deleteObservables = group.templates.map((template) =>
-        this.templateService.deleteTemplate(template.id!)
-      );
-
-      // Execute all deletions using forkJoin instead of Promise.all
-      forkJoin(deleteObservables)
+      // Delete diretta per patternGroupId: funziona anche per i gruppi senza
+      // fasce orarie (il vecchio percorso risaliva al gruppo da una fascia).
+      this.templateService
+        .deletePatternGroup(group.patternGroupId)
         .pipe(
           takeUntil(this.destroy$),
           finalize(() => (this.loading = false))
@@ -226,6 +247,35 @@ export class TemplateManagement implements OnInit, OnDestroy {
           error: (err) => {
             this.ngZone.run(() => {
               this.error = 'Errore durante l\'eliminazione: ' + err.message;
+            });
+          }
+        });
+    });
+  }
+
+  toggleActive(group: TemplateGroup) {
+    this.ngZone.run(() => {
+      const action = group.isActive ? 'disattivare' : 'riattivare';
+      if (!confirm(`Vuoi ${action} il template "${group.name}"?`)) {
+        return;
+      }
+
+      this.loading = true;
+      this.error = null;
+
+      this.templateService
+        .setPatternGroupActive(group.patternGroupId, !group.isActive)
+        .pipe(
+          takeUntil(this.destroy$),
+          finalize(() => (this.loading = false))
+        )
+        .subscribe({
+          next: () => {
+            this.ngZone.run(() => this.loadTemplates());
+          },
+          error: (err) => {
+            this.ngZone.run(() => {
+              this.error = 'Errore durante l\'aggiornamento: ' + err.message;
             });
           }
         });
@@ -359,7 +409,7 @@ export class TemplateManagement implements OnInit, OnDestroy {
   }
 
   trackByGroupName(index: number, group: TemplateGroup): string {
-    return group.name;
+    return group.patternGroupId || group.name;
   }
 
   // Overlay click handlers (previene chiusura durante selezione testo con click-and-drag)

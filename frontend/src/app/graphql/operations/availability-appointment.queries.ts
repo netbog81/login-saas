@@ -25,6 +25,10 @@ export const AVAILABILITY_APPOINTMENT_FIELDS = gql`
     cancelledBy
     cancellationHoursNotice
     operatorNotes
+    wasNoShowReverted
+    arrivedAt
+    lateMinutes
+    arrivalSource
     instrumentOrderMatters
     nonRetribuito
     isRecurring

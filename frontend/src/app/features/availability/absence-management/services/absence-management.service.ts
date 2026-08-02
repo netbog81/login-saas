@@ -7,12 +7,27 @@ import {
   CREATE_OPERATOR_ABSENCES,
   DELETE_ABSENCE,
   DELETE_ABSENCE_GROUP,
+  PREVIEW_OPERATOR_AVAILABILITY_IMPACT,
+  CREATE_OPERATOR_AVAILABILITY,
+  PREVIEW_AVAILABILITY_REMOVAL_IMPACT,
+  PREVIEW_GROUP_REMOVAL_IMPACT,
+  DELETE_EXCEPTION_GROUP,
+  PREVIEW_SCHEDULE_CHANGE_IMPACT,
+  CREATE_SCHEDULE_CHANGE,
 } from '../graphql/absence.operations';
 import {
   OperatorAbsence,
   AbsenceImpactPreview,
   CreateOperatorAbsencesInput,
   OperatorAbsencesResult,
+  CreateOperatorAvailabilityInput,
+  AvailabilityImpactPreview,
+  ExtraAvailabilityResult,
+  AvailabilityRemovalResult,
+  ImpactedAppointment,
+  CreateScheduleChangeInput,
+  ScheduleChangeImpactPreview,
+  ScheduleChangeResult,
 } from '../models/absence.model';
 
 @Injectable({ providedIn: 'root' })
@@ -62,5 +77,72 @@ export class AbsenceManagementService extends BaseGraphQLService {
     return this.mutate<{ deleteAbsenceGroup: number }>(DELETE_ABSENCE_GROUP, {
       sourceGroupId,
     }).pipe(map((r) => r.deleteAbsenceGroup));
+  }
+
+  // ============ DISPONIBILITÀ STRAORDINARIE ============
+
+  previewAvailabilityImpact(
+    input: CreateOperatorAvailabilityInput,
+  ): Observable<AvailabilityImpactPreview> {
+    return this.query<{ previewOperatorAvailabilityImpact: AvailabilityImpactPreview }>(
+      PREVIEW_OPERATOR_AVAILABILITY_IMPACT,
+      { input },
+    ).pipe(map((r) => r.previewOperatorAvailabilityImpact));
+  }
+
+  createAvailability(
+    input: CreateOperatorAvailabilityInput,
+  ): Observable<ExtraAvailabilityResult> {
+    return this.mutate<{ createOperatorAvailability: ExtraAvailabilityResult }>(
+      CREATE_OPERATOR_AVAILABILITY,
+      { input },
+    ).pipe(map((r) => r.createOperatorAvailability));
+  }
+
+  /** Appuntamenti che resterebbero scoperti togliendo queste disponibilità. */
+  previewAvailabilityRemoval(exceptionIds: string[]): Observable<ImpactedAppointment[]> {
+    return this.query<{ previewAvailabilityRemovalImpact: ImpactedAppointment[] }>(
+      PREVIEW_AVAILABILITY_REMOVAL_IMPACT,
+      { exceptionIds },
+    ).pipe(map((r) => r.previewAvailabilityRemovalImpact || []));
+  }
+
+  /** Appuntamenti che perderebbero copertura eliminando l'intero gruppo. */
+  previewGroupRemoval(sourceGroupId: string): Observable<ImpactedAppointment[]> {
+    return this.query<{ previewGroupRemovalImpact: ImpactedAppointment[] }>(
+      PREVIEW_GROUP_REMOVAL_IMPACT,
+      { sourceGroupId },
+    ).pipe(map((r) => r.previewGroupRemovalImpact || []));
+  }
+
+  /**
+   * Elimina un gruppo di qualunque tipo: il backend ripristina i conflitti
+   * generati dal gruppo e segnala quelli rimasti scoperti.
+   */
+  deleteExceptionGroup(sourceGroupId: string): Observable<AvailabilityRemovalResult> {
+    return this.mutate<{ deleteExceptionGroup: AvailabilityRemovalResult }>(
+      DELETE_EXCEPTION_GROUP,
+      { sourceGroupId },
+    ).pipe(map((r) => r.deleteExceptionGroup));
+  }
+
+  // ============ CAMBIO ORARIO ============
+
+  previewScheduleChange(
+    input: CreateScheduleChangeInput,
+  ): Observable<ScheduleChangeImpactPreview> {
+    return this.query<{ previewScheduleChangeImpact: ScheduleChangeImpactPreview }>(
+      PREVIEW_SCHEDULE_CHANGE_IMPACT,
+      { input },
+    ).pipe(map((r) => r.previewScheduleChangeImpact));
+  }
+
+  createScheduleChange(
+    input: CreateScheduleChangeInput,
+  ): Observable<ScheduleChangeResult> {
+    return this.mutate<{ createScheduleChange: ScheduleChangeResult }>(
+      CREATE_SCHEDULE_CHANGE,
+      { input },
+    ).pipe(map((r) => r.createScheduleChange));
   }
 }

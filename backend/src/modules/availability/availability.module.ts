@@ -3,6 +3,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AppUsersModule } from '../users/app-users.module';
 import { OwnershipGuard } from './guards/ownership.guard';
+import { AvailabilityChangedInterceptor, AppointmentChangedInterceptor } from './mutation-event.interceptors';
 
 // Entities
 import { Operator } from './entities/operator.entity';
@@ -41,7 +42,6 @@ import { ServiceSubcategory } from './entities/service-subcategory.entity';
 import { Site } from './entities/site.entity';
 import { Product } from './entities/product.entity';
 import { TherapeuticPath } from './entities/therapeutic-path.entity';
-import { PathDocument } from './entities/path-document.entity';
 import { PatientEvaluation } from './entities/patient-evaluation.entity';
 import { EvaluationObjective } from './entities/evaluation-objective.entity';
 import { EvaluationTest } from './entities/evaluation-test.entity';
@@ -127,6 +127,10 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     AccountingApiModule],
   controllers: [TreatmentPdfController],
   providers: [
+    // Interceptor SSE availability_changed (class-level sui resolver orari)
+    AvailabilityChangedInterceptor,
+    AppointmentChangedInterceptor,
+
     // Services
     AvailabilityService,
     TreatmentRecallCleanupJob,

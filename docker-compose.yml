@@ -43,6 +43,12 @@ services:
       OPENBAO_ADDR: ${OPENBAO_ADDR:-http://172.19.0.1:8203}
       OPENBAO_AGENT_MODE: "true"
       OPENBAO_AGENT_TOKEN_PATH: /var/run/openbao-agent-clinico/clinico-token
+      # Documenti paziente — S3 MicroCeph (creds da OpenBao kv/clinico/s3)
+      # + envelope encryption Transit (chiave clinico-docs-<tenantAlias>).
+      # La VM MicroCeph deve essere raggiungibile dalla rete del container.
+      DOCS_BUCKET_PREFIX: ${DOCS_BUCKET_PREFIX:-curandis-clinico-docs}
+      DOCS_TRANSIT_KEY_PREFIX: ${DOCS_TRANSIT_KEY_PREFIX:-clinico-docs}
+      DOCS_MAX_FILE_MB: ${DOCS_MAX_FILE_MB:-500}
       # Keycloak OIDC
       KEYCLOAK_URL: ${KEYCLOAK_URL}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-curandis}

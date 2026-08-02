@@ -13,6 +13,7 @@ import { TenantResolverService } from './core/auth/tenant-resolver.service';
 import { TaskMessageNotificationService } from './features/task-messages/services/task-message-notification.service';
 import { TaskMessageDialogComponent } from './features/task-messages/containers/task-message-dialog.component';
 import { ConflictService } from './services/conflict.service';
+import { NavigationSettingsService } from './services/navigation-settings.service';
 
 @Component({
   selector: 'app-root',
@@ -42,24 +43,18 @@ import { ConflictService } from './services/conflict.service';
               <a class="nav-item" routerLink="/calendar" routerLinkActive="active">
                 Calendario
               </a>
-              <a class="nav-item" routerLink="/calendar2" routerLinkActive="active">
-                Calendario New
-              </a>
-              <a class="nav-item" routerLink="/calendar3" routerLinkActive="active">
-                Calendario V3
-              </a>
             }
             @if (!authService.hasRole(SEGRETERIA_ROLES) && authService.hasRole(SELF_CALENDAR_ROLES)) {
-              <a class="nav-item" routerLink="/calendar3" routerLinkActive="active">
+              <a class="nav-item" routerLink="/calendar" routerLinkActive="active">
                 Il mio calendario
               </a>
             }
-            @if (registryUrl && authService.hasRole(SEGRETERIA_ROLES)) {
+            @if (registryUrl && navSettings.showRegistryLink() && authService.hasRole(SEGRETERIA_ROLES)) {
               <a class="nav-item" [href]="registryUrl" target="_blank" rel="noopener noreferrer">
                 Anagrafiche
               </a>
             }
-            @if (accountingUrl && authService.hasRole(SEGRETERIA_ROLES)) {
+            @if (accountingUrl && navSettings.showAccountingLink() && authService.hasRole(SEGRETERIA_ROLES)) {
               <a class="nav-item" [href]="accountingUrl" target="_blank" rel="noopener noreferrer">
                 Contabilità
               </a>
@@ -92,7 +87,7 @@ import { ConflictService } from './services/conflict.service';
                 Statistiche
               </a>
               <a class="nav-item" routerLink="/gestione-assenze" routerLinkActive="active">
-                Gestione assenze
+                Assenze e disponibilità
               </a>
               <a class="nav-item" routerLink="/availability" routerLinkActive="active">
                 Configurazioni
@@ -304,6 +299,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly notificationService = inject(TaskMessageNotificationService);
   private readonly dialog = inject(MatDialog);
   private readonly conflictService = inject(ConflictService);
+  readonly navSettings = inject(NavigationSettingsService);
   private cleanupContext: (() => void) | null = null;
 
   taskMessageUnreadCount = 0;
@@ -319,7 +315,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly OPERATORE_ROLES = ['operatore', 'admin', 'amministratore', 'superadmin'];
   readonly ISTRUTTORE_ROLES = ['istruttore', 'admin', 'amministratore', 'superadmin'];
   readonly MEDICO_ROLES = ['medico', 'admin', 'amministratore', 'superadmin'];
-  /** Ruoli che vedono il proprio calendario read-only come home (/calendar3). */
+  /** Ruoli che vedono il proprio calendario read-only come home (/calendar). */
   readonly SELF_CALENDAR_ROLES = ['operatore', 'medico', 'istruttore'];
 
   /**
@@ -355,6 +351,9 @@ export class AppComponent implements OnInit, OnDestroy {
     // Start polling for task message notifications when authenticated
     if (this.authService.isAuthenticated()) {
       this.notificationService.startPolling();
+
+      // Visibilità dei link cross-modulo nel menu (impostazione per-tenant).
+      this.navSettings.load();
 
       // Check pigro revalidazione conflitti: fire-and-forget, esegue solo
       // se sono passate ≥ 2h dall'ultimo check. Gira nel contesto HTTP del

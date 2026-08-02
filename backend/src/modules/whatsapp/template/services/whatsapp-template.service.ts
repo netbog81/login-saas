@@ -13,6 +13,8 @@ const DEFAULT_TEMPLATES: Record<WhatsappTemplateType, string> = {
     'Promemoria: il suo appuntamento è domani alle {time}.',
   [WhatsappTemplateType.CANCELLATION]:
     'Gentile {name}, il suo appuntamento del {date} alle {time} è stato cancellato.',
+  [WhatsappTemplateType.UPDATE]:
+    'Gentile {name}, il suo appuntamento è stato spostato al {date} alle {time}.',
 };
 
 @Injectable()

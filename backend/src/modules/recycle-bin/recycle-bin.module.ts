@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AvailabilityModule } from '../availability/availability.module';
 import { AppUsersModule } from '../users/app-users.module';
+import { PatientDocumentsModule } from '../patient-documents/patient-documents.module';
 import { Treatment } from '../availability/entities/treatment.entity';
 import { TherapeuticPath } from '../availability/entities/therapeutic-path.entity';
 import { PatientEvaluation } from '../availability/entities/patient-evaluation.entity';
@@ -13,7 +14,8 @@ import { RecycleBinResolver } from './resolvers/recycle-bin.resolver';
 @Module({
   imports: [
     AvailabilityModule,
-    AppUsersModule],
+    AppUsersModule,
+    PatientDocumentsModule],
   providers: [RecycleBinService, RecycleBinCleanupJob, RecycleBinResolver],
   exports: [RecycleBinService],
 })

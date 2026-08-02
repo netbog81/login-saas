@@ -23,6 +23,10 @@ import { ServiceService } from '../../../services/service.service';
 import { Service } from '../../../graphql/generated/types';
 import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../service-multi-select';
 import { NewPatientDialogComponent, NewPatientDialogResult } from '../new-patient-dialog';
+import { RecurringScopePanelComponent, RecurringScopeSelection } from '../recurring-scope-panel/recurring-scope-panel.component';
+import { RecurringConflictsDialogComponent } from '../recurring-scope-panel/recurring-conflicts-dialog.component';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
+import { tokenizeQuery, matchesAllTokens } from '../../utils/token-match';
 
 /**
  * Dati passati al dialog per la creazione di un appuntamento palestra.
@@ -86,7 +90,8 @@ export interface GymAppointmentMatDialogResult {
     MatSelectModule,
     MatRadioModule,
     FormsModule,
-    ServiceMultiSelectComponent
+    ServiceMultiSelectComponent,
+    RecurringScopePanelComponent
   ],
   template: `
     <h2 mat-dialog-title>{{ isEditMode ? 'Modifica Appuntamento Palestra' : 'Nuovo Appuntamento Palestra' }}</h2>
@@ -241,6 +246,18 @@ export interface GymAppointmentMatDialogResult {
           </div>
         </div>
       </div>
+
+      <!-- Gestione serie ricorrenti in modifica: pannello "Applica a" con
+           Applica modifiche / Elimina (parità con la modalità operatori).
+           Il pulsante "Salva Modifiche" del dialog resta sulla singola
+           occorrenza. -->
+      <app-recurring-scope-panel
+        *ngIf="isEditMode && data.appointment?.isRecurring && data.appointment?.recurringGroupId"
+        [futureCount]="loadingSeriesInfo ? null : futureSeriesCount"
+        [currentDate]="currentAppointmentDate"
+        (applyEdit)="onApplySeriesEdit($event)"
+        (applyDelete)="onApplySeriesDelete($event)">
+      </app-recurring-scope-panel>
 
       <!-- Errore server -->
       <div class="server-error" *ngIf="serverError">
@@ -468,6 +485,7 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   private serviceService = inject(ServiceService);
   private gymRoomService = inject(GymRoomService);
   private patientService = inject(PatientService);
+  private recurringAppointmentService = inject(AvailabilityAppointmentService);
 
   // Form
   form!: FormGroup;
@@ -481,6 +499,10 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   loadingServices = false;
   saving = false;
   serverError = '';
+
+  // Serie ricorrente esistente (modalità modifica)
+  loadingSeriesInfo = false;
+  futureSeriesCount: number | null = null;
 
   // Recurring
   repeatEnabled = false;
@@ -507,8 +529,17 @@ export class GymAppointmentMatDialogComponent implements OnInit {
 
     // Modalita' MODIFICA: prefill dei campi dall'appuntamento esistente.
     if (this.isEditMode) {
-      this.prefillFromAppointment(this.data.appointment!);
+      const apt = this.data.appointment!;
+      this.prefillFromAppointment(apt);
+      if (apt.isRecurring && apt.recurringGroupId) {
+        this.loadSeriesInfo(apt.recurringGroupId);
+      }
     }
+  }
+
+  /** Data (YYYY-MM-DD) dell'occorrenza in modifica, per scope/serie. */
+  get currentAppointmentDate(): string {
+    return String(this.data.appointment?.appointmentDate ?? this.data.date ?? '').slice(0, 10);
   }
 
   /** True se il dialog opera in modalita' modifica di un appuntamento esistente. */
@@ -608,15 +639,12 @@ export class GymAppointmentMatDialogComponent implements OnInit {
     if (!filter) {
       return this.patients.slice(0, 20);
     }
+    // Match a token: copre entrambi gli ordini nome/cognome e i parziali su
+    // ogni parola ("ros mar"), senza enumerare le combinazioni a mano.
+    const tokens = tokenizeQuery(filter);
     return this.patients
-      .filter(
-        (p) =>
-          p.nome?.toLowerCase().includes(filter) ||
-          p.cognome?.toLowerCase().includes(filter) ||
-          p.cellulare?.includes(filter) ||
-          p.telefono?.includes(filter) ||
-          `${p.cognome ?? ''} ${p.nome ?? ''}`.toLowerCase().includes(filter) ||
-          `${p.nome ?? ''} ${p.cognome ?? ''}`.toLowerCase().includes(filter),
+      .filter((p) =>
+        matchesAllTokens([p.nome, p.cognome, p.cellulare, p.telefono], tokens),
       )
       .slice(0, 20);
   }
@@ -883,7 +911,8 @@ export class GymAppointmentMatDialogComponent implements OnInit {
           this.gymRoomService.updateAppointment(this.data.appointment!.id, updateInput),
         );
       } else {
-        // CREAZIONE
+        // CREAZIONE (con report: le occorrenze ricorrenti in conflitto
+        // vengono saltate dal backend ed elencate qui sotto).
         const input: CreateGymAppointmentInput = {
           gymRoomId: this.data.gymRoom.id,
           patientId: this.form.value.patientId || undefined,
@@ -900,7 +929,20 @@ export class GymAppointmentMatDialogComponent implements OnInit {
           isRecurring: this.repeatEnabled || undefined,
           repeatConfig: repeatConfigData
         };
-        result = await firstValueFrom(this.gymRoomService.createAppointment(input));
+        const report = await firstValueFrom(this.gymRoomService.createAppointmentWithReport(input));
+        result = report.appointment;
+        if (report.conflicts?.length) {
+          // Serie creata parzialmente: avvisa con l'elenco delle saltate
+          // (stesso dialog della modalità operatori, wording non bloccante).
+          this.dialog.open(RecurringConflictsDialogComponent, {
+            width: '520px', maxWidth: '95vw',
+            data: {
+              title: 'Serie creata con avvisi',
+              intro: `Occorrenze create: ${report.createdCount}. Occorrenze saltate per conflitto: ${report.skippedCount}.`,
+              conflicts: report.conflicts,
+            },
+          });
+        }
       }
 
       this.dialogRef.close({
@@ -909,6 +951,24 @@ export class GymAppointmentMatDialogComponent implements OnInit {
       });
     } catch (error: any) {
       console.error('[GymAppointmentMatDialog] Error saving appointment:', error);
+
+      // Serie interamente in conflitto: il backend blocca con il marker
+      // RECURRING_SERIES_CONFLICT e l'elenco (avvisa-e-blocca come operatori).
+      const conflicts = this.tryParseRecurringConflicts(error?.message || '');
+      if (conflicts) {
+        this.dialog.open(RecurringConflictsDialogComponent, {
+          width: '520px', maxWidth: '95vw',
+          data: {
+            title: 'Creazione serie bloccata',
+            intro: 'Nessun appuntamento creato: tutte le occorrenze della serie sono in conflitto.',
+            conflicts,
+          },
+        });
+        this.saving = false;
+        this.cdr.markForCheck();
+        return;
+      }
+
       this.serverError =
         error?.message ||
         (this.isEditMode
@@ -916,6 +976,121 @@ export class GymAppointmentMatDialogComponent implements OnInit {
           : 'Errore nella creazione dell\'appuntamento. Riprova.');
       this.saving = false;
       this.cdr.markForCheck();
+    }
+  }
+
+  /**
+   * Estrae l'elenco conflitti dal messaggio d'errore backend
+   * `RECURRING_SERIES_CONFLICT: [...]`. Ritorna null se non è quel tipo.
+   */
+  private tryParseRecurringConflicts(msg: string): any[] | null {
+    const marker = 'RECURRING_SERIES_CONFLICT';
+    const idx = msg.indexOf(marker);
+    if (idx < 0) return null;
+    const jsonStart = msg.indexOf('[', idx);
+    if (jsonStart < 0) return null;
+    try {
+      const parsed = JSON.parse(msg.slice(jsonStart));
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ==================== RECURRING SERIES MANAGEMENT ====================
+
+  private loadSeriesInfo(recurringGroupId: string): void {
+    this.loadingSeriesInfo = true;
+    this.recurringAppointmentService.getRecurringSeries(recurringGroupId).subscribe({
+      next: (series) => {
+        // Conta solo occorrenze DOPO quella corrente (non inclusa).
+        const currentDate = this.currentAppointmentDate;
+        this.futureSeriesCount = series.filter(a =>
+          String(a.appointmentDate).slice(0, 10) > currentDate &&
+          !['cancelled', 'cancelled_early', 'cancelled_late'].includes((a.bookingStatus || '').toLowerCase())
+        ).length;
+        this.loadingSeriesInfo = false;
+        this.cdr.markForCheck();
+      },
+      error: () => { this.loadingSeriesInfo = false; this.cdr.markForCheck(); },
+    });
+  }
+
+  /**
+   * Elimina le occorrenze della serie nello scope scelto. La micro-conferma
+   * è già stata data nel pannello.
+   */
+  async onApplySeriesDelete(sel: RecurringScopeSelection): Promise<void> {
+    const apt = this.data.appointment!;
+    try {
+      const count = await firstValueFrom(this.recurringAppointmentService.deleteRecurringSeries(
+        String(apt.id), this.currentAppointmentDate, sel.scope,
+        { rangeFrom: sel.rangeFrom, rangeTo: sel.rangeTo, includeCurrent: sel.includeCurrent },
+      ));
+      alert(`${count} appuntamenti eliminati`);
+      this.dialogRef.close({ created: true });
+    } catch {
+      alert('Errore nell\'eliminazione della serie');
+    }
+  }
+
+  /**
+   * Applica alla serie (nello scope scelto) le modifiche impostate nel form:
+   * paziente, servizi e note. Data/orario/sala restano quelli di ciascuna
+   * occorrenza (in palestra lo slot è fisso). Se il backend rileva conflitti,
+   * mostra il riepilogo e NON chiude (niente è stato applicato).
+   */
+  async onApplySeriesEdit(sel: RecurringScopeSelection): Promise<void> {
+    const apt = this.data.appointment!;
+    if (!this.form.get('patientId')?.value) {
+      alert('Seleziona un paziente prima di applicare le modifiche alla serie.');
+      return;
+    }
+
+    const services = this.selectedServices.map(item => ({
+      serviceId: item.serviceId,
+      customPrice: item.customPrice,
+      customDuration: item.customDuration,
+    }));
+    const selectedPatient = this.patients.find(p => p.id == this.form.value.patientId);
+    const clientName = selectedPatient
+      ? `${selectedPatient.cognome} ${selectedPatient.nome}`
+      : (apt.clientName || '');
+
+    try {
+      const result = await firstValueFrom(this.recurringAppointmentService.updateRecurringSeries({
+        appointmentId: String(apt.id),
+        scope: sel.scope,
+        // Orario invariato: il backend riconosce la posizione immutata e non
+        // riesegue i check di chiusura/capienza.
+        startTime: apt.startTime,
+        endTime: apt.endTime,
+        patientId: this.form.value.patientId || undefined,
+        clientName: clientName || undefined,
+        clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || undefined,
+        clientEmail: selectedPatient?.email || undefined,
+        notes: this.form.value.notes || undefined,
+        services: services.length > 0 ? services : undefined,
+        rangeFrom: sel.rangeFrom,
+        rangeTo: sel.rangeTo,
+        includeCurrent: sel.includeCurrent,
+      }));
+
+      if (!result.applied && result.conflicts.length > 0) {
+        // Avvisa e blocca: mostra il riepilogo conflitti, niente modifiche.
+        this.dialog.open(RecurringConflictsDialogComponent, {
+          width: '520px', maxWidth: '95vw',
+          data: { title: 'Modifica serie bloccata', conflicts: result.conflicts },
+        });
+        return;
+      }
+
+      const failedNote = result.conflicts.length > 0
+        ? ` (${result.conflicts.length} non aggiornati per errore)` : '';
+      alert(`${result.affectedCount} appuntamenti aggiornati${failedNote}`);
+      this.dialogRef.close({ created: true });
+    } catch {
+      alert('Errore nella modifica della serie');
     }
   }
 }

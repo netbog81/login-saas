@@ -11,11 +11,14 @@ import {
   STATUS_LABELS,
   STATUS_ICONS,
   STATUS_COLORS,
+  RECIPIENT_GROUP_LABELS,
 } from '../models/task-message.models';
 
 export interface TaskMessageDetailDialogData {
   message: TaskMessage;
   currentUserId: string;
+  /** True se l'utente può agire su un messaggio di gruppo (è in inbox) */
+  canActOnGroup?: boolean;
 }
 
 export interface TaskMessageDetailDialogResult {
@@ -40,7 +43,14 @@ export interface TaskMessageDetailDialogResult {
       </div>
       <div class="detail-row">
         <span class="detail-label">A:</span>
-        <span class="detail-value">{{ getUserName(message.recipientUser) }}</span>
+        <span class="detail-value">
+          @if (message.recipientGroup) {
+            <mat-icon class="group-icon">groups</mat-icon>
+            {{ getRecipientLabel() }} (gruppo)
+          } @else {
+            {{ getRecipientLabel() }}
+          }
+        </span>
       </div>
       <div class="detail-row">
         <span class="detail-label">Stato:</span>
@@ -61,13 +71,23 @@ export interface TaskMessageDetailDialogResult {
       @if (message.readAt) {
         <div class="detail-row">
           <span class="detail-label">Letto il:</span>
-          <span class="detail-value">{{ message.readAt | date:'dd/MM/yyyy HH:mm' }}</span>
+          <span class="detail-value">
+            {{ message.readAt | date:'dd/MM/yyyy HH:mm' }}
+            @if (message.recipientGroup && message.readByUser) {
+              da {{ getUserName(message.readByUser) }}
+            }
+          </span>
         </div>
       }
       @if (message.completedAt) {
         <div class="detail-row">
           <span class="detail-label">Completato il:</span>
-          <span class="detail-value">{{ message.completedAt | date:'dd/MM/yyyy HH:mm' }}</span>
+          <span class="detail-value">
+            {{ message.completedAt | date:'dd/MM/yyyy HH:mm' }}
+            @if (message.completedByUser) {
+              da {{ getUserName(message.completedByUser) }}
+            }
+          </span>
         </div>
       }
 
@@ -90,6 +110,14 @@ export interface TaskMessageDetailDialogResult {
   `,
   styles: [`
     .title-icon { vertical-align: middle; margin-right: 8px; }
+    .group-icon {
+      vertical-align: middle;
+      margin-right: 4px;
+      color: #1565c0;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
 
     .detail-row {
       display: flex;
@@ -130,7 +158,9 @@ export class TaskMessageDetailDialogComponent implements OnInit {
   ) {
     this.message = data.message;
     this.currentUserId = data.currentUserId;
-    this.isRecipient = this.message.recipientUserId === this.currentUserId;
+    this.isRecipient = this.message.recipientGroup
+      ? !!data.canActOnGroup
+      : this.message.recipientUserId === this.currentUserId;
   }
 
   private shouldMarkRead = false;
@@ -164,9 +194,16 @@ export class TaskMessageDetailDialogComponent implements OnInit {
     this.dialogRef.close({ action: 'complete' });
   }
 
-  getUserName(user?: { name: string; surname?: string }): string {
+  getUserName(user?: { name: string; surname?: string } | null): string {
     if (!user) return 'Utente sconosciuto';
     return `${user.name}${user.surname ? ' ' + user.surname : ''}`;
+  }
+
+  getRecipientLabel(): string {
+    if (this.message.recipientGroup) {
+      return RECIPIENT_GROUP_LABELS[this.message.recipientGroup] || this.message.recipientGroup;
+    }
+    return this.getUserName(this.message.recipientUser);
   }
 
   getStatusLabel(status: TaskMessageStatus): string {

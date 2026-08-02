@@ -4,6 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { SettingsService, GeneralSetting } from '../../services/settings.service';
+import {
+  NavigationSettingsService,
+  NAV_SHOW_REGISTRY_KEY,
+  NAV_SHOW_ACCOUNTING_KEY,
+} from '../../services/navigation-settings.service';
 
 interface AppointmentSettings {
   defaultSlotDuration: number;
@@ -27,6 +32,11 @@ interface CalendarSettingsForm {
 interface AutoAttendanceSettings {
   enabled: boolean;
   offsetMinutes: number;
+}
+
+interface NavigationSettings {
+  showRegistryLink: boolean;
+  showAccountingLink: boolean;
 }
 
 @Component({
@@ -67,6 +77,13 @@ export class SettingsComponent implements OnInit, OnDestroy {
   };
   originalAutoAttendanceSettings: AutoAttendanceSettings = { ...this.autoAttendanceSettings };
 
+  // Visibilità dei link cross-modulo (Anagrafiche/Contabilità) nel menu.
+  navigationSettings: NavigationSettings = {
+    showRegistryLink: true,
+    showAccountingLink: true,
+  };
+  originalNavigationSettings: NavigationSettings = { ...this.navigationSettings };
+
   // Auto-start trattamento: apre automaticamente il trattamento quando il
   // paziente è segnato presentato (solo se ha un unico percorso attivo).
   autoStartTreatmentEnabled = false;
@@ -98,6 +115,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   constructor(
     private settingsService: SettingsService,
+    private navigationSettingsService: NavigationSettingsService,
     private ngZone: NgZone
   ) {}
 
@@ -123,6 +141,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       autoAttendanceOffset: this.settingsService.getSetting('autoAttendance.offsetMinutes'),
       autoStartTreatment: this.settingsService.getSetting('autoStartTreatment.onAttended'),
       autoStartTreatmentOnlyToday: this.settingsService.getSetting('autoStartTreatment.onlyToday'),
+      navShowRegistry: this.settingsService.getSetting(NAV_SHOW_REGISTRY_KEY),
+      navShowAccounting: this.settingsService.getSetting(NAV_SHOW_ACCOUNTING_KEY),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -160,6 +180,15 @@ export class SettingsComponent implements OnInit, OnDestroy {
             this.autoStartTreatmentOnlyToday = results.autoStartTreatmentOnlyToday.value as boolean;
           }
           this.originalAutoStartTreatmentOnlyToday = this.autoStartTreatmentOnlyToday;
+
+          // Navigazione (chiave assente = default "mostra")
+          if (results.navShowRegistry) {
+            this.navigationSettings.showRegistryLink = results.navShowRegistry.value !== false;
+          }
+          if (results.navShowAccounting) {
+            this.navigationSettings.showAccountingLink = results.navShowAccounting.value !== false;
+          }
+          this.originalNavigationSettings = { ...this.navigationSettings };
 
           this.loading = false;
         },
@@ -259,6 +288,17 @@ export class SettingsComponent implements OnInit, OnDestroy {
         this.autoStartTreatmentOnlyToday,
         { valueType: 'boolean', category: 'autoStartTreatment' }
       ),
+      // Navigazione (upsert: chiavi non seedate sui tenant esistenti).
+      navShowRegistry: this.settingsService.upsertSetting(
+        NAV_SHOW_REGISTRY_KEY,
+        this.navigationSettings.showRegistryLink,
+        { valueType: 'boolean', category: 'navigation' }
+      ),
+      navShowAccounting: this.settingsService.upsertSetting(
+        NAV_SHOW_ACCOUNTING_KEY,
+        this.navigationSettings.showAccountingLink,
+        { valueType: 'boolean', category: 'navigation' }
+      ),
     })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -268,6 +308,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
           this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
           this.originalAutoStartTreatmentEnabled = this.autoStartTreatmentEnabled;
           this.originalAutoStartTreatmentOnlyToday = this.autoStartTreatmentOnlyToday;
+          this.originalNavigationSettings = { ...this.navigationSettings };
+          // Il menu principale si aggiorna subito, senza reload.
+          this.navigationSettingsService.apply(
+            this.navigationSettings.showRegistryLink,
+            this.navigationSettings.showAccountingLink
+          );
           this.saving = false;
           this.successMessage = 'Impostazioni salvate con successo';
           setTimeout(() => {
@@ -287,6 +333,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.appointmentSettings = { ...this.originalSettings };
       this.calendarSettings = { ...this.originalCalendarSettings };
       this.autoAttendanceSettings = { ...this.originalAutoAttendanceSettings };
+      this.navigationSettings = { ...this.originalNavigationSettings };
       this.error = null;
       this.successMessage = null;
     });
@@ -318,7 +365,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.autoStartTreatmentEnabled !== this.originalAutoStartTreatmentEnabled ||
       this.autoStartTreatmentOnlyToday !== this.originalAutoStartTreatmentOnlyToday;
 
-    return appointmentChanged || calendarChanged || autoAttendanceChanged || autoStartTreatmentChanged;
+    const navigationChanged =
+      this.navigationSettings.showRegistryLink !== this.originalNavigationSettings.showRegistryLink ||
+      this.navigationSettings.showAccountingLink !== this.originalNavigationSettings.showAccountingLink;
+
+    return appointmentChanged || calendarChanged || autoAttendanceChanged || autoStartTreatmentChanged || navigationChanged;
   }
 
   // Force change detection when settings change

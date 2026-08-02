@@ -38,6 +38,11 @@ export const SETTINGS_KEYS = {
   AUTO_ATTENDANCE_ENABLED: 'autoAttendance.enabled',
   AUTO_ATTENDANCE_OFFSET_MINUTES: 'autoAttendance.offsetMinutes',
 
+  // Gestione assenze ingiustificate (Statistiche → No Show)
+  NO_SHOW_LATE_CANCELLATION_HOURS: 'noShow.lateCancellationHours',
+  NO_SHOW_LATE_ARRIVAL_TOLERANCE_MINUTES: 'noShow.lateArrivalToleranceMinutes',
+  NO_SHOW_RECENT_WINDOW_DAYS: 'noShow.recentWindowDays',
+
   // Auto Start Treatment (apertura automatica trattamento alla presa in carico)
   AUTO_START_TREATMENT_ON_ATTENDED: 'autoStartTreatment.onAttended',
   // Limita l'auto-start ai soli appuntamenti di oggi (evita di toccare
@@ -313,6 +318,28 @@ export class GeneralSettingsService {
         description: 'Limita l\'avvio automatico del trattamento ai soli appuntamenti la cui data è oggi',
         valueType: 'boolean',
         category: 'autoStartTreatment'
+      },
+      // Gestione assenze ingiustificate
+      {
+        key: SETTINGS_KEYS.NO_SHOW_LATE_CANCELLATION_HOURS,
+        value: 24,
+        description: 'Ore di preavviso sotto le quali una disdetta è considerata tardiva (assenza ingiustificata)',
+        valueType: 'number',
+        category: 'noShow'
+      },
+      {
+        key: SETTINGS_KEYS.NO_SHOW_LATE_ARRIVAL_TOLERANCE_MINUTES,
+        value: 15,
+        description: 'Minuti di ritardo oltre i quali l\'arrivo del paziente viene conteggiato come ritardo rilevante',
+        valueType: 'number',
+        category: 'noShow'
+      },
+      {
+        key: SETTINGS_KEYS.NO_SHOW_RECENT_WINDOW_DAYS,
+        value: 30,
+        description: 'Finestra scorrevole "recente" (giorni) usata nel profilo del paziente della pagina No Show',
+        valueType: 'number',
+        category: 'noShow'
       }
     ];
 
@@ -331,6 +358,26 @@ export class GeneralSettingsService {
    */
   async isWaitingRoomEnabled(): Promise<boolean> {
     return this.getValue<boolean>(SETTINGS_KEYS.WAITING_ROOM_ENABLED, false);
+  }
+
+  /**
+   * Helper: soglie della gestione assenze ingiustificate.
+   * Il default 24h replica il valore che era hardcoded in
+   * `AvailabilityAppointmentService.cancelAppointment`, così il
+   * comportamento non cambia finché nessuno tocca l'impostazione.
+   */
+  async getNoShowSettings(): Promise<{
+    lateCancellationHours: number;
+    lateArrivalToleranceMinutes: number;
+    recentWindowDays: number;
+  }> {
+    const [lateCancellationHours, lateArrivalToleranceMinutes, recentWindowDays] =
+      await Promise.all([
+        this.getValue<number>(SETTINGS_KEYS.NO_SHOW_LATE_CANCELLATION_HOURS, 24),
+        this.getValue<number>(SETTINGS_KEYS.NO_SHOW_LATE_ARRIVAL_TOLERANCE_MINUTES, 15),
+        this.getValue<number>(SETTINGS_KEYS.NO_SHOW_RECENT_WINDOW_DAYS, 30),
+      ]);
+    return { lateCancellationHours, lateArrivalToleranceMinutes, recentWindowDays };
   }
 
   /**

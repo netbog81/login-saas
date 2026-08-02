@@ -11,6 +11,7 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
 import { ServiceService } from '../../../services/service.service';
 import { BaseComponent } from '../../../core/components/base.component';
 import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../../../shared/components/service-multi-select';
+import { tokenizeQuery, matchesAllTokens } from '../../../shared/utils/token-match';
 
 export interface EventDialogData {
   appointment?: Appointment;
@@ -371,11 +372,10 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
     if (search.length >= 3 && this.remoteSearchResults.length > 0) {
       return this.remoteSearchResults;
     }
-    const lower = search.toLowerCase();
+    // Match a token: "rossi mario" e "mario rossi" trovano entrambi.
+    const tokens = tokenizeQuery(search);
     return this.data.patients.filter(p =>
-      (p.nome || '').toLowerCase().includes(lower) ||
-      (p.cognome || '').toLowerCase().includes(lower) ||
-      (p.telefono || p.cellulare || '').includes(search)
+      matchesAllTokens([p.nome, p.cognome, p.telefono, p.cellulare], tokens)
     );
   }
 
@@ -1046,6 +1046,75 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
    */
   get canRevertAttended(): boolean {
     return this.bookingStatus === 'attended';
+  }
+
+  // ==================== RITARDO ====================
+
+  /**
+   * Il ritardo si registra su un appuntamento già "presentato": è il caso
+   * che il flusso normale non intercetta, perché col cambio automatico di
+   * stato l'appuntamento risulta presentato all'orario previsto anche se
+   * il paziente è entrato mezz'ora dopo.
+   */
+  get canMarkLateArrival(): boolean {
+    return this.bookingStatus === 'attended' && !this.registeredLateMinutes;
+  }
+
+  /** Minuti di ritardo già registrati su questo appuntamento. */
+  get registeredLateMinutes(): number | null {
+    return (this.data.appointment as any)?.lateMinutes ?? null;
+  }
+
+  /** Minuti trascorsi dall'orario di inizio: proposta di default. */
+  private get minutesSinceStart(): number {
+    if (!this.date || !this.startTime) return 0;
+    const start = new Date(`${this.date}T${this.startTime}`);
+    if (Number.isNaN(start.getTime())) return 0;
+    return Math.max(0, Math.round((Date.now() - start.getTime()) / 60000));
+  }
+
+  async onMarkLateArrival(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+
+    const suggested = this.minutesSinceStart;
+    const answer = prompt(
+      'Con quanti minuti di ritardo e arrivato il paziente?',
+      String(suggested),
+    );
+    if (answer === null) return;
+
+    const minutes = Number(answer);
+    if (!Number.isFinite(minutes) || minutes < 0) {
+      alert('Inserisci un numero di minuti valido.');
+      return;
+    }
+
+    try {
+      const updated = await firstValueFrom(
+        this.appointmentService.markLateArrival(String(this.data.appointment.id), minutes)
+      );
+      this.data.appointment = { ...this.data.appointment, ...updated } as Appointment;
+      this.emit(this.result, { action: 'save', appointment: this.data.appointment });
+    } catch (error) {
+      console.error('Error marking late arrival:', error);
+      alert('Errore nel registrare il ritardo');
+    }
+  }
+
+  async onClearLateArrival(): Promise<void> {
+    if (!this.data.appointment?.id) return;
+    if (!confirm('Vuoi rimuovere il ritardo registrato su questo appuntamento?')) return;
+
+    try {
+      const updated = await firstValueFrom(
+        this.appointmentService.clearLateArrival(String(this.data.appointment.id))
+      );
+      this.data.appointment = { ...this.data.appointment, ...updated } as Appointment;
+      this.emit(this.result, { action: 'save', appointment: this.data.appointment });
+    } catch (error) {
+      console.error('Error clearing late arrival:', error);
+      alert('Errore nel rimuovere il ritardo');
+    }
   }
 
   /**

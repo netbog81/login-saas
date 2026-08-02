@@ -289,7 +289,9 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
           this.loadConflicts();
         },
         error: (err) => {
-          this.error = 'Errore nella risoluzione del conflitto';
+          this.error =
+            'Errore nella risoluzione del conflitto' +
+            (err?.message ? ': ' + err.message : '');
           this.loading = false;
           console.error('Error resolving conflict:', err);
         },
@@ -316,7 +318,9 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
           this.loadConflicts();
         },
         error: (err) => {
-          this.error = 'Errore nella risoluzione dei conflitti';
+          this.error =
+            'Errore nella risoluzione dei conflitti' +
+            (err?.message ? ': ' + err.message : '');
           this.loading = false;
           console.error('Error resolving conflicts:', err);
         },
@@ -332,6 +336,7 @@ export class ConflictDashboardComponent implements OnInit, OnDestroy {
       [ConflictReason.OperatorVacation]: 'Ferie Operatore',
       [ConflictReason.OperatorUnavailable]: 'Operatore Non Disponibile',
       [ConflictReason.RecurringAppointment]: 'Appuntamenti Ricorrenti',
+      [ConflictReason.AvailabilityRemoved]: 'Disponibilità Straordinaria Rimossa',
     };
     return labels[reason] || reason;
   }

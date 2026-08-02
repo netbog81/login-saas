@@ -7,6 +7,8 @@ import { RecurringOccurrenceConflict } from '../../../services/availability-appo
 
 export interface RecurringConflictsDialogData {
   title?: string;
+  /** Testo introduttivo custom (default: wording avvisa-e-blocca). */
+  intro?: string;
   conflicts: RecurringOccurrenceConflict[];
 }
 
@@ -25,11 +27,7 @@ export interface RecurringConflictsDialogData {
       {{ data.title || 'Conflitti rilevati' }}
     </h2>
     <mat-dialog-content>
-      <p class="intro">
-        L'operazione è stata annullata: {{ data.conflicts.length }}
-        {{ data.conflicts.length === 1 ? 'occorrenza è in conflitto' : 'occorrenze sono in conflitto' }}.
-        Modifica gli orari o gli appuntamenti coinvolti e riprova.
-      </p>
+      <p class="intro">{{ introText }}</p>
       <div class="conflict-list">
         @for (c of data.conflicts; track c.date + c.startTime) {
           <div class="conflict-row" [class.overlap]="c.type === 'overlap'" [class.unavailable]="c.type === 'unavailable'">
@@ -68,6 +66,13 @@ export class RecurringConflictsDialogComponent {
     public ref: MatDialogRef<RecurringConflictsDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: RecurringConflictsDialogData,
   ) {}
+
+  get introText(): string {
+    if (this.data.intro) return this.data.intro;
+    const n = this.data.conflicts.length;
+    return `L'operazione è stata annullata: ${n} ${n === 1 ? 'occorrenza è in conflitto' : 'occorrenze sono in conflitto'}. ` +
+      'Modifica gli orari o gli appuntamenti coinvolti e riprova.';
+  }
 
   formatDate(d: string): string {
     const dt = new Date(d + 'T00:00:00');

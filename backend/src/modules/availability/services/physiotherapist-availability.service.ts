@@ -1,7 +1,15 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { Operator } from '../entities/operator.entity';
-import { AvailabilityException } from '../entities/availability-exception.entity';
+import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
+import {
+  DayBand,
+  applyDayExceptions,
+  classifyDayExceptions,
+  findBlockingException,
+  isCoveredByExtraAvailability,
+} from '../utils/day-exception-semantics.util';
+import { getPatternDay } from '../utils/pattern-day.util';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { Instrument } from '../entities/instrument.entity';
@@ -192,39 +200,49 @@ export class PhysiotherapistAvailabilityService {
     }
 
     // 2. Check for exceptions (holidays, vacation, sick leave, etc.)
-    const exception = await this.exceptionRepo.findOne({
+    // ARRAY: sono ammesse più eccezioni per giorno (assenze a fascia oraria).
+    // La semantica completa — giornata intera, MODIFIED restrittivo, assenze
+    // a fascia, disponibilità straordinarie additive — sta in
+    // day-exception-semantics.util.ts.
+    const dayExceptions = await this.exceptionRepo.find({
       where: { operatorId, exceptionDate: date },
     });
 
-    if (exception) {
-      // If exception with modified hours, check if appointment fits
-      if (exception.startTime && exception.endTime) {
-        const appointmentStart = startTime;
-        const appointmentEnd = this.addMinutesToTime(startTime, durationMinutes);
+    const appointmentEndTime = this.addMinutesToTime(startTime, durationMinutes);
 
-        if (appointmentStart < exception.startTime || appointmentEnd > exception.endTime) {
+    if (dayExceptions.length > 0) {
+      const blocking = findBlockingException(dayExceptions, startTime, appointmentEndTime);
+      if (blocking) {
+        const label = blocking.reason || blocking.exceptionType;
+        if (blocking.exceptionType === ExceptionType.MODIFIED) {
           return {
             available: false,
-            reason: `Orario modificato: disponibile solo ${exception.startTime}-${exception.endTime} (${exception.reason || exception.exceptionType})`,
+            reason: `Orario modificato: disponibile solo ${blocking.startTime}-${blocking.endTime} (${label})`,
           };
         }
-      } else {
-        // Completely unavailable
+        if (!blocking.startTime || !blocking.endTime) {
+          return { available: false, reason: `Non disponibile: ${label}` };
+        }
         return {
           available: false,
-          reason: `Non disponibile: ${exception.reason || exception.exceptionType}`,
+          reason: `Non disponibile ${blocking.startTime}-${blocking.endTime}: ${label}`,
         };
       }
     }
 
     // 3. Check template assignment (is operator working this day/time?)
-    const templateCheck = await this.checkTemplateAvailability(operatorId, date, startTime, durationMinutes);
-    if (!templateCheck.available) {
-      return templateCheck;
+    //    Saltato se l'appuntamento sta dentro una disponibilità straordinaria:
+    //    è proprio il caso "quel giorno da template non lavorerebbe, ma per
+    //    quella finestra è stato reso disponibile".
+    if (!isCoveredByExtraAvailability(dayExceptions, startTime, appointmentEndTime)) {
+      const templateCheck = await this.checkTemplateAvailability(operatorId, date, startTime, durationMinutes);
+      if (!templateCheck.available) {
+        return templateCheck;
+      }
     }
 
     // 4. Check for existing appointments (1 appointment at a time for physiotherapists)
-    const appointmentEnd = this.addMinutesToTime(startTime, durationMinutes);
+    const appointmentEnd = appointmentEndTime;
     const existingAppointment = await this.findOverlappingAppointment(operatorId, date, startTime, appointmentEnd);
     if (existingAppointment) {
       return {
@@ -777,7 +795,21 @@ export class PhysiotherapistAvailabilityService {
       .andWhere('(assignment.validUntil IS NULL OR assignment.validUntil >= :date)', { date })
       .getMany();
 
-    if (assignments.length === 0) {
+    // Eccezioni del giorno: servono QUI e non solo dentro checkAvailability,
+    // perché una disponibilità straordinaria è una sorgente di slot candidati
+    // (il template quel giorno può non avere alcuna fascia).
+    const dayExceptions = await this.exceptionRepo.find({
+      where: { operatorId, exceptionDate: date },
+    });
+    const dayClassification = classifyDayExceptions(dayExceptions);
+
+    // Senza template il giorno può comunque avere orario proprio: una
+    // disponibilità straordinaria o un cambio orario bastano a generare slot.
+    if (
+      assignments.length === 0 &&
+      dayClassification.extraWindows.length === 0 &&
+      dayClassification.modifiedWindows.length === 0
+    ) {
       return slots;
     }
 
@@ -797,134 +829,95 @@ export class PhysiotherapistAvailabilityService {
     // Get existing appointments for this operator on this date
     const existingAppointments = await this.getOperatorAppointmentsForDate(operatorId, date);
 
-    // Generate slots for each assignment pattern
+    // Fasce lorde da template per il giorno richiesto.
+    const templateBands: DayBand[] = [];
     for (const assignment of assignments) {
       const patternGroup = assignment.patternGroup;
       if (!patternGroup || !patternGroup.patterns) continue;
 
-      // Calculate which day in the pattern cycle corresponds to the requested date
-      // Normalize patternStartDate to local midnight to avoid timezone issues
+      // Normalizza a mezzanotte locale per evitare sfasamenti di fuso.
       const patternStartRaw = new Date(assignment.patternStartDate);
       const patternStart = new Date(
         patternStartRaw.getFullYear(),
         patternStartRaw.getMonth(),
         patternStartRaw.getDate(),
       );
-      // Normalize request date to local midnight
       const requestDate = new Date(
         date.getFullYear(),
         date.getMonth(),
         date.getDate(),
       );
 
-      // Calculate dayInPattern based on pattern duration
-      let dayInPattern: number;
-      let diffDays: number | undefined;
-      if (patternGroup.patternDuration === 7) {
-        // Per pattern settimanali, usa direttamente il giorno della settimana
-        // Questo garantisce che Lunedì nel template corrisponda sempre a Lunedì nel calendario
-        const jsDayOfWeek = requestDate.getDay(); // JavaScript: 0=Dom, 1=Lun, ..., 6=Sab
-        // Converti a formato pattern: 0=Lun, 1=Mar, 2=Mer, 3=Gio, 4=Ven, 5=Sab, 6=Dom
-        dayInPattern = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
-      } else {
-        // Per pattern multi-settimanali, calcola l'offset del giorno della settimana
-        // Se la data di inizio è mercoledì, quel giorno sarà il mercoledì della prima settimana (giorno 2)
-        const startDayOfWeek = patternStart.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
-        const startPatternDay = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
-
-        const diffTime = requestDate.getTime() - patternStart.getTime();
-        diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        dayInPattern = (((diffDays + startPatternDay) % patternGroup.patternDuration) + patternGroup.patternDuration) % patternGroup.patternDuration;
-      }
-
-      console.log('[getAvailableSlots] Pattern calculation:', {
-        operatorId,
-        requestedDate: date.toISOString(),
-        patternStartDate: assignment.patternStartDate,
-        patternStartNormalized: patternStart.toISOString(),
-        requestDateNormalized: requestDate.toISOString(),
-        diffDays,
-        patternDuration: patternGroup.patternDuration,
-        dayInPattern,
-        availablePatternDays: patternGroup.patterns.map(p => p.dayInPattern).join(','),
-      });
-
-      // Get all patterns for this day in the cycle
-      const todayPatterns = patternGroup.patterns.filter(
-        p => p.dayInPattern === dayInPattern
+      const dayInPattern = getPatternDay(
+        requestDate,
+        patternStart,
+        patternGroup.patternDuration,
       );
 
-      console.log('[getAvailableSlots] Patterns for today:', {
-        dayInPattern,
-        patternsFound: todayPatterns.length,
-        patterns: todayPatterns.map(p => `${p.startTime}-${p.endTime}`).join(', '),
-      });
+      for (const pattern of patternGroup.patterns) {
+        if (pattern.dayInPattern === dayInPattern) {
+          templateBands.push({
+            start: this.timeToMinutes(pattern.startTime),
+            end: this.timeToMinutes(pattern.endTime),
+          });
+        }
+      }
+    }
 
-      for (const pattern of todayPatterns) {
-        const patternStartMinutes = this.timeToMinutes(pattern.startTime);
-        const patternEndMinutes = this.timeToMinutes(pattern.endTime);
+    // Assenze, orari modificati e disponibilità straordinarie. Le fasce EXTRA
+    // sono a tutti gli effetti sorgenti di slot: senza questo passaggio un
+    // giorno coperto solo da disponibilità straordinaria non produrrebbe
+    // alcun candidato, perché il template quel giorno è vuoto.
+    const dayBands = applyDayExceptions(templateBands, dayClassification);
 
-        // Calculate free blocks considering existing appointments
-        const freeBlocks = this.calculateFreeBlocks(
-          patternStartMinutes,
-          patternEndMinutes,
-          existingAppointments,
-        );
+    // Step equals requested duration to show all possible slots: this allows
+    // multiple shorter appointments within the operator's preferred slot.
+    const effectiveStep = finalDuration;
 
-        console.log('[getAvailableSlots] Free blocks for pattern:', {
-          pattern: `${pattern.startTime}-${pattern.endTime}`,
-          existingAppointments: existingAppointments.length,
-          freeBlocks: freeBlocks.map(b => `${this.minutesToTime(b.startMinutes)}-${this.minutesToTime(b.endMinutes)}`).join(', '),
-          slotStep,
-          effectiveStep: Math.max(slotStep, finalDuration),
-          finalDuration,
-        });
+    for (const band of dayBands) {
+      // Calculate free blocks considering existing appointments
+      const freeBlocks = this.calculateFreeBlocks(
+        band.start,
+        band.end,
+        existingAppointments,
+      );
 
-        // Generate slots within each free block
-        // Step equals requested duration to show all possible slots
-        // This allows multiple shorter appointments within operator's preferred slot
-        const effectiveStep = finalDuration;
+      for (const block of freeBlocks) {
+        let currentMinutes = block.startMinutes;
 
-        for (const block of freeBlocks) {
-          let currentMinutes = block.startMinutes;
+        // IMPORTANT: The loop condition already ensures the slot fits within
+        // the free block, but checkAvailability is still called to respect
+        // pattern boundaries, strumenti e assenze puntuali.
+        while (currentMinutes + finalDuration <= block.endMinutes) {
+          const currentTime = this.minutesToTime(currentMinutes);
 
-          // Generate slots with step, starting from block start
-          // IMPORTANT: The loop condition already ensures the slot fits within the free block
-          // But we also verify via checkAvailability to ensure it respects pattern boundaries
-          while (currentMinutes + finalDuration <= block.endMinutes) {
-            const currentTime = this.minutesToTime(currentMinutes);
+          const result = await this.checkAvailability({
+            operatorId,
+            date,
+            startTime: currentTime,
+            durationMinutes: finalDuration,
+            serviceId,
+            customInstrumentSlots,
+          });
 
-            const result = await this.checkAvailability({
-              operatorId,
-              date,
-              startTime: currentTime,
-              durationMinutes: finalDuration,
-              serviceId,
-              customInstrumentSlots,
+          if (result.available) {
+            const startDate = new Date(date);
+            const [hours, mins] = currentTime.split(':').map(Number);
+            startDate.setHours(hours, mins, 0, 0);
+
+            const endDate = new Date(startDate);
+            endDate.setMinutes(endDate.getMinutes() + finalDuration);
+
+            slots.push({
+              startTime: startDate,
+              endTime: endDate,
+              available: true,
+              reason: result.reason,
+              instrumentSlots: result.suggestedInstruments,
             });
-
-            // Only add slots that pass availability check
-            // This filters out slots that would cross pattern boundaries (e.g., lunch breaks)
-            if (result.available) {
-              const startDate = new Date(date);
-              const [hours, mins] = currentTime.split(':').map(Number);
-              startDate.setHours(hours, mins, 0, 0);
-
-              const endDate = new Date(startDate);
-              endDate.setMinutes(endDate.getMinutes() + finalDuration);
-
-              slots.push({
-                startTime: startDate,
-                endTime: endDate,
-                available: true,
-                reason: result.reason,
-                instrumentSlots: result.suggestedInstruments,
-              });
-            }
-
-            // Advance by effective step (never less than duration)
-            currentMinutes += effectiveStep;
           }
+
+          currentMinutes += effectiveStep;
         }
       }
     }
@@ -1005,10 +998,13 @@ export class PhysiotherapistAvailabilityService {
       assignmentsByOp.get(a.operatorId)!.push(a);
     }
 
-    const exceptionsByOpDate = new Map<string, typeof allExceptions[0]>();
+    // ARRAY: sono ammesse più eccezioni per giorno (assenze a fascia oraria).
+    const exceptionsByOpDate = new Map<string, typeof allExceptions>();
     for (const e of allExceptions) {
       const dateStr = e.exceptionDate instanceof Date ? e.exceptionDate.toISOString().split('T')[0] : String(e.exceptionDate).split('T')[0];
-      exceptionsByOpDate.set(`${e.operatorId}|${dateStr}`, e);
+      const key = `${e.operatorId}|${dateStr}`;
+      if (!exceptionsByOpDate.has(key)) exceptionsByOpDate.set(key, []);
+      exceptionsByOpDate.get(key)!.push(e);
     }
 
     const aptsByOpDate = new Map<string, { startTime: string; endTime: string }[]>();
@@ -1027,23 +1023,58 @@ export class PhysiotherapistAvailabilityService {
       if (!operator) continue;
 
       const assignments = assignmentsByOp.get(opId) || [];
-      if (assignments.length === 0) continue;
+      // Senza template l'operatore può comunque avere disponibilità
+      // straordinarie: si esce presto solo se non ha né le une né le altre.
+      const hasExceptions = dates.some(
+        (d) => (exceptionsByOpDate.get(`${opId}|${d}`) || []).length > 0,
+      );
+      if (assignments.length === 0 && !hasExceptions) continue;
 
       for (const dateStr of dates) {
         const date = new Date(dateStr + 'T00:00:00');
+        const dayExceptions = exceptionsByOpDate.get(`${opId}|${dateStr}`) || [];
 
-        // Check eccezione giornaliera
-        const exception = exceptionsByOpDate.get(`${opId}|${dateStr}`);
-        if (exception && exception.exceptionType === 'unavailable') continue;
+        // Fasce lorde da template per il giorno.
+        const templateBands: DayBand[] = [];
+        for (const assignment of assignments) {
+          const pg = assignment.patternGroup;
+          if (!pg?.patterns) continue;
+          if (date < assignment.validFrom) continue;
+          if (assignment.validUntil && date > assignment.validUntil) continue;
 
-        // Se eccezione modificata, usa quell'orario
-        if (exception && exception.exceptionType === 'modified' && exception.startTime && exception.endTime) {
-          const appointments = aptsByOpDate.get(`${opId}|${dateStr}`) || [];
-          const freeBlocks = this.calculateFreeBlocks(
-            this.timeToMinutes(exception.startTime),
-            this.timeToMinutes(exception.endTime),
-            appointments,
+          const patternStartRaw = new Date(assignment.patternStartDate);
+          const patternStart = new Date(
+            patternStartRaw.getFullYear(),
+            patternStartRaw.getMonth(),
+            patternStartRaw.getDate(),
           );
+          const requestDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          const dayInPattern = getPatternDay(requestDate, patternStart, pg.patternDuration);
+
+          for (const pattern of pg.patterns) {
+            if (pattern.dayInPattern === dayInPattern) {
+              templateBands.push({
+                start: this.timeToMinutes(pattern.startTime),
+                end: this.timeToMinutes(pattern.endTime),
+              });
+            }
+          }
+        }
+
+        // Assenze (giornata intera o a fascia), orario modificato e
+        // disponibilità straordinarie: applicati in un colpo solo. Le assenze
+        // a fascia sono già sottratte qui, non serve più passarle a
+        // calculateFreeBlocks come pseudo-appuntamenti.
+        const dayBands = applyDayExceptions(
+          templateBands,
+          classifyDayExceptions(dayExceptions),
+        );
+        if (dayBands.length === 0) continue;
+
+        const appointments = aptsByOpDate.get(`${opId}|${dateStr}`) || [];
+
+        for (const band of dayBands) {
+          const freeBlocks = this.calculateFreeBlocks(band.start, band.end, appointments);
           for (const block of freeBlocks) {
             let currentMinutes = block.startMinutes;
             while (currentMinutes + durationMinutes <= block.endMinutes) {
@@ -1052,55 +1083,6 @@ export class PhysiotherapistAvailabilityService {
                 requireInstruments, instrumentSlotsForCheck, instrumentOrderMatters,
               );
               currentMinutes += durationMinutes;
-            }
-          }
-          continue;
-        }
-
-        // Pattern normali
-        for (const assignment of assignments) {
-          const pg = assignment.patternGroup;
-          if (!pg?.patterns) continue;
-
-          // Verifica validità assignment per questa data
-          if (date < assignment.validFrom) continue;
-          if (assignment.validUntil && date > assignment.validUntil) continue;
-
-          // Calcola dayInPattern
-          let dayInPattern: number;
-          if (pg.patternDuration === 7) {
-            const jsDow = date.getDay();
-            dayInPattern = jsDow === 0 ? 6 : jsDow - 1;
-          } else {
-            const patternStartRaw = new Date(assignment.patternStartDate);
-            const patternStart = new Date(patternStartRaw.getFullYear(), patternStartRaw.getMonth(), patternStartRaw.getDate());
-            const requestDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            const diffTime = requestDate.getTime() - patternStart.getTime();
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            const startDow = patternStart.getDay();
-            const startPatternDay = startDow === 0 ? 6 : startDow - 1;
-            dayInPattern = (((diffDays + startPatternDay) % pg.patternDuration) + pg.patternDuration) % pg.patternDuration;
-          }
-
-          const todayPatterns = pg.patterns.filter(p => p.dayInPattern === dayInPattern);
-          const appointments = aptsByOpDate.get(`${opId}|${dateStr}`) || [];
-
-          for (const pattern of todayPatterns) {
-            const freeBlocks = this.calculateFreeBlocks(
-              this.timeToMinutes(pattern.startTime),
-              this.timeToMinutes(pattern.endTime),
-              appointments,
-            );
-
-            for (const block of freeBlocks) {
-              let currentMinutes = block.startMinutes;
-              while (currentMinutes + durationMinutes <= block.endMinutes) {
-                await this.pushBatchSlot(
-                  results, opId, dateStr, date, currentMinutes, durationMinutes,
-                  requireInstruments, instrumentSlotsForCheck, instrumentOrderMatters,
-                );
-                currentMinutes += durationMinutes;
-              }
             }
           }
         }

@@ -50,6 +50,21 @@ export class WhatsappConfigService {
       config.sendCancelNotification = input.sendCancelNotification;
     }
 
+    if (input.sendUpdateNotification !== undefined) {
+      config.sendUpdateNotification = input.sendUpdateNotification;
+    }
+
+    if (input.recapBufferSeconds !== undefined) {
+      // Stessi limiti applicati dal gateway: meglio rifiutare qui che vedersi
+      // normalizzare il valore in silenzio dall'altra parte.
+      if (input.recapBufferSeconds < 30 || input.recapBufferSeconds > 600) {
+        throw new BadRequestException(
+          'La finestra di raggruppamento del recap deve essere fra 30 e 600 secondi',
+        );
+      }
+      config.recapBufferSeconds = input.recapBufferSeconds;
+    }
+
     if (input.retentionDays !== undefined) {
       config.retentionDays = input.retentionDays;
     }

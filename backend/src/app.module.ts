@@ -74,7 +74,6 @@ import { VoucherFe } from './modules/availability/entities/voucher-fe.entity';
 import { VoucherFeUsage } from './modules/availability/entities/voucher-fe-usage.entity';
 // Therapeutic path entities
 import { TherapeuticPath } from './modules/availability/entities/therapeutic-path.entity';
-import { PathDocument } from './modules/availability/entities/path-document.entity';
 // Patient evaluation entities (renamed from anamnesis)
 import { PatientEvaluation } from './modules/availability/entities/patient-evaluation.entity';
 import { EvaluationObjective } from './modules/availability/entities/evaluation-objective.entity';
@@ -122,6 +121,21 @@ import { InvoiceLineSettings } from './modules/availability/entities/invoice-lin
 // Template documenti (attestati di presenza)
 import { DocumentTemplatesModule } from './modules/document-templates/document-templates.module';
 import { DocumentTemplate } from './modules/document-templates/entities/document-template.entity';
+// Conti FE (compensi operatore sui trattamenti sconto FE)
+import { OperatorFeAccountsModule } from './modules/operator-fe-accounts/operator-fe-accounts.module';
+import { NoShowModule } from './modules/no-show/no-show.module';
+import { NoShowReview } from './modules/no-show/entities/no-show-review.entity';
+import { OperatorFeSettlement } from './modules/operator-fe-accounts/entities/operator-fe-settlement.entity';
+import { OperatorFeSettlementLine } from './modules/operator-fe-accounts/entities/operator-fe-settlement-line.entity';
+import { OperatorFeAccountSettings } from './modules/operator-fe-accounts/entities/operator-fe-account-settings.entity';
+// Documenti paziente (S3 MicroCeph + envelope encryption via OpenBao Transit)
+import { EncryptionCoreModule } from '@curandis/encryption-core';
+import { StorageCoreModule } from '@curandis/storage-core';
+import { OpenbaoTokenModule } from './infrastructure/openbao/openbao-token.module';
+import { OpenbaoTokenProvider } from './infrastructure/openbao/openbao-token.provider';
+import { readS3ConfigFromKv } from './infrastructure/openbao/s3-kv-config';
+import { PatientDocumentsModule } from './modules/patient-documents/patient-documents.module';
+import { PatientDocument } from './modules/patient-documents/entities/patient-document.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
@@ -164,7 +178,7 @@ const ALL_ENTITIES = [
   VoucherFe,
   VoucherFeUsage,
   TherapeuticPath,
-  PathDocument,
+  PatientDocument,
   PatientEvaluation,
   EvaluationObjective,
   EvaluationTest,
@@ -203,6 +217,12 @@ const ALL_ENTITIES = [
   ProcessedClinicalEvent,
   // Template documenti
   DocumentTemplate,
+  // Conti FE
+  OperatorFeSettlement,
+  OperatorFeSettlementLine,
+  OperatorFeAccountSettings,
+  // Gestione assenze ingiustificate (No Show)
+  NoShowReview,
 ];
 
 interface AppModuleOptions {
@@ -293,6 +313,29 @@ export class AppModule implements NestModule {
           serviceAccountClientIds: ['curandis-registry-service'],
         }),
 
+        // Documenti paziente — Transit envelope encryption + S3 MicroCeph.
+        // Token via OpenbaoTokenProvider (agent sink fresh a ogni chiamata);
+        // config S3 letta lazy da kv/clinico/s3 alla prima operazione.
+        OpenbaoTokenModule,
+        EncryptionCoreModule.forRootAsync({
+          useFactory: (tokenProvider: OpenbaoTokenProvider) => ({
+            openbaoAddr: process.env.OPENBAO_ADDR,
+            tokenProvider: () => tokenProvider.getToken(),
+            transitPath: 'transit',
+          }),
+          inject: [OpenbaoTokenProvider],
+        }),
+        StorageCoreModule.forRootAsync({
+          useFactory: (tokenProvider: OpenbaoTokenProvider) => ({
+            bucketPrefix: process.env.DOCS_BUCKET_PREFIX || 'curandis-clinico-docs',
+            // Credenziali S3 PER TENANT: kv/tenant-clinico-s3/<alias>
+            // (utente RGW dedicato), fallback kv/clinico/s3.
+            s3ConfigProvider: (tenantAlias: string) =>
+              readS3ConfigFromKv(tokenProvider, tenantAlias),
+          }),
+          inject: [OpenbaoTokenProvider],
+        }),
+
         RegistryModule,
         RegistryEventsModule,
         ClinicalEventsModule,
@@ -322,12 +365,15 @@ export class AppModule implements NestModule {
         AvailabilityModule,
         SettingsModule,
         DocumentTemplatesModule,
+        OperatorFeAccountsModule,
+        NoShowModule,
         TasksModule,
         EventsModule,
         AppUsersModule,
         WhatsappModule,
         TaskMessageModule,
         RecycleBinModule,
+        PatientDocumentsModule,
       ],
       controllers: [MeController, HealthController],
       providers: [TenantAdminResolver],
@@ -351,12 +397,14 @@ export class AppModule implements NestModule {
     //
     // Le rotte escluse non hanno tenant scope (webhook esterni si
     // costruiscono il contesto a mano via tenantDsManager.getDataSource).
+    // NB: events/(.*) NON è più esclusa (2026-07-28): il canale SSE è
+    // autenticato e scoped per tenant/utente; il frontend manda il Bearer
+    // via client fetch-based.
     consumer
       .apply(CurandisTenantContextMiddleware)
       .exclude(
         { path: 'health/status', method: RequestMethod.ALL },
         { path: 'health/live', method: RequestMethod.ALL },
-        { path: 'events/(.*)', method: RequestMethod.ALL },
         { path: 'api/webhooks/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes('*');

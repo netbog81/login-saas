@@ -120,10 +120,14 @@
             [(ngModel)]="selectedPatternGroupId"
           >
             <option value="">Seleziona un pattern group...</option>
-            <option *ngFor="let pg of patternGroups" [value]="pg.id">
+            <option *ngFor="let pg of assignablePatternGroups" [value]="pg.id">
               {{ pg.name }} ({{ pg.patternDuration }} giorni)
             </option>
           </select>
+          <small class="form-text" *ngIf="hiddenPatternGroupsCount > 0">
+            {{ hiddenPatternGroupsCount }} template non assegnabili
+            (disattivati o senza fasce orarie) non sono elencati.
+          </small>
         </div>
 
         <div class="form-group">

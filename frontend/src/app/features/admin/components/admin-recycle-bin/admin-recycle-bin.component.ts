@@ -30,12 +30,14 @@ const ENTITY_LABELS: Record<RecycleBinEntityType, string> = {
   therapeutic_path: 'Percorso',
   treatment: 'Trattamento',
   patient_evaluation: 'Valutazione',
+  patient_document: 'Documento',
 };
 
 const ENTITY_ICONS: Record<RecycleBinEntityType, string> = {
   therapeutic_path: 'route',
   treatment: 'medical_services',
   patient_evaluation: 'fact_check',
+  patient_document: 'folder',
 };
 
 @Component({
@@ -95,6 +97,7 @@ const ENTITY_ICONS: Record<RecycleBinEntityType, string> = {
                 <mat-option value="therapeutic_path">Percorsi</mat-option>
                 <mat-option value="treatment">Trattamenti</mat-option>
                 <mat-option value="patient_evaluation">Valutazioni</mat-option>
+                <mat-option value="patient_document">Documenti</mat-option>
               </mat-select>
             </mat-form-field>
 

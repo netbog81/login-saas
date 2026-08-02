@@ -14,12 +14,14 @@ import { WhatsappTemplateService } from './template/services/whatsapp-template.s
 import { WhatsappLogService } from './log/services/whatsapp-log.service';
 import { WhatsappWebhookService } from './webhook/services/whatsapp-webhook.service';
 import { WhatsappGatewayService } from './gateway/whatsapp-gateway.service';
+import { WhatsappScheduledService } from './scheduled/services/whatsapp-scheduled.service';
 
 // Resolvers
 import { WhatsappConfigResolver } from './config/resolvers/whatsapp-config.resolver';
 import { WhatsappTemplateResolver } from './template/resolvers/whatsapp-template.resolver';
 import { WhatsappLogResolver } from './log/resolvers/whatsapp-log.resolver';
 import { WhatsappLogManagementResolver } from './log/resolvers/whatsapp-log-management.resolver';
+import { WhatsappScheduledResolver } from './scheduled/resolvers/whatsapp-scheduled.resolver';
 
 // Controller
 import { WhatsappWebhookController } from './webhook/webhook.controller';
@@ -42,10 +44,12 @@ import { TaskMessageModule } from '../task-message/task-message.module';
     WhatsappLogService,
     WhatsappWebhookService,
     WhatsappGatewayService,
+    WhatsappScheduledService,
     WhatsappConfigResolver,
     WhatsappTemplateResolver,
     WhatsappLogResolver,
-    WhatsappLogManagementResolver],
+    WhatsappLogManagementResolver,
+    WhatsappScheduledResolver],
   exports: [
     WhatsappGatewayService,
     WhatsappConfigService],

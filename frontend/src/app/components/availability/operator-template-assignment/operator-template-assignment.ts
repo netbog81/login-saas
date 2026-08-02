@@ -29,6 +29,21 @@ export class OperatorTemplateAssignment implements OnInit, OnDestroy {
   filteredOperators: OperatorWithAssignment[] = [];
   patternGroups: PatternGroup[] = [];
 
+  /**
+   * Solo i gruppi assegnabili: attivi e con almeno una fascia oraria.
+   * Un gruppo vuoto assegnato azzererebbe la disponibilità dell'operatore
+   * (il backend ora lo rifiuta comunque); qui evitiamo proprio di offrirlo.
+   */
+  get assignablePatternGroups(): PatternGroup[] {
+    return this.patternGroups.filter(
+      (pg) => pg.isActive && (pg.patterns?.length || 0) > 0
+    );
+  }
+
+  get hiddenPatternGroupsCount(): number {
+    return this.patternGroups.length - this.assignablePatternGroups.length;
+  }
+
   loading = false;
   error: string | null = null;
 

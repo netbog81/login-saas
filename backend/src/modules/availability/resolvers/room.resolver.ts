@@ -1,7 +1,10 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { Room } from '../entities/room.entity';
 import { RoomService } from '../services/room.service';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => Room)
 export class RoomResolver {
   constructor(private readonly roomService: RoomService) {}

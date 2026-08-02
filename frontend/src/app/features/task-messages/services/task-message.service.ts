@@ -19,12 +19,23 @@ const TASK_MESSAGE_FIELDS = gql`
     tenantId
     senderUserId
     recipientUserId
+    recipientGroup
     senderUser {
       id
       name
       surname
     }
     recipientUser {
+      id
+      name
+      surname
+    }
+    readByUser {
+      id
+      name
+      surname
+    }
+    completedByUser {
       id
       name
       surname

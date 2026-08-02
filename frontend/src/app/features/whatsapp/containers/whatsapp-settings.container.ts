@@ -323,7 +323,8 @@ export class WhatsappSettingsContainer implements OnInit, OnDestroy {
           console.error('Error saving config:', err);
           this.ngZone.run(() => {
             this.savingConfig = false;
-            this.snackBar.open('Errore nel salvataggio', 'OK', { duration: 3000 });
+            const detail = err?.graphQLErrors?.[0]?.message || err?.message;
+            this.snackBar.open(detail || 'Errore nel salvataggio', 'OK', { duration: 8000 });
             this.cdr.markForCheck();
           });
         },

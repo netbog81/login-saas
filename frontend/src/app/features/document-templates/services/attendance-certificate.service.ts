@@ -5,11 +5,10 @@ import { switchMap } from 'rxjs/operators';
 import { BaseGraphQLService } from '../../../core/services/base-graphql.service';
 import {
   MergeFieldData,
-  buildPrintHtml,
-  docToHtml,
+  docToPrintHtml,
   printHtml,
   resolveMergeFields,
-} from '../../../shared/template-editor';
+} from '@curandis/template-editor';
 import { DocumentTemplate } from '../models/document-template.model';
 import { DocumentTemplateService } from './document-template.service';
 import { GET_TREATMENT_FOR_CERTIFICATE } from '../graphql/document-templates.operations';
@@ -91,8 +90,8 @@ export class AttendanceCertificateService extends BaseGraphQLService {
   private print(template: DocumentTemplate, treatment: TreatmentForCertificate): void {
     const data = this.buildMergeData(treatment);
     const resolved = resolveMergeFields(template.content, data);
-    const html = buildPrintHtml(
-      docToHtml(resolved),
+    const html = docToPrintHtml(
+      resolved,
       template.pageSettings,
       'Attestato di presenza',
     );

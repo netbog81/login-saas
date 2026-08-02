@@ -8,7 +8,7 @@
  * - Renderizzare PatientSlotCard per ogni appuntamento
  */
 
-import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { SlotGroup } from '../../models/instructor-workspace.model';
@@ -35,7 +35,9 @@ import { PatientSlotCardComponent } from '../patient-slot-card/patient-slot-card
       </div>
       <div class="slot-patients">
         @for (apt of slotGroup.appointments; track apt.id) {
-          <app-patient-slot-card [appointment]="apt"></app-patient-slot-card>
+          <app-patient-slot-card
+            [appointment]="apt"
+            (openFolder)="openFolder.emit($event)"></app-patient-slot-card>
         }
         @empty {
           <div class="empty-slot">Nessun paziente prenotato</div>
@@ -139,4 +141,7 @@ import { PatientSlotCardComponent } from '../patient-slot-card/patient-slot-card
 })
 export class SlotGroupCardComponent {
   @Input({ required: true }) slotGroup!: SlotGroup;
+
+  /** Propaga la richiesta di apertura scheda paziente (patientId). */
+  @Output() openFolder = new EventEmitter<string>();
 }

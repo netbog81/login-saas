@@ -87,6 +87,18 @@ import { Patient } from '../../../../models/patient.model';
             <span class="value">{{ anamnesisExists ? '✓' : '—' }}</span>
             <span class="label">Anamnesi</span>
           </button>
+          <!-- Documenti scheda paziente: riquadro cliccabile che apre il tab
+               Documenti sotto (visualizzazione + upload), anche senza percorsi. -->
+          <button
+            type="button"
+            class="stat stat-documenti"
+            [class.has-docs]="documentsCount > 0"
+            matTooltip="Visualizza e carica documenti della scheda paziente"
+            (click)="onViewDocuments()">
+            <mat-icon>folder</mat-icon>
+            <span class="value">{{ documentsCount }}</span>
+            <span class="label">Documenti</span>
+          </button>
         </div>
 
         <!-- Actions -->
@@ -262,6 +274,37 @@ import { Patient } from '../../../../models/patient.model';
       }
     }
 
+    /* Riquadro documenti: come stat-anamnesi, apre il tab Documenti */
+    button.stat-documenti {
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+
+      &:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        transform: translateY(-1px);
+      }
+
+      &.has-docs {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+
+        mat-icon {
+          color: #d97706;
+        }
+
+        .value {
+          color: #92400e;
+        }
+      }
+
+      &:not(.has-docs) {
+        .value {
+          color: #94a3b8;
+        }
+      }
+    }
+
     /* Riquadro anamnesi: è un <button> resettato per apparire come .stat */
     button.stat-anamnesi {
       border: none;
@@ -348,11 +391,15 @@ export class PatientHeaderComponent {
   @Input() totalTreatmentsCount = 0;
   /** True se il paziente ha già un'anamnesi remota compilata. */
   @Input() anamnesisExists = false;
+  /** Numero documenti della scheda paziente (tutti i livelli). */
+  @Input() documentsCount = 0;
 
   @Output() viewDetails = new EventEmitter<void>();
   @Output() createPath = new EventEmitter<void>();
   /** Richiesta di visualizzare/aprire la scheda anamnesi remota. */
   @Output() viewAnamnesis = new EventEmitter<void>();
+  /** Richiesta di aprire il tab Documenti della scheda paziente. */
+  @Output() viewDocuments = new EventEmitter<void>();
 
   /**
    * URL per la modifica avanzata del subject, nella sezione Anagrafiche
@@ -387,6 +434,10 @@ export class PatientHeaderComponent {
 
   onViewAnamnesis(): void {
     this.viewAnamnesis.emit();
+  }
+
+  onViewDocuments(): void {
+    this.viewDocuments.emit();
   }
 
   getAge(): number | null {

@@ -1,5 +1,9 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
-import { ILike, IsNull, Not, DataSource } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ILike, In, IsNull, Not, DataSource } from 'typeorm';
+import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer.service';
+import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
+import { CatalogEventMapper } from '../../clinical-events/mappers/catalog-event.mapper';
 import { Operator } from '../entities/operator.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { CreateOperatorInput } from '../dto/create-operator.input';
@@ -46,6 +50,11 @@ export class OperatorService {
 
   constructor(
     private readonly tenantContext: TenantContextService,
+    // Sync operatori → accounting (conti operatori): publish-after-commit
+    // con lo stesso pattern buffer+flush di service.upserted.
+    private readonly eventBuffer: ClinicalEventBuffer,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly catalogMapper: CatalogEventMapper,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -215,8 +224,9 @@ export class OperatorService {
       canCollectPayment: defaultCanCollectPayment,
     });
 
+    let saved: Operator;
     try {
-      return await this.operatorRepo.save(operator);
+      saved = await this.operatorRepo.save(operator);
     } catch (error) {
       // Gestisci errore di violazione unique constraint
       if (error.code === '23505') {
@@ -230,6 +240,8 @@ export class OperatorService {
       }
       throw error;
     }
+    await this.publishOperatorUpserted(saved);
+    return saved;
   }
 
   /**
@@ -294,7 +306,87 @@ export class OperatorService {
     // Rilegge con la relazione `category` fresca: la risposta GraphQL
     // include category { ... } e l'entity in memoria non ha più la
     // relazione azzerata sopra.
-    return this.findOne(id);
+    const updated = await this.findOne(id);
+    await this.publishOperatorUpserted(updated);
+    return updated;
+  }
+
+  /**
+   * Pubblica `operator.upserted` verso accounting (conti operatori).
+   * Best-effort: un problema di pubblicazione non deve mai far fallire
+   * il salvataggio dell'operatore (il resync ricuce eventuali buchi).
+   */
+  private async publishOperatorUpserted(operator: Operator): Promise<void> {
+    try {
+      const tenantAlias = this.tenantContext.getTenantAlias();
+      if (!tenantAlias) return;
+      const correlationId = this.tenantContext.getContext()?.requestId;
+      let keycloakUserId: string | null = null;
+      if (operator.appUserId) {
+        const appUser = await this.appUserRepo.findOne({
+          where: { id: operator.appUserId },
+        });
+        keycloakUserId = appUser?.keycloakId ?? null;
+      }
+      this.eventBuffer.add({
+        eventType: 'operator.upserted',
+        payload: this.catalogMapper.mapOperatorUpserted(operator, keycloakUserId),
+        tenantAlias,
+        correlationId,
+      });
+      flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    } catch (err) {
+      this.logger.error(
+        `publish operator.upserted fallito per operatore ${operator.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Ri-emette `operator.upserted` per TUTTI gli operatori del tenant
+   * (bootstrap iniziale conti operatori / riallineamento). Stesso modello
+   * di resyncServicesToAccounting.
+   */
+  async resyncAllToAccounting(): Promise<number> {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    if (!tenantAlias) {
+      throw new BadRequestException('Tenant non risolto nel contesto corrente.');
+    }
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    // withDeleted: gli operatori ARCHIVIATI vanno re-inviati (isActive=false)
+    // perché i loro compensi storici esistono ancora lato accounting: senza
+    // il profilo, i conteggi mostrerebbero l'id al posto del nome.
+    const operators = await this.operatorRepo.find({
+      order: { name: 'ASC' },
+      withDeleted: true,
+    });
+    const appUserIds = operators
+      .map((o) => o.appUserId)
+      .filter((v): v is string => !!v);
+    const appUsers = appUserIds.length
+      ? await this.appUserRepo.find({ where: { id: In(appUserIds) } })
+      : [];
+    const keycloakByAppUser = new Map(appUsers.map((u) => [u.id, u.keycloakId ?? null]));
+
+    for (const operator of operators) {
+      this.eventBuffer.add({
+        eventType: 'operator.upserted',
+        payload: this.catalogMapper.mapOperatorUpserted(
+          operator,
+          operator.appUserId ? keycloakByAppUser.get(operator.appUserId) ?? null : null,
+        ),
+        tenantAlias,
+        correlationId,
+      });
+    }
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+    this.logger.log(
+      `resyncOperatorsToAccounting: ri-emessi ${operators.length} operator.upserted (tenant=${tenantAlias})`,
+    );
+    return operators.length;
   }
 
   /**
@@ -327,14 +419,23 @@ export class OperatorService {
 
     if (dependencies.total > 0) {
       await this.archiveInternal(id, deletedByUserId);
+      // Avvisa accounting dell'archiviazione (isActive=false sul profilo).
+      const archived = await this.findOneIncludingArchived(id);
+      await this.publishOperatorUpserted(archived);
       return { archived: true, hardDeleted: false, dependencies };
     }
 
-    // Hard delete: nessuna dipendenza → comportamento storico preservato
+    // Hard delete: nessuna dipendenza → comportamento storico preservato.
+    // Avvisa accounting PRIMA della rimozione (isActive=false): senza
+    // questo, il profilo operatore resterebbe attivo per sempre lato
+    // accounting (è così che è nato il profilo orfano di bdq).
+    const operatorId = operator.id;
+    await this.publishOperatorUpserted({ ...operator, isActive: false } as Operator);
     if (operator.appUserId) {
       await this.appUserRepo.delete(operator.appUserId);
     }
     await this.operatorRepo.remove(operator);
+    this.logger.log(`Operatore ${operatorId} hard-deleted (nessuna dipendenza)`);
     return { archived: false, hardDeleted: true, dependencies };
   }
 
@@ -355,7 +456,11 @@ export class OperatorService {
       throw new ConflictException(`Operatore ${id} è già archiviato.`);
     }
     await this.archiveInternal(id, deletedByUserId);
-    return this.findOneIncludingArchived(id);
+    const archived = await this.findOneIncludingArchived(id);
+    // Avvisa accounting: profilo operatore → isActive=false (il nome resta
+    // risolvibile nei conteggi storici, ma sparisce dalle liste attive).
+    await this.publishOperatorUpserted(archived);
+    return archived;
   }
 
   /**
@@ -434,7 +539,10 @@ export class OperatorService {
     });
 
     this.logger.log(`Operatore ${id} ripristinato`);
-    return this.findOne(id) as Promise<Operator>;
+    const restored = await this.findOne(id);
+    // Avvisa accounting del ripristino (isActive=true sul profilo).
+    await this.publishOperatorUpserted(restored);
+    return restored;
   }
 
   /**

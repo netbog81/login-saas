@@ -46,7 +46,11 @@ export class TaskMessageResolver {
   ): Promise<TaskMessagePage> {
     const user = await this.resolveCurrentUser(ctx);
     if (!user) return { items: [], total: 0 };
-    return this.taskMessageService.getInbox(user.appUserId, page, limit);
+    return this.taskMessageService.getInbox(
+      { id: user.appUserId, userType: user.userType },
+      page,
+      limit,
+    );
   }
 
   @Query(() => TaskMessagePage, { name: 'taskMessageSent' })
@@ -68,7 +72,11 @@ export class TaskMessageResolver {
   ): Promise<TaskMessagePage> {
     const user = await this.resolveCurrentUser(ctx);
     if (!user) return { items: [], total: 0 };
-    return this.taskMessageService.getCompleted(user.appUserId, page, limit);
+    return this.taskMessageService.getCompleted(
+      { id: user.appUserId, userType: user.userType },
+      page,
+      limit,
+    );
   }
 
   @Query(() => TaskMessage, { name: 'taskMessage', nullable: true })
@@ -82,7 +90,7 @@ export class TaskMessageResolver {
   async unreadCount(@Context() ctx: any): Promise<number> {
     const user = await this.resolveCurrentUser(ctx);
     if (!user) return 0;
-    return this.taskMessageService.countUnread(user.appUserId);
+    return this.taskMessageService.countUnread({ id: user.appUserId, userType: user.userType });
   }
 
   @Query(() => String, { name: 'taskMessageMyAppUserId', nullable: true })
@@ -150,7 +158,22 @@ export class TaskMessageResolver {
   @ResolveField(() => AppUser, { nullable: true })
   async recipientUser(@Parent() msg: TaskMessage): Promise<AppUser | null> {
     if (msg.recipientUser) return msg.recipientUser;
+    if (!msg.recipientUserId) return null;
     return this.appUserRepo.findOneBy({ id: msg.recipientUserId });
+  }
+
+  @ResolveField(() => AppUser, { nullable: true })
+  async readByUser(@Parent() msg: TaskMessage): Promise<AppUser | null> {
+    if (msg.readByUser) return msg.readByUser;
+    if (!msg.readByUserId) return null;
+    return this.appUserRepo.findOneBy({ id: msg.readByUserId });
+  }
+
+  @ResolveField(() => AppUser, { nullable: true })
+  async completedByUser(@Parent() msg: TaskMessage): Promise<AppUser | null> {
+    if (msg.completedByUser) return msg.completedByUser;
+    if (!msg.completedByUserId) return null;
+    return this.appUserRepo.findOneBy({ id: msg.completedByUserId });
   }
 
   // ─── Helpers ──────────────────────────────────────────────────
@@ -159,7 +182,9 @@ export class TaskMessageResolver {
    * Resolves current user from JWT context.
    * Maps keycloakId → AppUser.id. Returns null if no AppUser is linked.
    */
-  private async resolveCurrentUser(ctx: any): Promise<{ appUserId: string; tenantId: string } | null> {
+  private async resolveCurrentUser(
+    ctx: any,
+  ): Promise<{ appUserId: string; userType: string; tenantId: string } | null> {
     const tenantContext = ctx.req?.tenantContext;
     if (!tenantContext?.userId) {
       throw new UnauthorizedException('Utente non autenticato');
@@ -174,13 +199,15 @@ export class TaskMessageResolver {
       return null;
     }
 
-    return { appUserId: appUser.id, tenantId };
+    return { appUserId: appUser.id, userType: appUser.userType, tenantId };
   }
 
   /**
    * Like resolveCurrentUser but throws for mutations that require a linked user.
    */
-  private async requireCurrentUser(ctx: any): Promise<{ appUserId: string; tenantId: string }> {
+  private async requireCurrentUser(
+    ctx: any,
+  ): Promise<{ appUserId: string; userType: string; tenantId: string }> {
     const result = await this.resolveCurrentUser(ctx);
     if (!result) {
       throw new UnauthorizedException('Account non collegato: collega il tuo utente prima di usare i messaggi task');

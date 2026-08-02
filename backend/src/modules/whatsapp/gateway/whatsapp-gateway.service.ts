@@ -1,12 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 import { WhatsappConfigService } from '../config/services/whatsapp-config.service';
+import { WhatsappTenantConfig } from '../config/entities/whatsapp-tenant-config.entity';
 import { WhatsappLogService } from '../log/services/whatsapp-log.service';
 import { WhatsappTemplateService } from '../template/services/whatsapp-template.service';
 import { WhatsappMessageStatus, WhatsappMessageType, WhatsappTemplateType } from '../enums/whatsapp-enums';
-import { DispatchBookingPayload } from './dto/dispatch-booking.dto';
+import { DispatchBookingPayload, DispatchUpdatePayload } from './dto/dispatch-booking.dto';
 import { AvailabilityAppointment } from '../../availability/entities/availability-appointment.entity';
 
 /**
@@ -19,6 +20,20 @@ export interface WhatsappPatientContact {
   cognome?: string;
   telefono?: string;
   cellulare?: string;
+}
+
+/** Messaggio in coda sul gateway, così come lo restituisce `/whatsapp/scheduled`. */
+export interface GatewayScheduledMessage {
+  jobId: string;
+  jobName: string;
+  type: string;
+  phone: string;
+  pazienteId?: string;
+  appointmentIds: string[];
+  content?: string;
+  bufferedCount?: number;
+  scheduledFor: string;
+  state: 'delayed' | 'waiting';
 }
 
 @Injectable()
@@ -69,25 +84,17 @@ export class WhatsappGatewayService {
       const isoDate = this.buildIsoDate(appointment.appointmentDate, appointment.startTime);
       this.logger.log(`[WA-DISPATCH] Date: raw=${appointment.appointmentDate} + ${appointment.startTime} -> iso=${isoDate}`);
 
-      // Render messageBody from template
-      let messageBody: string | undefined;
-      try {
-        const template = await this.templateService.findByType(WhatsappTemplateType.RECAP_SINGLE);
-        if (template?.bodyTemplate) {
-          const dateObj = appointment.appointmentDate instanceof Date
-            ? appointment.appointmentDate
-            : new Date(String(appointment.appointmentDate));
-          const fmtDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
-          const fmtTime = appointment.startTime.substring(0, 5);
-          messageBody = this.templateService.renderTemplate(template.bodyTemplate, {
-            name: patientName,
-            date: fmtDate,
-            time: fmtTime,
-          });
-        }
-      } catch (e: any) {
-        this.logger.warn(`[WA-DISPATCH] Template render failed: ${e?.message}`);
-      }
+      // Testi dei messaggi: renderizzati QUI dai template del tenant e passati al
+      // gateway. Il recap multiplo viaggia grezzo perché l'elenco degli
+      // appuntamenti è noto solo al gateway, alla chiusura del buffer di 60s.
+      const { date: fmtDate, time: fmtTime } = this.formatAppointment(appointment);
+      const variables = { name: patientName, date: fmtDate, time: fmtTime };
+
+      const [recapMessage, reminderMessage, recapMultiTemplate] = await Promise.all([
+        this.renderTemplateOrUndefined(WhatsappTemplateType.RECAP_SINGLE, variables),
+        this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_24H, variables),
+        this.rawTemplateOrUndefined(WhatsappTemplateType.RECAP_MULTI),
+      ]);
 
       // Create log entry before calling gateway (status DISPATCHED)
       await this.logService.createLog({
@@ -97,7 +104,7 @@ export class WhatsappGatewayService {
         phoneNumber,
         messageType: WhatsappMessageType.RECAP_SINGLE,
         correlationId,
-        messageBody,
+        messageBody: recapMessage,
         status: WhatsappMessageStatus.DISPATCHED,
       });
 
@@ -109,6 +116,11 @@ export class WhatsappGatewayService {
           phone: phoneNumber,
           date: isoDate,
           name: patientName,
+          recapMessage,
+          reminderMessage,
+          recapMultiTemplate,
+          recapLine: `- ${fmtDate} alle ${fmtTime}`,
+          recapDelaySeconds: config.recapBufferSeconds ?? undefined,
         },
         correlationId,
       };
@@ -140,6 +152,115 @@ export class WhatsappGatewayService {
       );
       if (gwStatus || gwBody) {
         this.logger.error(`[WA-DISPATCH] Gateway response: status=${gwStatus} body=${JSON.stringify(gwBody)}`);
+      }
+    }
+  }
+
+  /**
+   * Notifica lo spostamento di un appuntamento già prenotato.
+   *
+   * Il gateway, ricevendo APPOINTMENT_UPDATE, rimuove il reminder programmato
+   * sul vecchio orario, invia la notifica di modifica e riprogramma il reminder
+   * 24h sul nuovo orario. Fire-and-forget: non lancia mai.
+   */
+  async updateBooking(
+    appointment: AvailabilityAppointment,
+    patient: WhatsappPatientContact,
+  ): Promise<void> {
+    try {
+      this.logger.log(`[WA-UPDATE] START appointmentId=${appointment.id}, patientId=${patient.id}`);
+
+      const config = await this.configService.getConfig();
+      if (!config || !config.isActive) {
+        this.logger.warn(`[WA-UPDATE] SKIP: config=${config ? 'exists' : 'null'}, isActive=${config?.isActive}`);
+        return;
+      }
+
+      const rawPhone = patient.cellulare || patient.telefono;
+      const phoneNumber = this.formatPhoneNumber(rawPhone);
+      if (!phoneNumber) {
+        this.logger.warn(`[WA-UPDATE] SKIP: no valid phone for patient ${patient.id}`);
+        return;
+      }
+
+      const apiKey = await this.configService.getDecryptedApiKey();
+      if (!apiKey) {
+        this.logger.error(`[WA-UPDATE] SKIP: cannot decrypt API key`);
+        return;
+      }
+
+      const correlationId = uuidv4();
+      const patientName = `${patient.nome || ''} ${patient.cognome || ''}`.trim();
+      const isoDate = this.buildIsoDate(appointment.appointmentDate, appointment.startTime);
+      const { date: fmtDate, time: fmtTime } = this.formatAppointment(appointment);
+      const variables = { name: patientName, date: fmtDate, time: fmtTime };
+
+      // Il POST parte comunque anche a notifica disattivata: il gateway deve
+      // spostare il reminder 24h sul nuovo orario.
+      const sendNotification = config.sendUpdateNotification !== false;
+
+      const [updateMessage, reminderMessage] = await Promise.all([
+        sendNotification
+          ? this.renderTemplateOrUndefined(WhatsappTemplateType.UPDATE, variables)
+          : Promise.resolve(undefined),
+        this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_24H, variables),
+      ]);
+
+      if (sendNotification) {
+        await this.logService.createLog({
+          appointmentId: appointment.id,
+          patientId: patient.id,
+          patientName,
+          phoneNumber,
+          messageType: WhatsappMessageType.UPDATE,
+          correlationId,
+          messageBody: updateMessage,
+          status: WhatsappMessageStatus.DISPATCHED,
+        });
+      }
+
+      const payload: DispatchUpdatePayload = {
+        type: 'APPOINTMENT_UPDATE',
+        data: {
+          appointmentId: appointment.id,
+          pazienteId: patient.id,
+          phone: phoneNumber,
+          date: isoDate,
+          name: patientName,
+          updateMessage,
+          reminderMessage,
+          sendUpdateNotification: sendNotification,
+        },
+        correlationId,
+      };
+
+      const url = `${config.gatewayUrl}/whatsapp/dispatch`;
+      this.logger.log(`[WA-UPDATE] POST ${url} sendNotification=${sendNotification} correlationId=${correlationId}`);
+      this.logger.log(`[WA-UPDATE] Payload: ${JSON.stringify(payload)}`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-tenant-id': config.tenantApiId,
+            'x-tenant-api-key': apiKey,
+            'x-correlation-id': correlationId,
+          },
+          timeout: 10000,
+        }),
+      );
+
+      this.logger.log(
+        `[WA-UPDATE] SUCCESS status=${response.status} data=${JSON.stringify(response.data)}`,
+      );
+    } catch (error: any) {
+      const gwStatus = error?.response?.status;
+      const gwBody = error?.response?.data;
+      this.logger.error(
+        `[WA-UPDATE] FAILED appointmentId=${appointment.id}: ${error?.message}`,
+      );
+      if (gwStatus || gwBody) {
+        this.logger.error(`[WA-UPDATE] Gateway response: status=${gwStatus} body=${JSON.stringify(gwBody)}`);
       }
     }
   }
@@ -185,23 +306,11 @@ export class WhatsappGatewayService {
       // Render cancellation message if notification is enabled
       let cancelNotificationMessage: string | undefined;
       if (sendNotification) {
-        try {
-          const template = await this.templateService.findByType(WhatsappTemplateType.CANCELLATION);
-          if (template?.bodyTemplate) {
-            const dateObj = appointment.appointmentDate instanceof Date
-              ? appointment.appointmentDate
-              : new Date(String(appointment.appointmentDate));
-            const fmtDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
-            const fmtTime = appointment.startTime.substring(0, 5);
-            cancelNotificationMessage = this.templateService.renderTemplate(template.bodyTemplate, {
-              name: patientName,
-              date: fmtDate,
-              time: fmtTime,
-            });
-          }
-        } catch (e: any) {
-          this.logger.warn(`[WA-CANCEL] Template render failed: ${e?.message}`);
-        }
+        const { date: fmtDate, time: fmtTime } = this.formatAppointment(appointment);
+        cancelNotificationMessage = await this.renderTemplateOrUndefined(
+          WhatsappTemplateType.CANCELLATION,
+          { name: patientName, date: fmtDate, time: fmtTime },
+        );
 
         // Create log entry only when sending notification
         await this.logService.createLog({
@@ -252,6 +361,69 @@ export class WhatsappGatewayService {
   }
 
   /**
+   * Messaggi programmati sul gateway e non ancora inviati.
+   *
+   * A differenza dei dispatch (fire-and-forget) qui gli errori vengono
+   * propagati: è una lettura interattiva e l'utente deve sapere se il gateway
+   * non risponde, invece di vedere una lista vuota.
+   */
+  async listScheduled(): Promise<GatewayScheduledMessage[]> {
+    const { config, apiKey } = await this.requireGatewayAccess();
+
+    const response = await firstValueFrom(
+      this.httpService.get<GatewayScheduledMessage[]>(`${config.gatewayUrl}/whatsapp/scheduled`, {
+        headers: {
+          'x-tenant-id': config.tenantApiId,
+          'x-tenant-api-key': apiKey,
+        },
+        timeout: 10000,
+      }),
+    );
+
+    return response.data ?? [];
+  }
+
+  /** Annulla un singolo invio programmato. `false` se il job non esiste più. */
+  async cancelScheduled(jobId: string): Promise<boolean> {
+    const { config, apiKey } = await this.requireGatewayAccess();
+
+    try {
+      await firstValueFrom(
+        this.httpService.delete(
+          `${config.gatewayUrl}/whatsapp/scheduled/${encodeURIComponent(jobId)}`,
+          {
+            headers: {
+              'x-tenant-id': config.tenantApiId,
+              'x-tenant-api-key': apiKey,
+            },
+            timeout: 10000,
+          },
+        ),
+      );
+      this.logger.log(`[WA-SCHEDULED] Annullato invio programmato ${jobId}`);
+      return true;
+    } catch (error: any) {
+      if (error?.response?.status === 404) return false;
+      throw error;
+    }
+  }
+
+  /** Config attiva + API key decifrata, o eccezione parlante. */
+  private async requireGatewayAccess(): Promise<{ config: WhatsappTenantConfig; apiKey: string }> {
+    const config = await this.configService.getConfig();
+    if (!config) {
+      throw new BadRequestException('Gateway WhatsApp non configurato');
+    }
+
+    const apiKey = await this.configService.getDecryptedApiKey();
+    if (!apiKey) {
+      throw new BadRequestException('API key del gateway non disponibile');
+    }
+
+    return { config, apiKey };
+  }
+
+  /**
    * Strips '+' and non-digit characters, returns phone in format 393515847659
    */
   formatPhoneNumber(phone?: string): string | null {
@@ -272,9 +444,59 @@ export class WhatsappGatewayService {
     return cleaned;
   }
 
+  /** Data e ora dell'appuntamento nel formato dei template: {date} e {time}. */
+  private formatAppointment(
+    appointment: AvailabilityAppointment,
+  ): { date: string; time: string } {
+    const dateObj = appointment.appointmentDate instanceof Date
+      ? appointment.appointmentDate
+      : new Date(String(appointment.appointmentDate));
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    return {
+      date: `${day}/${month}/${dateObj.getFullYear()}`,
+      time: appointment.startTime.substring(0, 5),
+    };
+  }
+
+  /**
+   * Template del tenant renderizzato con le variabili passate.
+   * Non lancia mai: se il template manca, è disattivato o il DB non risponde
+   * torna undefined e il gateway userà il proprio testo di fallback.
+   */
+  private async renderTemplateOrUndefined(
+    type: WhatsappTemplateType,
+    variables: Record<string, string>,
+  ): Promise<string | undefined> {
+    const body = await this.rawTemplateOrUndefined(type);
+    return body ? this.templateService.renderTemplate(body, variables) : undefined;
+  }
+
+  /**
+   * Corpo grezzo del template, per i casi in cui la sostituzione delle
+   * variabili avviene nel gateway (RECAP_MULTI: l'elenco appuntamenti è noto
+   * solo alla chiusura del buffer).
+   */
+  private async rawTemplateOrUndefined(
+    type: WhatsappTemplateType,
+  ): Promise<string | undefined> {
+    try {
+      const template = await this.templateService.findByType(type);
+      if (!template?.bodyTemplate || !template.isActive) return undefined;
+      return template.bodyTemplate;
+    } catch (e: any) {
+      this.logger.warn(`[WA] Lettura template ${type} fallita: ${e?.message}`);
+      return undefined;
+    }
+  }
+
   /**
    * Builds ISO 8601 date string from appointment date and time.
    * appointmentDate can be a Date object or a string ("YYYY-MM-DD").
+   *
+   * NB: si invia l'ora LOCALE senza offset. Il gateway la interpreta in
+   * Europe/Rome applicando la DST corretta; un offset fisso (era `+01:00`)
+   * sballa di un'ora tutti i messaggi da fine marzo a fine ottobre.
    */
   private buildIsoDate(
     appointmentDate: Date | string,
@@ -295,6 +517,6 @@ export class WhatsappGatewayService {
     const time = startTime.includes(':') && startTime.split(':').length === 2
       ? `${startTime}:00`
       : startTime;
-    return `${datePart}T${time}+01:00`;
+    return `${datePart}T${time}`;
   }
 }

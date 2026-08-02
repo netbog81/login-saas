@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { In, MoreThanOrEqual } from 'typeorm';
+import { validate as isUuid } from 'uuid';
 import { AvailabilityAppointment, BookingStatus, ConflictReason } from '../entities/availability-appointment.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { AppointmentLog, AppointmentLogEventType } from '../entities/appointment-log.entity';
@@ -383,7 +384,7 @@ export class AppointmentConflictService {
   async resolveConflict(
     appointmentId: string,
     action: 'keep' | 'reschedule' | 'cancel',
-    resolvedBy: string,
+    resolvedBy: string | undefined,
     newData?: { date?: string; startTime?: string; endTime?: string },
     notes?: string
   ): Promise<AvailabilityAppointment> {
@@ -398,14 +399,24 @@ export class AppointmentConflictService {
 
     const year = new Date().getFullYear();
 
+    // performedBy è una colonna uuid nullable: un valore non-uuid (es. il
+    // placeholder 'current-user-id' di client vecchi) farebbe fallire
+    // l'INSERT del log e con esso l'intera risoluzione.
+    const performedBy = resolvedBy && isUuid(resolvedBy) ? resolvedBy : undefined;
+
+    // NB: nei .update() qui sotto serve `null as any`, non undefined —
+    // TypeORM SALTA le proprietà undefined e i campi resterebbero sporchi.
+    const clearConflictFields = {
+      hasConflict: false,
+      conflictReason: null as any,
+      conflictDetectedAt: null as any,
+      conflictSourceExceptionId: null as any,
+    };
+
     switch (action) {
       case 'keep':
         // Rimuovi flag conflitto, mantieni appuntamento come era
-        await this.appointmentRepo.update(appointmentId, {
-          hasConflict: false,
-          conflictReason: undefined,
-          conflictDetectedAt: undefined
-        });
+        await this.appointmentRepo.update(appointmentId, clearConflictFields);
         break;
 
       case 'reschedule':
@@ -413,45 +424,48 @@ export class AppointmentConflictService {
           throw new Error('Dati nuova data/ora mancanti per riprogrammazione');
         }
 
-        // Log riprogrammazione
-        await this.logRepo.save({
-          appointmentId,
-          patientId: appointment.patientId,
-          operatorId: appointment.operatorId!,
-          eventType: AppointmentLogEventType.RESCHEDULED,
-          reason: notes || 'Riprogrammato per conflitto disponibilità',
-          performedBy: resolvedBy,
-          originalDate: appointment.appointmentDate,
-          originalStartTime: appointment.startTime,
-          newDate: new Date(newData.date),
-          newStartTime: newData.startTime,
-          year
-        });
+        // Log riprogrammazione (appointment_logs.operatorId è NOT NULL:
+        // per appuntamenti senza operatore si salta il log statistico)
+        if (appointment.operatorId) {
+          await this.logRepo.save({
+            appointmentId,
+            patientId: appointment.patientId,
+            operatorId: appointment.operatorId,
+            eventType: AppointmentLogEventType.RESCHEDULED,
+            reason: notes || 'Riprogrammato per conflitto disponibilità',
+            performedBy,
+            originalDate: appointment.appointmentDate,
+            originalStartTime: appointment.startTime,
+            newDate: new Date(newData.date),
+            newStartTime: newData.startTime,
+            year
+          });
+        }
 
         // Aggiorna appuntamento
         await this.appointmentRepo.update(appointmentId, {
           appointmentDate: new Date(newData.date),
           startTime: newData.startTime,
           endTime: newData.endTime,
-          hasConflict: false,
-          conflictReason: undefined,
-          conflictDetectedAt: undefined
+          ...clearConflictFields
         });
         break;
 
       case 'cancel':
         // Log cancellazione
-        await this.logRepo.save({
-          appointmentId,
-          patientId: appointment.patientId,
-          operatorId: appointment.operatorId!,
-          eventType: AppointmentLogEventType.CANCELLED,
-          reason: notes || 'Annullato per conflitto disponibilità',
-          performedBy: resolvedBy,
-          originalDate: appointment.appointmentDate,
-          originalStartTime: appointment.startTime,
-          year
-        });
+        if (appointment.operatorId) {
+          await this.logRepo.save({
+            appointmentId,
+            patientId: appointment.patientId,
+            operatorId: appointment.operatorId,
+            eventType: AppointmentLogEventType.CANCELLED,
+            reason: notes || 'Annullato per conflitto disponibilità',
+            performedBy,
+            originalDate: appointment.appointmentDate,
+            originalStartTime: appointment.startTime,
+            year
+          });
+        }
 
         // NON incrementiamo contatore paziente perché è cancellazione per conflitto,
         // non per volontà del paziente
@@ -460,7 +474,7 @@ export class AppointmentConflictService {
         await this.appointmentRepo.update(appointmentId, {
           bookingStatus: BookingStatus.CANCELLED,
           cancellationReason: notes || 'Annullato per conflitto disponibilità operatore',
-          hasConflict: false
+          ...clearConflictFields
         });
         break;
     }
@@ -478,7 +492,7 @@ export class AppointmentConflictService {
   async resolveMultipleConflicts(
     appointmentIds: string[],
     action: 'keep' | 'cancel',
-    resolvedBy: string,
+    resolvedBy: string | undefined,
     notes?: string
   ): Promise<AvailabilityAppointment[]> {
     const results: AvailabilityAppointment[] = [];
@@ -606,7 +620,8 @@ export class AppointmentConflictService {
       [ExceptionType.HOLIDAY]: 'Festività',
       [ExceptionType.PERSONAL_LEAVE]: 'Permesso personale',
       [ExceptionType.UNAVAILABLE]: 'Operatore non disponibile',
-      [ExceptionType.MODIFIED]: 'Disponibilità modificata'
+      [ExceptionType.MODIFIED]: 'Disponibilità modificata',
+      [ExceptionType.EXTRA]: 'Disponibilità straordinaria rimossa'
     };
     return reasons[type] || 'Conflitto disponibilità';
   }

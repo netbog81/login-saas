@@ -44,16 +44,48 @@ export class ClinicalAttendanceService {
   }
 
   /**
-   * Rimuove i log NO_SHOW associati a un appuntamento. Usato quando un
-   * "non presentato" viene corretto in "presentato" (ritardatario): il
-   * conteggio no-show del paziente deve tornare coerente.
-   * Ritorna il numero di righe rimosse.
+   * Registra un evento solo se per quell'appuntamento non ne esiste già uno
+   * dello stesso tipo. Serve perché lo stesso appuntamento può passare più
+   * volte per la marcatura no-show (segreteria che corregge avanti e
+   * indietro) e i contatori non devono gonfiarsi.
    */
-  async removeNoShowEvent(appointmentId: string): Promise<number> {
-    const result = await this.logRepo.delete({
-      appointmentId,
-      eventType: AttendanceEventType.NO_SHOW,
+  async recordEventOnce(input: {
+    subjectId: string;
+    eventType: AttendanceEventType;
+    occurredAt?: Date;
+    reason?: string;
+    operatorId?: string;
+    appointmentId: string;
+  }): Promise<ClinicalAttendanceLog | null> {
+    const existing = await this.logRepo.findOne({
+      where: {
+        appointmentId: input.appointmentId,
+        eventType: input.eventType,
+      },
     });
+    if (existing) return null;
+    return this.recordEvent(input);
+  }
+
+  /**
+   * Degrada i log NO_SHOW di un appuntamento a LATE_ARRIVAL. Usato quando un
+   * "non presentato" viene corretto in "presentato": il paziente NON è stato
+   * assente, è arrivato in ritardo.
+   *
+   * Prima queste righe venivano CANCELLATE (`removeNoShowEvent`) e con esse
+   * spariva l'unica traccia del ritardatario. Ora restano, marcate con
+   * `revokedAt`: non pesano sui no-show ma il profilo del paziente le vede.
+   *
+   * Ritorna il numero di righe degradate.
+   */
+  async demoteNoShowToLateArrival(appointmentId: string): Promise<number> {
+    const result = await this.logRepo.update(
+      { appointmentId, eventType: AttendanceEventType.NO_SHOW },
+      {
+        eventType: AttendanceEventType.LATE_ARRIVAL,
+        revokedAt: new Date(),
+      },
+    );
     return result.affected ?? 0;
   }
 
@@ -72,24 +104,43 @@ export class ClinicalAttendanceService {
       .addGroupBy('log.event_type')
       .getRawMany<{ year: number; eventType: AttendanceEventType; count: number }>();
 
-    const stats: AttendanceStatsModel = {
-      noShowsByYear: {},
-      cancellationsByYear: {},
-      totalNoShows: 0,
-      totalCancellations: 0,
-    };
-
+    const stats = ClinicalAttendanceService.emptyStats();
     for (const r of rows) {
-      const yearKey = String(r.year);
-      if (r.eventType === AttendanceEventType.NO_SHOW) {
-        stats.noShowsByYear[yearKey] = r.count;
-        stats.totalNoShows += r.count;
-      } else if (r.eventType === AttendanceEventType.CANCELLATION) {
-        stats.cancellationsByYear[yearKey] = r.count;
-        stats.totalCancellations += r.count;
-      }
+      ClinicalAttendanceService.applyRow(stats, r);
     }
     return stats;
+  }
+
+  private static emptyStats(): AttendanceStatsModel {
+    return {
+      noShowsByYear: {},
+      cancellationsByYear: {},
+      lateArrivalsByYear: {},
+      totalNoShows: 0,
+      totalCancellations: 0,
+      totalLateArrivals: 0,
+    };
+  }
+
+  private static applyRow(
+    stats: AttendanceStatsModel,
+    r: { year: number; eventType: AttendanceEventType; count: number },
+  ): void {
+    const yearKey = String(r.year);
+    switch (r.eventType) {
+      case AttendanceEventType.NO_SHOW:
+        stats.noShowsByYear[yearKey] = r.count;
+        stats.totalNoShows += r.count;
+        break;
+      case AttendanceEventType.CANCELLATION:
+        stats.cancellationsByYear[yearKey] = r.count;
+        stats.totalCancellations += r.count;
+        break;
+      case AttendanceEventType.LATE_ARRIVAL:
+        stats.lateArrivalsByYear[yearKey] = r.count;
+        stats.totalLateArrivals += r.count;
+        break;
+    }
   }
 
   /** Versione batch usata in liste — riduce le query a 1 sola per N subject. */
@@ -115,23 +166,10 @@ export class ClinicalAttendanceService {
       }>();
 
     for (const id of subjectIds) {
-      result.set(id, {
-        noShowsByYear: {},
-        cancellationsByYear: {},
-        totalNoShows: 0,
-        totalCancellations: 0,
-      });
+      result.set(id, ClinicalAttendanceService.emptyStats());
     }
     for (const r of rows) {
-      const stats = result.get(r.subjectId)!;
-      const yearKey = String(r.year);
-      if (r.eventType === AttendanceEventType.NO_SHOW) {
-        stats.noShowsByYear[yearKey] = r.count;
-        stats.totalNoShows += r.count;
-      } else if (r.eventType === AttendanceEventType.CANCELLATION) {
-        stats.cancellationsByYear[yearKey] = r.count;
-        stats.totalCancellations += r.count;
-      }
+      ClinicalAttendanceService.applyRow(result.get(r.subjectId)!, r);
     }
     return result;
   }

@@ -34,8 +34,11 @@ export type ActorType = CurandisTenantContext['actorType'];
  */
 export const CurrentUser = createParamDecorator(
   (_data: unknown, context: ExecutionContext): CurrentUserContext => {
-    const ctx = GqlExecutionContext.create(context);
-    const req = ctx.getContext().req;
+    // Supporta sia resolver GraphQL sia controller REST
+    const req =
+      context.getType<'http' | 'graphql'>() === 'graphql'
+        ? GqlExecutionContext.create(context).getContext().req
+        : context.switchToHttp().getRequest();
     return req?.tenantContext as CurrentUserContext;
   },
 );

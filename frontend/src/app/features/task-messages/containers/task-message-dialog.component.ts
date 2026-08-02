@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatDialogModule, MatDialogRef, MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -212,6 +213,7 @@ import { TaskMessage, TaskMessagePage, TaskMessageStatus } from '../models/task-
 export class TaskMessageDialogComponent implements OnInit, OnDestroy {
   readonly dialogRef = inject(MatDialogRef<TaskMessageDialogComponent>);
   private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly taskMessageService = inject(TaskMessageService);
   private readonly notificationService = inject(TaskMessageNotificationService);
   private readonly ngZone = inject(NgZone);
@@ -300,8 +302,12 @@ export class TaskMessageDialogComponent implements OnInit, OnDestroy {
   }
 
   onOpenMessage(msg: TaskMessage): void {
+    // Per i messaggi di gruppo l'inbox contiene solo messaggi su cui
+    // l'utente può agire (membership verificata dal backend)
+    const canActOnGroup = !!msg.recipientGroup && this.selectedTab === 0;
+    const isRecipient = msg.recipientUserId === this.currentUserId || canActOnGroup;
+
     // Auto-mark as read when recipient opens an AVAILABLE message
-    const isRecipient = msg.recipientUserId === this.currentUserId;
     if (isRecipient && msg.status === TaskMessageStatus.AVAILABLE) {
       this.taskMessageService.markAsRead(msg.gatewayMessageId).pipe(
         takeUntil(this.destroy$),
@@ -317,7 +323,7 @@ export class TaskMessageDialogComponent implements OnInit, OnDestroy {
     const ref = this.dialog.open(TaskMessageDetailDialogComponent, {
       width: '550px',
       maxHeight: '80vh',
-      data: { message: msg, currentUserId: this.currentUserId },
+      data: { message: msg, currentUserId: this.currentUserId, canActOnGroup },
     });
 
     ref.afterClosed().subscribe((result: TaskMessageDetailDialogResult | undefined) => {
@@ -366,11 +372,24 @@ export class TaskMessageDialogComponent implements OnInit, OnDestroy {
   }
 
   private doComplete(msg: TaskMessage): void {
-    // Backend handles markAsRead + complete in a single call for AVAILABLE messages
     this.taskMessageService.completeMessage(msg.gatewayMessageId).pipe(
       takeUntil(this.destroy$),
     ).subscribe({
       next: () => {
+        this.loadCurrentTab();
+        this.notificationService.refreshNow();
+      },
+      error: (err) => {
+        // Caso tipico: task di gruppo già completato da una collega.
+        // Ricarica comunque, così il messaggio sparisce dalla lista.
+        const message: string = err?.message || '';
+        this.snackBar.open(
+          message.includes('già completato')
+            ? 'Task già completato da un altro utente'
+            : 'Impossibile completare il task',
+          'OK',
+          { duration: 5000 },
+        );
         this.loadCurrentTab();
         this.notificationService.refreshNow();
       },

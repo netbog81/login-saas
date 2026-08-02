@@ -5,6 +5,6 @@ export const CALENDAR_V3_ROUTES: Routes = [
   {
     path: '',
     component: CalendarV3Container,
-    title: 'Calendario V3',
+    title: 'Calendario',
   },
 ];

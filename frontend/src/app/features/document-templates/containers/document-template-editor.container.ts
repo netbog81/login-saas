@@ -12,23 +12,64 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import {
+  CollectionData,
+  MergeFieldData,
+  MergeFieldDef,
+  TemplateCollectionDef,
   TemplateDocument,
   TemplateEditorComponent,
   TemplatePageSettings,
-  buildPrintHtml,
-  docToHtml,
+  docToPrintHtml,
   printHtml,
-  resolveMergeFields,
-} from '../../../shared/template-editor';
+  resolveTemplate,
+} from '@curandis/template-editor';
 import { DocumentTemplateService } from '../services/document-template.service';
+import {
+  DOCUMENT_TEMPLATE_TYPE_LABELS,
+  DocumentTemplateType,
+} from '../models/document-template.model';
 import {
   ATTENDANCE_MERGE_FIELDS,
   attendanceExampleData,
 } from '../models/attendance-merge-fields';
 import { defaultAttendanceTemplate } from '../models/default-attendance-template';
+import {
+  SETTLEMENT_FE_COLLECTIONS,
+  SETTLEMENT_FE_MERGE_FIELDS,
+  settlementFeExampleData,
+} from '../models/settlement-fe-merge-fields';
+import { defaultSettlementFeTemplate } from '../models/default-settlement-fe-template';
+
+/** Catalogo per tipo: campi, collezioni, dati d'esempio, doc di partenza. */
+interface TypeCatalog {
+  mergeFields: MergeFieldDef[];
+  collections: TemplateCollectionDef[];
+  exampleData: () => { fields: MergeFieldData; collections: CollectionData };
+  starterDoc: () => TemplateDocument;
+  defaultName: string;
+}
+
+const TYPE_CATALOGS: Record<DocumentTemplateType, TypeCatalog> = {
+  ATTENDANCE_CERTIFICATE: {
+    mergeFields: ATTENDANCE_MERGE_FIELDS,
+    collections: [],
+    exampleData: () => ({ fields: attendanceExampleData(), collections: {} }),
+    starterDoc: defaultAttendanceTemplate,
+    defaultName: 'Attestato di presenza',
+  },
+  SETTLEMENT_FE: {
+    mergeFields: SETTLEMENT_FE_MERGE_FIELDS,
+    collections: SETTLEMENT_FE_COLLECTIONS,
+    exampleData: settlementFeExampleData,
+    starterDoc: defaultSettlementFeTemplate,
+    defaultName: 'Conto operatore FE',
+  },
+};
 
 /**
- * Container: creazione/modifica di un template "Attestato di presenza".
+ * Container: creazione/modifica di un template documento (attestato di
+ * presenza o conto operatore FE — il tipo arriva dal query param ?type= per
+ * i nuovi, dal template stesso in modifica).
  * Route: /settings/document-templates/new | /settings/document-templates/:id
  */
 @Component({
@@ -55,7 +96,7 @@ import { defaultAttendanceTemplate } from '../models/default-attendance-template
         <button mat-icon-button routerLink="/settings/document-templates" matTooltip="Torna all'elenco">
           <mat-icon>arrow_back</mat-icon>
         </button>
-        <h1>{{ isNew() ? 'Nuovo template attestato' : 'Modifica template' }}</h1>
+        <h1>{{ isNew() ? 'Nuovo template — ' + typeLabel() : 'Modifica template — ' + typeLabel() }}</h1>
         <span class="spacer"></span>
         <button mat-stroked-button (click)="previewPrint()" matTooltip="Stampa di prova con dati fittizi">
           <mat-icon>print</mat-icon>
@@ -74,7 +115,7 @@ import { defaultAttendanceTemplate } from '../models/default-attendance-template
           <mat-form-field appearance="outline" class="name-field" subscriptSizing="dynamic">
             <mat-label>Nome del template</mat-label>
             <input matInput [(ngModel)]="name" maxlength="255"
-                   placeholder="Es. Attestato di presenza standard" />
+                   [placeholder]="'Es. ' + catalog().defaultName + ' standard'" />
           </mat-form-field>
           <mat-slide-toggle [(ngModel)]="isDefault">
             Template predefinito
@@ -84,7 +125,8 @@ import { defaultAttendanceTemplate } from '../models/default-attendance-template
         <app-template-editor
           [content]="content()"
           [pageSettings]="pageSettings()"
-          [mergeFields]="mergeFields"
+          [mergeFields]="catalog().mergeFields"
+          [collections]="catalog().collections"
           (contentChange)="onContentChange($event)"
           (pageSettingsChange)="onPageSettingsChange($event)">
         </app-template-editor>
@@ -114,11 +156,10 @@ import { defaultAttendanceTemplate } from '../models/default-attendance-template
   `],
 })
 export class DocumentTemplateEditorContainer implements OnInit {
-  readonly mergeFields = ATTENDANCE_MERGE_FIELDS;
-
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly isNew = signal(true);
+  readonly type = signal<DocumentTemplateType>('ATTENDANCE_CERTIFICATE');
   readonly content = signal<TemplateDocument | null>(null);
   readonly pageSettings = signal<Partial<TemplatePageSettings> | null>(null);
 
@@ -137,12 +178,24 @@ export class DocumentTemplateEditorContainer implements OnInit {
     private readonly snackBar: MatSnackBar,
   ) {}
 
+  catalog(): TypeCatalog {
+    return TYPE_CATALOGS[this.type()];
+  }
+
+  typeLabel(): string {
+    return DOCUMENT_TEMPLATE_TYPE_LABELS[this.type()];
+  }
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id || id === 'new') {
+      const typeParam = this.route.snapshot.queryParamMap.get('type');
+      if (typeParam && typeParam in TYPE_CATALOGS) {
+        this.type.set(typeParam as DocumentTemplateType);
+      }
       this.isNew.set(true);
-      this.name = 'Attestato di presenza';
-      const doc = defaultAttendanceTemplate();
+      this.name = this.catalog().defaultName;
+      const doc = this.catalog().starterDoc();
       this.content.set(doc);
       this.currentContent = doc;
       this.loading.set(false);
@@ -157,6 +210,7 @@ export class DocumentTemplateEditorContainer implements OnInit {
           this.router.navigate(['/settings/document-templates']);
           return;
         }
+        this.type.set(template.type);
         this.name = template.name;
         this.isDefault = template.isDefault;
         this.content.set(template.content);
@@ -185,9 +239,11 @@ export class DocumentTemplateEditorContainer implements OnInit {
   /** Stampa di prova con dati fittizi (stesso motore della generazione reale). */
   previewPrint(): void {
     if (!this.currentContent) return;
-    const resolved = resolveMergeFields(this.currentContent, attendanceExampleData());
-    const html = buildPrintHtml(
-      docToHtml(resolved),
+    const example = this.catalog().exampleData();
+    const resolved = resolveTemplate(this.currentContent, example);
+    // docToPrintHtml: separa intestazione/piè di pagina ripetuti dal corpo.
+    const html = docToPrintHtml(
+      resolved,
       this.currentSettings,
       this.name || 'Anteprima template',
     );
@@ -203,7 +259,7 @@ export class DocumentTemplateEditorContainer implements OnInit {
       this.templateService
         .create({
           name: this.name.trim(),
-          type: 'ATTENDANCE_CERTIFICATE',
+          type: this.type(),
           content: this.currentContent,
           pageSettings: this.currentSettings,
           isDefault: this.isDefault || undefined,

@@ -10,6 +10,7 @@ import { TaskMessagePage } from '../dto/task-message-page.type';
 import { AppUser } from '../../users/entities/app-user.entity';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { EventsService } from '../../events/events.service';
 @Injectable()
 export class TaskMessageService {
   private readonly logger = new Logger(TaskMessageService.name);
@@ -17,7 +18,17 @@ export class TaskMessageService {
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly gatewayService: TaskMessageGatewayService,
+    private readonly eventsService: EventsService,
   ){}
+
+  /**
+   * Campanello SSE per il tenant corrente: i client rifanno la query
+   * dell'unread count / inbox. Nessun payload: il dato viaggia solo
+   * sulla query autenticata di ciascun utente.
+   */
+  private notifyChanged(): void {
+    this.eventsService.emit({ type: 'task_message_changed', timestamp: new Date() });
+  }
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
   private get dataSource() {
@@ -37,9 +48,9 @@ export class TaskMessageService {
     senderAppUserId: string,
     input: CreateTaskMessageInput,
   ): Promise<TaskMessageResult> {
-    // Validate: no self-send
-    if (senderAppUserId === input.recipientUserId) {
-      throw new BadRequestException('Non puoi inviare un messaggio a te stesso');
+    // Validate: esattamente uno tra destinatario singolo e gruppo
+    if (!input.recipientUserId === !input.recipientGroup) {
+      throw new BadRequestException('Specificare un destinatario oppure un gruppo');
     }
 
     // Validate: content not empty
@@ -47,10 +58,30 @@ export class TaskMessageService {
       throw new BadRequestException('Il contenuto del messaggio non può essere vuoto');
     }
 
-    // Validate: recipient exists
-    const recipient = await this.appUserRepo.findOneBy({ id: input.recipientUserId });
-    if (!recipient) {
-      throw new BadRequestException('Destinatario non trovato');
+    if (input.recipientUserId) {
+      // Validate: no self-send
+      if (senderAppUserId === input.recipientUserId) {
+        throw new BadRequestException('Non puoi inviare un messaggio a te stesso');
+      }
+
+      // Validate: recipient exists
+      const recipient = await this.appUserRepo.findOneBy({ id: input.recipientUserId });
+      if (!recipient) {
+        throw new BadRequestException('Destinatario non trovato');
+      }
+    } else {
+      // Validate: il gruppo ha almeno un membro attivo oltre al mittente
+      // (il mittente non vede i propri messaggi di gruppo in inbox)
+      const members = await this.appUserRepo.count({
+        where: {
+          userType: input.recipientGroup as any,
+          isActive: true,
+          id: Not(senderAppUserId),
+        },
+      });
+      if (members === 0) {
+        throw new BadRequestException('Nessun utente attivo nel gruppo destinatario');
+      }
     }
 
     // Validate: availableFrom in the future
@@ -61,7 +92,7 @@ export class TaskMessageService {
     const result = await this.gatewayService.create(
       tenantId,
       senderAppUserId,
-      input.recipientUserId,
+      { userId: input.recipientUserId, group: input.recipientGroup },
       input.content.trim(),
       input.availableFrom ? new Date(input.availableFrom) : undefined,
     );
@@ -83,7 +114,8 @@ export class TaskMessageService {
           gatewayMessageId: result.messageId,
           tenantId,
           senderUserId: senderAppUserId,
-          recipientUserId: input.recipientUserId,
+          recipientUserId: input.recipientUserId ?? null,
+          recipientGroup: input.recipientGroup ?? null,
           content: input.content.trim(),
           status,
           availableFrom: input.availableFrom ? new Date(input.availableFrom) : undefined,
@@ -95,6 +127,8 @@ export class TaskMessageService {
       // lo riconcilierà. Logghiamo per visibilità.
       this.logger.error(`[TASK-MSG] optimistic local write failed gateway_id=${result.messageId}: ${err?.message}`);
     }
+
+    this.notifyChanged();
 
     return {
       messageId: result.messageId,
@@ -155,6 +189,8 @@ export class TaskMessageService {
     await this.taskMessageRepo.save(msg);
     this.logger.log(`[TASK-MSG] delete gateway_id=${gatewayMessageId} (direct DB)`);
 
+    this.notifyChanged();
+
     return true;
   }
 
@@ -165,9 +201,7 @@ export class TaskMessageService {
   ): Promise<boolean> {
     const msg = await this.findByGatewayIdOrFail(gatewayMessageId);
 
-    if (msg.recipientUserId !== recipientAppUserId) {
-      throw new ForbiddenException('Solo il destinatario può segnare come letto');
-    }
+    await this.assertCanActAsRecipient(msg, recipientAppUserId, 'Solo il destinatario può segnare come letto');
 
     // Idempotente: se già READ o oltre, non fare nulla
     if (msg.status === TaskMessageStatus.READ || msg.status === TaskMessageStatus.COMPLETED) {
@@ -181,8 +215,11 @@ export class TaskMessageService {
     // Aggiornamento diretto nel DB — NESSUNA chiamata al gateway
     msg.status = TaskMessageStatus.READ;
     msg.readAt = new Date();
+    msg.readByUserId = recipientAppUserId;
     await this.taskMessageRepo.save(msg);
     this.logger.log(`[TASK-MSG] markAsRead direct DB update gateway_id=${gatewayMessageId}`);
+
+    this.notifyChanged();
 
     return true;
   }
@@ -194,44 +231,109 @@ export class TaskMessageService {
   ): Promise<boolean> {
     const msg = await this.findByGatewayIdOrFail(gatewayMessageId);
 
-    if (msg.recipientUserId !== recipientAppUserId) {
-      throw new ForbiddenException('Solo il destinatario può completare il task');
-    }
+    await this.assertCanActAsRecipient(msg, recipientAppUserId, 'Solo il destinatario può completare il task');
 
-    // Idempotente: se già COMPLETED, non fare nulla
     if (msg.status === TaskMessageStatus.COMPLETED) {
-      return true;
+      return this.handleAlreadyCompleted(msg, recipientAppUserId);
     }
 
     if (msg.status !== TaskMessageStatus.READ) {
       throw new BadRequestException('Il messaggio deve essere letto prima di essere completato');
     }
 
-    // Aggiornamento diretto nel DB — NESSUNA chiamata al gateway
-    msg.status = TaskMessageStatus.COMPLETED;
-    msg.completedAt = new Date();
-    await this.taskMessageRepo.save(msg);
-    this.logger.log(`[TASK-MSG] complete direct DB update gateway_id=${gatewayMessageId}`);
+    // Aggiornamento diretto nel DB — NESSUNA chiamata al gateway.
+    // UPDATE condizionato sullo stato: se due utenti del gruppo completano
+    // in contemporanea, solo il primo vince (affected=1); l'altro riceve
+    // l'esito "già completato".
+    const updateResult = await this.taskMessageRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        status: TaskMessageStatus.COMPLETED,
+        completedAt: new Date(),
+        completedByUserId: recipientAppUserId,
+      })
+      .where('gateway_message_id = :gid AND status = :status', {
+        gid: gatewayMessageId,
+        status: TaskMessageStatus.READ,
+      })
+      .execute();
+
+    if (!updateResult.affected) {
+      const fresh = await this.findByGatewayIdOrFail(gatewayMessageId);
+      if (fresh.status === TaskMessageStatus.COMPLETED) {
+        return this.handleAlreadyCompleted(fresh, recipientAppUserId);
+      }
+      throw new BadRequestException('Il messaggio deve essere letto prima di essere completato');
+    }
+
+    this.logger.log(`[TASK-MSG] complete direct DB update gateway_id=${gatewayMessageId} by=${recipientAppUserId}`);
+
+    this.notifyChanged();
 
     return true;
+  }
+
+  /**
+   * Esito per un complete su messaggio già COMPLETED: idempotente se era
+   * stato lo stesso utente, errore esplicito se un altro membro del gruppo
+   * ha già eseguito il task (così chi arriva secondo lo sa e non lo rifà).
+   */
+  private handleAlreadyCompleted(msg: TaskMessage, userId: string): boolean {
+    if (!msg.completedByUserId || msg.completedByUserId === userId) {
+      return true;
+    }
+    throw new BadRequestException('Task già completato da un altro utente');
+  }
+
+  /**
+   * Autorizzazione destinatario: per i messaggi singoli deve coincidere
+   * l'utente; per i messaggi di gruppo basta essere un membro attivo del
+   * gruppo (user_type corrispondente).
+   */
+  private async assertCanActAsRecipient(
+    msg: TaskMessage,
+    appUserId: string,
+    errorMessage: string,
+  ): Promise<void> {
+    if (msg.recipientGroup) {
+      const member = await this.appUserRepo.countBy({
+        id: appUserId,
+        userType: msg.recipientGroup as any,
+        isActive: true,
+      });
+      if (!member) {
+        throw new ForbiddenException(errorMessage);
+      }
+      return;
+    }
+    if (msg.recipientUserId !== appUserId) {
+      throw new ForbiddenException(errorMessage);
+    }
   }
 
   // ─── Queries (read from local DB) ──────────────────────────────
 
   async getInbox(
-    recipientUserId: string,
+    user: { id: string; userType: string },
     page: number,
     limit: number,
   ): Promise<TaskMessagePage> {
-    const [items, total] = await this.taskMessageRepo.findAndCount({
-      where: {
-        recipientUserId,
-        status: In([TaskMessageStatus.AVAILABLE, TaskMessageStatus.READ]),
-      },
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const [items, total] = await this.taskMessageRepo
+      .createQueryBuilder('tm')
+      .where('tm.status IN (:...statuses)', {
+        statuses: [TaskMessageStatus.AVAILABLE, TaskMessageStatus.READ],
+      })
+      .andWhere(
+        // Destinatario diretto, oppure messaggio al mio gruppo (esclusi
+        // quelli inviati da me stesso al gruppo)
+        '(tm.recipient_user_id = :userId OR (tm.recipient_group = :userGroup AND tm.sender_user_id != :userId))',
+        { userId: user.id, userGroup: user.userType },
+      )
+      .orderBy('tm.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
 
     return { items, total };
   }
@@ -255,14 +357,19 @@ export class TaskMessageService {
   }
 
   async getCompleted(
-    userId: string,
+    user: { id: string; userType: string },
     page: number,
     limit: number,
   ): Promise<TaskMessagePage> {
     const [items, total] = await this.taskMessageRepo
       .createQueryBuilder('tm')
       .where('tm.status = :status', { status: TaskMessageStatus.COMPLETED })
-      .andWhere('(tm.sender_user_id = :userId OR tm.recipient_user_id = :userId)', { userId })
+      .andWhere(
+        // Mittente, destinatario diretto, oppure task del mio gruppo (tutte
+        // le colleghe vedono che è stato eseguito e da chi)
+        '(tm.sender_user_id = :userId OR tm.recipient_user_id = :userId OR tm.recipient_group = :userGroup)',
+        { userId: user.id, userGroup: user.userType },
+      )
       .orderBy('tm.completed_at', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
@@ -275,13 +382,15 @@ export class TaskMessageService {
     return this.taskMessageRepo.findOneBy({ id });
   }
 
-  async countUnread(recipientUserId: string): Promise<number> {
-    return this.taskMessageRepo.count({
-      where: {
-        recipientUserId,
-        status: TaskMessageStatus.AVAILABLE,
-      },
-    });
+  async countUnread(user: { id: string; userType: string }): Promise<number> {
+    return this.taskMessageRepo
+      .createQueryBuilder('tm')
+      .where('tm.status = :status', { status: TaskMessageStatus.AVAILABLE })
+      .andWhere(
+        '(tm.recipient_user_id = :userId OR (tm.recipient_group = :userGroup AND tm.sender_user_id != :userId))',
+        { userId: user.id, userGroup: user.userType },
+      )
+      .getCount();
   }
 
   // ─── Helpers ───────────────────────────────────────────────────

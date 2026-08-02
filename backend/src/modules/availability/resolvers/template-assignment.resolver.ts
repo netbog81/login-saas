@@ -1,7 +1,10 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { TemplateAssignmentService } from '../services/template-assignment.service';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => TemplateAssignment)
 export class TemplateAssignmentResolver {
   constructor(private readonly assignmentService: TemplateAssignmentService) {}

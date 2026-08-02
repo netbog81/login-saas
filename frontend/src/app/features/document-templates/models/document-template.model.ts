@@ -1,10 +1,15 @@
 import {
   TemplateDocument,
   TemplatePageSettings,
-} from '../../../shared/template-editor';
+} from '@curandis/template-editor';
 
 /** Tipi di documento generabili (mirror dell'enum backend). */
-export type DocumentTemplateType = 'ATTENDANCE_CERTIFICATE';
+export type DocumentTemplateType = 'ATTENDANCE_CERTIFICATE' | 'SETTLEMENT_FE';
+
+export const DOCUMENT_TEMPLATE_TYPE_LABELS: Record<DocumentTemplateType, string> = {
+  ATTENDANCE_CERTIFICATE: 'Attestato di presenza',
+  SETTLEMENT_FE: 'Conto operatore FE',
+};
 
 export interface DocumentTemplate {
   id: string;

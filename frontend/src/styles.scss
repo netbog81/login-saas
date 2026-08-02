@@ -289,6 +289,45 @@ body {
   }
 }
 
+/* Scheda Paziente (workspace istruttori) - riquadro non modale, draggable
+   & resizable. Stesso pattern di appuntamenti-dialog-pane: resize nativo
+   del browser propagato al contenuto interno (title-bar + body in flex). */
+.patient-folder-panel-pane {
+  resize: both;
+  overflow: auto;
+  min-width: 360px;
+  min-height: 400px;
+  max-width: 95vw;
+  max-height: 92vh;
+
+  .mat-mdc-dialog-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .mdc-dialog__surface {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+  }
+}
+
+/* Scheda Paziente compressa: collassata alla sola barra header.
+   Annulla i vincoli di altezza e disabilita il resize. */
+.patient-folder-panel-pane.minimized {
+  resize: none;
+  min-height: 0 !important;
+  height: auto !important;
+
+  .mat-mdc-dialog-container,
+  .mdc-dialog__surface {
+    height: auto !important;
+  }
+}
+
 /* Gym Exception Dialog - draggable & resizable
    Stessa struttura di task-message-dialog-panel per fare in modo che il
    resize nativo del browser si propaghi correttamente al contenuto interno

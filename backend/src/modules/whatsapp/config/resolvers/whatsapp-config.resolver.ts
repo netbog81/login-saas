@@ -1,7 +1,7 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { WhatsappTenantConfig } from '../entities/whatsapp-tenant-config.entity';
 import { WhatsappConfigService } from '../services/whatsapp-config.service';
 import { WhatsappConfigInput } from '../dto/whatsapp-config.input';
@@ -28,7 +28,52 @@ export class WhatsappConfigResolver {
   async upsertConfig(
     @Args('input') input: WhatsappConfigInput,
   ): Promise<WhatsappTenantConfig> {
-    return this.configService.upsertConfig(input);
+    const evolutionApiKey = input.evolutionApiKey?.trim();
+    if (evolutionApiKey && evolutionApiKey.length < 16) {
+      throw new BadRequestException(
+        'API key Evolution troppo corta (min 16 caratteri). ' +
+          'Probabile autofill del browser: cancella il campo e inserisci la chiave reale, ' +
+          'oppure lascialo vuoto per non modificarla.',
+      );
+    }
+
+    const saved = await this.configService.upsertConfig(input);
+
+    // La chiave Evolution non vive nel DB clinico: viene inoltrata al gateway,
+    // che la scrive in OpenBao e invalida la propria cache Redis (TTL 1h).
+    if (evolutionApiKey) {
+      const apiKey = input.apiKey || (await this.configService.getDecryptedApiKey());
+      if (!apiKey) {
+        throw new BadRequestException(
+          'Configurazione salvata, ma chiave Evolution NON aggiornata: API key del gateway mancante o non decifrabile.',
+        );
+      }
+      try {
+        await firstValueFrom(
+          this.httpService.post(
+            `${saved.gatewayUrl}/whatsapp/config/evolution-key`,
+            { apiKey: evolutionApiKey },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'x-tenant-id': saved.tenantApiId,
+                'x-tenant-api-key': apiKey,
+              },
+              timeout: 10000,
+            },
+          ),
+        );
+        this.logger.log(`Chiave Evolution aggiornata via gateway per tenant ${saved.tenantApiId}`);
+      } catch (error: any) {
+        const gatewayMessage = error?.response?.data?.message;
+        this.logger.error(`Aggiornamento chiave Evolution fallito: ${error?.message} | ${JSON.stringify(error?.response?.data)}`);
+        throw new BadRequestException(
+          `Configurazione salvata, ma chiave Evolution NON aggiornata: ${gatewayMessage || error?.message}`,
+        );
+      }
+    }
+
+    return saved;
   }
 
   @Mutation(() => Boolean, { name: 'testWhatsappConnection' })

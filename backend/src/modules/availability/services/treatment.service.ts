@@ -1592,6 +1592,27 @@ export class TreatmentService {
       return;
     }
 
+    // 2026-07-15 — Il replace (delete+reinsert) perdeva i campi per-riga
+    // non presenti nell'input: operatore esecutore ("Eseguito da", che
+    // decide a chi va il compenso) e descrizione fattura personalizzata.
+    // Li conserviamo riabbinandoli per serviceId (FIFO sui duplicati).
+    const existingRows = await treatmentServiceRepo.find({
+      where: { treatmentId },
+      order: { orderPosition: 'ASC' },
+    });
+    const carryOverByService = new Map<
+      string,
+      Array<{ executorOperatorId: string | null; invoiceLineDescription: string | null }>
+    >();
+    for (const row of existingRows) {
+      const queue = carryOverByService.get(row.serviceId) ?? [];
+      queue.push({
+        executorOperatorId: row.executorOperatorId ?? null,
+        invoiceLineDescription: row.invoiceLineDescription ?? null,
+      });
+      carryOverByService.set(row.serviceId, queue);
+    }
+
     // Replace: elimina le righe esistenti e reinserisce quelle nuove.
     await treatmentServiceRepo.delete({ treatmentId });
 
@@ -1610,6 +1631,8 @@ export class TreatmentService {
         }
       }
 
+      const carried = carryOverByService.get(svc.serviceId)?.shift();
+
       const treatmentService = treatmentServiceRepo.create({
         treatmentId,
         serviceId: svc.serviceId,
@@ -1617,6 +1640,8 @@ export class TreatmentService {
         duration: svc.duration,
         orderPosition: svc.orderPosition ?? i,
         isCustomPrice: svc.isCustomPrice ?? false,
+        executorOperatorId: (carried?.executorOperatorId ?? null) as any,
+        invoiceLineDescription: (carried?.invoiceLineDescription ?? null) as any,
       });
       await treatmentServiceRepo.save(treatmentService);
     }
@@ -3111,8 +3136,14 @@ export class TreatmentService {
       serviceId: string;
       description?: string;
       price?: number;
+      /**
+       * 2026-07-15 — Operatore esecutore esplicito della riga ("Eseguito
+       * da"). Assente/null = la riga è dell'operatore del trattamento.
+       * NON viene più stampato l'utente loggato: attribuiva i compensi a
+       * chi inseriva la riga (segreteria/admin) invece che all'operatore.
+       */
+      executorOperatorId?: string | null;
     },
-    actorUserId?: string,
   ): Promise<Treatment> {
     const treatment = await this.findById(input.treatmentId);
     if (!treatment) {
@@ -3150,6 +3181,23 @@ export class TreatmentService {
             : Number(service.defaultPrice ?? 0);
       }
 
+      // Esecutore esplicito: deve essere un operatore esistente e non
+      // archiviato. Se coincide con l'operatore del trattamento lo
+      // normalizziamo a NULL (fallback implicito, nessun override).
+      let executorOperatorId: string | null = null;
+      if (input.executorOperatorId) {
+        const executor = await manager
+          .getRepository(Operator)
+          .findOne({ where: { id: input.executorOperatorId } });
+        if (!executor) {
+          throw new BadRequestException(
+            `Operatore esecutore ${input.executorOperatorId} non trovato o archiviato`,
+          );
+        }
+        executorOperatorId =
+          executor.id === treatment.operatorId ? null : executor.id;
+      }
+
       const existing = await tsRepo.find({ where: { treatmentId: input.treatmentId } });
       const maxOrder = existing.reduce(
         (m, r) => Math.max(m, r.orderPosition ?? 0),
@@ -3163,7 +3211,7 @@ export class TreatmentService {
         isCustomPrice,
         invoiceLineDescription: input.description?.trim() || (null as any),
         orderPosition: maxOrder + 1,
-        executedByOperatorId: (actorUserId ?? null) as any,
+        executorOperatorId: executorOperatorId as any,
       });
       await tsRepo.save(row);
 
@@ -3221,6 +3269,59 @@ export class TreatmentService {
       timestamp: new Date(),
     });
     return this.requireFullTreatment(row.treatmentId);
+  }
+
+  /**
+   * 2026-07-15 — Cambia l'operatore esecutore di una riga servizio
+   * ("Eseguito da"). `executorOperatorId` null = torna al fallback
+   * sull'operatore del trattamento. Vietato su trattamento chiuso dalla
+   * segreteria o già fatturato (stesse guardie di add/remove riga).
+   */
+  async updateTreatmentServiceExecutor(
+    treatmentServiceId: string,
+    executorOperatorId: string | null,
+  ): Promise<TreatmentServiceEntity> {
+    const row = await this.treatmentServiceRepo.findOne({
+      where: { id: treatmentServiceId },
+    });
+    if (!row) {
+      throw new NotFoundException(`Riga servizio ${treatmentServiceId} non trovata`);
+    }
+    const treatment = await this.findById(row.treatmentId);
+    if (!treatment) {
+      throw new NotFoundException(`Trattamento ${row.treatmentId} non trovato`);
+    }
+    if (treatment.isInvoicedToPatient) {
+      throw new BadRequestException(
+        'Il trattamento è già fatturato: le righe non sono modificabili.',
+      );
+    }
+    if (treatment.status === TreatmentStatus.CLOSED) {
+      throw new BadRequestException(
+        'Trattamento chiuso dalla segreteria: riaprirlo per modificare le righe.',
+      );
+    }
+
+    let normalized: string | null = null;
+    if (executorOperatorId) {
+      const executor = await this.dataSource
+        .getRepository(Operator)
+        .findOne({ where: { id: executorOperatorId } });
+      if (!executor) {
+        throw new BadRequestException(
+          `Operatore esecutore ${executorOperatorId} non trovato o archiviato`,
+        );
+      }
+      normalized = executor.id === treatment.operatorId ? null : executor.id;
+    }
+
+    await this.treatmentServiceRepo.update(treatmentServiceId, {
+      executorOperatorId: normalized as any,
+    });
+    return this.treatmentServiceRepo.findOneOrFail({
+      where: { id: treatmentServiceId },
+      relations: { service: true, executorOperator: true },
+    });
   }
 
   /**

@@ -15,6 +15,7 @@ import { PatientTreatmentsDialogComponent } from '../patient-treatments-dialog/p
 import { PatientVouchersDialogComponent } from '../../../features/voucher-fe/components/patient-vouchers-dialog/patient-vouchers-dialog.component';
 import { PatientTableComponent } from '../../../features/operators-new/components/patients-list/patient-table/patient-table.component';
 import { PatientFolderDialogComponent } from '../../../features/operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
+import { tokenizeQuery, matchesAllTokens } from '../../../shared/utils/token-match';
 
 type StatoAnagrafica = 'BOZZA' | 'PARZIALE' | 'COMPLETA' | 'DA_VERIFICARE';  // GraphQL enum key names
 
@@ -49,6 +50,12 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   // Filter state
   searchTerm = '';
   selectedStateFilter: StatoAnagrafica | null = null;
+  /**
+   * `true` quando `patients` contiene i risultati della ricerca remota sul
+   * registry: in quel caso `applyFilters` salta il filtro testuale locale
+   * (vedi commento del metodo).
+   */
+  private remoteResults = false;
 
   // Stats
   totalPatients = 0;
@@ -124,6 +131,7 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (patients) => {
           this.patients = patients;
+          this.remoteResults = false;
           this.applyFilters();
           this.updateStats();
           this.loading = false;
@@ -149,19 +157,23 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
    * - 0–2 caratteri  → filtro client-side sui pazienti già caricati (max 100)
    * - 3+ caratteri   → ricerca remota (POST /subjects/global-search del registry,
    *                    full-text + trigrammi + fonetico, intero dataset 3700+)
+   *
+   * Sui risultati remoti il filtro testuale NON viene riapplicato: il registry
+   * ha già filtrato sull'intero dataset e un secondo filtro locale può solo
+   * togliere match validi (es. il fonetico "Rosi" → "Rossi", che substring
+   * non è).
    */
   applyFilters(): void {
     let result = [...this.patients];
 
-    if (this.searchTerm.trim()) {
-      const search = this.searchTerm.toLowerCase();
+    const term = this.searchTerm.trim();
+    if (term && !this.remoteResults) {
+      const tokens = tokenizeQuery(term);
       result = result.filter(p =>
-        p.nome?.toLowerCase().includes(search) ||
-        p.cognome?.toLowerCase().includes(search) ||
-        p.codiceFiscale?.toLowerCase().includes(search) ||
-        p.telefono?.includes(search) ||
-        p.cellulare?.includes(search) ||
-        p.email?.toLowerCase().includes(search)
+        matchesAllTokens(
+          [p.nome, p.cognome, p.codiceFiscale, p.telefono, p.cellulare, p.email],
+          tokens,
+        ),
       );
     }
 
@@ -184,6 +196,7 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
           .subscribe({
             next: (patients) => {
               this.patients = patients;
+              this.remoteResults = true;
               this.applyFilters();
               this.updateStats();
               this.loading = false;
@@ -198,7 +211,8 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
         // Box vuoto → ricarica i primi 100
         this.loadPatients();
       } else {
-        // 1-2 char → filtro client-side sui 100 già caricati
+        // 1-2 char → filtro client-side sulla lista già caricata
+        this.remoteResults = false;
         this.applyFilters();
       }
     });

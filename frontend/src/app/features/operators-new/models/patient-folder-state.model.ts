@@ -4,7 +4,7 @@
  */
 
 import { Patient } from '../../../models/patient.model';
-import { TherapeuticPath, PathTreatment, Anamnesis, PathDocument } from '../../../models/therapeutic-path.model';
+import { TherapeuticPath, PathTreatment, Anamnesis } from '../../../models/therapeutic-path.model';
 
 /**
  * Tab disponibili nella scheda paziente

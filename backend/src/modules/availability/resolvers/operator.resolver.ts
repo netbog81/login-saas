@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID, Context, ObjectType, Field, Int } from '@nestjs/graphql';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Operator } from '../entities/operator.entity';
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import {
@@ -19,6 +19,7 @@ import {
 } from '../../users/decorators/current-user.decorator';
 import { AppUserService } from '../../users/services/app-user.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
 /**
  * Conteggio dipendenze esposto via GraphQL per il dialog di conferma
@@ -48,6 +49,7 @@ class DeleteOperatorResultType {
   @Field(() => OperatorDependencyCountType) dependencies: OperatorDependencyCount;
 }
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => Operator)
 export class OperatorResolver {
   private readonly logger = new Logger(OperatorResolver.name);
@@ -150,6 +152,16 @@ export class OperatorResolver {
     @Args('input') input: UpdateOperatorInput,
   ): Promise<Operator> {
     return this.operatorService.update(id, input);
+  }
+
+  /**
+   * Ri-emette `operator.upserted` per tutti gli operatori del tenant
+   * (bootstrap conti operatori accounting). Stesso modello di
+   * resyncServicesToAccounting.
+   */
+  @Mutation(() => Int, { name: 'resyncOperatorsToAccounting' })
+  async resyncOperatorsToAccounting(): Promise<number> {
+    return this.operatorService.resyncAllToAccounting();
   }
 
   /**

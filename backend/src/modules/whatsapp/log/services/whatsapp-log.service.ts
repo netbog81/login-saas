@@ -12,6 +12,7 @@ import {
 } from '../../enums/whatsapp-enums';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { tokenizeSearch, gluedColumnSql } from '../utils/search-tokens';
 export interface CreateLogData {
   appointmentId?: string;
   appointmentIds?: string[];
@@ -167,6 +168,15 @@ export class WhatsappLogService {
       : null;
   }
 
+  /** Ultimo nome paziente noto per un numero: usato dove non c'è un appuntamento. */
+  async findPatientNameByPhone(phoneNumber: string): Promise<string | undefined> {
+    const log = await this.logRepo.findOne({
+      where: { phoneNumber },
+      order: { createdAt: 'DESC' },
+    });
+    return log?.patientName ?? undefined;
+  }
+
   async cancelByAppointmentId(appointmentId: string): Promise<boolean> {
     const log = await this.logRepo.findOne({
       where: {
@@ -188,8 +198,15 @@ export class WhatsappLogService {
     const qb = this.logRepo.createQueryBuilder('log');
 
     if (filters.patientName) {
-      qb.andWhere('log.patientName ILIKE :name', {
-        name: `%${filters.patientName}%`,
+      // `patientName` è "Cognome Nome": cerchiamo ogni parola separatamente
+      // (AND) così l'ordine digitato dall'utente è indifferente; in OR la
+      // forma incollata per "D'Angelo"/"De Luca" digitati "dangelo"/"deluca".
+      const glued = gluedColumnSql('log."patientName"');
+      tokenizeSearch(filters.patientName).forEach((token, i) => {
+        qb.andWhere(
+          `(log."patientName" ILIKE :nameTok${i} OR ${glued} ILIKE :nameTok${i})`,
+          { [`nameTok${i}`]: `%${token}%` },
+        );
       });
     }
 

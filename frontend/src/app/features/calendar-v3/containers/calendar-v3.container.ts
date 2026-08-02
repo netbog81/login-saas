@@ -78,6 +78,7 @@ import { InstructorWorkspaceStateService } from '../../instructors/services/inst
 import { CalendarV2Config, CalendarOperator, OperatorGridData, CellClickEvent, EventClickEvent, DragMoveEvent, AvailableSlotPosition, SearchFilters } from '../../calendar-v2/models/calendar-v2.model';
 import { isAppointmentWithinAvailability } from '../../calendar-v2/services/availability-check.util';
 import { ConfirmMatDialogComponent, ConfirmMatDialogData } from '../../../shared/components/confirm-mat-dialog';
+import { RecurringDeleteDialogComponent, RecurringDeleteDialogData, RecurringDeleteDialogResult } from '../../../shared/components/recurring-scope-panel/recurring-delete-dialog.component';
 import { Appointment } from '../../../models/appointment.model';
 import { AvailabilityAppointment } from '../../../graphql/generated/types';
 import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
@@ -1320,10 +1321,12 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (event: any) => {
-          if (event.type === 'appointment_status_changed') {
-            if (this.config.viewMode === 'operators') {
-              this.reloadCurrentView();
-            }
+          // Appuntamenti: cambi di stato (auto-attendance, conferme) e
+          // creazione/modifica/cancellazione fatte da altri utenti
+          // (appointment_changed, 2026-07-29). Ricarica in ENTRAMBE le
+          // modalità: la griglia palestra mostra gli stessi appuntamenti.
+          if (['appointment_status_changed', 'appointment_changed'].includes(event.type)) {
+            this.reloadCurrentView();
           }
           // Cambio di stato di un trattamento gia' in lista: refetch mirato del
           // singolo trattamento, cosi' la sidebar (badge stato + dettagli) si
@@ -1336,6 +1339,11 @@ export class CalendarV3Container implements OnInit, OnDestroy {
           // Creazione/eliminazione (o status_changed di un trattamento non in
           // lista, che potrebbe doverci entrare): reload completo.
           if (['treatment_created', 'treatment_status_changed', 'treatment_deleted'].includes(event.type)) {
+            this.reloadCurrentView();
+          }
+          // Struttura orari cambiata da un altro utente (template, eccezioni,
+          // assenze, festività, palestra): la griglia disponibilità è stale.
+          if (event.type === 'availability_changed') {
             this.reloadCurrentView();
           }
         },
@@ -1631,6 +1639,26 @@ export class CalendarV3Container implements OnInit, OnDestroy {
 
   /** Conferma + elimina una prenotazione palestra. */
   private confirmDeleteGymAppointment(appointment: GymAppointment): void {
+    // Prenotazione ricorrente: la conferma passa dal dialog con scelta scope
+    // (solo questa / questa e successive / intera serie / intervallo date).
+    if (appointment.isRecurring && appointment.recurringGroupId) {
+      const ref = this.dialog.open(RecurringDeleteDialogComponent, {
+        width: '560px',
+        data: {
+          appointmentId: appointment.id,
+          appointmentDate: String(appointment.appointmentDate).slice(0, 10),
+          recurringGroupId: appointment.recurringGroupId,
+          clientName: appointment.clientName,
+        } as RecurringDeleteDialogData,
+      });
+      ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: RecurringDeleteDialogResult | undefined) => {
+        if (result && result.deletedCount > 0) {
+          this.reloadCurrentView();
+        }
+      });
+      return;
+    }
+
     const ref = this.dialog.open(ConfirmMatDialogComponent, {
       width: '400px',
       data: {

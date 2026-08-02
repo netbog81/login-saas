@@ -21,10 +21,12 @@ import { CommonModule } from '@angular/common';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDialog } from '@angular/material/dialog';
 import { Subject, combineLatest } from 'rxjs';
 import { takeUntil, filter, distinctUntilChanged } from 'rxjs/operators';
 
 import { AvailabilityAppointment } from '../../../graphql/generated/types';
+import { PatientService } from '../../../services/patient.service';
 import { InstructorWorkspaceStateService } from '../services/instructor-workspace-state.service';
 import { InstructorWorkspaceService } from '../services/instructor-workspace.service';
 import {
@@ -36,6 +38,10 @@ import {
 } from '../models/instructor-workspace.model';
 import { SlotGroupCardComponent } from '../components/slot-group-card/slot-group-card.component';
 import { InstructorWeekGridComponent } from '../components/instructor-week-grid/instructor-week-grid.component';
+import {
+  PatientFolderPanelContainer,
+  PATIENT_FOLDER_PANEL_CLASS,
+} from './patient-folder-panel.container';
 
 @Component({
   selector: 'app-instructor-appointments-container',
@@ -89,7 +95,9 @@ import { InstructorWeekGridComponent } from '../components/instructor-week-grid/
             </div>
           }
           @for (slot of daySlots; track slot.key) {
-            <app-slot-group-card [slotGroup]="slot"></app-slot-group-card>
+            <app-slot-group-card
+              [slotGroup]="slot"
+              (openFolder)="onOpenPatientFolder($event)"></app-slot-group-card>
           }
         </div>
       }
@@ -188,8 +196,45 @@ export class InstructorAppointmentsContainer implements OnInit, OnDestroy {
   constructor(
     public stateService: InstructorWorkspaceStateService,
     private workspaceService: InstructorWorkspaceService,
+    private patientService: PatientService,
+    private dialog: MatDialog,
     private cdr: ChangeDetectorRef,
   ) {}
+
+  /**
+   * Apre la scheda paziente in un riquadro non modale, trascinabile e
+   * comprimibile. Carica prima l'oggetto Patient completo (la card fornisce
+   * solo il patientId), poi apre il pannello. Un solo pannello per paziente:
+   * se già aperto, lo riporta a fuoco senza duplicarlo.
+   */
+  onOpenPatientFolder(patientId: string): void {
+    const dialogId = `patient-folder-panel-${patientId}`;
+    if (this.dialog.getDialogById(dialogId)) {
+      return;
+    }
+
+    this.patientService.getPatient(patientId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (patient) => {
+          if (!patient) return;
+          this.dialog.open(PatientFolderPanelContainer, {
+            id: dialogId,
+            data: {
+              patient,
+              operatorId: this.stateService.selectedOperatorId,
+            },
+            width: '1100px',
+            height: '80vh',
+            maxWidth: '95vw',
+            hasBackdrop: false,
+            autoFocus: false,
+            restoreFocus: false,
+            panelClass: PATIENT_FOLDER_PANEL_CLASS,
+          });
+        },
+      });
+  }
 
   ngOnInit(): void {
     // Reagisce a cambi di operatore o data

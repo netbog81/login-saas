@@ -1,4 +1,4 @@
-import { MergeFieldDef, MergeFieldData } from '../../../shared/template-editor';
+import { MergeFieldDef, MergeFieldData } from '@curandis/template-editor';
 
 /**
  * Catalogo dei campi dinamici disponibili nel template "Attestato di

@@ -8,19 +8,36 @@
  * - Solo Input, nessuna logica business
  */
 
-import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/generated/types';
 
 @Component({
   selector: 'app-patient-slot-card',
   standalone: true,
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, MatIconModule, MatButtonModule, MatTooltipModule],
   template: `
     <div class="patient-card" [class]="'status-' + appointment.bookingStatus.toLowerCase()">
-      <div class="patient-name">
-        {{ appointment.clientName }}
+      <div class="patient-name-row">
+        <div class="patient-name">
+          {{ appointment.clientName }}
+        </div>
+        <!-- Apre la scheda paziente in un pannello trascinabile.
+             Mostrato solo se l'appuntamento è collegato a un paziente
+             anagrafico (patientId presente). -->
+        @if (appointment.patientId) {
+          <button
+            mat-icon-button
+            class="folder-btn"
+            matTooltip="Apri scheda paziente"
+            aria-label="Apri scheda paziente"
+            (click)="openFolder.emit(appointment.patientId)">
+            <mat-icon>folder_shared</mat-icon>
+          </button>
+        }
       </div>
       <div class="patient-status">
         <span class="status-badge" [class]="'badge-' + appointment.bookingStatus.toLowerCase()">
@@ -78,10 +95,40 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
       text-decoration: line-through;
     }
 
+    .patient-name-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+
     .patient-name {
       font-weight: 500;
       font-size: 0.875rem;
       color: #1e293b;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Icona cartella: dimensione contenuta (34px) ma comodo target di
+       click, allineata a destra del nome. */
+    .folder-btn {
+      flex-shrink: 0;
+      width: 34px;
+      height: 34px;
+      line-height: 34px;
+      color: #4338ca;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      &:hover {
+        background: #e0e7ff;
+      }
     }
 
     .patient-status {
@@ -135,6 +182,9 @@ import { AvailabilityAppointment, BookingStatus } from '../../../../graphql/gene
 })
 export class PatientSlotCardComponent {
   @Input({ required: true }) appointment!: AvailabilityAppointment;
+
+  /** Richiesta apertura scheda paziente. Emette il patientId. */
+  @Output() openFolder = new EventEmitter<string>();
 
   getStatusLabel(status: BookingStatus): string {
     switch (status) {

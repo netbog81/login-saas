@@ -1,8 +1,10 @@
 import { Resolver, Query, Mutation, Args, ID, ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
+import { validate as isUuid } from 'uuid';
 import { AppointmentConflictService, ConflictStats } from '../services/appointment-conflict.service';
 import { ConflictRevalidationService } from '../services/conflict-revalidation.service';
 import { AvailabilityAppointment, ConflictReason } from '../entities/availability-appointment.entity';
 import { GraphQLJSONObject } from 'graphql-type-json';
+import { CurrentUser, CurrentUserContext } from '../../users/decorators/current-user.decorator';
 
 /**
  * Enum per azioni di risoluzione conflitto
@@ -129,6 +131,19 @@ export class AppointmentConflictResolver {
   /**
    * Risolvi un singolo conflitto
    */
+  /**
+   * L'attore della risoluzione viene dal JWT (userId = sub Keycloak).
+   * L'argomento resolvedBy resta per retro-compatibilità ma viene usato
+   * solo se è un uuid valido: i client storici passavano il placeholder
+   * 'current-user-id', che rompeva l'INSERT del log (colonna uuid).
+   */
+  private effectiveResolvedBy(
+    resolvedBy: string,
+    user?: CurrentUserContext,
+  ): string | undefined {
+    return user?.userId ?? (isUuid(resolvedBy) ? resolvedBy : undefined);
+  }
+
   @Mutation(() => AvailabilityAppointment, { name: 'resolveAppointmentConflict' })
   async resolveConflict(
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
@@ -137,7 +152,8 @@ export class AppointmentConflictResolver {
     @Args('newDate', { nullable: true }) newDate?: string,
     @Args('newStartTime', { nullable: true }) newStartTime?: string,
     @Args('newEndTime', { nullable: true }) newEndTime?: string,
-    @Args('notes', { nullable: true }) notes?: string
+    @Args('notes', { nullable: true }) notes?: string,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<AvailabilityAppointment> {
     const newData = (newDate && newStartTime && newEndTime)
       ? { date: newDate, startTime: newStartTime, endTime: newEndTime }
@@ -146,7 +162,7 @@ export class AppointmentConflictResolver {
     return this.conflictService.resolveConflict(
       appointmentId,
       action as 'keep' | 'reschedule' | 'cancel',
-      resolvedBy,
+      this.effectiveResolvedBy(resolvedBy, user),
       newData,
       notes
     );
@@ -160,7 +176,8 @@ export class AppointmentConflictResolver {
     @Args('appointmentIds', { type: () => [ID] }) appointmentIds: string[],
     @Args('action', { type: () => ConflictResolutionAction }) action: ConflictResolutionAction,
     @Args('resolvedBy', { type: () => ID }) resolvedBy: string,
-    @Args('notes', { nullable: true }) notes?: string
+    @Args('notes', { nullable: true }) notes?: string,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<AvailabilityAppointment[]> {
     // Solo keep e cancel supportati per batch (reschedule richiede dati individuali)
     if (action === ConflictResolutionAction.RESCHEDULE) {
@@ -170,7 +187,7 @@ export class AppointmentConflictResolver {
     return this.conflictService.resolveMultipleConflicts(
       appointmentIds,
       action as 'keep' | 'cancel',
-      resolvedBy,
+      this.effectiveResolvedBy(resolvedBy, user),
       notes
     );
   }

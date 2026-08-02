@@ -69,6 +69,7 @@ export const PREVIEW_OPERATOR_ABSENCE_IMPACT = gql`
           name
         }
       }
+      removedAvailabilityCount
       attendedWithoutTreatment {
         id
         appointmentDate
@@ -97,6 +98,7 @@ export const CREATE_OPERATOR_ABSENCES = gql`
     createOperatorAbsences(input: $input) {
       conflictCount
       skippedOverlaps
+      removedAvailabilityCount
       sourceGroupId
       exceptions {
         ...AbsenceExceptionFields
@@ -116,4 +118,144 @@ export const DELETE_ABSENCE_GROUP = gql`
   mutation DeleteAbsenceGroup($sourceGroupId: ID!) {
     deleteAbsenceGroup(sourceGroupId: $sourceGroupId)
   }
+`;
+
+// ==================== DISPONIBILITÀ STRAORDINARIE ====================
+
+/** Frammento riusato dalle anteprime di rimozione. */
+const IMPACTED_APPOINTMENT_FIELDS = `
+  id
+  appointmentDate
+  startTime
+  endTime
+  clientName
+  patientId
+  bookingStatus
+  operatorId
+  operator {
+    id
+    name
+    surname
+  }
+  service {
+    id
+    name
+  }
+`;
+
+export const PREVIEW_OPERATOR_AVAILABILITY_IMPACT = gql`
+  query PreviewOperatorAvailabilityImpact($input: CreateOperatorAvailabilityInput!) {
+    previewOperatorAvailabilityImpact(input: $input) {
+      creatableCount
+      blockers {
+        operatorId
+        operatorName
+        date
+        reason
+      }
+      alreadyCovered {
+        operatorId
+        operatorName
+        date
+        windows
+      }
+    }
+  }
+`;
+
+export const CREATE_OPERATOR_AVAILABILITY = gql`
+  mutation CreateOperatorAvailability($input: CreateOperatorAvailabilityInput!) {
+    createOperatorAvailability(input: $input) {
+      createdCount
+      sourceGroupId
+      blockers {
+        operatorId
+        operatorName
+        date
+        reason
+      }
+      alreadyCovered {
+        operatorId
+        operatorName
+        date
+        windows
+      }
+      exceptions {
+        ...AbsenceExceptionFields
+      }
+    }
+  }
+  ${ABSENCE_EXCEPTION_FRAGMENT}
+`;
+
+export const PREVIEW_AVAILABILITY_REMOVAL_IMPACT = gql`
+  query PreviewAvailabilityRemovalImpact($exceptionIds: [ID!]!) {
+    previewAvailabilityRemovalImpact(exceptionIds: $exceptionIds) {
+      ${IMPACTED_APPOINTMENT_FIELDS}
+    }
+  }
+`;
+
+export const PREVIEW_GROUP_REMOVAL_IMPACT = gql`
+  query PreviewGroupRemovalImpact($sourceGroupId: ID!) {
+    previewGroupRemovalImpact(sourceGroupId: $sourceGroupId) {
+      ${IMPACTED_APPOINTMENT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_EXCEPTION_GROUP = gql`
+  mutation DeleteExceptionGroup($sourceGroupId: ID!) {
+    deleteExceptionGroup(sourceGroupId: $sourceGroupId) {
+      deleted
+      conflictCount
+    }
+  }
+`;
+
+// ==================== CAMBIO ORARIO ====================
+
+export const PREVIEW_SCHEDULE_CHANGE_IMPACT = gql`
+  query PreviewScheduleChangeImpact($input: CreateScheduleChangeInput!) {
+    previewScheduleChangeImpact(input: $input) {
+      creatableCount
+      blockers {
+        operatorId
+        operatorName
+        date
+        reason
+      }
+      days {
+        operatorId
+        operatorName
+        date
+        currentWindows
+        lostWindows
+        gainedWindows
+      }
+      conflicts {
+        ${IMPACTED_APPOINTMENT_FIELDS}
+      }
+    }
+  }
+`;
+
+export const CREATE_SCHEDULE_CHANGE = gql`
+  mutation CreateScheduleChange($input: CreateScheduleChangeInput!) {
+    createScheduleChange(input: $input) {
+      createdCount
+      conflictCount
+      sourceGroupId
+      blockers {
+        operatorId
+        operatorName
+        date
+        reason
+      }
+      exceptions {
+        ...AbsenceExceptionFields
+      }
+    }
+  }
+  ${ABSENCE_EXCEPTION_FRAGMENT}
 `;

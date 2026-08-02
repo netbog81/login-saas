@@ -38,6 +38,24 @@ export enum BookingStatus {
 }
 
 /**
+ * ArrivalSource - Come è stato registrato l'arrivo del paziente.
+ * Serve a distinguere in statistica un ritardo MISURATO (qualcuno ha
+ * cliccato "presentato" quando il paziente è entrato davvero) da uno
+ * DICHIARATO a posteriori, e da quello dedotto dalla revoca di un no-show.
+ */
+export enum ArrivalSource {
+  MANUAL_SECRETARY = 'MANUAL_SECRETARY',   // Segreteria, dal calendario
+  MANUAL_OPERATOR = 'MANUAL_OPERATOR',     // Operatore/istruttore, dalla sua pagina
+  NO_SHOW_REVERT = 'NO_SHOW_REVERT',       // Dedotto: era no-show, poi presentato
+  WAITING_ROOM = 'WAITING_ROOM',           // Check-in sala d'attesa (predisposto)
+}
+
+registerEnumType(ArrivalSource, {
+  name: 'ArrivalSource',
+  description: 'Come è stato registrato l\'arrivo del paziente',
+});
+
+/**
  * ConflictReason - Motivo del conflitto con disponibilità
  */
 export enum ConflictReason {
@@ -45,7 +63,8 @@ export enum ConflictReason {
   OPERATOR_SICK = 'operator_sick',            // Malattia operatore
   OPERATOR_VACATION = 'operator_vacation',    // Ferie operatore
   OPERATOR_UNAVAILABLE = 'operator_unavailable', // Altro motivo assenza
-  RECURRING_APPOINTMENT = 'recurring_appointment' // Occorrenza serie ricorrente in conflitto
+  RECURRING_APPOINTMENT = 'recurring_appointment', // Occorrenza serie ricorrente in conflitto
+  AVAILABILITY_REMOVED = 'availability_removed' // Disponibilità straordinaria rimossa dopo la prenotazione
 }
 
 // Register enums for GraphQL
@@ -363,6 +382,55 @@ export class AvailabilityAppointment {
   @Field({ nullable: true })
   @Column('text', { nullable: true })
   operatorNotes?: string;
+
+  // ==================== RITARDI (gestione assenze) ====================
+
+  /**
+   * Il paziente era stato segnato NO_SHOW e poi si è presentato
+   * ("ritardatario conclamato"). Impostato da `markAttended` quando la
+   * transizione arriva da NO_SHOW; non viene mai azzerato, è storia.
+   */
+  @Field()
+  @Column({ default: false })
+  wasNoShowReverted: boolean;
+
+  /**
+   * Orario di arrivo effettivo del paziente. Valorizzato SOLO sui passaggi
+   * a "presentato" fatti a mano (segreteria o operatore) o sulla marcatura
+   * esplicita del ritardo: il cron auto-attendance marca ATTENDED all'orario
+   * teorico e falserebbe il dato, quindi non lo scrive mai.
+   */
+  @Field({ nullable: true })
+  @Column('timestamp', { nullable: true })
+  arrivedAt?: Date;
+
+  /**
+   * Minuti di ritardo rispetto all'orario di inizio previsto (>= 0).
+   * Derivato da `arrivedAt`, oppure inserito a mano quando l'arrivo viene
+   * registrato a posteriori.
+   */
+  @Field(() => Int, { nullable: true })
+  @Column('integer', { nullable: true })
+  lateMinutes?: number;
+
+  /**
+   * Utente che ha registrato l'arrivo/ritardo.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  arrivalMarkedBy?: string;
+
+  /**
+   * Come è stato registrato l'arrivo: distingue un ritardo misurato sul
+   * momento da uno dichiarato a posteriori.
+   */
+  @Field(() => ArrivalSource, { nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  arrivalSource?: ArrivalSource;
 
   // ==================== NON RETRIBUITO ====================
 

@@ -1,9 +1,11 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, UseInterceptors } from '@nestjs/common';
 import { OperatorServiceService } from '../services/operator-service.service';
 import { OperatorService } from '../entities/operator-service.entity';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 // import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => OperatorService)
 export class OperatorServiceResolver {
   constructor(private readonly operatorServiceService: OperatorServiceService) {}

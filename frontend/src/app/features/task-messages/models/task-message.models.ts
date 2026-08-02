@@ -6,6 +6,13 @@ export enum TaskMessageStatus {
   DELETED = 'DELETED',
 }
 
+/** Gruppi destinatario (valori = enum GraphQL TaskMessageRecipientGroup) */
+export type TaskMessageRecipientGroup = 'SECRETARY';
+
+export const RECIPIENT_GROUP_LABELS: Record<TaskMessageRecipientGroup, string> = {
+  SECRETARY: 'Segreteria',
+};
+
 export interface TaskMessageUser {
   id: string;
   name: string;
@@ -17,9 +24,12 @@ export interface TaskMessage {
   gatewayMessageId: string;
   tenantId: string;
   senderUserId: string;
-  recipientUserId: string;
+  recipientUserId?: string | null;
+  recipientGroup?: TaskMessageRecipientGroup | null;
   senderUser?: TaskMessageUser;
   recipientUser?: TaskMessageUser;
+  readByUser?: TaskMessageUser | null;
+  completedByUser?: TaskMessageUser | null;
   content: string;
   status: TaskMessageStatus;
   availableFrom?: string;
@@ -40,7 +50,8 @@ export interface TaskMessageResult {
 }
 
 export interface CreateTaskMessageInput {
-  recipientUserId: string;
+  recipientUserId?: string;
+  recipientGroup?: TaskMessageRecipientGroup;
   content: string;
   availableFrom?: string;
 }

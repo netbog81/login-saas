@@ -26,21 +26,21 @@ const MIN_SECRET_LENGTH = 16;
   ],
   template: `
     <div class="config-form">
-      <mat-form-field appearance="outline" class="full-width">
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
         <mat-label>URL Gateway</mat-label>
         <input matInput [(ngModel)]="gatewayUrl"
                placeholder="http://message_gateway:3000" />
         <mat-hint>URL del microservizio WhatsApp Gateway</mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width">
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
         <mat-label>Tenant ID</mat-label>
         <input matInput [(ngModel)]="tenantApiId"
                placeholder="es. bdq" />
         <mat-hint>Deve corrispondere al nome istanza Evolution API</mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width">
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
         <mat-label>API Key</mat-label>
         <input matInput [(ngModel)]="apiKey"
                [name]="apiKeyFieldName"
@@ -53,7 +53,7 @@ const MIN_SECRET_LENGTH = 16;
         <mat-hint [class.warn]="apiKey.length > 0">{{ apiKeyHint }}</mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width">
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
         <mat-label>Webhook Secret</mat-label>
         <input matInput [(ngModel)]="webhookSecret"
                [name]="webhookSecretFieldName"
@@ -66,7 +66,27 @@ const MIN_SECRET_LENGTH = 16;
         <mat-hint [class.warn]="webhookSecret.length > 0">{{ webhookSecretHint }}</mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width">
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+        <mat-label>API Key Evolution</mat-label>
+        <input matInput [(ngModel)]="evolutionApiKey"
+               [name]="evolutionApiKeyFieldName"
+               autocomplete="new-password"
+               [type]="showEvolutionKey ? 'text' : 'password'"
+               placeholder="Chiave istanza Evolution (solo per rotazione)" />
+        <button mat-icon-button matSuffix (click)="showEvolutionKey = !showEvolutionKey">
+          <mat-icon>{{ showEvolutionKey ? 'visibility_off' : 'visibility' }}</mat-icon>
+        </button>
+        <mat-hint [class.warn]="evolutionApiKey.length > 0">{{ evolutionApiKeyHint }}</mat-hint>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+        <mat-label>Finestra recap (secondi)</mat-label>
+        <input matInput type="number" [(ngModel)]="recapBufferSeconds"
+               min="30" max="600" />
+        <mat-hint [class.warn]="!isRecapBufferValid">{{ recapBufferHint }}</mat-hint>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
         <mat-label>Giorni di conservazione log</mat-label>
         <input matInput type="number" [(ngModel)]="retentionDays"
                min="30" max="3650" />
@@ -88,6 +108,16 @@ const MIN_SECRET_LENGTH = 16;
           Invia notifica di cancellazione
         </mat-slide-toggle>
         <div class="toggle-hint">Invia un messaggio WhatsApp al paziente quando un appuntamento viene cancellato</div>
+      </div>
+
+      <div class="toggle-row">
+        <mat-slide-toggle [(ngModel)]="sendUpdateNotification" color="primary">
+          Invia notifica di spostamento
+        </mat-slide-toggle>
+        <div class="toggle-hint">
+          Invia un messaggio WhatsApp al paziente quando cambia data o ora dell'appuntamento.
+          Il promemoria 24h viene comunque riprogrammato sul nuovo orario.
+        </div>
       </div>
 
       <div class="form-actions">
@@ -128,7 +158,9 @@ const MIN_SECRET_LENGTH = 16;
     .config-form {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      /* 16px e non 8: con subscriptSizing="dynamic" gli hint occupano spazio
+         reale e su più righe finivano a ridosso del campo successivo. */
+      gap: 16px;
     }
 
     .full-width {
@@ -195,16 +227,21 @@ export class ConfigFormComponent {
   tenantApiId = '';
   apiKey = '';
   webhookSecret = '';
+  evolutionApiKey = '';
   isActive = false;
   sendCancelNotification = false;
+  sendUpdateNotification = true;
+  recapBufferSeconds = 60;
   retentionDays = 730;
   showApiKey = false;
   showSecret = false;
+  showEvolutionKey = false;
 
   // Randomized name attributes per evitare che il browser auto-completi
   // questi campi password con credenziali salvate per il dominio.
   readonly apiKeyFieldName = `wa-cfg-${Math.random().toString(36).slice(2, 10)}`;
   readonly webhookSecretFieldName = `wa-cfg-${Math.random().toString(36).slice(2, 10)}`;
+  readonly evolutionApiKeyFieldName = `wa-cfg-${Math.random().toString(36).slice(2, 10)}`;
 
   ngOnChanges(): void {
     if (this.config) {
@@ -212,6 +249,8 @@ export class ConfigFormComponent {
       this.tenantApiId = this.config.tenantApiId || '';
       this.isActive = this.config.isActive || false;
       this.sendCancelNotification = this.config.sendCancelNotification || false;
+      this.sendUpdateNotification = this.config.sendUpdateNotification ?? true;
+      this.recapBufferSeconds = this.config.recapBufferSeconds ?? 60;
       this.retentionDays = this.config.retentionDays ?? 730;
       // Don't set apiKey/webhookSecret from config (they're masked)
     }
@@ -239,24 +278,56 @@ export class ConfigFormComponent {
     return '⚠ Verrà sovrascritto il webhook secret attualmente salvato';
   }
 
+  get evolutionApiKeyHint(): string {
+    if (this.evolutionApiKey.length === 0) {
+      return 'Chiave con cui il gateway parla con Evolution: viene scritta in OpenBao, non nel database. Lascia vuoto per non modificarla.';
+    }
+    if (this.evolutionApiKey.length < MIN_SECRET_LENGTH) {
+      return `⚠ Troppo corta (min ${MIN_SECRET_LENGTH} caratteri). Forse autofill del browser: cancella e reinserisci la chiave reale.`;
+    }
+    return '⚠ Verrà aggiornata in OpenBao e la cache del gateway sarà svuotata subito';
+  }
+
+  get isRecapBufferValid(): boolean {
+    return this.recapBufferSeconds >= 30 && this.recapBufferSeconds <= 600;
+  }
+
+  get recapBufferHint(): string {
+    if (!this.isRecapBufferValid) {
+      return '⚠ Valore ammesso: da 30 a 600 secondi';
+    }
+    // Tetto allo slittamento: min(5 × finestra, 15 min), come nel gateway.
+    const capMinutes = Math.min(this.recapBufferSeconds * 5, 900) / 60;
+    const cap = Number.isInteger(capMinutes) ? `${capMinutes}` : capMinutes.toFixed(1).replace('.', ',');
+    return (
+      `Appuntamenti presi per lo stesso paziente entro ${this.recapBufferSeconds}s finiscono in un unico ` +
+      `messaggio, e il conteggio riparte a ogni nuovo appuntamento. Il recap parte comunque entro ${cap} ` +
+      'minuti dal primo (default: 60s)'
+    );
+  }
+
   get hasInvalidSecretLength(): boolean {
     return (
       (this.apiKey.length > 0 && this.apiKey.length < MIN_SECRET_LENGTH) ||
-      (this.webhookSecret.length > 0 && this.webhookSecret.length < MIN_SECRET_LENGTH)
+      (this.webhookSecret.length > 0 && this.webhookSecret.length < MIN_SECRET_LENGTH) ||
+      (this.evolutionApiKey.length > 0 && this.evolutionApiKey.length < MIN_SECRET_LENGTH)
     );
   }
 
   onSave(): void {
-    if (this.hasInvalidSecretLength) return;
+    if (this.hasInvalidSecretLength || !this.isRecapBufferValid) return;
     const input: WhatsappConfigInput = {
       gatewayUrl: this.gatewayUrl,
       tenantApiId: this.tenantApiId,
       isActive: this.isActive,
       sendCancelNotification: this.sendCancelNotification,
+      sendUpdateNotification: this.sendUpdateNotification,
+      recapBufferSeconds: this.recapBufferSeconds,
       retentionDays: this.retentionDays,
     };
     if (this.apiKey) input.apiKey = this.apiKey;
     if (this.webhookSecret) input.webhookSecret = this.webhookSecret;
+    if (this.evolutionApiKey) input.evolutionApiKey = this.evolutionApiKey;
     this.save.emit(input);
   }
 

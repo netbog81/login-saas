@@ -16,6 +16,7 @@ import {
 import { OperatorMacroCategory } from '../entities/operator-macro-category.enum';
 import { GymTemplatePattern } from '../entities/gym-template-pattern.entity';
 import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
+import { findBlockingException } from '../utils/day-exception-semantics.util';
 import { OperatorAbsenceTypeService } from './operator-absence-type.service';
 import { GymPatternGroupService } from './gym-pattern-group.service';
 import { AppointmentConflictService } from './appointment-conflict.service';
@@ -904,26 +905,14 @@ export class GymExceptionService {
       });
       if (isAbsent) continue;
 
-      // Check 3: c'è un'AvailabilityException (modulo generico)?
+      // Check 3: c'è un'AvailabilityException (modulo generico)? Il predicato
+      // è condiviso con il resto del modulo (day-exception-semantics.util):
+      // una disponibilità straordinaria che copre lo slot rende il candidato
+      // eleggibile anche se da template non lavorerebbe.
       const genericExceptions = await this.availabilityExceptionRepo.find({
         where: { operatorId: candidate.id, exceptionDate: date },
       });
-      const isGenericBlocked = genericExceptions.some((ex) => {
-        if (ex.exceptionType === ExceptionType.MODIFIED) {
-          // MODIFIED con orari specifici = l'operatore lavora solo in quella finestra
-          if (ex.startTime && ex.endTime) {
-            return !(
-              this.normalizeTime(startTime) >= this.normalizeTime(ex.startTime) &&
-              this.normalizeTime(endTime) <= this.normalizeTime(ex.endTime)
-            );
-          }
-          return false;
-        }
-        // Altre tipologie = indisponibilità
-        if (!ex.startTime || !ex.endTime) return true;
-        return this.timesOverlap(startTime, endTime, ex.startTime, ex.endTime);
-      });
-      if (isGenericBlocked) continue;
+      if (findBlockingException(genericExceptions, startTime, endTime)) continue;
 
       available.push(candidate);
     }

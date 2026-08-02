@@ -1,4 +1,4 @@
-import { TemplateDocument } from '../../../shared/template-editor';
+import { TemplateDocument } from '@curandis/template-editor';
 
 /**
  * Contenuto di partenza per un nuovo template "Attestato di presenza":

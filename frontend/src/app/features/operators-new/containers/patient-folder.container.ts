@@ -27,8 +27,16 @@ import { Subject } from 'rxjs';
 import { takeUntil, tap } from 'rxjs/operators';
 
 import { Patient } from '../../../models/patient.model';
-import { TherapeuticPath, Anamnesis, PathDocument } from '../../../models/therapeutic-path.model';
+import { TherapeuticPath, Anamnesis } from '../../../models/therapeutic-path.model';
 import { Treatment } from '../../../models/treatment.model';
+import { PatientDocument } from '../../patient-documents/models/patient-document.model';
+import {
+  PathOption,
+  TreatmentOption,
+} from '../../patient-documents/components/patient-documents-tab/patient-documents-tab.component';
+import { PatientDocumentsService } from '../../patient-documents/services/patient-documents.service';
+import { PatientDocumentsTransferService } from '../../patient-documents/services/patient-documents-transfer.service';
+import { PatientDocumentsUploadDialogContainer } from '../../patient-documents/containers/patient-documents-upload-dialog.container';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
 import { TreatmentService } from '../../../services/treatment.service';
 import { PatientEvaluationService } from '../../../services/patient-evaluation.service';
@@ -87,7 +95,8 @@ import {
     PatientAnamnesisDialogContainer,
     TestHistoryDialogContainer,
     PatientAnamnesisFormContainer,
-    ConfirmResetDialogComponent
+    ConfirmResetDialogComponent,
+    PatientDocumentsUploadDialogContainer
   ],
   template: `
     <div class="patient-folder" [class.no-patient]="!patient">
@@ -98,9 +107,11 @@ import {
         [activePathsCount]="getActivePathsCount()"
         [totalTreatmentsCount]="getTotalTreatmentsCount()"
         [anamnesisExists]="!!patientAnamnesis"
+        [documentsCount]="patientDocuments.length"
         (viewDetails)="onViewPatientDetails()"
         (createPath)="onCreatePath()"
-        (viewAnamnesis)="onExpandPatientAnamnesis()">
+        (viewAnamnesis)="onExpandPatientAnamnesis()"
+        (viewDocuments)="onViewDocumentsTab()">
       </app-patient-header>
 
       @if (patient) {
@@ -156,7 +167,9 @@ import {
               [treatments]="filteredTreatments"
               [anamnesis]="selectedPath?.anamnesis || null"
               [anamnesisComplete]="currentEvaluation"
-              [documents]="selectedPath?.documents || []"
+              [documents]="patientDocuments"
+              [documentPathOptions]="documentPathOptions"
+              [documentTreatmentOptions]="documentTreatmentOptions"
               [selectedTreatmentId]="uiState.selectedTreatmentId"
               [loadingTreatments]="uiState.loadingTreatments"
               [loadingAnamnesis]="uiState.loadingAnamnesis"
@@ -203,6 +216,18 @@ import {
         (pathUpdated)="onPathUpdated($event)"
         (close)="closePathDialog()">
       </app-path-dialog-container>
+    }
+
+    <!-- Upload documenti scheda paziente (multi-file, drag & drop) -->
+    @if (showDocumentUploadDialog && patient) {
+      <app-patient-documents-upload-dialog-container
+        [subjectId]="patient.id"
+        [paths]="documentPathOptions"
+        [treatments]="documentTreatmentOptions"
+        [defaultPathId]="selectedPath?.id || null"
+        (uploaded)="loadPatientDocuments()"
+        (closed)="showDocumentUploadDialog = false">
+      </app-patient-documents-upload-dialog-container>
     }
 
     <!-- Treatment Detail Dialog Container -->
@@ -713,12 +738,18 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   loadingPatientAnamnesis = false;
   showPatientAnamnesisForm = false;
 
+  // Documenti scheda paziente (tutti i livelli: generali/percorso/trattamento)
+  patientDocuments: PatientDocument[] = [];
+  showDocumentUploadDialog = false;
+
   constructor(
     private pathService: TherapeuticPathService,
     private treatmentService: TreatmentService,
     private evaluationService: PatientEvaluationService,
     private objectivesTrackingService: ObjectivesTrackingService,
     private patientAnamnesisService: SimplePatientAnamnesisService,
+    private documentsService: PatientDocumentsService,
+    private documentsTransfer: PatientDocumentsTransferService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -730,6 +761,7 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       this.paths = [];
       this.treatments = [];
       this.patientAnamnesis = null;
+      this.patientDocuments = [];
       this.uiState = { ...this.uiState, selectedPathId: null, selectedTreatmentId: null };
       this.cdr.markForCheck();
 
@@ -737,11 +769,13 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       this.loadPaths();
       this.loadTreatments();
       this.loadPatientAnamnesis();
+      this.loadPatientDocuments();
     } else if (changes['patient'] && !this.patient) {
       this.paths = [];
       this.selectedPath = null;
       this.treatments = [];
       this.patientAnamnesis = null;
+      this.patientDocuments = [];
       this.uiState = createInitialPatientFolderUIState();
       this.cdr.markForCheck();
     }
@@ -1418,33 +1452,110 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       });
   }
 
-  onDocumentOpen(doc: PathDocument): void {
-    // Apri documento in nuova tab
-    if (doc.url) {
-      window.open(doc.url, '_blank');
-    }
+  // ==================== DOCUMENTI SCHEDA PAZIENTE ====================
+
+  /**
+   * Apre il tab Documenti dal riquadro nell'header paziente.
+   * Funziona anche senza percorsi: il tab è a livello scheda paziente.
+   */
+  onViewDocumentsTab(): void {
+    this.uiState = { ...this.uiState, activeTab: 'documents' };
+    this.cdr.markForCheck();
+  }
+
+  /** Opzioni percorso per filtri/chip/dialog documenti. */
+  get documentPathOptions(): PathOption[] {
+    return this.paths.map((p) => ({ id: p.id, name: p.name }));
+  }
+
+  /** Opzioni trattamento (tutti i trattamenti del paziente, per percorso). */
+  get documentTreatmentOptions(): TreatmentOption[] {
+    return this.treatments
+      .filter((t) => !!t.therapeuticPathId)
+      .map((t) => ({
+        id: t.id,
+        therapeuticPathId: t.therapeuticPathId,
+        label: `Trattamento del ${new Date(t.startedAt).toLocaleDateString('it-IT')}`,
+      }));
+  }
+
+  loadPatientDocuments(): void {
+    if (!this.patient?.id) return;
+
+    this.uiState = { ...this.uiState, loadingDocuments: true };
+    this.cdr.markForCheck();
+
+    this.documentsService.getDocuments(this.patient.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (documents) => {
+          this.patientDocuments = documents;
+          this.uiState = { ...this.uiState, loadingDocuments: false };
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error loading documents:', err);
+          this.uiState = { ...this.uiState, loadingDocuments: false };
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  onDocumentOpen(doc: PatientDocument): void {
+    // Il blob è cifrato su S3: si apre scaricando il plaintext dal backend
+    this.documentsTransfer.downloadDocument(doc.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (blob) => {
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          // Revoca ritardata: la nuova tab deve fare in tempo a caricare il blob
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error opening document:', err);
+          alert('Impossibile aprire il documento');
+        }
+      });
   }
 
   onDocumentUpload(): void {
-    // TODO: Aprire dialog per upload documento
-    console.log('[PatientFolderContainer] Upload document');
+    this.showDocumentUploadDialog = true;
+    this.cdr.markForCheck();
   }
 
-  onDocumentDownload(doc: PathDocument): void {
-    // Scarica documento
-    if (doc.url) {
-      const link = document.createElement('a');
-      link.href = doc.url;
-      link.download = doc.name;
-      link.click();
-    }
+  onDocumentDownload(doc: PatientDocument): void {
+    this.documentsTransfer.downloadDocument(doc.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (blob) => {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = doc.originalFileName;
+          link.click();
+          URL.revokeObjectURL(url);
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error downloading document:', err);
+          alert('Impossibile scaricare il documento');
+        }
+      });
   }
 
-  onDocumentDelete(doc: PathDocument): void {
-    if (confirm(`Eliminare il documento "${doc.name}"?`)) {
-      // TODO: Implementare eliminazione
-      console.log('[PatientFolderContainer] Delete document:', doc.id);
+  onDocumentDelete(doc: PatientDocument): void {
+    if (!confirm(`Eliminare il documento "${doc.originalFileName}"?\nFinirà nel cestino e potrà essere ripristinato.`)) {
+      return;
     }
+    this.documentsService.deleteDocument(doc.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => this.loadPatientDocuments(),
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error deleting document:', err);
+          alert('Impossibile eliminare il documento');
+        }
+      });
   }
 
   // Helpers

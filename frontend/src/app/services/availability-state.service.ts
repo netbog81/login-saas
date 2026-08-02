@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, combineLatest, interval, switchMap, takeWhile } from 'rxjs';
+import { BehaviorSubject, Observable, debounceTime, filter } from 'rxjs';
 import {
   Operator,
   Service,
@@ -12,6 +12,7 @@ import {
 } from '../graphql/generated/types';
 import { OperatorService as OperatorApiService } from './operator.service';
 import { ServiceService } from './service.service';
+import { SseService } from './sse.service';
 
 @Injectable({
   providedIn: 'root'
@@ -28,7 +29,6 @@ export class AvailabilityStateService {
   private groupExceptionsSubject = new BehaviorSubject<GroupException[]>([]);
   private loadingSubject = new BehaviorSubject<boolean>(false);
   private errorSubject = new BehaviorSubject<string | null>(null);
-  private autoRefreshEnabledSubject = new BehaviorSubject<boolean>(false);
   private lastRefreshSubject = new BehaviorSubject<Date | null>(null);
 
   // Public observables
@@ -42,22 +42,38 @@ export class AvailabilityStateService {
   public groupExceptions$ = this.groupExceptionsSubject.asObservable();
   public loading$ = this.loadingSubject.asObservable();
   public error$ = this.errorSubject.asObservable();
-  public autoRefreshEnabled$ = this.autoRefreshEnabledSubject.asObservable();
   public lastRefresh$ = this.lastRefreshSubject.asObservable();
 
   constructor(
     private operatorService: OperatorApiService,
-    private serviceService: ServiceService
+    private serviceService: ServiceService,
+    private sseService: SseService
   ) {
-    // Initialize auto-refresh when enabled
-    this.autoRefreshEnabled$.pipe(
-      switchMap(enabled =>
-        enabled ? interval(60000) : [] // Refresh every 60 seconds
-      ),
-      takeWhile(() => this.autoRefreshEnabledSubject.value)
+    // Realtime multi-utente (2026-07-29): quando un altro utente modifica la
+    // struttura degli orari (template, eccezioni, assenze, festività, palestra)
+    // il backend emette `availability_changed` sul canale SSE del tenant e qui
+    // si rifà il fetch di ciò che è a schermo. `stream_connected` copre gli
+    // eventi persi durante una disconnessione. Il debounce coalizza i burst
+    // (es. creazione assenze in batch = una mutation per operatore).
+    // Sostituisce il vecchio autoRefresh a interval(60000), codice morto:
+    // nessun componente ha mai chiamato setAutoRefresh(true).
+    this.sseService.getEvents().pipe(
+      filter(e => e.type === 'availability_changed' || e.type === 'stream_connected'),
+      debounceTime(500)
     ).subscribe(() => {
-      this.refreshAvailability();
+      this.reloadSelected();
     });
+  }
+
+  /**
+   * Ricarica i dati dell'operatore selezionato (template, eccezioni, servizi)
+   * e gli slot del mese corrente. No-op se nessun operatore è selezionato.
+   */
+  private reloadSelected(): void {
+    const selected = this.selectedOperatorSubject.value;
+    if (!selected) return;
+    this.selectOperator(selected.id);
+    this.refreshAvailability();
   }
 
   // Load operators
@@ -267,11 +283,6 @@ export class AvailabilityStateService {
     this.availabilityCacheSubject.next(new Map());
   }
 
-  // Enable/disable auto-refresh
-  setAutoRefresh(enabled: boolean): void {
-    this.autoRefreshEnabledSubject.next(enabled);
-  }
-
   // Manual refresh
   refreshAvailability(): void {
     const selectedOperator = this.selectedOperatorSubject.value;
@@ -306,7 +317,6 @@ export class AvailabilityStateService {
     this.groupExceptionsSubject.next([]);
     this.errorSubject.next(null);
     this.loadingSubject.next(false);
-    this.autoRefreshEnabledSubject.next(false);
     this.lastRefreshSubject.next(null);
   }
 }

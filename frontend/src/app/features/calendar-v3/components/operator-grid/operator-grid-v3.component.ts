@@ -132,6 +132,7 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
                 <!-- Eventi posizionati (assoluti sopra le celle) -->
                 @for (event of col.events; track event.appointment.id) {
                   <div class="event-chip"
+                       [class.read-only]="readOnly"
                        [class.highlighted]="event.appointment.id === highlightedAppointmentId"
                        [class.copyable]="selectionMode"
                        cdkDrag
@@ -412,6 +413,15 @@ const TIME_VISIBLE_MIN_HEIGHT = 36;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         z-index: 4;
       }
+    }
+
+    /* In sola lettura (vista operatore) il resize-handle non viene
+       renderizzato: manca la striscia bianca che per la segreteria separa
+       visivamente i chip impilati, e appuntamenti consecutivi dello stesso
+       colore si fondono in un blocco unico. Bordo basso marcato come
+       separatore. */
+    .event-chip.read-only {
+      border-bottom: 3px solid rgba(255, 255, 255, 0.9);
     }
 
     /* Chip evidenziato dopo "vai al calendario": bordo pulsante per

@@ -33,6 +33,14 @@ import { MatIconModule } from '@angular/material/icon';
           <span>Monitor</span>
         </a>
         <a mat-tab-link
+           routerLink="scheduled"
+           routerLinkActive
+           #rla4="routerLinkActive"
+           [active]="rla4.isActive">
+          <mat-icon>schedule_send</mat-icon>
+          <span>In programma</span>
+        </a>
+        <a mat-tab-link
            routerLink="settings"
            routerLinkActive
            #rla2="routerLinkActive"

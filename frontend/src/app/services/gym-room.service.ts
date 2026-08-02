@@ -11,6 +11,7 @@ import {
   GET_GYM_ROOM_AVAILABLE_SLOTS,
   GET_GYM_ROOMS_AVAILABLE_SLOTS,
   CREATE_GYM_APPOINTMENT,
+  CREATE_GYM_APPOINTMENT_WITH_REPORT,
 } from '../graphql/operations/gym-appointment.queries';
 import {
   UPDATE_AVAILABILITY_APPOINTMENT,
@@ -177,6 +178,30 @@ export interface CreateGymAppointmentInput {
 }
 
 /**
+ * Occorrenza di una serie palestra saltata per conflitto in creazione.
+ */
+export interface GymRecurringConflict {
+  date: string;
+  startTime: string;
+  endTime: string;
+  type: string; // 'unavailable' | 'overlap' | 'error'
+  reason: string;
+  conflictingStartTime?: string;
+  conflictingEndTime?: string;
+}
+
+/**
+ * Risultato della creazione con report: le occorrenze valide vengono create,
+ * quelle in conflitto elencate in `conflicts`.
+ */
+export interface GymAppointmentCreationResult {
+  appointment: GymAppointment;
+  createdCount: number;
+  skippedCount: number;
+  conflicts: GymRecurringConflict[];
+}
+
+/**
  * Input per aggiornare un appuntamento palestra
  */
 export interface UpdateGymAppointmentInput {
@@ -329,6 +354,19 @@ export class GymRoomService extends BaseGraphQLService {
       CREATE_GYM_APPOINTMENT,
       { input }
     ).pipe(map((result) => result.createGymAppointment));
+  }
+
+  /**
+   * Crea un appuntamento palestra con report: per le serie ricorrenti le
+   * occorrenze in conflitto vengono saltate ma elencate in `conflicts`.
+   * Se NESSUNA occorrenza è creabile la mutation fallisce con errore
+   * RECURRING_SERIES_CONFLICT (stesso marker della modalità operatori).
+   */
+  createAppointmentWithReport(input: CreateGymAppointmentInput): Observable<GymAppointmentCreationResult> {
+    return this.mutate<{ createGymAppointmentWithReport: GymAppointmentCreationResult }>(
+      CREATE_GYM_APPOINTMENT_WITH_REPORT,
+      { input }
+    ).pipe(map((result) => result.createGymAppointmentWithReport));
   }
 
   /**

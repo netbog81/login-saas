@@ -100,6 +100,7 @@ export class WhatsappWebhookService {
       case 'multiple_recap': return WhatsappMessageType.RECAP_MULTI;
       case 'reminder': return WhatsappMessageType.REMINDER_24H;
       case 'cancel_notification': return WhatsappMessageType.CANCELLATION;
+      case 'update_notification': return WhatsappMessageType.UPDATE;
       default: return undefined;
     }
   }
@@ -196,7 +197,8 @@ export class WhatsappWebhookService {
             const logs = await this.logService.findByAppointmentId(aptId);
             const dispatchLog = logs.find(
               l => (l.status === WhatsappMessageStatus.DISPATCHED || l.status === WhatsappMessageStatus.PENDING)
-                && l.messageType !== WhatsappMessageType.CANCELLATION,
+                && l.messageType !== WhatsappMessageType.CANCELLATION
+                && l.messageType !== WhatsappMessageType.UPDATE,
             );
             if (dispatchLog) {
               await this.logService.updateStatus(dispatchLog.correlationId, newStatus, extras);
@@ -253,6 +255,51 @@ export class WhatsappWebhookService {
             messageBody,
             status: newStatus,
           });
+        }
+        break;
+      }
+
+      case 'update_notification': {
+        // Notifica di spostamento appuntamento: il log è già stato creato in
+        // DISPATCHED da updateBooking, qui ne avanza solo lo stato.
+        const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+        if (newStatus === WhatsappMessageStatus.SENT) extras.sentAt = new Date();
+        if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+        if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+        extras.messageType = WhatsappMessageType.UPDATE;
+
+        let updated = false;
+        if (gm.correlationId) {
+          const existing = await this.logService.findByCorrelationId(gm.correlationId);
+          if (existing) {
+            await this.logService.updateStatus(gm.correlationId, newStatus, extras);
+            updated = true;
+          }
+        }
+
+        // Fallback: cerca il log UPDATE dell'appuntamento
+        if (!updated && gm.appointmentIds?.length) {
+          for (const aptId of gm.appointmentIds) {
+            const logs = await this.logService.findByAppointmentId(aptId);
+            const updateLog = logs.find(
+              l => l.messageType === WhatsappMessageType.UPDATE
+                && l.status === WhatsappMessageStatus.DISPATCHED,
+            );
+            if (updateLog) {
+              await this.logService.updateStatus(updateLog.correlationId, newStatus, extras);
+              this.logger.log(
+                `[WA-WEBHOOK] update_notification: matched by appointmentId=${aptId} → log=${updateLog.id}`,
+              );
+              updated = true;
+              break;
+            }
+          }
+        }
+
+        if (!updated) {
+          this.logger.warn(
+            `[WA-WEBHOOK] update_notification: no matching log found. correlationId=${gm.correlationId} appointmentIds=${JSON.stringify(gm.appointmentIds)}`,
+          );
         }
         break;
       }

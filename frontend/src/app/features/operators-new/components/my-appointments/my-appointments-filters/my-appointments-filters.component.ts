@@ -22,6 +22,7 @@ import {
   MyAppointmentsViewMode,
 } from '../../../models/my-appointments-filter.model';
 import { MyAppointmentStatus } from '../../../models/my-appointments.model';
+import { tokenizeQuery, matchesAllTokens } from '../../../../../shared/utils/token-match';
 
 interface PatientOption {
   id: string;
@@ -221,9 +222,12 @@ export class MyAppointmentsFiltersComponent {
   onPatientSearchInput(text: string): void {
     this.patientSearchText = text;
     if (typeof text !== 'string') return;
-    const q = text.toLowerCase().trim();
+    const q = text.trim();
+    // Match a token: la label è "Cognome Nome", ma l'utente può digitare
+    // nell'ordine che preferisce.
+    const tokens = tokenizeQuery(q);
     this.filteredPatients = q
-      ? this.patientOptions.filter(p => p.label.toLowerCase().includes(q))
+      ? this.patientOptions.filter(p => matchesAllTokens([p.label], tokens))
       : this.patientOptions;
     // Se l'utente cancella tutto, rimuove anche il filtro id.
     if (q.length === 0 && this.filters.patientId) {

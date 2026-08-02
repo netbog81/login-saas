@@ -10,12 +10,14 @@ import {
 } from 'typeorm';
 import { ObjectType, Field, ID } from '@nestjs/graphql';
 import { TaskMessageStatus } from '../enums/task-message-status.enum';
+import { TaskMessageRecipientGroup } from '../enums/task-message-recipient-group.enum';
 import { AppUser } from '../../users/entities/app-user.entity';
 
 @ObjectType('TaskMessage')
 @Entity('task_message')
 @Index('IDX_task_msg_tenant_recipient_status', ['tenantId', 'recipientUserId', 'status'])
 @Index('IDX_task_msg_tenant_sender_status', ['tenantId', 'senderUserId', 'status'])
+@Index('IDX_task_msg_tenant_group_status', ['tenantId', 'recipientGroup', 'status'])
 @Index('IDX_task_msg_gateway_id', ['gatewayMessageId'], { unique: true })
 @Index('IDX_task_msg_correlation', ['correlationId'])
 export class TaskMessage {
@@ -35,9 +37,15 @@ export class TaskMessage {
   @Column({ name: 'sender_user_id', type: 'uuid' })
   senderUserId: string;
 
-  @Field()
-  @Column({ name: 'recipient_user_id', type: 'uuid' })
-  recipientUserId: string;
+  // Destinatario: esattamente uno tra recipientUserId (singolo) e
+  // recipientGroup (tutti gli utenti attivi con quel user_type).
+  @Field({ nullable: true })
+  @Column({ name: 'recipient_user_id', type: 'uuid', nullable: true })
+  recipientUserId?: string | null;
+
+  @Field(() => TaskMessageRecipientGroup, { nullable: true })
+  @Column({ name: 'recipient_group', type: 'varchar', length: 50, nullable: true })
+  recipientGroup?: TaskMessageRecipientGroup | null;
 
   @Field()
   @Column('text')
@@ -64,8 +72,16 @@ export class TaskMessage {
   readAt?: Date;
 
   @Field({ nullable: true })
+  @Column({ name: 'read_by_user_id', type: 'uuid', nullable: true })
+  readByUserId?: string | null;
+
+  @Field({ nullable: true })
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt?: Date;
+
+  @Field({ nullable: true })
+  @Column({ name: 'completed_by_user_id', type: 'uuid', nullable: true })
+  completedByUserId?: string | null;
 
   @Field({ nullable: true })
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
@@ -89,4 +105,14 @@ export class TaskMessage {
   @ManyToOne(() => AppUser, { nullable: true, eager: false })
   @JoinColumn({ name: 'recipient_user_id' })
   recipientUser?: AppUser;
+
+  @Field(() => AppUser, { nullable: true })
+  @ManyToOne(() => AppUser, { nullable: true, eager: false })
+  @JoinColumn({ name: 'read_by_user_id' })
+  readByUser?: AppUser;
+
+  @Field(() => AppUser, { nullable: true })
+  @ManyToOne(() => AppUser, { nullable: true, eager: false })
+  @JoinColumn({ name: 'completed_by_user_id' })
+  completedByUser?: AppUser;
 }

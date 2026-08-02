@@ -3,7 +3,6 @@ import { Observable, of, delay } from 'rxjs';
 import {
   TherapeuticPath,
   PathTreatment,
-  PathDocument,
   Anamnesis,
 } from '../models/therapeutic-path.model';
 import { MOCK_THERAPEUTIC_PATHS } from '../mock-data/therapeutic-paths.mock';
@@ -52,14 +51,6 @@ export class TherapeuticPathService {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
     return of(sorted).pipe(delay(this.MOCK_DELAY));
-  }
-
-  /**
-   * Ottiene i documenti di un percorso
-   */
-  getDocumentsByPath(pathId: string): Observable<PathDocument[]> {
-    const path = this.mockPaths.find((p) => p.id === pathId);
-    return of(path?.documents || []).pipe(delay(this.MOCK_DELAY));
   }
 
   /**

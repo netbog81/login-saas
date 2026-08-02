@@ -1,7 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
-import { PathDocument } from './path-document.entity';
 import { Treatment } from './treatment.entity';
 import { TherapeuticPathStatus } from './therapeutic-path-enums';
 
@@ -108,9 +107,8 @@ export class TherapeuticPath {
   @JoinColumn({ name: 'primaryOperatorId' })
   primaryOperator: Operator;
 
-  @Field(() => [PathDocument], { nullable: true })
-  @OneToMany(() => PathDocument, document => document.therapeuticPath)
-  documents?: PathDocument[];
+  // NOTA: la relazione documents (path_documents) è stata sostituita da
+  // patient_documents (query GraphQL patientDocuments con filtro percorso).
 
   @Field(() => [Treatment], { nullable: true })
   @OneToMany(() => Treatment, treatment => treatment.therapeuticPath)

@@ -2,7 +2,6 @@ import { gql } from 'apollo-angular';
 import {
   THERAPEUTIC_PATH_WITH_RELATIONS_FRAGMENT,
   PATIENT_EVALUATION_FRAGMENT,
-  PATH_DOCUMENT_FRAGMENT,
 } from './therapeutic-path.queries';
 
 // ==================== PATH MUTATIONS ====================
@@ -61,19 +60,5 @@ export const DELETE_PATIENT_EVALUATION = gql`
   }
 `;
 
-// ==================== DOCUMENT MUTATIONS ====================
-
-export const CREATE_PATH_DOCUMENT = gql`
-  mutation CreatePathDocument($input: CreateDocumentInput!) {
-    createPathDocument(input: $input) {
-      ...PathDocumentFields
-    }
-  }
-  ${PATH_DOCUMENT_FRAGMENT}
-`;
-
-export const DELETE_PATH_DOCUMENT = gql`
-  mutation DeletePathDocument($id: ID!) {
-    deletePathDocument(id: $id)
-  }
-`;
+// NOTA: le DOCUMENT MUTATIONS (createPathDocument/deletePathDocument) sono
+// state sostituite da patient-documents.operations.ts + upload REST multipart.

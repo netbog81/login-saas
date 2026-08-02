@@ -15,6 +15,7 @@ export enum WhatsappMessageType {
   RECAP_MULTI = 'recap_multi',
   REMINDER_24H = 'reminder_24h',
   CANCELLATION = 'cancellation',
+  UPDATE = 'update',
 }
 
 export enum WhatsappTemplateType {
@@ -22,6 +23,7 @@ export enum WhatsappTemplateType {
   RECAP_MULTI = 'RECAP_MULTI',
   REMINDER_24H = 'REMINDER_24H',
   CANCELLATION = 'CANCELLATION',
+  UPDATE = 'UPDATE',
 }
 
 registerEnumType(WhatsappMessageStatus, {

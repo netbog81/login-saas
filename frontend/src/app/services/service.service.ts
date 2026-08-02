@@ -1,6 +1,7 @@
 import { Injectable, Injector } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
+import { gql } from 'apollo-angular';
 import {
   Service,
   OperatorService,
@@ -24,10 +25,27 @@ import {
   REMOVE_SERVICE_FROM_OPERATOR
 } from '../graphql/operations/service.mutations';
 
+const RESYNC_SERVICES_TO_ACCOUNTING = gql`
+  mutation ResyncServicesToAccounting {
+    resyncServicesToAccounting
+  }
+`;
+
 @Injectable({
   providedIn: 'root'
 })
 export class ServiceService extends BaseGraphQLService {
+
+  /**
+   * Ri-emette service.upserted per tutto il catalogo (riallineamento
+   * mapping/tariffe in contabilità, inclusa la scomposizione tariffa/extra).
+   */
+  resyncServicesToAccounting(): Observable<number> {
+    return this.mutate<{ resyncServicesToAccounting: number }>(
+      RESYNC_SERVICES_TO_ACCOUNTING,
+      {},
+    ).pipe(map((r) => r.resyncServicesToAccounting));
+  }
   constructor(injector: Injector) {
     super(injector);
   }

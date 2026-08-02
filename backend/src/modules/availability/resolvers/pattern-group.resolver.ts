@@ -1,9 +1,11 @@
+import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID, ObjectType, Field, Int } from '@nestjs/graphql';
 import { PatternGroup } from '../entities/pattern-group.entity';
 import { PatternGroupService } from '../services/pattern-group.service';
 import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
 import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
 import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
 /**
  * Output type per update con info conflitti
@@ -23,6 +25,7 @@ export class PatternGroupUpdateOutput {
   conflictedAppointments: AvailabilityAppointment[];
 }
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => PatternGroup)
 export class PatternGroupResolver {
   constructor(private readonly patternGroupService: PatternGroupService) {}

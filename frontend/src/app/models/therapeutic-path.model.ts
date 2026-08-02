@@ -6,28 +6,13 @@
 // ==================== ENUMS ====================
 
 export type PathStatus = 'active' | 'suspended' | 'completed' | 'archived';
-export type DocumentType = 'pdf' | 'image' | 'video' | 'other';
 export type TreatmentType = 'standard' | 'evaluation' | 'followup' | 'discharge';
 
 // ==================== INTERFACES ====================
 
-/**
- * Documento allegato a un percorso terapeutico
- */
-export interface PathDocument {
-  id: string;
-  pathId: string;
-  name: string;
-  type: DocumentType;
-  url: string;
-  thumbnailUrl?: string;
-  mimeType: string;
-  sizeBytes: number;
-  uploadedAt: Date | string;
-  uploadedBy?: string;
-  notes?: string;
-  category?: string; // es: "radiografia", "referti", "consensi"
-}
+// NOTA: PathDocument rimosso — i documenti sono ora della SCHEDA PAZIENTE
+// (features/patient-documents/models/patient-document.model.ts) con
+// associazione opzionale a percorso/trattamento.
 
 /**
  * Anamnesi del percorso terapeutico
@@ -135,7 +120,6 @@ export interface TherapeuticPath {
   // Relazioni (popolate)
   anamnesis?: Anamnesis;
   treatments?: PathTreatment[];
-  documents?: PathDocument[];
   // Note
   notes?: string;
   internalNotes?: string;
@@ -164,16 +148,6 @@ export function getPathStatusColor(status: PathStatus): string {
     archived: '#6b7280', // gray
   };
   return colors[status] || '#6b7280';
-}
-
-export function getDocumentTypeIcon(type: DocumentType): string {
-  const icons: Record<DocumentType, string> = {
-    pdf: 'file-text',
-    image: 'image',
-    video: 'video',
-    other: 'file',
-  };
-  return icons[type] || 'file';
 }
 
 export function getTreatmentTypeLabel(type: TreatmentType): string {

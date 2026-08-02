@@ -42,9 +42,12 @@ export class AuthorizationGuard implements CanActivate {
       return true;
     }
 
-    // Estrai tenantContext dalla request
-    const ctx = GqlExecutionContext.create(context);
-    const request = ctx.getContext().req;
+    // Estrai tenantContext dalla request — il guard è usato sia sui
+    // resolver GraphQL sia sui controller REST (upload/download documenti)
+    const request =
+      context.getType<'http' | 'graphql'>() === 'graphql'
+        ? GqlExecutionContext.create(context).getContext().req
+        : context.switchToHttp().getRequest();
     const tenantContext = request?.tenantContext;
 
     if (!tenantContext) {

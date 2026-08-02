@@ -2,9 +2,15 @@
   <!-- Header -->
   <div class="header">
     <h2>Gestione Servizi</h2>
-    <button class="btn btn-primary" (click)="openServiceForm()">
-      + Nuovo Servizio
-    </button>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="resyncToAccounting()" [disabled]="resyncing"
+              title="Ri-invia tutto il catalogo servizi alla contabilità (tariffe, extra studio, descrizioni)">
+        {{ resyncing ? 'Sincronizzazione…' : '⇅ Sincronizza con Contabilità' }}
+      </button>
+      <button class="btn btn-primary" (click)="openServiceForm()">
+        + Nuovo Servizio
+      </button>
+    </div>
   </div>
 
   <!-- Filters -->

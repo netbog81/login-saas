@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef, Optional, Logger } from '@nestjs/common';
 import { In, Not, Between, LessThanOrEqual, MoreThanOrEqual, EntityManager } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
-import { AvailabilityAppointment, BookingStatus } from '../entities/availability-appointment.entity';
+import { AvailabilityAppointment, BookingStatus, ArrivalSource } from '../entities/availability-appointment.entity';
 import { AppointmentInstrument } from '../entities/appointment-instrument.entity';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { Instrument } from '../entities/instrument.entity';
@@ -17,6 +17,7 @@ import { TreatmentCascadeService } from './treatment-cascade.service';
 import { EventsService } from '../../events/events.service';
 import { ConflictReason } from '../entities/availability-appointment.entity';
 import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
+import { findBlockingException } from '../utils/day-exception-semantics.util';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
 import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
@@ -1252,6 +1253,18 @@ export class AvailabilityAppointmentService {
       this.checkAndMarkConflictForOperatorAppointment(result).catch(() => {});
     }
 
+    // Notifica WhatsApp di spostamento: solo se è cambiata data/ora (un cambio
+    // di solo operatore non interessa il paziente) e l'appuntamento è ancora
+    // attivo. Fire-and-forget: non deve mai bloccare l'update.
+    const cancelledStatuses: BookingStatus[] = [
+      BookingStatus.CANCELLED,
+      BookingStatus.CANCELLED_EARLY,
+      BookingStatus.CANCELLED_LATE,
+    ];
+    if (positionChanged && !cancelledStatuses.includes(result.bookingStatus)) {
+      this.dispatchWhatsappUpdate(result);
+    }
+
     return result;
   }
 
@@ -1276,24 +1289,13 @@ export class AvailabilityAppointmentService {
         });
       if (exceptions.length === 0) return;
 
-      const norm = (t: string) => {
-        const p = t.split(':');
-        return `${p[0].padStart(2, '0')}:${(p[1] ?? '00').padStart(2, '0')}`;
-      };
-      const aptStart = norm(appointment.startTime);
-      const aptEnd = norm(appointment.endTime);
-
-      const hit = exceptions.find((ex) => {
-        if (ex.exceptionType === ExceptionType.MODIFIED) {
-          // MODIFIED = lavora SOLO nella finestra → conflitto se fuori
-          if (ex.startTime && ex.endTime) {
-            return !(aptStart >= norm(ex.startTime) && aptEnd <= norm(ex.endTime));
-          }
-          return false;
-        }
-        if (!ex.startTime || !ex.endTime) return true; // giornata intera
-        return aptStart < norm(ex.endTime) && norm(ex.startTime) < aptEnd;
-      });
+      // Predicato condiviso: una disponibilità straordinaria che copre
+      // l'appuntamento lo mette al riparo (vedi day-exception-semantics.util).
+      const hit = findBlockingException(
+        exceptions,
+        appointment.startTime,
+        appointment.endTime,
+      );
 
       if (hit) {
         const reason =
@@ -1359,12 +1361,33 @@ export class AvailabilityAppointmentService {
   }
 
   /**
-   * Segna come no-show (legacy - usa markNoShow per la versione completa)
+   * Segna come no-show, senza vincoli sullo stato di partenza.
+   *
+   * È il metodo che usano TUTTE le UI (calendario, dialog appuntamento,
+   * dialog palestra): a differenza di `markNoShow` accetta qualunque stato
+   * di partenza, il che è necessario perché col cron auto-attendance
+   * l'appuntamento è già passato ad ATTENDED quando la segreteria si
+   * accorge che il paziente non è venuto.
+   *
+   * Fino alla gestione assenze questo metodo NON scriveva il log
+   * `clinical_attendance_log`: i contatori no-show del paziente restavano
+   * quindi a zero anche dopo decine di assenze. Ora registra l'evento in
+   * modo idempotente (nessun doppio conteggio se lo stato viene corretto
+   * avanti e indietro).
    */
   async markAsNoShow(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
     appointment.bookingStatus = BookingStatus.NO_SHOW;
     await this.appointmentRepo.save(appointment);
+
+    if (appointment.patientId) {
+      await this.attendanceService.recordEventOnce({
+        subjectId: appointment.patientId,
+        eventType: AttendanceEventType.NO_SHOW,
+        appointmentId: appointment.id,
+        operatorId: appointment.operatorId,
+      });
+    }
 
     // SSE: notifica le UI aperte del cambio stato.
     this.eventsService.emit({
@@ -1407,8 +1430,12 @@ export class AvailabilityAppointmentService {
       appointment.startTime,
     );
 
+    // Soglia configurabile (default 24h = comportamento storico).
+    const { lateCancellationHours } =
+      await this.generalSettingsService.getNoShowSettings();
+
     // Determina il tipo di cancellazione
-    const isCancelledLate = hoursNotice < 24;
+    const isCancelledLate = hoursNotice < lateCancellationHours;
 
     appointment.bookingStatus = isCancelledLate
       ? BookingStatus.CANCELLED_LATE
@@ -1473,9 +1500,17 @@ export class AvailabilityAppointmentService {
 
   /**
    * Segna un appuntamento come attended (paziente presentato)
-   * Questo abilita la creazione di un trattamento
+   * Questo abilita la creazione di un trattamento.
+   *
+   * Registra anche l'ARRIVO (`arrivedAt` / `lateMinutes`): questo metodo è
+   * sempre un gesto MANUALE (il cron auto-attendance scrive `bookingStatus`
+   * direttamente sul repository e non passa di qui), quindi il timestamp
+   * misura un arrivo vero e non l'orario teorico dell'appuntamento.
    */
-  async markAttended(id: string): Promise<AvailabilityAppointment> {
+  async markAttended(
+    id: string,
+    markedBy?: { userId?: string; source?: ArrivalSource },
+  ): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
 
     // Blocca cambio stato per appuntamenti non retribuiti
@@ -1498,13 +1533,38 @@ export class AvailabilityAppointmentService {
     }
 
     const wasNoShow = appointment.bookingStatus === BookingStatus.NO_SHOW;
+    const arrivedAt = new Date();
 
     appointment.bookingStatus = BookingStatus.ATTENDED;
+
+    // Ritardatario conclamato: era stato dato per assente e invece è venuto.
+    // Il flag non si azzera più — è storia del paziente.
+    if (wasNoShow) {
+      appointment.wasNoShowReverted = true;
+    }
+
+    // Registra l'arrivo solo la prima volta: se la segreteria corregge lo
+    // stato avanti e indietro il primo timestamp resta quello buono.
+    if (!appointment.arrivedAt) {
+      appointment.arrivedAt = arrivedAt;
+      appointment.lateMinutes = this.calculateLateMinutes(
+        appointment.appointmentDate,
+        appointment.startTime,
+        arrivedAt,
+      );
+      appointment.arrivalMarkedBy = markedBy?.userId;
+      appointment.arrivalSource = wasNoShow
+        ? ArrivalSource.NO_SHOW_REVERT
+        : markedBy?.source ?? ArrivalSource.MANUAL_SECRETARY;
+    }
+
     await this.appointmentRepo.save(appointment);
 
-    // Se stiamo correggendo un no-show, azzera il relativo log (contatore).
+    // Se stiamo correggendo un no-show, il log NON va cancellato: va
+    // degradato a LATE_ARRIVAL, così non pesa sui no-show ma la traccia del
+    // ritardatario resta (prima qui si perdeva il dato).
     if (wasNoShow && appointment.patientId) {
-      await this.attendanceService.removeNoShowEvent(appointment.id);
+      await this.attendanceService.demoteNoShowToLateArrival(appointment.id);
     }
 
     // SSE: notifica le UI aperte del cambio stato (es. pagina operatori).
@@ -1573,15 +1633,118 @@ export class AvailabilityAppointmentService {
   }
 
   /**
+   * Minuti di ritardo dell'arrivo rispetto all'orario di inizio previsto.
+   * Mai negativo: chi arriva in anticipo è semplicemente puntuale.
+   */
+  private calculateLateMinutes(
+    appointmentDate: Date | string,
+    startTime: string,
+    arrivedAt: Date,
+  ): number {
+    const dateStr =
+      appointmentDate instanceof Date
+        ? appointmentDate.toISOString().split('T')[0]
+        : String(appointmentDate).split('T')[0];
+
+    const scheduled = new Date(`${dateStr}T${startTime}`);
+    if (Number.isNaN(scheduled.getTime())) return 0;
+
+    const diffMinutes = Math.round(
+      (arrivedAt.getTime() - scheduled.getTime()) / 60000,
+    );
+    return Math.max(0, diffMinutes);
+  }
+
+  /**
+   * Registra a posteriori l'arrivo (in ritardo) del paziente.
+   *
+   * Serve al caso che `markAttended` non intercetta: col cron
+   * auto-attendance acceso l'appuntamento è già ATTENDED all'orario
+   * teorico, quindi quando il paziente entra con 25 minuti di ritardo
+   * nessuno tocca più nulla e il ritardo resterebbe invisibile.
+   *
+   * NON è un'azione di fatturazione: è un fatto osservato, e chi lo osserva
+   * è l'operatore in sala prima ancora della segreteria. Per questo è
+   * aperto a entrambi (nessun BillingWriteGuard) e traccia `arrivalSource`
+   * per distinguere in statistica chi l'ha registrato.
+   */
+  async markLateArrival(
+    id: string,
+    input: {
+      lateMinutes?: number;
+      arrivedAt?: Date;
+      userId?: string;
+      source?: ArrivalSource;
+    },
+  ): Promise<AvailabilityAppointment> {
+    const appointment = await this.findById(id);
+
+    if (appointment.nonRetribuito) {
+      throw new BadRequestException(
+        'Gli appuntamenti non retribuiti non hanno gestione degli stati',
+      );
+    }
+
+    // Un paziente disdetto o assente non può essere "arrivato in ritardo":
+    // per quel caso esiste già la correzione a "presentato".
+    const blocked: BookingStatus[] = [
+      BookingStatus.CANCELLED,
+      BookingStatus.CANCELLED_EARLY,
+      BookingStatus.CANCELLED_LATE,
+      BookingStatus.NO_SHOW,
+    ];
+    if (blocked.includes(appointment.bookingStatus)) {
+      throw new BadRequestException(
+        `Non si può registrare un ritardo su un appuntamento in stato ${appointment.bookingStatus}. ` +
+          'Riporta prima il paziente a "presentato".',
+      );
+    }
+
+    const arrivedAt = input.arrivedAt ?? new Date();
+
+    appointment.arrivedAt = arrivedAt;
+    appointment.lateMinutes =
+      input.lateMinutes ??
+      this.calculateLateMinutes(
+        appointment.appointmentDate,
+        appointment.startTime,
+        arrivedAt,
+      );
+    appointment.arrivalMarkedBy = input.userId;
+    appointment.arrivalSource = input.source ?? ArrivalSource.MANUAL_SECRETARY;
+
+    await this.appointmentRepo.save(appointment);
+    return this.findById(id);
+  }
+
+  /**
+   * Annulla la registrazione del ritardo (click sbagliato).
+   * Non tocca `wasNoShowReverted`: quello è un fatto di stato, non una
+   * misura, e resta.
+   */
+  async clearLateArrival(id: string): Promise<AvailabilityAppointment> {
+    await this.findById(id); // 404 se non esiste
+    // `save()` ignora le proprietà undefined: per azzerare davvero le
+    // colonne serve un update esplicito a NULL.
+    await this.appointmentRepo.update(id, {
+      arrivedAt: null,
+      lateMinutes: null,
+      arrivalMarkedBy: null,
+      arrivalSource: null,
+    } as any);
+    return this.findById(id);
+  }
+
+  /**
    * Registra una cancellazione tardiva del paziente nel log attendance.
    * (Sostituisce la vecchia logica jsonb su `patients.cancellationsByYear`,
    * tabella droppata col refactor registry-integration.)
    */
   private async incrementPatientCancellation(
     patientId: string,
-    appointmentId?: string,
+    appointmentId: string,
   ): Promise<void> {
-    await this.attendanceService.recordEvent({
+    await this.attendanceService.recordEventOnce({
       subjectId: patientId,
       eventType: AttendanceEventType.CANCELLATION,
       appointmentId,
@@ -1593,9 +1756,9 @@ export class AvailabilityAppointmentService {
    */
   private async incrementPatientNoShow(
     patientId: string,
-    appointmentId?: string,
+    appointmentId: string,
   ): Promise<void> {
-    await this.attendanceService.recordEvent({
+    await this.attendanceService.recordEventOnce({
       subjectId: patientId,
       eventType: AttendanceEventType.NO_SHOW,
       appointmentId,
@@ -1714,9 +1877,32 @@ export class AvailabilityAppointmentService {
   }
 
   /**
-   * Crea un appuntamento palestra con validazione capacità
+   * Crea un appuntamento palestra con validazione capacità.
+   * Wrapper retro-compat: ritorna solo l'appuntamento (il master per le
+   * serie). Per il report delle occorrenze saltate usare
+   * `createGymAppointmentWithReport`.
    */
   async createGymAppointment(input: CreateGymAppointmentInput): Promise<AvailabilityAppointment> {
+    return (await this.createGymAppointmentWithReport(input)).appointment;
+  }
+
+  /**
+   * Crea un appuntamento palestra (singolo o serie ricorrente) con report:
+   * per le serie, le occorrenze in conflitto (slot chiuso, capienza piena,
+   * nessun istruttore) vengono saltate ma ELENCATE in `conflicts` così il
+   * frontend può avvisare l'utente (parità con la modalità operatori, dove
+   * però il conflitto blocca l'intera serie). Se nessuna occorrenza è
+   * creabile, lancia RECURRING_SERIES_CONFLICT con l'elenco.
+   */
+  async createGymAppointmentWithReport(input: CreateGymAppointmentInput): Promise<{
+    appointment: AvailabilityAppointment;
+    createdCount: number;
+    skippedCount: number;
+    conflicts: {
+      date: string; startTime: string; endTime: string;
+      type: string; reason: string;
+    }[];
+  }> {
     const { repeatConfig, ...appointmentData } = input;
 
     // 1. Verifica che la GymRoom esista
@@ -1826,7 +2012,7 @@ export class AvailabilityAppointmentService {
       savedGymAppointment.startTime,
     ).catch(() => {});
 
-    return savedGymAppointment;
+    return { appointment: savedGymAppointment, createdCount: 1, skippedCount: 0, conflicts: [] };
   }
 
   /**
@@ -1913,13 +2099,22 @@ export class AvailabilityAppointmentService {
   }
 
   /**
-   * Crea appuntamenti palestra ricorrenti
+   * Crea appuntamenti palestra ricorrenti. Le occorrenze in conflitto (slot
+   * chiuso, capienza piena, nessun istruttore, errore di creazione) vengono
+   * SALTATE ma raccolte in `conflicts` per l'avviso lato frontend. Se nessuna
+   * occorrenza è creabile, lancia RECURRING_SERIES_CONFLICT con l'elenco
+   * (stesso marker della modalità operatori → stesso dialog di riepilogo).
    */
   private async createRecurringGymAppointments(
     baseData: Omit<CreateGymAppointmentInput, 'repeatConfig'> & { operatorId: string },
     gymRoom: GymRoom,
     repeatConfig: RepeatConfigInput,
-  ): Promise<AvailabilityAppointment> {
+  ): Promise<{
+    appointment: AvailabilityAppointment;
+    createdCount: number;
+    skippedCount: number;
+    conflicts: { date: string; startTime: string; endTime: string; type: string; reason: string }[];
+  }> {
     // Calcola tutte le date della ricorrenza
     const dates = this.calculateRecurringDates(baseData.appointmentDate, repeatConfig);
 
@@ -1931,7 +2126,11 @@ export class AvailabilityAppointmentService {
     const recurringGroupId = uuidv4();
 
     let firstAppointment: AvailabilityAppointment | null = null;
-    let skippedCount = 0;
+    let createdCount = 0;
+    const conflicts: { date: string; startTime: string; endTime: string; type: string; reason: string }[] = [];
+    const asConflict = (date: string, type: string, reason: string) => ({
+      date, startTime: baseData.startTime, endTime: baseData.endTime, type, reason,
+    });
 
     for (let i = 0; i < dates.length; i++) {
       const date = dates[i];
@@ -1945,7 +2144,8 @@ export class AvailabilityAppointmentService {
           baseData.endTime,
         );
         if (closure.closed) {
-          skippedCount++;
+          conflicts.push(asConflict(date, 'unavailable',
+            closure.reason || 'La palestra è chiusa in questa fascia oraria'));
           continue;
         }
 
@@ -1958,7 +2158,8 @@ export class AvailabilityAppointmentService {
         );
 
         if (currentCount >= gymRoom.maxCapacity) {
-          skippedCount++;
+          conflicts.push(asConflict(date, 'overlap',
+            `Capacità massima della sala raggiunta (${currentCount}/${gymRoom.maxCapacity})`));
           continue; // Salta questa data se pieno
         }
 
@@ -1970,7 +2171,8 @@ export class AvailabilityAppointmentService {
         );
 
         if (!operator) {
-          skippedCount++;
+          conflicts.push(asConflict(date, 'unavailable',
+            'Nessun istruttore assegnato allo slot (verificare i template della palestra)'));
           continue; // Salta se non c'è operatore
         }
 
@@ -1995,23 +2197,27 @@ export class AvailabilityAppointmentService {
 
         // WhatsApp dispatch per OGNI appuntamento della serie
         this.dispatchWhatsappBooking(appointment);
+        createdCount++;
 
         if (isFirst) {
           firstAppointment = appointment;
         }
       } catch (error) {
         console.warn(`Impossibile creare appuntamento palestra ricorrente per ${date}:`, error.message);
-        skippedCount++;
+        conflicts.push(asConflict(date, 'error',
+          error?.message || 'Errore durante la creazione dell\'occorrenza'));
       }
     }
 
     if (!firstAppointment) {
-      throw new BadRequestException(
-        `Impossibile creare appuntamenti ricorrenti. ${skippedCount} date saltate per capacità piena o mancanza operatore.`
+      // Nessuna occorrenza creabile: avvisa-e-blocca con l'elenco conflitti
+      // (il frontend riconosce il marker e mostra il riepilogo).
+      throw new ConflictException(
+        `${AvailabilityAppointmentService.RECURRING_CONFLICT_ERROR}: ${JSON.stringify(conflicts)}`,
       );
     }
 
-    return firstAppointment;
+    return { appointment: firstAppointment, createdCount, skippedCount: conflicts.length, conflicts };
   }
 
   /**
@@ -2186,6 +2392,50 @@ export class AvailabilityAppointmentService {
         return this.whatsappGateway!.cancelBooking(appointment, contact);
       })
       .catch((err) => this.logger.warn(`WhatsApp cancel failed: ${err?.message}`));
+  }
+
+  /**
+   * Fire-and-forget: notifica WhatsApp di spostamento appuntamento.
+   *
+   * Il gateway, oltre a inviare il messaggio, rimuove il reminder programmato
+   * sul vecchio orario e lo riprogramma sul nuovo.
+   */
+  private dispatchWhatsappUpdate(appointment: AvailabilityAppointment): void {
+    if (!this.whatsappGateway) return;
+
+    if (appointment.clientPhone) {
+      this.whatsappGateway
+        .updateBooking(appointment, this.walkInToContact(appointment))
+        .catch((err) => this.logger.warn(`WhatsApp update failed: ${err?.message}`));
+      return;
+    }
+
+    if (!appointment.patientId) {
+      this.logger.warn(
+        `[WA-UPDATE] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
+      );
+      return;
+    }
+
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      this.logger.warn(
+        `[WA-UPDATE] SKIP appointmentId=${appointment.id}: tenantAlias non disponibile`,
+      );
+      return;
+    }
+
+    this.fetchPatientContactAsService(appointment.patientId, tenantAlias)
+      .then((contact) => {
+        if (!contact) {
+          this.logger.warn(
+            `[WA-UPDATE] SKIP appointmentId=${appointment.id}: subject ${appointment.patientId} non trovato nel registry`,
+          );
+          return;
+        }
+        return this.whatsappGateway!.updateBooking(appointment, contact);
+      })
+      .catch((err) => this.logger.warn(`WhatsApp update failed: ${err?.message}`));
   }
 
   // ==================== HELPERS PER WHATSAPP ====================
@@ -2626,6 +2876,11 @@ export class AvailabilityAppointmentService {
    * dal controllo (si "scambiano" gli slot durante lo shift). Il vincolo di
    * disponibilità operatore NON blocca qui: l'applicazione forza il salvataggio
    * (l'utente ha scelto esplicitamente di modificare la serie).
+   *
+   * Serie PALESTRA (appointmentType GYM): lo slot è condiviso per natura
+   * (stesso istruttore, più pazienti), quindi il controllo di sovrapposizione
+   * per operatore NON si applica. Se la posizione cambia, si validano invece
+   * chiusura slot e capienza della sala nella nuova posizione.
    */
   async updateRecurringSeries(input: {
     appointmentId: string;
@@ -2639,6 +2894,8 @@ export class AvailabilityAppointmentService {
     operatorId?: string;
     patientId?: string;
     clientName?: string;
+    clientPhone?: string;
+    clientEmail?: string;
     notes?: string;
     nonRetribuito?: boolean;
     instrumentOrderMatters?: boolean;
@@ -2672,9 +2929,58 @@ export class AvailabilityAppointmentService {
     const batchIds = targets.map(t => t.occ.id);
 
     // ── Validazione preventiva: solo sovrapposizioni con appuntamenti ESTERNI
-    //    alla serie (la serie in movimento è esclusa via NOT IN batchIds). ──
+    //    alla serie (la serie in movimento è esclusa via NOT IN batchIds).
+    //    Per le occorrenze PALESTRA il check per operatore non ha senso (slot
+    //    condiviso): si valida chiusura slot + capienza sala, e solo se la
+    //    posizione cambia davvero. ──
+    const hhmm = (t: string | undefined | null): string => (t ?? '').slice(0, 5);
     const conflicts: any[] = [];
     for (const t of targets) {
+      if (t.occ.appointmentType === AppointmentType.GYM) {
+        const positionChanged =
+          deltaDays !== 0 ||
+          hhmm(input.startTime) !== hhmm(t.occ.startTime) ||
+          hhmm(input.endTime) !== hhmm(t.occ.endTime);
+        if (!positionChanged || !t.occ.gymRoomId) continue;
+
+        const closure = await this.gymExceptionService.getSlotClosure(
+          t.occ.gymRoomId, new Date(t.newDate), input.startTime, input.endTime,
+        );
+        if (closure.closed) {
+          conflicts.push({
+            appointmentId: t.occ.id,
+            date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+            type: 'unavailable',
+            reason: closure.reason || 'La palestra è chiusa in questa fascia oraria',
+          });
+          continue;
+        }
+
+        const inSlot = await this.appointmentRepo
+          .createQueryBuilder('a')
+          .where('a.gymRoomId = :roomId', { roomId: t.occ.gymRoomId })
+          .andWhere('a.appointmentType = :gymType', { gymType: AppointmentType.GYM })
+          .andWhere('a.appointmentDate = :date', { date: t.newDate })
+          .andWhere('a.bookingStatus NOT IN (:...excluded)', {
+            excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
+          })
+          .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
+            startTime: input.startTime, endTime: input.endTime,
+          })
+          .andWhere('a.id NOT IN (:...batchIds)', { batchIds })
+          .getCount();
+        const capacity = t.occ.maxParticipants ?? null;
+        if (capacity !== null && inSlot >= capacity) {
+          conflicts.push({
+            appointmentId: t.occ.id,
+            date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+            type: 'overlap',
+            reason: `Capacità massima della sala raggiunta per questo slot (${inSlot}/${capacity})`,
+          });
+        }
+        continue;
+      }
+
       const opId = input.operatorId ?? t.occ.operatorId;
       const overlap = await this.appointmentRepo
         .createQueryBuilder('a')
@@ -2724,6 +3030,8 @@ export class AvailabilityAppointmentService {
           operatorId: input.operatorId,
           patientId: input.patientId,
           clientName: input.clientName,
+          clientPhone: input.clientPhone,
+          clientEmail: input.clientEmail,
           notes: input.notes,
           nonRetribuito: input.nonRetribuito,
           instrumentOrderMatters: input.instrumentOrderMatters,

@@ -97,6 +97,34 @@ export const MARK_APPOINTMENT_ATTENDED = gql`
 `;
 
 /**
+ * Mutation: registra a posteriori l'arrivo in ritardo del paziente.
+ *
+ * Serve quando il cambio automatico di stato ha già messo l'appuntamento a
+ * "presentato" all'orario previsto: senza un gesto esplicito il ritardo non
+ * verrebbe misurato. Aperta sia alla segreteria sia all'operatore.
+ */
+export const MARK_APPOINTMENT_LATE_ARRIVAL = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  mutation MarkAppointmentLateArrival($id: ID!, $lateMinutes: Int) {
+    markAppointmentLateArrival(id: $id, lateMinutes: $lateMinutes) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;
+
+/**
+ * Mutation: annulla la registrazione del ritardo (click sbagliato).
+ */
+export const CLEAR_APPOINTMENT_LATE_ARRIVAL = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  mutation ClearAppointmentLateArrival($id: ID!) {
+    clearAppointmentLateArrival(id: $id) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;
+
+/**
  * Mutation: Annulla stato attended e ripristina a confirmed
  * Utile per correggere click accidentali
  */

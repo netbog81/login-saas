@@ -447,6 +447,16 @@ textarea.form-control {
       background-color: #059669;
     }
   }
+
+  // Ritardo: informativo, distinto dal rosso del no-show
+  &.btn-info {
+    background-color: #1976d2;
+    color: #ffffff;
+
+    &:hover {
+      background-color: #1565c0;
+    }
+  }
 }
 
 // ==================== RECURRING APPOINTMENT STYLES ====================
@@ -719,6 +729,31 @@ textarea.form-control {
   border-radius: 4px;
   color: #856404;
   font-size: 13px;
+}
+
+// Ritardo già registrato: informativo, non è una penalità come il no-show
+.late-registered {
+  margin-top: 10px;
+  padding: 7px 12px;
+  background-color: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  color: #0d47a1;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .btn-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: #0d47a1;
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+  }
 }
 
 .recurring-series-section {

@@ -3,6 +3,10 @@
   <div class="header">
     <h2>Gestione Operatori</h2>
     <div class="header-actions">
+      <button class="btn btn-secondary" (click)="resyncToAccounting()" [disabled]="resyncing"
+              title="Ri-invia nomi e percentuali di tutti gli operatori alla contabilità (conti operatori)">
+        {{ resyncing ? 'Sincronizzazione…' : '⇅ Sincronizza con Contabilità' }}
+      </button>
       <button class="btn btn-secondary" (click)="toggleArchivedView()">
         {{ showArchived ? '← Operatori attivi' : 'Operatori archiviati' }}
       </button>

@@ -392,6 +392,47 @@
       </div>
     </section>
 
+    <!-- Navigazione / link cross-modulo Section -->
+    <section class="settings-section">
+      <h2>Collegamenti ad altri moduli</h2>
+      <p class="section-description">
+        Controlla quali collegamenti agli altri moduli Curandis compaiono nel
+        menu principale (visibili alla segreteria).
+      </p>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="navigationSettings.showRegistryLink"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Mostra link Anagrafiche nel menu</span>
+        </label>
+        <small class="hint">
+          Se abilitato, nel menu compare il collegamento alla sezione
+          Anagrafiche di Curandis Gestione (si apre in una nuova scheda).
+          Se disabilitato, il collegamento viene nascosto per tutti gli utenti.
+        </small>
+      </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="navigationSettings.showAccountingLink"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Mostra link Contabilità nel menu</span>
+        </label>
+        <small class="hint">
+          Se abilitato, nel menu compare il collegamento alla sezione
+          Contabilità di Curandis Gestione (si apre in una nuova scheda).
+          Se disabilitato, il collegamento viene nascosto per tutti gli utenti.
+        </small>
+      </div>
+    </section>
+
     <!-- Actions -->
     <div class="settings-actions">
       <button

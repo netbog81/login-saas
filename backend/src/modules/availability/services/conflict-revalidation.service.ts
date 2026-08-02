@@ -10,6 +10,7 @@ import {
   ExceptionType,
 } from '../entities/availability-exception.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
+import { findBlockingException } from '../utils/day-exception-semantics.util';
 import { GymExceptionService } from './gym-exception.service';
 import { AvailabilityService } from './availability.service';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
@@ -277,11 +278,8 @@ export class ConflictRevalidationService {
   /**
    * True se lo slot dell'appuntamento è ancora coperto da un'assenza
    * operatore (AvailabilityException). Stesso predicato del check allo
-   * spostamento appuntamenti (checkAndMarkConflictForOperatorAppointment):
-   * - MODIFIED con finestra = l'operatore lavora SOLO nella finestra →
-   *   conflitto se l'appuntamento esce dalla finestra;
-   * - altri tipi: senza orari = assente tutto il giorno; con orari =
-   *   conflitto se c'è sovrapposizione.
+   * spostamento appuntamenti (checkAndMarkConflictForOperatorAppointment),
+   * centralizzato in day-exception-semantics.util.ts.
    */
   private async isCoveredByOperatorAbsence(
     apt: AvailabilityAppointment,
@@ -296,22 +294,6 @@ export class ConflictRevalidationService {
       });
     if (exceptions.length === 0) return false;
 
-    const norm = (t: string) => {
-      const p = t.split(':');
-      return `${p[0].padStart(2, '0')}:${(p[1] ?? '00').padStart(2, '0')}`;
-    };
-    const aptStart = norm(apt.startTime);
-    const aptEnd = norm(apt.endTime);
-
-    return exceptions.some((ex) => {
-      if (ex.exceptionType === ExceptionType.MODIFIED) {
-        if (ex.startTime && ex.endTime) {
-          return !(aptStart >= norm(ex.startTime) && aptEnd <= norm(ex.endTime));
-        }
-        return false;
-      }
-      if (!ex.startTime || !ex.endTime) return true;
-      return aptStart < norm(ex.endTime) && norm(ex.startTime) < aptEnd;
-    });
+    return findBlockingException(exceptions, apt.startTime, apt.endTime) !== null;
   }
 }

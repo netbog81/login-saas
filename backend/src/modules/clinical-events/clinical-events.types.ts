@@ -32,6 +32,7 @@ export type ClinicalOutboundEventType =
   | 'service.deleted'
   | 'product.upserted'
   | 'product.deleted'
+  | 'operator.upserted'
   | 'treatment.closed'
   | 'treatment.amended'
   | 'treatment.cancelled'
@@ -77,6 +78,36 @@ export interface ServiceDeletedPayload {
   deletedAt: string;        // ISO 8601
 }
 
+// ----- operator.* -----
+
+/**
+ * 2026-07-11 — Sync operatori verso accounting per i conti/compensi
+ * ("Conti operatori"). La scheda operatore del clinico resta l'unica
+ * fonte della "Percentuale su prestazioni" (royaltyPercentage).
+ */
+export interface OperatorUpsertedPayload {
+  operatorId: string;
+  /** AppUser collegato (uuid clinico), null per operatori senza account. */
+  appUserId: string | null;
+  /**
+   * Keycloak sub dell'AppUser: è la CHIAVE DI JOIN con
+   * `executedByUserId` delle righe treatment inviate ad accounting.
+   * Null se l'operatore non ha (ancora) un utente Keycloak.
+   */
+  keycloakUserId: string | null;
+  displayName: string;
+  /** Percentuale su prestazioni, numeric come string (es. "40.00"). */
+  royaltyPercentage: string;
+  /**
+   * Macro categoria (doctor | physiotherapist | gym_instructor | other):
+   * usata dai conti operatori accounting per filtrare per categoria.
+   */
+  macroCategory?: string | null;
+  taxCode?: string | null;
+  vatNumber?: string | null;
+  isActive: boolean;
+}
+
 // ----- product.* -----
 
 export interface ProductUpsertedPayload {
@@ -103,7 +134,21 @@ export interface TreatmentLineService {
   lineType: 'SERVICE';
   serviceId: string;
   serviceCode: string;
-  executedByUserId: string | null;      // Keycloak sub (null se operator orfano)
+  /**
+   * Sub Keycloak dell'OPERATORE esecutore (null se l'operatore non è
+   * collegato a un utente). Dal 2026-07-15 deriva SEMPRE dall'operatore
+   * (override riga o operatore del trattamento), mai dall'utente loggato.
+   */
+  executedByUserId: string | null;
+  /**
+   * 2026-07-15 — Operatore esecutore (operators.id del clinico): chiave
+   * primaria di attribuzione dei conteggi lato accounting. Funziona anche
+   * per operatori senza utente Keycloak. Null solo su righe storiche
+   * anteriori al campo o con operatore hard-deleted.
+   */
+  executedByOperatorId?: string | null;
+  /** Nome visualizzabile dell'esecutore (snapshot difensivo). */
+  executedByOperatorName?: string | null;
   professionalRegistration?: string | null;
   macroCategory?: string | null;
   quantity: string;                     // hardcoded "1" per MVP

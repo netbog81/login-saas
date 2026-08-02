@@ -1,7 +1,9 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, UseInterceptors } from '@nestjs/common';
 import { CalendarWriteGuard } from '../guards/calendar-write.guard';
-import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+import { AppointmentChangedInterceptor } from '../mutation-event.interceptors';
+import { AvailabilityAppointment, ArrivalSource } from '../entities/availability-appointment.entity';
+import { CurrentUser, CurrentUserContext } from '../../users/decorators/current-user.decorator';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
 import { CreateAvailabilityAppointmentInput } from '../dto/create-availability-appointment.input';
@@ -10,9 +12,24 @@ import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
 import { GymAvailabilityService } from '../services/gym-availability.service';
 import { RecurringSeriesScope, UpdateRecurringSeriesTimeInput, UpdateRecurringSeriesInput } from '../dto/recurring-series.input';
-import { RecurringSeriesOperationResult } from '../dto/recurring-series-conflict.output';
+import { RecurringSeriesOperationResult, GymAppointmentCreationResult } from '../dto/recurring-series-conflict.output';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
+/**
+ * Da quale postazione è stato registrato l'arrivo del paziente.
+ * Ruoli di segreteria/amministrazione → banco; tutto il resto (operatore,
+ * fisioterapista, istruttore palestra) → sala.
+ */
+const SECRETARY_ROLES = ['segreteria', 'admin', 'amministratore', 'superadmin'];
+
+function resolveArrivalSource(user?: CurrentUserContext): ArrivalSource {
+  const roles: string[] = (user as any)?.roles ?? [];
+  return roles.some((r) => SECRETARY_ROLES.includes(r))
+    ? ArrivalSource.MANUAL_SECRETARY
+    : ArrivalSource.MANUAL_OPERATOR;
+}
+
+@UseInterceptors(AppointmentChangedInterceptor)
 @Resolver(() => AvailabilityAppointment)
 export class AvailabilityAppointmentResolver {
   constructor(
@@ -179,8 +196,46 @@ export class AvailabilityAppointmentResolver {
   @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentAttended' })
   async markAttended(
     @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: CurrentUserContext,
   ): Promise<AvailabilityAppointment> {
-    return this.appointmentService.markAttended(id);
+    return this.appointmentService.markAttended(id, {
+      userId: user?.userId,
+      source: resolveArrivalSource(user),
+    });
+  }
+
+  /**
+   * Mutation: registra a posteriori l'arrivo in ritardo del paziente.
+   *
+   * Necessaria perché col cron auto-attendance l'appuntamento risulta già
+   * "presentato" all'orario teorico: senza un gesto esplicito il ritardo
+   * non verrebbe mai misurato. Aperta sia alla segreteria (dal calendario)
+   * sia all'operatore/istruttore (dalla sua pagina): è un fatto osservato,
+   * non una decisione economica.
+   */
+  @UseGuards(CalendarWriteGuard)
+  @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentLateArrival' })
+  async markLateArrival(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: CurrentUserContext,
+    @Args('lateMinutes', { type: () => Int, nullable: true }) lateMinutes?: number,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.markLateArrival(id, {
+      lateMinutes,
+      userId: user?.userId,
+      source: resolveArrivalSource(user),
+    });
+  }
+
+  /**
+   * Mutation: annulla la registrazione del ritardo (click sbagliato).
+   */
+  @UseGuards(CalendarWriteGuard)
+  @Mutation(() => AvailabilityAppointment, { name: 'clearAppointmentLateArrival' })
+  async clearLateArrival(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.clearLateArrival(id);
   }
 
   /**
@@ -276,6 +331,20 @@ export class AvailabilityAppointmentResolver {
     @Args('input') input: CreateGymAppointmentInput,
   ): Promise<AvailabilityAppointment> {
     return this.appointmentService.createGymAppointment(input);
+  }
+
+  /**
+   * Mutation: Come createGymAppointment ma con report delle occorrenze
+   * ricorrenti saltate per conflitto (slot chiuso, capienza, nessun
+   * istruttore): le valide vengono create, le saltate elencate in
+   * `conflicts`. Se nessuna è creabile fallisce con RECURRING_SERIES_CONFLICT.
+   */
+  @Mutation(() => GymAppointmentCreationResult, { name: 'createGymAppointmentWithReport' })
+  @UseGuards(CalendarWriteGuard)
+  async createGymAppointmentWithReport(
+    @Args('input') input: CreateGymAppointmentInput,
+  ): Promise<GymAppointmentCreationResult> {
+    return this.appointmentService.createGymAppointmentWithReport(input) as Promise<GymAppointmentCreationResult>;
   }
 
   // ==========================================

@@ -1,13 +1,11 @@
 import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { TherapeuticPath } from '../entities/therapeutic-path.entity';
-import { PathDocument, DocumentCategory } from '../entities/path-document.entity';
 import { PatientModel } from '../../../patients/models/patient.model';
 import { TherapeuticPathService } from '../services/therapeutic-path.service';
 import {
   CreateTherapeuticPathInput,
   UpdateTherapeuticPathInput,
-  CreateDocumentInput,
 } from '../dto/therapeutic-path.input';
 import {
   AuthorizationGuard,
@@ -149,58 +147,7 @@ export class TherapeuticPathResolver {
     return this.pathService.deletePath(id, deletedByUserId);
   }
 
-  // ==================== DOCUMENT QUERIES ====================
-
-  /**
-   * Query: Ottiene un documento per ID
-   */
-  @Query(() => PathDocument, { name: 'pathDocument', nullable: true })
-  async getPathDocument(
-    @Args('id', { type: () => ID }) id: string,
-  ): Promise<PathDocument | null> {
-    return this.pathService.findDocumentById(id);
-  }
-
-  /**
-   * Query: Ottiene i documenti di un percorso
-   */
-  @Query(() => [PathDocument], { name: 'documentsByPath' })
-  async getDocumentsByPath(
-    @Args('pathId', { type: () => ID }) pathId: string,
-  ): Promise<PathDocument[]> {
-    return this.pathService.findDocumentsByPath(pathId);
-  }
-
-  /**
-   * Query: Ottiene i documenti di un percorso filtrati per categoria
-   */
-  @Query(() => [PathDocument], { name: 'documentsByPathAndCategory' })
-  async getDocumentsByPathAndCategory(
-    @Args('pathId', { type: () => ID }) pathId: string,
-    @Args('category', { type: () => DocumentCategory }) category: DocumentCategory,
-  ): Promise<PathDocument[]> {
-    return this.pathService.findDocumentsByCategory(pathId, category);
-  }
-
-  // ==================== DOCUMENT MUTATIONS ====================
-
-  /**
-   * Mutation: Crea un nuovo documento
-   */
-  @Mutation(() => PathDocument, { name: 'createPathDocument' })
-  async createPathDocument(
-    @Args('input') input: CreateDocumentInput,
-  ): Promise<PathDocument> {
-    return this.pathService.createDocument(input);
-  }
-
-  /**
-   * Mutation: Elimina un documento
-   */
-  @Mutation(() => Boolean, { name: 'deletePathDocument' })
-  async deletePathDocument(
-    @Args('id', { type: () => ID }) id: string,
-  ): Promise<boolean> {
-    return this.pathService.deleteDocument(id);
-  }
+  // NOTA: le query/mutation documenti (pathDocument, documentsByPath,
+  // createPathDocument, ...) sono state sostituite dal modulo
+  // patient-documents (entity patient_documents, storage S3 cifrato).
 }

@@ -29,22 +29,27 @@ export class TaskMessageGatewayService {
   async create(
     tenantId: string,
     senderUserId: string,
-    recipientUserId: string,
+    recipient: { userId?: string; group?: string },
     content: string,
     availableFrom?: Date,
     correlationId?: string,
   ): Promise<GatewayCreateResponse> {
     const corrId = correlationId || uuidv4();
-    this.logger.log(`[TASK-GW] CREATE sender=${senderUserId} recipient=${recipientUserId} correlationId=${corrId}`);
+    const recipientLabel = recipient.userId ?? `group:${recipient.group}`;
+    this.logger.log(`[TASK-GW] CREATE sender=${senderUserId} recipient=${recipientLabel} correlationId=${corrId}`);
 
     const { url, headers } = await this.buildRequest(tenantId, corrId);
 
     const payload: Record<string, any> = {
       senderUserId,
-      recipientUserId,
       content,
       correlationId: corrId,
     };
+    if (recipient.userId) {
+      payload.recipientUserId = recipient.userId;
+    } else {
+      payload.recipientGroup = recipient.group;
+    }
     if (availableFrom) {
       payload.availableFrom = availableFrom.toISOString();
     }

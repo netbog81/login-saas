@@ -247,6 +247,17 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
               this.cdr.detectChanges();
             });
           }
+
+          // Struttura orari cambiata da un altro utente (template, eccezioni,
+          // assenze, festività): la griglia disponibilità è stale.
+          if (event.type === 'availability_changed') {
+            if (this.config.viewMode === 'gyms') return;
+            this.ngZone.run(async () => {
+              this.invalidateOperatorCache();
+              await this.loadAppointmentsForCurrentView();
+              this.cdr.detectChanges();
+            });
+          }
         },
         error: (err) => {
           console.warn('[Calendar] SSE connection error:', err);

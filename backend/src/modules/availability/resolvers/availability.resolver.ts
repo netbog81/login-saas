@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, UseInterceptors } from '@nestjs/common';
 import { AvailabilityService } from '../services/availability.service';
 import { PhysiotherapistAvailabilityService } from '../services/physiotherapist-availability.service';
 import { GymAvailabilityService } from '../services/gym-availability.service';
@@ -19,8 +19,10 @@ import { CheckPhysiotherapistAvailabilityInput } from '../dto/check-physiotherap
 import { InstrumentSlotInput } from '../dto/instrument-slot.input';
 import { PhysiotherapistSlotOutput } from '../dto/physiotherapist-slot.output';
 import { GymSlotOutput } from '../dto/gym-slot.output';
+import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 // import { GqlAuthGuard } from '../../auth/guards/gql-auth.guard'; // Uncomment when auth is ready
 
+@UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver()
 export class AvailabilityResolver {
   constructor(

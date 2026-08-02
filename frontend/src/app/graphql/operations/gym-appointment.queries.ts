@@ -160,3 +160,29 @@ export const CREATE_GYM_APPOINTMENT = gql`
     }
   }
 `;
+
+/**
+ * Mutation: Crea un appuntamento palestra con report delle occorrenze
+ * ricorrenti saltate per conflitto (create le valide, elencate le saltate).
+ */
+export const CREATE_GYM_APPOINTMENT_WITH_REPORT = gql`
+  ${GYM_APPOINTMENT_FIELDS}
+  mutation CreateGymAppointmentWithReport($input: CreateGymAppointmentInput!) {
+    createGymAppointmentWithReport(input: $input) {
+      appointment {
+        ...GymAppointmentFields
+      }
+      createdCount
+      skippedCount
+      conflicts {
+        date
+        startTime
+        endTime
+        type
+        reason
+        conflictingStartTime
+        conflictingEndTime
+      }
+    }
+  }
+`;

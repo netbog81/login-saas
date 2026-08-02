@@ -60,7 +60,7 @@ export const authGuard: CanActivateFn = async (route) => {
  * Priorità (un utente può avere più ruoli — vince il profilo "ampio"):
  *  - segreteria / admin / amministratore / superadmin → /calendar
  *  - medico                                           → /medico/dashboard
- *  - operatore / istruttore                           → /calendar3 (proprio
+ *  - operatore / istruttore                           → /calendar (proprio
  *    calendario in sola lettura; il container calendar-v3 applica read-only
  *    e, per gli istruttori, la modalità palestra in base al ruolo)
  *  - fallback (nessun ruolo noto)                     → /calendar (poi
@@ -105,11 +105,11 @@ export const homeRedirectGuard: CanActivateFn = async () => {
   if (oidcAuth.hasRole(['medico'])) {
     return router.parseUrl('/medico/dashboard');
   }
-  // Operatore e istruttore atterrano sul calendar-v3 read-only del proprio
+  // Operatore e istruttore atterrano sul calendario read-only del proprio
   // calendario (l'istruttore in modalità palestra). Il container calendar-v3
   // distingue il ruolo e applica la vista corretta.
   if (oidcAuth.hasRole(['operatore', 'istruttore'])) {
-    return router.parseUrl('/calendar3');
+    return router.parseUrl('/calendar');
   }
 
   // Fallback: lascia che sia l'authGuard della rotta a decidere.

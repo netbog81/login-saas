@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
 
 /**
  * Conflitto rilevato su una singola occorrenza di una serie ricorrente
@@ -47,6 +48,28 @@ export class RecurringSeriesOperationResult {
 
   @Field(() => Int)
   affectedCount: number;
+
+  @Field(() => [RecurringOccurrenceConflict])
+  conflicts: RecurringOccurrenceConflict[];
+}
+
+/**
+ * Risultato della creazione di un appuntamento palestra con report: per le
+ * serie ricorrenti le occorrenze in conflitto (slot chiuso, capienza piena,
+ * nessun istruttore) vengono SALTATE ma elencate in `conflicts`, così il
+ * frontend può avvisare l'utente. Se NESSUNA occorrenza è creabile la
+ * mutation fallisce con errore RECURRING_SERIES_CONFLICT (avvisa-e-blocca).
+ */
+@ObjectType()
+export class GymAppointmentCreationResult {
+  @Field(() => AvailabilityAppointment)
+  appointment: AvailabilityAppointment;
+
+  @Field(() => Int)
+  createdCount: number;
+
+  @Field(() => Int)
+  skippedCount: number;
 
   @Field(() => [RecurringOccurrenceConflict])
   conflicts: RecurringOccurrenceConflict[];

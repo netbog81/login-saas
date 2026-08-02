@@ -20,7 +20,12 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Subject, takeUntil, startWith, map, Observable, of } from 'rxjs';
 import { AppUserService, AppUser } from '../../../services/app-user.service';
-import { TaskMessage, CreateTaskMessageInput } from '../models/task-message.models';
+import {
+  TaskMessage,
+  CreateTaskMessageInput,
+  TaskMessageRecipientGroup,
+  RECIPIENT_GROUP_LABELS,
+} from '../models/task-message.models';
 
 export interface ComposeDialogData {
   editMode: boolean;
@@ -31,6 +36,15 @@ export interface ComposeDialogData {
 export interface ComposeDialogResult {
   input: CreateTaskMessageInput;
   gatewayMessageId?: string;
+}
+
+/** Voce dell'autocomplete destinatario: utente singolo oppure gruppo */
+interface RecipientOption {
+  kind: 'user' | 'group';
+  user?: AppUser;
+  group?: TaskMessageRecipientGroup;
+  label: string;
+  hint: string;
 }
 
 @Component({
@@ -64,14 +78,17 @@ export interface ComposeDialogResult {
             <input matInput
               formControlName="recipientSearch"
               [matAutocomplete]="autoRecipient"
-              placeholder="Cerca utente per nome...">
+              placeholder="Cerca utente o gruppo...">
             <mat-autocomplete #autoRecipient="matAutocomplete"
-              [displayWith]="displayUser"
+              [displayWith]="displayOption"
               (optionSelected)="onRecipientSelected($event.option.value)">
-              @for (user of filteredUsers$ | async; track user.id) {
-                <mat-option [value]="user">
-                  {{ user.name }} {{ user.surname || '' }}
-                  <span class="user-type">({{ user.userType }})</span>
+              @for (option of filteredOptions$ | async; track option.label) {
+                <mat-option [value]="option">
+                  @if (option.kind === 'group') {
+                    <mat-icon class="group-icon">groups</mat-icon>
+                  }
+                  {{ option.label }}
+                  <span class="user-type">({{ option.hint }})</span>
                 </mat-option>
               }
             </mat-autocomplete>
@@ -79,6 +96,12 @@ export interface ComposeDialogResult {
               <mat-error>Destinatario obbligatorio</mat-error>
             }
           </mat-form-field>
+          @if (selectedGroup) {
+            <div class="info-box">
+              <mat-icon>groups</mat-icon>
+              <span>Il messaggio sarà visibile a tutte le segretarie: la prima che lo segna come eseguito lo farà scomparire alle altre.</span>
+            </div>
+          }
         }
 
         <mat-form-field appearance="outline" class="full-width">
@@ -129,6 +152,14 @@ export interface ComposeDialogResult {
     }
     .full-width { width: 100%; }
     .user-type { color: #999; font-size: 12px; margin-left: 4px; }
+    .group-icon {
+      vertical-align: middle;
+      margin-right: 6px;
+      color: #1565c0;
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
     .info-box {
       display: flex;
       align-items: center;
@@ -149,10 +180,11 @@ export interface ComposeDialogResult {
 })
 export class TaskMessageComposeDialogComponent implements OnInit, OnDestroy {
   form!: FormGroup;
-  users: AppUser[] = [];
-  filteredUsers$: Observable<AppUser[]> = of([]);
+  options: RecipientOption[] = [];
+  filteredOptions$: Observable<RecipientOption[]> = of([]);
   saving = false;
   minDate = new Date();
+  selectedGroup: TaskMessageRecipientGroup | null = null;
   private selectedRecipientId: string | null = null;
   private readonly destroy$ = new Subject<void>();
 
@@ -166,14 +198,21 @@ export class TaskMessageComposeDialogComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    const editRecipientLabel = this.data.message?.recipientGroup
+      ? RECIPIENT_GROUP_LABELS[this.data.message.recipientGroup]
+      : this.data.message?.recipientUser
+        ? this.displayUserName(this.data.message.recipientUser as any)
+        : '';
+
     this.form = this.fb.group({
-      recipientSearch: [this.data.message?.recipientUser ? this.displayUser(this.data.message.recipientUser as any) : '', Validators.required],
+      recipientSearch: [editRecipientLabel, Validators.required],
       content: [this.data.message?.content || '', Validators.required],
       availableFrom: [this.data.message?.availableFrom ? new Date(this.data.message.availableFrom) : null],
     });
 
     if (this.data.editMode && this.data.message) {
-      this.selectedRecipientId = this.data.message.recipientUserId;
+      this.selectedRecipientId = this.data.message.recipientUserId ?? null;
+      this.selectedGroup = this.data.message.recipientGroup ?? null;
     }
 
     // Load users for autocomplete
@@ -181,8 +220,22 @@ export class TaskMessageComposeDialogComponent implements OnInit, OnDestroy {
       takeUntil(this.destroy$),
     ).subscribe((users) => {
       this.ngZone.run(() => {
-        // Exclude current user from recipients
-        this.users = users.filter(u => u.id !== this.data.currentUserId);
+        // Gruppo Segreteria in cima, poi gli utenti (escluso l'utente corrente)
+        const groupOptions: RecipientOption[] = [{
+          kind: 'group',
+          group: 'SECRETARY',
+          label: RECIPIENT_GROUP_LABELS['SECRETARY'],
+          hint: 'gruppo: tutte le segretarie',
+        }];
+        const userOptions: RecipientOption[] = users
+          .filter(u => u.id !== this.data.currentUserId)
+          .map(u => ({
+            kind: 'user' as const,
+            user: u,
+            label: this.displayUserName(u),
+            hint: u.userType,
+          }));
+        this.options = [...groupOptions, ...userOptions];
         this.setupAutocomplete();
         this.cdr.markForCheck();
       });
@@ -190,25 +243,33 @@ export class TaskMessageComposeDialogComponent implements OnInit, OnDestroy {
   }
 
   private setupAutocomplete(): void {
-    this.filteredUsers$ = this.form.get('recipientSearch')!.valueChanges.pipe(
+    this.filteredOptions$ = this.form.get('recipientSearch')!.valueChanges.pipe(
       startWith(''),
       map(value => {
         const search = typeof value === 'string' ? value.toLowerCase() : '';
-        if (!search) return this.users;
-        return this.users.filter(u => {
-          const fullName = `${u.name} ${u.surname || ''}`.toLowerCase();
-          return fullName.includes(search);
-        });
+        if (!search) return this.options;
+        return this.options.filter(o => o.label.toLowerCase().includes(search));
       }),
     );
   }
 
-  onRecipientSelected(user: AppUser): void {
-    this.selectedRecipientId = user.id;
+  onRecipientSelected(option: RecipientOption): void {
+    if (option.kind === 'group') {
+      this.selectedGroup = option.group!;
+      this.selectedRecipientId = null;
+    } else {
+      this.selectedRecipientId = option.user!.id;
+      this.selectedGroup = null;
+    }
   }
 
-  displayUser(user: AppUser | null): string {
-    if (!user) return '';
+  displayOption(option: RecipientOption | string | null): string {
+    if (!option) return '';
+    if (typeof option === 'string') return option;
+    return option.label;
+  }
+
+  private displayUserName(user: { name: string; surname?: string }): string {
     return `${user.name}${user.surname ? ' ' + user.surname : ''}`;
   }
 
@@ -217,22 +278,26 @@ export class TaskMessageComposeDialogComponent implements OnInit, OnDestroy {
     if (this.data.editMode) {
       return contentValid;
     }
-    return contentValid && !!this.selectedRecipientId;
+    return contentValid && (!!this.selectedRecipientId || !!this.selectedGroup);
   }
 
   onSave(): void {
     if (!this.isFormValid()) return;
     this.saving = true;
 
-    const result: ComposeDialogResult = {
-      input: {
-        recipientUserId: this.selectedRecipientId || this.data.message?.recipientUserId || '',
-        content: this.form.get('content')!.value.trim(),
-        availableFrom: this.form.get('availableFrom')?.value
-          ? new Date(this.form.get('availableFrom')!.value).toISOString()
-          : undefined,
-      },
+    const input: CreateTaskMessageInput = {
+      content: this.form.get('content')!.value.trim(),
+      availableFrom: this.form.get('availableFrom')?.value
+        ? new Date(this.form.get('availableFrom')!.value).toISOString()
+        : undefined,
     };
+    if (this.selectedGroup) {
+      input.recipientGroup = this.selectedGroup;
+    } else {
+      input.recipientUserId = this.selectedRecipientId || this.data.message?.recipientUserId || '';
+    }
+
+    const result: ComposeDialogResult = { input };
 
     if (this.data.editMode && this.data.message) {
       result.gatewayMessageId = this.data.message.gatewayMessageId;

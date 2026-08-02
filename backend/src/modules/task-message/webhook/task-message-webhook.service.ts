@@ -4,6 +4,7 @@ import { TaskMessageWebhookEvent } from '../entities/task-message-webhook-event.
 import { TaskMessageStatus } from '../enums/task-message-status.enum';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { EventsService } from '../../events/events.service';
 interface TaskMessageGatewayMetadata {
   source: string;
   event: string;
@@ -11,7 +12,8 @@ interface TaskMessageGatewayMetadata {
   correlation_id?: string;
   tenant_id: string;
   sender_user_id: string;
-  recipient_user_id: string;
+  recipient_user_id: string | null;
+  recipient_group?: string | null;
   content: string;
   status: string;
   available_from?: string;
@@ -25,6 +27,7 @@ export class TaskMessageWebhookService {
 
   constructor(
     private readonly tenantContext: TenantContextService,
+    private readonly eventsService: EventsService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -95,6 +98,12 @@ export class TaskMessageWebhookService {
       savedEvent.processed = true;
       savedEvent.processedAt = new Date();
       await this.webhookEventRepo.save(savedEvent);
+
+      // 4. Campanello SSE al tenant: lo stato locale è cambiato (created/
+      // available/read/completed/deleted), i client rifanno unread count e
+      // inbox. Il webhook gira dentro tenantContext.run, quindi emit()
+      // risolve il tenant dall'AsyncLocalStorage.
+      this.eventsService.emit({ type: 'task_message_changed', timestamp: new Date() });
     } catch (error: any) {
       this.logger.error(`[TASK-WEBHOOK] Processing error for event ${eventType}: ${error?.message}`);
     }
@@ -114,7 +123,8 @@ export class TaskMessageWebhookService {
       gatewayMessageId: metadata.message_id,
       tenantId,
       senderUserId: metadata.sender_user_id,
-      recipientUserId: metadata.recipient_user_id,
+      recipientUserId: metadata.recipient_user_id ?? null,
+      recipientGroup: (metadata.recipient_group as any) ?? null,
       content: metadata.content,
       status,
       availableFrom: metadata.available_from ? new Date(metadata.available_from) : undefined,
@@ -141,6 +151,15 @@ export class TaskMessageWebhookService {
     // fallita), la crea dai metadati così il destinatario la vede comunque.
     const msg = await this.ensureRow(tenantId, metadata);
 
+    // Un retry tardivo del webhook non deve retrocedere un messaggio già
+    // letto/completato (per i messaggi di gruppo riapparirebbe a tutti).
+    if (msg.id && msg.status !== TaskMessageStatus.SCHEDULED) {
+      this.logger.warn(
+        `[TASK-WEBHOOK] Ignoro available per ${metadata.message_id}: stato attuale ${msg.status}`,
+      );
+      return;
+    }
+
     msg.status = TaskMessageStatus.AVAILABLE;
     await this.taskMessageRepo.save(msg);
     this.logger.log(`[TASK-WEBHOOK] Message ${metadata.message_id} now AVAILABLE`);
@@ -161,7 +180,8 @@ export class TaskMessageWebhookService {
       gatewayMessageId: metadata.message_id,
       tenantId,
       senderUserId: metadata.sender_user_id,
-      recipientUserId: metadata.recipient_user_id,
+      recipientUserId: metadata.recipient_user_id ?? null,
+      recipientGroup: (metadata.recipient_group as any) ?? null,
       content: metadata.content,
       status: this.mapStatus(metadata.status),
       availableFrom: metadata.available_from ? new Date(metadata.available_from) : undefined,

@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { TherapeuticPath, TherapeuticPathStatus } from '../entities/therapeutic-path.entity';
-import { PathDocument, DocumentType, DocumentCategory } from '../entities/path-document.entity';
 import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
 import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentInstrument } from '../entities/treatment-instrument.entity';
@@ -31,22 +30,6 @@ export interface UpdateTherapeuticPathInput {
   notes?: string;
 }
 
-export interface CreateDocumentInput {
-  therapeuticPathId: string;
-  type: DocumentType;
-  category: DocumentCategory;
-  fileName: string;
-  originalFileName?: string;
-  mimeType: string;
-  fileSize: number;
-  storagePath: string;
-  thumbnailPath?: string;
-  externalDoctorName?: string;
-  notes?: string;
-  description?: string;
-  uploadedBy?: string;
-}
-
 // ==================== SERVICE ====================
 
 @Injectable()
@@ -63,8 +46,6 @@ export class TherapeuticPathService {
   }
 
   private get pathRepo() { return this.dataSource.getRepository(TherapeuticPath); }
-
-  private get documentRepo() { return this.dataSource.getRepository(PathDocument); }
 
   private get subjectIndexRepo() { return this.dataSource.getRepository(ClinicalSubjectIndex); }
 
@@ -108,7 +89,7 @@ export class TherapeuticPathService {
   async findById(id: string): Promise<TherapeuticPath | null> {
     return this.pathRepo.findOne({
       where: { id },
-      relations: ['primaryOperator', 'documents']
+      relations: ['primaryOperator']
     });
   }
 
@@ -118,7 +99,7 @@ export class TherapeuticPathService {
   async findByPatient(patientId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { patientId },
-      relations: ['primaryOperator', 'documents'],
+      relations: ['primaryOperator'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -130,7 +111,7 @@ export class TherapeuticPathService {
     if (patientIds.length === 0) return [];
     return this.pathRepo.find({
       where: { patientId: In(patientIds) },
-      relations: ['primaryOperator', 'documents'],
+      relations: ['primaryOperator'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -144,7 +125,7 @@ export class TherapeuticPathService {
         patientId,
         status: TherapeuticPathStatus.ACTIVE
       },
-      relations: ['primaryOperator', 'documents'],
+      relations: ['primaryOperator'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -155,7 +136,7 @@ export class TherapeuticPathService {
   async findByOperator(operatorId: string): Promise<TherapeuticPath[]> {
     return this.pathRepo.find({
       where: { primaryOperatorId: operatorId },
-      relations: ['primaryOperator', 'documents'],
+      relations: ['primaryOperator'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -398,66 +379,9 @@ export class TherapeuticPathService {
     return (result.affected ?? 0) > 0;
   }
 
-  // ==================== PATH DOCUMENT CRUD ====================
-
-  /**
-   * Crea un nuovo documento
-   */
-  async createDocument(input: CreateDocumentInput): Promise<PathDocument> {
-    // Verifica che il percorso esista
-    const path = await this.pathRepo.findOne({
-      where: { id: input.therapeuticPathId }
-    });
-
-    if (!path) {
-      throw new NotFoundException(`Percorso terapeutico ${input.therapeuticPathId} non trovato`);
-    }
-
-    const document = this.documentRepo.create(input);
-    return this.documentRepo.save(document);
-  }
-
-  /**
-   * Ottiene un documento per ID
-   */
-  async findDocumentById(id: string): Promise<PathDocument | null> {
-    return this.documentRepo.findOne({
-      where: { id },
-      relations: ['therapeuticPath']
-    });
-  }
-
-  /**
-   * Ottiene tutti i documenti di un percorso
-   */
-  async findDocumentsByPath(pathId: string): Promise<PathDocument[]> {
-    return this.documentRepo.find({
-      where: { therapeuticPathId: pathId },
-      order: { uploadedAt: 'DESC' }
-    });
-  }
-
-  /**
-   * Ottiene documenti per categoria
-   */
-  async findDocumentsByCategory(pathId: string, category: DocumentCategory): Promise<PathDocument[]> {
-    return this.documentRepo.find({
-      where: {
-        therapeuticPathId: pathId,
-        category
-      },
-      order: { uploadedAt: 'DESC' }
-    });
-  }
-
-  /**
-   * Elimina un documento
-   * Nota: Il file fisico deve essere eliminato separatamente dal chiamante
-   */
-  async deleteDocument(id: string): Promise<boolean> {
-    const result = await this.documentRepo.delete(id);
-    return (result.affected ?? 0) > 0;
-  }
+  // NOTA: il CRUD documenti (createDocument/findDocument*/deleteDocument su
+  // path_documents) è stato sostituito dal modulo patient-documents
+  // (entity patient_documents, storage S3 cifrato envelope).
 
   // ==================== STATISTICS ====================
 

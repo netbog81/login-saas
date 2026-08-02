@@ -6,25 +6,8 @@ export { PATIENT_EVALUATION_FRAGMENT };
 
 // ==================== FRAGMENTS ====================
 
-export const PATH_DOCUMENT_FRAGMENT = gql`
-  fragment PathDocumentFields on PathDocument {
-    id
-    therapeuticPathId
-    type
-    category
-    fileName
-    originalFileName
-    mimeType
-    fileSize
-    storagePath
-    thumbnailPath
-    externalDoctorName
-    notes
-    description
-    uploadedBy
-    uploadedAt
-  }
-`;
+// NOTA: PATH_DOCUMENT_FRAGMENT rimosso — i documenti sono ora della scheda
+// paziente (patient-documents.operations.ts, entity patient_documents).
 
 export const THERAPEUTIC_PATH_FRAGMENT = gql`
   fragment TherapeuticPathFields on TherapeuticPath {
@@ -60,12 +43,8 @@ export const THERAPEUTIC_PATH_FRAGMENT = gql`
 export const THERAPEUTIC_PATH_WITH_RELATIONS_FRAGMENT = gql`
   fragment TherapeuticPathWithRelationsFields on TherapeuticPath {
     ...TherapeuticPathFields
-    documents {
-      ...PathDocumentFields
-    }
   }
   ${THERAPEUTIC_PATH_FRAGMENT}
-  ${PATH_DOCUMENT_FRAGMENT}
 `;
 
 // ==================== PATH QUERIES ====================
@@ -152,31 +131,5 @@ export const GET_EVALUATION_BY_PATH = gql`
 // Legacy alias per compatibilità
 export const GET_EVALUATIONS_BY_PATH = GET_EVALUATION_BY_PATH;
 
-// ==================== DOCUMENT QUERIES ====================
-
-export const GET_PATH_DOCUMENT = gql`
-  query GetPathDocument($id: ID!) {
-    pathDocument(id: $id) {
-      ...PathDocumentFields
-    }
-  }
-  ${PATH_DOCUMENT_FRAGMENT}
-`;
-
-export const GET_DOCUMENTS_BY_PATH = gql`
-  query GetDocumentsByPath($pathId: ID!) {
-    documentsByPath(pathId: $pathId) {
-      ...PathDocumentFields
-    }
-  }
-  ${PATH_DOCUMENT_FRAGMENT}
-`;
-
-export const GET_DOCUMENTS_BY_PATH_AND_CATEGORY = gql`
-  query GetDocumentsByPathAndCategory($pathId: ID!, $category: DocumentCategory!) {
-    documentsByPathAndCategory(pathId: $pathId, category: $category) {
-      ...PathDocumentFields
-    }
-  }
-  ${PATH_DOCUMENT_FRAGMENT}
-`;
+// NOTA: le DOCUMENT QUERIES (pathDocument/documentsByPath/...) sono state
+// sostituite da patient-documents.operations.ts (documenti scheda paziente).

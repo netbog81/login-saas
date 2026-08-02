@@ -124,6 +124,12 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
       isCustomPrice
       invoiceLineDescription
       invoiceLineDescriptionAuto
+      executorOperatorId
+      executorOperator {
+        id
+        name
+        surname
+      }
       service {
         id
         name
@@ -369,12 +375,28 @@ export const CANCEL_TREATMENT_PAYMENT = gql`
 // 2026-07-02 — Aggiungi/rimuovi riga servizio (legata al catalogo, non testo
 // libero): accounting associa la natura IVA via serviceCode.
 export const ADD_TREATMENT_SERVICE_LINE = gql`
-  mutation AddTreatmentServiceLine($treatmentId: ID!, $serviceId: ID!, $description: String, $price: Float) {
-    addTreatmentServiceLine(treatmentId: $treatmentId, serviceId: $serviceId, description: $description, price: $price) {
+  mutation AddTreatmentServiceLine($treatmentId: ID!, $serviceId: ID!, $description: String, $price: Float, $executorOperatorId: ID) {
+    addTreatmentServiceLine(treatmentId: $treatmentId, serviceId: $serviceId, description: $description, price: $price, executorOperatorId: $executorOperatorId) {
       ...TreatmentDetails
     }
   }
   ${TREATMENT_DETAILS_FRAGMENT}
+`;
+
+// 2026-07-15 — Cambia l'operatore esecutore di una riga servizio ("Eseguito
+// da"): a lui va il compenso nei conteggi. null = operatore del trattamento.
+export const UPDATE_TREATMENT_SERVICE_EXECUTOR = gql`
+  mutation UpdateTreatmentServiceExecutor($treatmentServiceId: ID!, $executorOperatorId: ID) {
+    updateTreatmentServiceExecutor(treatmentServiceId: $treatmentServiceId, executorOperatorId: $executorOperatorId) {
+      id
+      executorOperatorId
+      executorOperator {
+        id
+        name
+        surname
+      }
+    }
+  }
 `;
 
 export const REMOVE_TREATMENT_SERVICE_LINE = gql`

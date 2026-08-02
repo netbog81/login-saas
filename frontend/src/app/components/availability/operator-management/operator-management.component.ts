@@ -105,6 +105,24 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   // Overlay click tracking (per evitare chiusura durante click-and-drag)
   overlayMouseDownTarget: EventTarget | null = null;
 
+  /** Sync manuale operatori → contabilità (conti operatori). */
+  resyncing = false;
+
+  resyncToAccounting(): void {
+    if (this.resyncing) return;
+    this.resyncing = true;
+    this.operatorService.resyncOperatorsToAccounting().subscribe({
+      next: (count) => {
+        this.resyncing = false;
+        alert(`Sincronizzati ${count} operatori con la contabilità.`);
+      },
+      error: () => {
+        this.resyncing = false;
+        alert('Sincronizzazione non riuscita: riprova o controlla i log.');
+      },
+    });
+  }
+
   constructor(
     private availabilityState: AvailabilityStateService,
     private operatorService: OperatorService,

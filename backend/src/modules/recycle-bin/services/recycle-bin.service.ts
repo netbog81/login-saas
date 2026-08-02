@@ -19,6 +19,7 @@ import { RecycleBinSettings } from '../../availability/entities/recycle-bin-sett
 
 import { TenantContextService } from '@curandis/tenant-datasource';
 import { RegistrySubjectLoader } from '../../registry/registry-subject.loader';
+import { PatientDocumentsService } from '../../patient-documents/services/patient-documents.service';
 interface RawDeletedRow {
   id: string;
   entityType: RecycleBinEntityType;
@@ -50,6 +51,7 @@ export class RecycleBinService {
     private readonly tenantContext: TenantContextService,
     private readonly treatmentService: TreatmentService,
     private readonly pathService: TherapeuticPathService,
+    private readonly documentsService: PatientDocumentsService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -115,6 +117,7 @@ export class RecycleBinService {
             RecycleBinEntityType.THERAPEUTIC_PATH,
             RecycleBinEntityType.TREATMENT,
             RecycleBinEntityType.PATIENT_EVALUATION,
+            RecycleBinEntityType.PATIENT_DOCUMENT,
           ];
 
     const settings = await this.getSettings();
@@ -130,6 +133,9 @@ export class RecycleBinService {
     }
     if (types.includes(RecycleBinEntityType.PATIENT_EVALUATION)) {
       rows.push(...(await this.queryDeletedEvaluations(filter)));
+    }
+    if (types.includes(RecycleBinEntityType.PATIENT_DOCUMENT)) {
+      rows.push(...(await this.queryDeletedDocuments(filter)));
     }
 
     // Risolvi i nomi paziente dal registry e componili nel subtitle.
@@ -304,6 +310,35 @@ export class RecycleBinService {
     return this.dataSource.query(sql, extra.params);
   }
 
+  private async queryDeletedDocuments(
+    filter: RecycleBinFilterInput,
+  ): Promise<RawDeletedRow[]> {
+    // Owner del documento = chi l'ha caricato (uploaded_by è il keycloak_id,
+    // risolto ad app_user via join). Nessun deleted_by tracciato per i documenti.
+    const extra = filter.ownerUserId
+      ? { sql: ' AND au."id" = $1', params: [filter.ownerUserId] as any[] }
+      : { sql: '', params: [] as any[] };
+
+    const sql = `
+      SELECT
+        d.id                             AS "id",
+        'patient_document'::text         AS "entityType",
+        d."original_file_name"           AS "title",
+        ('Documento · ' || d."category") AS "subtitle",
+        d."subject_id"                   AS "patientId",
+        d."deleted_at"                   AS "deletedAt",
+        NULL::uuid                       AS "deletedByUserId",
+        NULL::text                       AS "deletedByName",
+        au."id"                          AS "ownerUserId",
+        TRIM(CONCAT_WS(' ', au."name", au."surname")) AS "ownerName",
+        NULL::int                        AS "childrenCount"
+      FROM "patient_documents" d
+      LEFT JOIN "app_users" au ON au."keycloak_id" = d."uploaded_by"::text
+      WHERE d."deleted_at" IS NOT NULL${extra.sql}
+    `;
+    return this.dataSource.query(sql, extra.params);
+  }
+
   // ==================== RESTORE / PURGE ====================
 
   /**
@@ -324,6 +359,8 @@ export class RecycleBinService {
       case RecycleBinEntityType.PATIENT_EVALUATION:
         await this.restoreEvaluation(id);
         return true;
+      case RecycleBinEntityType.PATIENT_DOCUMENT:
+        return this.documentsService.restoreDocument(id);
     }
   }
 
@@ -384,6 +421,9 @@ export class RecycleBinService {
         const result = await this.evaluationRepo.delete(id);
         return (result.affected ?? 0) > 0;
       }
+      case RecycleBinEntityType.PATIENT_DOCUMENT:
+        // Elimina anche l'oggetto S3 (il blob non deve sopravvivere alla riga)
+        return this.documentsService.purgeDocument(id);
     }
   }
 
@@ -422,12 +462,36 @@ export class RecycleBinService {
     );
     totalPurged += await this.purgeOlderThan('treatments', cutoff);
     totalPurged += await this.purgeOlderThan('patient_evaluations', cutoff);
+    totalPurged += await this.purgeExpiredDocuments(cutoff);
 
     this.logger.log(
       `RecycleBin cleanup: ${totalPurged} record eliminati definitivamente ` +
         `(force=${force}, cutoff=${cutoff.toISOString()})`,
     );
     return totalPurged;
+  }
+
+  /**
+   * I documenti paziente NON passano dal DELETE SQL generico: il purge deve
+   * eliminare anche l'oggetto cifrato su S3, quindi passa dal service
+   * (delete S3 best-effort + hard delete riga).
+   */
+  private async purgeExpiredDocuments(cutoff: Date): Promise<number> {
+    const expired: { id: string }[] = await this.dataSource.query(
+      `SELECT id FROM "patient_documents" WHERE "deleted_at" IS NOT NULL AND "deleted_at" < $1`,
+      [cutoff],
+    );
+    let purged = 0;
+    for (const row of expired) {
+      try {
+        if (await this.documentsService.purgeDocument(row.id)) purged++;
+      } catch (err) {
+        this.logger.warn(
+          `RecycleBin: purge documento ${row.id} fallito (${(err as Error)?.message}), riproverà al prossimo run`,
+        );
+      }
+    }
+    return purged;
   }
 
   private async purgeOlderThan(
