@@ -26,6 +26,11 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      # Credenziale di sola lettura per il package registry GitLab, da cui
+      # arrivano le @curandis/*. Montata solo durante `npm ci`, non finisce in
+      # nessun layer. Vedi la sezione secrets in fondo.
+      secrets:
+        - npmrc
       args:
         OPENBAO_AGENT_GID: ${OPENBAO_AGENT_GID:-986}
     image: curandis/clinico-backend:latest
@@ -138,3 +143,12 @@ networks:
   evolution_net:
     external: true
     name: evolution-net
+
+# ── Secrets di build ────────────────────────────────────────────
+# Credenziale di sola lettura per il package registry GitLab (project 4).
+# Il file vive FUORI dal repo apposta, così non può finire in un commit.
+# È un Deploy token con il solo scope read_package_registry: non può
+# pubblicare né leggere il codice sorgente.
+secrets:
+  npmrc:
+    file: /home/marco/.curandis/npmrc-build

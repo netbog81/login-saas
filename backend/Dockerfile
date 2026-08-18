@@ -22,11 +22,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# local-libs prima del npm ci (le dep file: risolvono i tarball locali).
-COPY backend/local-libs ./local-libs
 COPY backend/package*.json ./
+# Le @curandis/* arrivano dal package registry GitLab (project 4), non più da
+# tarball in local-libs: erano gitignorati e la versione nel nome del file
+# poteva non corrispondere a quella dentro il pacchetto.
+#
+# Il registry è privato, quindi npm ci ha bisogno di una credenziale. Arriva
+# come secret BuildKit, montato solo per la durata di questo RUN e mai scritto
+# in un layer. È un deploy token con il solo scope read_package_registry.
+#
 # Cache mount BuildKit: la cache npm persiste tra i build (vedi frontend).
-RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=secret,id=npmrc,target=/root/.npmrc \
+    npm ci --no-audit --no-fund
 
 COPY backend/tsconfig*.json ./
 COPY backend/nest-cli.json ./
