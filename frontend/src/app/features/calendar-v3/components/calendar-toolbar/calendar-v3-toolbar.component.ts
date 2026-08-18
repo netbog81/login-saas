@@ -75,6 +75,10 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
             <mat-icon>fitness_center</mat-icon>
             Palestre
           </mat-button-toggle>
+          <mat-button-toggle value="rooms">
+            <mat-icon>meeting_room</mat-icon>
+            Studi
+          </mat-button-toggle>
         </mat-button-toggle-group>
 
         <div class="bar-divider"></div>

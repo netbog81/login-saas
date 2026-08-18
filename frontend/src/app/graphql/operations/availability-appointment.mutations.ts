@@ -146,7 +146,38 @@ export const SEND_APPOINTMENT_RECAP = gql`
   }
 `;
 
+/**
+ * Mutation: Invia un unico messaggio WhatsApp con il riepilogo degli
+ * appuntamenti indicati (invio istantaneo via chat, niente code).
+ */
+export const SEND_APPOINTMENTS_RECAP = gql`
+  mutation SendAppointmentsRecap($patientId: ID!, $appointmentIds: [ID!]!) {
+    sendAppointmentsRecap(patientId: $patientId, appointmentIds: $appointmentIds)
+  }
+`;
+
 // ==================== RECURRING SERIES ====================
+
+/**
+ * Mutation: Trasforma un appuntamento singolo esistente in serie ricorrente
+ * (diventa il master; le occorrenze successive vengono create ex novo).
+ */
+export const MAKE_APPOINTMENT_RECURRING = gql`
+  ${AVAILABILITY_APPOINTMENT_FIELDS}
+  mutation MakeAppointmentRecurring(
+    $appointmentId: ID!
+    $repeatConfig: RepeatConfigInput!
+    $force: Boolean
+  ) {
+    makeAppointmentRecurring(
+      appointmentId: $appointmentId
+      repeatConfig: $repeatConfig
+      force: $force
+    ) {
+      ...AvailabilityAppointmentFields
+    }
+  }
+`;
 
 /**
  * Mutation: Cancella (soft) appuntamenti di una serie ricorrente

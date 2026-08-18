@@ -8,7 +8,7 @@ import { Appointment } from '../../../models/appointment.model';
 // ==================== CONFIG ====================
 
 export type CalendarV2ViewType = 'daily' | 'weekly';
-export type CalendarV2ViewMode = 'operators' | 'gyms';
+export type CalendarV2ViewMode = 'operators' | 'gyms' | 'rooms';
 
 export interface CalendarV2Config {
   viewType: CalendarV2ViewType;

@@ -26,6 +26,8 @@ import {
   getTreatmentStatusLabel, getTreatmentStatusColor, getPaymentMethodLabel,
 } from '../../../../models/treatment.model';
 import { InstrumentCategory } from '../../../../graphql/generated/types';
+import { ParkedChatsPanelComponent } from '../../../whatsapp-chat/components/parked-chats-panel/parked-chats-panel.component';
+import { WhatsappConversation } from '../../../whatsapp-chat/models/whatsapp-chat.model';
 
 @Component({
   selector: 'app-calendar-v2-sidebar',
@@ -36,6 +38,7 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
     MatCheckboxModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatDividerModule,
     MatExpansionModule, MatRadioModule,
+    ParkedChatsPanelComponent,
   ],
   template: `
     <div class="sidebar" [class.collapsed]="collapsed">
@@ -324,6 +327,28 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
             </ng-template>
           </mat-expansion-panel>
 
+          <!-- ===== 4. CHAT IN CORSO ===== -->
+          <mat-expansion-panel class="sidebar-panel"
+                               [expanded]="parkedChats.length > 0">
+            <mat-expansion-panel-header>
+              <mat-panel-title>
+                <mat-icon>forum</mat-icon>
+                Chat in corso ({{ parkedChats.length }})
+                @if (parkedChatsUnread > 0) {
+                  <span class="chat-unread-dot">{{ parkedChatsUnread }}</span>
+                }
+              </mat-panel-title>
+            </mat-expansion-panel-header>
+
+            <app-parked-chats-panel
+              [conversations]="parkedChats"
+              (open)="openParkedChat.emit($event)"
+              (remove)="removeParkedChat.emit($event)"
+              (newChat)="newParkedChat.emit()"
+              (clearAll)="clearParkedChats.emit()">
+            </app-parked-chats-panel>
+          </mat-expansion-panel>
+
         </div><!-- /sidebar-scroll -->
       }
     </div>
@@ -405,6 +430,22 @@ import { InstrumentCategory } from '../../../../graphql/generated/types';
     }
 
     .full-width { width: 100%; }
+
+    /* Pallino non letti sull'intestazione "Chat in corso". */
+    .chat-unread-dot {
+      margin-left: 6px;
+      background: #25d366;
+      color: #08312a;
+      border-radius: 10px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
 
     /* ===== OPERATORI ===== */
     .operator-actions {
@@ -608,11 +649,25 @@ export class CalendarV2SidebarComponent {
   get selectedDate(): string | null { return this._selectedDate; }
   private _selectedDate: string | null = null;
 
+  /** Chat WhatsApp parcheggiate dalla segreteria, mostrate in "Chat in corso". */
+  @Input() parkedChats: WhatsappConversation[] = [];
+
   @Output() toggleOperator = new EventEmitter<string>();
   @Output() setOperatorSelection = new EventEmitter<{ operatorIds: string[]; selected: boolean }>();
   @Output() toggleCollapsed = new EventEmitter<void>();
   @Output() slotSearchToggle = new EventEmitter<boolean>();
   @Output() searchFiltersChange = new EventEmitter<SearchFilters>();
+  /** Riapre il riquadro flottante della chat parcheggiata. */
+  @Output() openParkedChat = new EventEmitter<WhatsappConversation>();
+  /** Toglie la chat dal pannello, senza chiuderne la conversazione. */
+  @Output() removeParkedChat = new EventEmitter<WhatsappConversation>();
+  @Output() newParkedChat = new EventEmitter<void>();
+  @Output() clearParkedChats = new EventEmitter<void>();
+
+  /** Totale non letti fra le chat parcheggiate, per il pallino sul pannello. */
+  get parkedChatsUnread(): number {
+    return this.parkedChats.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  }
 
   /**
    * Categoria iniziale del filtro operatori (dalle impostazioni tenant). Si

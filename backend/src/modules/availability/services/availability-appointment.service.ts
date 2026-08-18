@@ -23,11 +23,13 @@ import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subjec
 import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
 import { AttendanceEventType } from '../../../patients/entities/clinical-attendance-log.entity';
 import { WhatsappGatewayService, WhatsappPatientContact } from '../../whatsapp/gateway/whatsapp-gateway.service';
+import { WhatsappChatService } from '../../whatsapp/chat/services/whatsapp-chat.service';
 import { RegistryClient } from '../../registry/registry.client';
 import { RegistrySubjectResponse } from '../../registry/registry.types';
 import { TenantContextService } from '@curandis/tenant-datasource';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { AvailabilityService } from './availability.service';
+import { RoomConflictService } from './room-conflict.service';
 
 export interface RepeatConfigInput {
   type: RecurringType;
@@ -108,8 +110,11 @@ export class AvailabilityAppointmentService {
     @Inject(forwardRef(() => TreatmentCascadeService))
     private treatmentCascade: TreatmentCascadeService,
     private eventsService: EventsService,
+    private roomConflictService: RoomConflictService,
     @Optional() @Inject(forwardRef(() => WhatsappGatewayService))
     private whatsappGateway?: WhatsappGatewayService,
+    @Optional() @Inject(forwardRef(() => WhatsappChatService))
+    private whatsappChat?: WhatsappChatService,
   ) {}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -382,9 +387,30 @@ export class AvailabilityAppointmentService {
       }
 
       const defaultSiteId = await this.resolveDefaultSiteId(manager);
+
+      // Snapshot studio/poltrona ereditati dall'assegnazione template
+      // dell'operatore alla data/ora della prenotazione. Gli appuntamenti
+      // palestra passano da createSingleGymAppointment e non arrivano qui.
+      let roomSnapshot: { roomId: string | null; chairId: string | null } = {
+        roomId: null,
+        chairId: null,
+      };
+      if (appointmentData.operatorId) {
+        const snapDate = appointmentData.appointmentDate as any;
+        roomSnapshot = await this.roomConflictService.resolveRoomForSlot(
+          appointmentData.operatorId,
+          snapDate instanceof Date
+            ? snapDate.toISOString().split('T')[0]
+            : String(snapDate).slice(0, 10),
+          appointmentData.startTime,
+        );
+      }
+
       const appointment = appointmentRepo.create({
         ...appointmentData,
         siteId: defaultSiteId,
+        roomId: roomSnapshot.roomId ?? undefined,
+        chairId: roomSnapshot.chairId ?? undefined,
         bookingStatus: BookingStatus.SCHEDULED,
         hasConflict: false,
         isRecurring,
@@ -1065,10 +1091,29 @@ export class AvailabilityAppointmentService {
 
     // Se cambiano data, ora o operatore, resetta il flag conflitto:
     // verrà ricalcolato subito dopo il save.
-    const positionChanged =
-      (input.appointmentDate && String(input.appointmentDate) !== String(appointment.appointmentDate)) ||
-      (input.startTime && input.startTime !== appointment.startTime) ||
-      (input.endTime && input.endTime !== appointment.endTime);
+    //
+    // Il confronto va NORMALIZZATO su entrambi i lati: le colonne `time`
+    // tornano "14:00:00" mentre il client manda "14:00", e la colonna `date`
+    // può arrivare come stringa o come Date. Confrontandoli grezzi risultava
+    // sempre uno spostamento, e ogni salvataggio — anche di una sola nota —
+    // faceva partire al paziente la notifica di appuntamento spostato.
+    const dayChanged =
+      !!input.appointmentDate &&
+      this.toIsoDay(input.appointmentDate) !== this.toIsoDay(appointment.appointmentDate);
+    const startChanged =
+      !!input.startTime && this.toHhMm(input.startTime) !== this.toHhMm(appointment.startTime);
+    const endChanged =
+      !!input.endTime && this.toHhMm(input.endTime) !== this.toHhMm(appointment.endTime);
+
+    const positionChanged = dayChanged || startChanged || endChanged;
+
+    /**
+     * Cosa fa cambiare idea al PAZIENTE: il giorno e l'ora in cui deve
+     * presentarsi. Un endTime diverso (un servizio aggiunto, una durata
+     * ritoccata) allunga l'appuntamento ma non lo sposta, e il messaggio di
+     * spostamento gli ripeterebbe la stessa data e la stessa ora.
+     */
+    const scheduleChangedForPatient = dayChanged || startChanged;
 
     // I check vanno rieseguiti se cambia posizione (orario/data) O operatore:
     // un appuntamento riassegnato va verificato sul nuovo operatore anche a
@@ -1179,6 +1224,26 @@ export class AvailabilityAppointmentService {
       (updateData as any).conflictDetectedAt = null;
       (updateData as any).conflictSourceExceptionId = null;
     }
+
+    // Snapshot studio/poltrona: ricalcolato quando cambiano data, ora o
+    // operatore (l'assegnazione template valida può essere diversa).
+    if (
+      needsPositionChecks &&
+      appointment.appointmentType !== AppointmentType.GYM &&
+      checkOperatorId
+    ) {
+      const snapDate = (input.appointmentDate as any) ?? appointment.appointmentDate;
+      const snap = await this.roomConflictService.resolveRoomForSlot(
+        checkOperatorId,
+        snapDate instanceof Date
+          ? snapDate.toISOString().split('T')[0]
+          : String(snapDate).slice(0, 10),
+        input.startTime || appointment.startTime,
+      );
+      (updateData as any).roomId = snap.roomId;
+      (updateData as any).chairId = snap.chairId;
+    }
+
     Object.assign(appointment, updateData);
     await this.appointmentRepo.save(appointment);
 
@@ -1261,7 +1326,7 @@ export class AvailabilityAppointmentService {
       BookingStatus.CANCELLED_EARLY,
       BookingStatus.CANCELLED_LATE,
     ];
-    if (positionChanged && !cancelledStatuses.includes(result.bookingStatus)) {
+    if (scheduleChangedForPatient && !cancelledStatuses.includes(result.bookingStatus)) {
       this.dispatchWhatsappUpdate(result);
     }
 
@@ -2310,6 +2375,29 @@ export class AvailabilityAppointmentService {
    * direttamente nell'appointment continueranno a funzionare quando il caller
    * passa esplicitamente il PatientContact.
    */
+  /** Orario a "HH:mm": le colonne `time` tornano con i secondi, il client no. */
+  private toHhMm(value: string | null | undefined): string {
+    return String(value ?? '').slice(0, 5);
+  }
+
+  /**
+   * Giorno a "YYYY-MM-DD". La colonna `date` arriva come stringa dal driver ma
+   * l'entità la dichiara `Date`, e a seconda del percorso può essere l'una o
+   * l'altra: si normalizza sempre, usando i getter locali per non far slittare
+   * la data di un giorno passando dal fuso.
+   */
+  private toIsoDay(value: Date | string | null | undefined): string {
+    if (!value) return '';
+
+    if (value instanceof Date) {
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${value.getFullYear()}-${month}-${day}`;
+    }
+
+    return String(value).slice(0, 10);
+  }
+
   private dispatchWhatsappBooking(appointment: AvailabilityAppointment): void {
     if (!this.whatsappGateway) return;
 
@@ -2546,8 +2634,217 @@ export class AvailabilityAppointmentService {
       );
     }
 
-    await this.whatsappGateway.dispatchBooking(appointment, contact);
+    // Reinvio chiesto a mano: parte subito, senza la finestra di
+    // raggruppamento. Chi preme il pulsante si aspetta che il messaggio
+    // parta ora, non fra qualche minuto insieme ad altri appuntamenti.
+    await this.whatsappGateway.dispatchBooking(appointment, contact, {
+      immediateRecap: true,
+    });
     return true;
+  }
+
+  /**
+   * Invia SUBITO un unico messaggio WhatsApp con il riepilogo degli
+   * appuntamenti indicati (scheda paziente → lista filtrata). Passa dalla
+   * chat, non dal buffer del gateway: il messaggio parte ora e resta in
+   * cronologia conversazione. Usa gli stessi template dei recap automatici
+   * (RECAP_SINGLE / RECAP_MULTI).
+   */
+  async sendAppointmentsRecap(
+    patientId: string,
+    appointmentIds: string[],
+    actor?: { userId?: string; userName?: string },
+  ): Promise<boolean> {
+    if (appointmentIds.length === 0) {
+      throw new BadRequestException('Nessun appuntamento selezionato');
+    }
+    if (!this.whatsappChat) {
+      throw new BadRequestException('Modulo chat WhatsApp non disponibile');
+    }
+
+    const appointments = await this.appointmentRepo.find({
+      where: { id: In(appointmentIds) },
+      order: { appointmentDate: 'ASC', startTime: 'ASC' },
+    });
+    if (appointments.length === 0) {
+      throw new NotFoundException('Appuntamenti non trovati');
+    }
+    if (appointments.some((a) => a.patientId !== patientId)) {
+      throw new BadRequestException(
+        'Tutti gli appuntamenti del recap devono appartenere allo stesso paziente',
+      );
+    }
+
+    // Solo gli appuntamenti ancora attivi: un recap elenca ciò che il
+    // paziente deve ancora fare, non disdette o no-show.
+    const active = appointments.filter((a) =>
+      [BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(a.bookingStatus),
+    );
+    if (active.length === 0) {
+      throw new BadRequestException(
+        'Nessun appuntamento attivo tra quelli selezionati',
+      );
+    }
+
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      throw new BadRequestException('Tenant non risolto: impossibile contattare il registry');
+    }
+    const contact = await this.fetchPatientContactAsService(patientId, tenantAlias);
+    if (!contact) {
+      throw new NotFoundException(`Paziente ${patientId} non trovato nel registry`);
+    }
+    const phone = contact.cellulare || contact.telefono;
+    if (!phone) {
+      throw new BadRequestException('Il paziente non ha un numero di telefono');
+    }
+
+    const formatted = active.map((a) => {
+      const raw = a.appointmentDate as unknown;
+      const dateStr =
+        raw instanceof Date ? raw.toISOString().split('T')[0] : String(raw).slice(0, 10);
+      const [y, m, d] = dateStr.split('-');
+      return { date: `${d}/${m}/${y}`, time: String(a.startTime).substring(0, 5) };
+    });
+
+    await this.whatsappChat.sendAppointmentsRecap({
+      patientId,
+      patientName: `${contact.nome || ''} ${contact.cognome || ''}`.trim(),
+      phone,
+      appointments: formatted,
+      userId: actor?.userId,
+      userName: actor?.userName,
+    });
+    return true;
+  }
+
+  /**
+   * Trasforma un appuntamento singolo esistente nel master di una nuova
+   * serie ricorrente: l'appuntamento resta invariato (stessa data/ora) e le
+   * occorrenze successive vengono create copiando servizi e strumenti.
+   * Stessa validazione avvisa-e-blocca della creazione serie: se anche una
+   * sola nuova occorrenza è in conflitto, non viene creato nulla.
+   */
+  async makeRecurring(
+    appointmentId: string,
+    repeatConfig: RepeatConfigInput,
+    force = false,
+  ): Promise<AvailabilityAppointment> {
+    const appointment = await this.findById(appointmentId);
+
+    if (appointment.recurringGroupId) {
+      throw new BadRequestException("L'appuntamento fa già parte di una serie ricorrente");
+    }
+    if (appointment.appointmentType === AppointmentType.GYM) {
+      throw new BadRequestException(
+        'Per gli appuntamenti palestra la ricorrenza si gestisce dal flusso palestra',
+      );
+    }
+    if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
+      throw new BadRequestException('Solo un appuntamento attivo può diventare ricorrente');
+    }
+
+    const rawDate = appointment.appointmentDate as unknown;
+    const baseDateStr =
+      rawDate instanceof Date ? rawDate.toISOString().split('T')[0] : String(rawDate).slice(0, 10);
+
+    // L'appuntamento esistente È la prima occorrenza: si creano solo le date
+    // successive generate dalla ricorrenza.
+    const dates = this.calculateRecurringDates(baseDateStr, repeatConfig).filter(
+      (d) => d !== baseDateStr,
+    );
+    if (dates.length === 0) {
+      throw new BadRequestException(
+        'La ricorrenza non genera nuove date oltre a quella esistente',
+      );
+    }
+
+    const skipValidation = force || appointment.nonRetribuito || !appointment.operatorId;
+    if (!skipValidation) {
+      const conflicts = await this.validateRecurringOccurrences(
+        dates.map((date) => ({
+          operatorId: appointment.operatorId!,
+          date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+        })),
+      );
+      if (conflicts.length > 0) {
+        throw new ConflictException(
+          `${AvailabilityAppointmentService.RECURRING_CONFLICT_ERROR}: ${JSON.stringify(conflicts)}`,
+        );
+      }
+    }
+
+    // Promuovi l'esistente a master della serie (config normalizzata come in
+    // createSingleAppointment: i client mandano type/endType UPPERCASE).
+    const recurringGroupId = uuidv4();
+    await this.appointmentRepo.update(appointment.id, {
+      isRecurring: true,
+      recurringGroupId,
+      isMaster: true,
+      repeatConfig: {
+        type: repeatConfig.type.toLowerCase() as any,
+        interval: repeatConfig.interval,
+        selectedDays: repeatConfig.selectedDays,
+        endType: repeatConfig.endType.toLowerCase() as any,
+        occurrences: repeatConfig.occurrences,
+        untilDate: repeatConfig.untilDate,
+      } as any,
+    });
+
+    // Dati base per le nuove occorrenze: copia dell'appuntamento esistente,
+    // servizi e strumenti inclusi.
+    const services: ServiceInputItem[] = (appointment.appointmentServices ?? []).map((s) => ({
+      serviceId: s.serviceId,
+      customDuration: s.customDuration ?? undefined,
+      customPrice: s.customPrice ?? undefined,
+      orderPosition: s.orderPosition ?? undefined,
+    }));
+    const instruments: CreateAppointmentInstrumentInput[] = (appointment.instruments ?? [])
+      .filter((ai) => !!ai.instrument?.categoryId)
+      .map((ai) => ({
+        instrumentCategoryId: ai.instrument.categoryId,
+        startOffsetMinutes: ai.startOffsetMinutes,
+        endOffsetMinutes: ai.endOffsetMinutes,
+        orderPosition: ai.orderPosition ?? undefined,
+      }));
+
+    const baseData: Omit<CreateAvailabilityAppointmentInput, 'instruments' | 'repeatConfig'> = {
+      operatorId: appointment.operatorId!,
+      services: services.length > 0 ? services : undefined,
+      clientName: appointment.clientName,
+      clientEmail: appointment.clientEmail,
+      clientPhone: appointment.clientPhone,
+      patientId: appointment.patientId ?? undefined,
+      appointmentDate: baseDateStr,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      notes: appointment.notes ?? undefined,
+      nonRetribuito: appointment.nonRetribuito,
+    };
+
+    for (const date of dates) {
+      try {
+        const created = await this.createSingleAppointment(
+          { ...baseData, appointmentDate: date },
+          instruments.length > 0 ? instruments : undefined,
+          true,
+          recurringGroupId,
+          undefined,
+          false,
+          appointment.id,
+        );
+        // Stesso comportamento della creazione serie: recap per ogni occorrenza
+        this.dispatchWhatsappBooking(created);
+      } catch (error) {
+        // Occorrenza non creabile (es. strumenti non disponibili quel giorno):
+        // si continua con le successive, come alla creazione serie.
+        console.warn(`Impossibile creare occorrenza ricorrente per ${date}:`, error.message);
+      }
+    }
+
+    return this.findById(appointment.id);
   }
 
   // ==================== RECURRING SERIES MANAGEMENT ====================

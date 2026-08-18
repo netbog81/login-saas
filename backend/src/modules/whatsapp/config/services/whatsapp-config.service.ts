@@ -4,7 +4,19 @@ import { WhatsappConfigInput } from '../dto/whatsapp-config.input';
 import { CryptoService } from '../../crypto/crypto.service';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { WhatsappReminderEarlyPolicy } from '../../enums/whatsapp-enums';
+
 const MIN_SECRET_LENGTH = 16;
+
+const DEFAULT_REMINDER_WINDOW_START = '08:30';
+const DEFAULT_REMINDER_WINDOW_END = '09:00';
+
+/**
+ * Sotto i 10 minuti la distribuzione degli invii non ha spazio per lavorare:
+ * il rate limit del gateway (10s fra un messaggio e l'altro) li spingerebbe
+ * comunque tutti oltre la fine della fascia.
+ */
+const MIN_REMINDER_WINDOW_MINUTES = 10;
 
 @Injectable()
 export class WhatsappConfigService {
@@ -65,6 +77,26 @@ export class WhatsappConfigService {
       config.recapBufferSeconds = input.recapBufferSeconds;
     }
 
+    if (input.reminderWindowEnabled !== undefined) {
+      config.reminderWindowEnabled = input.reminderWindowEnabled;
+    }
+
+    if (input.reminderWindowStart !== undefined) {
+      config.reminderWindowStart = input.reminderWindowStart;
+    }
+
+    if (input.reminderWindowEnd !== undefined) {
+      config.reminderWindowEnd = input.reminderWindowEnd;
+    }
+
+    if (input.reminderEarlyPolicy !== undefined) {
+      config.reminderEarlyPolicy = input.reminderEarlyPolicy;
+    }
+
+    // Sui valori risultanti e non su quelli in input: la fascia si può accendere
+    // con una richiesta che non ne ridichiara gli orari.
+    this.normalizeAndAssertReminderWindow(config);
+
     if (input.retentionDays !== undefined) {
       config.retentionDays = input.retentionDays;
     }
@@ -109,6 +141,46 @@ export class WhatsappConfigService {
   async isWhatsappActive(): Promise<boolean> {
     const config = await this.configRepo.findOne({ where: {} });
     return config?.isActive === true;
+  }
+
+  /**
+   * Riempie i buchi con i default e rifiuta una fascia impossibile.
+   *
+   * Gli stessi limiti li applica il gateway, che davanti a una fascia incoerente
+   * ricade sulle 24h esatte: meglio bloccare qui, altrimenti l'utente salva una
+   * fascia che poi non viene mai usata senza capire perché.
+   */
+  private normalizeAndAssertReminderWindow(config: WhatsappTenantConfig): void {
+    config.reminderWindowStart = config.reminderWindowStart || DEFAULT_REMINDER_WINDOW_START;
+    config.reminderWindowEnd = config.reminderWindowEnd || DEFAULT_REMINDER_WINDOW_END;
+    config.reminderEarlyPolicy =
+      config.reminderEarlyPolicy || WhatsappReminderEarlyPolicy.SHIFT_PREVIOUS_DAY;
+
+    const start = this.parseHhMm(config.reminderWindowStart);
+    const end = this.parseHhMm(config.reminderWindowEnd);
+
+    if (start === null || end === null) {
+      throw new BadRequestException(
+        'Gli orari della fascia di invio promemoria devono essere nel formato HH:mm (es. 08:30)',
+      );
+    }
+
+    if (end - start < MIN_REMINDER_WINDOW_MINUTES) {
+      throw new BadRequestException(
+        `La fascia di invio promemoria deve durare almeno ${MIN_REMINDER_WINDOW_MINUTES} minuti ` +
+          "e la fine deve essere successiva all'inizio",
+      );
+    }
+
+    if (!Object.values(WhatsappReminderEarlyPolicy).includes(config.reminderEarlyPolicy)) {
+      throw new BadRequestException('Politica appuntamenti presto non riconosciuta');
+    }
+  }
+
+  /** Minuti dalla mezzanotte, o null se il formato non è HH:mm. */
+  private parseHhMm(value: string): number | null {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
   }
 
   private assertPlausibleSecret(value: string, label: string): void {

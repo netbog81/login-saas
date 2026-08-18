@@ -1,6 +1,7 @@
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { WhatsappLogService } from '../services/whatsapp-log.service';
 import { WhatsappConfigService } from '../../config/services/whatsapp-config.service';
+import { WhatsappChatService } from '../../chat/services/whatsapp-chat.service';
 import { WhatsappMessageLogPage } from '../dto/whatsapp-log-filter.input';
 import {
   WhatsappRetentionStats,
@@ -13,6 +14,7 @@ export class WhatsappLogManagementResolver {
   constructor(
     private readonly logService: WhatsappLogService,
     private readonly configService: WhatsappConfigService,
+    private readonly chatService: WhatsappChatService,
   ) {}
 
   private async getRetentionDays(): Promise<number> {
@@ -47,7 +49,17 @@ export class WhatsappLogManagementResolver {
   async anonymizeExpiredLogs(): Promise<WhatsappLogManagementResult> {
     const retentionDays = await this.getRetentionDays();
     const affectedCount = await this.logService.anonymizeExpiredLogs(retentionDays);
-    return { success: true, affectedCount, message: `${affectedCount} log scaduti anonimizzati` };
+    // I messaggi di chat seguono la stessa retention dei log: sono anch'essi
+    // testo scambiato col paziente, e lasciarli fuori significherebbe
+    // conservarli per sempre.
+    const chatCount = await this.chatService.anonymizeExpiredMessages(retentionDays);
+    return {
+      success: true,
+      affectedCount: affectedCount + chatCount,
+      message:
+        `${affectedCount} log scaduti anonimizzati` +
+        (chatCount > 0 ? `, ${chatCount} messaggi di chat anonimizzati` : ''),
+    };
   }
 
   @Mutation(() => WhatsappLogManagementResult, { name: 'deleteWhatsappLogs' })

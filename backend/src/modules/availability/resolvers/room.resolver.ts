@@ -2,12 +2,29 @@ import { UseInterceptors } from '@nestjs/common';
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { Room } from '../entities/room.entity';
 import { RoomService } from '../services/room.service';
+import { RoomConflictService } from '../services/room-conflict.service';
+import { RoomDayOccupancy } from '../dto/room-occupancy.output';
 import { AvailabilityChangedInterceptor } from '../mutation-event.interceptors';
 
 @UseInterceptors(AvailabilityChangedInterceptor)
 @Resolver(() => Room)
 export class RoomResolver {
-  constructor(private readonly roomService: RoomService) {}
+  constructor(
+    private readonly roomService: RoomService,
+    private readonly roomConflictService: RoomConflictService,
+  ) {}
+
+  /**
+   * Occupazione pianificata degli studi (da assegnazioni template) per la
+   * vista calendario "Studi".
+   */
+  @Query(() => [RoomDayOccupancy], { name: 'roomsOccupancy' })
+  async getRoomsOccupancy(
+    @Args('startDate') startDate: string,
+    @Args('endDate') endDate: string,
+  ): Promise<RoomDayOccupancy[]> {
+    return this.roomConflictService.computeOccupancy(startDate, endDate);
+  }
 
   @Query(() => [Room], { name: 'rooms' })
   async getRooms(

@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import { WhatsappReminderEarlyPolicy } from '../../enums/whatsapp-enums';
 
 @ObjectType('WhatsappTenantConfig')
 @Entity('whatsapp_tenant_config')
@@ -56,6 +57,34 @@ export class WhatsappTenantConfig {
   @Field(() => Int)
   @Column({ type: 'int', default: 60 })
   recapBufferSeconds: number;
+
+  /**
+   * Invio del promemoria dentro una fascia oraria del giorno prima invece che
+   * alle 24h esatte. Serve a dare al paziente margine reale rispetto alla
+   * politica di disdetta entro le 24h, e a non concentrare tutti gli invii
+   * sull'orario degli appuntamenti. Off = comportamento storico.
+   */
+  @Field()
+  @Column({ default: false })
+  reminderWindowEnabled: boolean;
+
+  /** Inizio della fascia, HH:mm in ora locale (Europe/Rome). */
+  @Field()
+  @Column({ length: 5, default: '08:30' })
+  reminderWindowStart: string;
+
+  /** Fine della fascia, HH:mm. Dentro la fascia gli invii sono distribuiti. */
+  @Field()
+  @Column({ length: 5, default: '09:00' })
+  reminderWindowEnd: string;
+
+  /**
+   * Appuntamenti che iniziano prima della fine della fascia: per loro la fascia
+   * del giorno prima cadrebbe a meno di 24h dall'appuntamento.
+   */
+  @Field(() => WhatsappReminderEarlyPolicy)
+  @Column({ length: 20, default: WhatsappReminderEarlyPolicy.SHIFT_PREVIOUS_DAY })
+  reminderEarlyPolicy: WhatsappReminderEarlyPolicy;
 
   @Field(() => Int)
   @Column({ type: 'int', default: 730 })

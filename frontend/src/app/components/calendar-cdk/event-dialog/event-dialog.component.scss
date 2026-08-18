@@ -194,6 +194,44 @@ textarea.form-input {
   }
 }
 
+/* Recapito telefonico del paziente selezionato. */
+.patient-contact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-left: 2px;
+  font-size: 13px;
+}
+
+.patient-contact-label {
+  color: #6b7280;
+}
+
+.patient-contact-value {
+  color: #1d4ed8;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.btn-copy-phone {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+
+  &:hover {
+    color: #1d4ed8;
+  }
+}
+
 .btn-clear {
   background: none;
   border: none;

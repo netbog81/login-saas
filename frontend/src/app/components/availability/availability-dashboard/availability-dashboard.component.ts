@@ -10,13 +10,14 @@ import { OperatorTemplateAssignment } from '../operator-template-assignment/oper
 import { OperatorCategoryManagementComponent } from '../operator-category-management/operator-category-management.component';
 import { InstrumentationManagementComponent } from '../instrumentation-management/instrumentation-management.component';
 import { GymManagementComponent } from '../gym-management/gym-management.component';
+import { RoomManagementComponent } from '../room-management/room-management.component';
 import { ServiceSubcategoryManagementComponent } from '../service-subcategory-management/service-subcategory-management.component';
 import { InvoicePrefixesManagementComponent } from '../invoice-prefixes-management/invoice-prefixes-management.component';
 import { OperatorAbsenceTypesContainerComponent } from '../../../features/availability/operator-absence-types/containers/operator-absence-types.container';
 import { AvailabilityStateService } from '../../../services/availability-state.service';
 import { Subject, takeUntil } from 'rxjs';
 
-type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'invoice-descriptions' | 'templates' | 'assignments' | 'instrumentation' | 'gyms' | 'absence-types' | 'calendar';
+type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'invoice-descriptions' | 'templates' | 'assignments' | 'rooms' | 'instrumentation' | 'gyms' | 'absence-types' | 'calendar';
 
 @Component({
   selector: 'app-availability-dashboard',
@@ -32,6 +33,7 @@ type TabType = 'operators' | 'categories' | 'services' | 'subcategories' | 'invo
     OperatorTemplateAssignment,
     InstrumentationManagementComponent,
     GymManagementComponent,
+    RoomManagementComponent,
     ServiceSubcategoryManagementComponent,
     InvoicePrefixesManagementComponent,
     OperatorAbsenceTypesContainerComponent

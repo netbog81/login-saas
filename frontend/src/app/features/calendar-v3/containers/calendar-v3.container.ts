@@ -46,7 +46,7 @@ import { AppointmentClipboardService, PasteTargetSlot } from '../services/appoin
 
 // Componenti riusati da calendar-v2 (Layer 1 - Dumb)
 import { CalendarV2SidebarComponent } from '../../calendar-v2/components/calendar-sidebar/calendar-v2-sidebar.component';
-import { GymGridComponent, GymRoom, GymSlotClickEvent } from '../../calendar-v2/components/gym-grid/gym-grid.component';
+import { GymGridComponent, GymRoom, GymSlotClickEvent, GymAppointmentClickEvent } from '../../calendar-v2/components/gym-grid/gym-grid.component';
 import { GymRoomService, GymAppointment } from '../../../services/gym-room.service';
 import { GymSlotSummaryV3Component, GymSlotSummaryV3Action } from '../components/gym-slot-summary/gym-slot-summary-v3.component';
 
@@ -67,8 +67,15 @@ import { CalendarV2DataService } from '../../calendar-v2/services/calendar-v2-da
 import { CalendarV2GridService } from '../../calendar-v2/services/calendar-v2-grid.service';
 // Service specifico v3 (disponibilita' free-block)
 import { CalendarV3DataService } from '../services/calendar-v3-data.service';
+// Vista Studi: container smart dedicato (sidebar + griglia + dati)
+import { RoomsViewContainer } from './rooms-view.container';
 import { OperatorService } from '../../../services/operator.service';
-import { SettingsService } from '../../../services/settings.service';
+import { SettingsService, AppointmentClickAction } from '../../../services/settings.service';
+import {
+  AppointmentSummaryComponent,
+  SummaryAction,
+} from '../../../components/calendar-cdk/appointment-summary/appointment-summary.component';
+import { WhatsappChatStateService } from '../../whatsapp-chat/services/whatsapp-chat-state.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
 import { OidcAuthService } from '../../../core/auth/oidc-auth.service';
 import { OperatorWorkspaceStateService } from '../../operators-new/services/operator-workspace-state.service';
@@ -84,6 +91,10 @@ import { AvailabilityAppointment } from '../../../graphql/generated/types';
 import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointment.mapper';
 import { Treatment } from '../../../models/treatment.model';
 import { TreatmentService } from '../../../services/treatment.service';
+import {
+  NewChatDialogComponent,
+  NewChatDialogResult,
+} from '../../whatsapp-chat/components/new-chat-dialog/new-chat-dialog.component';
 
 @Component({
   selector: 'app-calendar-v3-container',
@@ -100,6 +111,7 @@ import { TreatmentService } from '../../../services/treatment.service';
     CalendarV2SidebarComponent,
     OperatorGridV3Component,
     GymGridComponent,
+    RoomsViewContainer,
     AppointmentPasteBarComponent,
   ],
   template: `
@@ -156,13 +168,19 @@ import { TreatmentService } from '../../../services/treatment.service';
             [weekly]="config.viewType === 'weekly'"
             [visibleDates]="visibleDates"
             [selectedDate]="selectedTreatmentDay"
+            [parkedChats]="chatState.panelConversations()"
             (toggleOperator)="stateService.toggleOperator($event)"
             (setOperatorSelection)="stateService.setOperatorSelection($event.operatorIds, $event.selected)"
             (toggleCollapsed)="sidebarCollapsed = !sidebarCollapsed"
             (slotSearchToggle)="onSlotSearchToggle($event)"
-            (searchFiltersChange)="onSearchFiltersChange($event)">
+            (searchFiltersChange)="onSearchFiltersChange($event)"
+            (openParkedChat)="chatState.openConversation($event)"
+            (removeParkedChat)="onRemoveChatFromPanel($event)"
+            (newParkedChat)="onNewChat()"
+            (clearParkedChats)="onClearChatPanel()">
           </app-calendar-v2-sidebar>
         }
+
 
         <!-- Main grid area -->
         <div class="calendar-v3-main">
@@ -220,6 +238,17 @@ import { TreatmentService } from '../../../services/treatment.service';
               (appointmentClick)="onGymAppointmentClick($event)">
             </app-gym-grid-v2>
           }
+
+          @if (config.viewMode === 'rooms') {
+            <app-rooms-view-container
+              [dates]="visibleDates"
+              [viewType]="config.viewType"
+              [compactMode]="config.compactMode"
+              [zoom]="config.zoom"
+              [showWeekend]="config.showWeekend"
+              [showWorkingHoursOnly]="config.showWorkingHoursOnly">
+            </app-rooms-view-container>
+          }
         </div>
       </div>
     </div>
@@ -241,6 +270,10 @@ import { TreatmentService } from '../../../services/treatment.service';
 
     .calendar-v3-main {
       flex: 1;
+      // Senza min-width:0 il flex item si allarga al min-content del
+      // contenuto (vista Studi espansa) e sfonda il body che ha overflow
+      // hidden: lo scroll orizzontale deve avvenire QUI o più in basso.
+      min-width: 0;
       overflow: auto;
       padding: 16px;
     }
@@ -283,6 +316,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private instructorWorkspaceState = inject(InstructorWorkspaceStateService);
   /** Stato del flusso copia/incolla appuntamento (pubblico: usato nel template). */
   clipboard = inject(AppointmentClipboardService);
+  /** Chat WhatsApp: pannello "Chat in corso" in sidebar e apertura riquadri. */
+  chatState = inject(WhatsappChatStateService);
 
   /** Riferimento alla griglia operatori, per l'hit-test del drop in pasteMode. */
   @ViewChild('operatorGrid') operatorGrid?: OperatorGridV3Component;
@@ -319,6 +354,12 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   showGymInstructorsInOperators = true;
   /** Da calendar settings: categoria operatori di default in sidebar (all|doctor|physiotherapist|gym_instructor). */
   defaultOperatorCategory = 'all';
+  /**
+   * Da calendar settings: cosa fa il click su un appuntamento nella vista
+   * operatori. 'edit-first' (default) = click modifica, doppio click riepilogo;
+   * 'summary-first' = il contrario.
+   */
+  appointmentClickAction: AppointmentClickAction = 'edit-first';
   /** Categoria iniziale da riflettere nel dropdown della sidebar ('' = Tutte). */
   initialSelectedCategory = '';
   /**
@@ -365,6 +406,13 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private gymSummaryOverlayRef: OverlayRef | null = null;
   private gymSummaryEvent: GymSlotClickEvent | null = null;
   private static readonly GYM_CLICK_DEBOUNCE_MS = 250;
+
+  // Arbitro click/doppio click sul chip appuntamento (vista operatori): la
+  // griglia emette sia `click` sia `dblclick`, quindi senza debounce il primo
+  // click scatterebbe sempre e il doppio click non sarebbe raggiungibile.
+  private eventClickTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Overlay CDK del riquadro riassunto appuntamento. */
+  private appointmentSummaryOverlayRef: OverlayRef | null = null;
 
   async ngOnInit(): Promise<void> {
     await this.resolveReadOnlyMode();
@@ -426,7 +474,9 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     this.destroy$.complete();
     if (this.currentTimeInterval) clearInterval(this.currentTimeInterval);
     if (this.gymSlotClickTimer) clearTimeout(this.gymSlotClickTimer);
+    if (this.eventClickTimer) clearTimeout(this.eventClickTimer);
     this.closeGymSummary();
+    this.closeAppointmentSummary();
     // Non lasciare un flusso copia/incolla pendente uscendo dalla pagina.
     this.clipboard.clear();
   }
@@ -451,6 +501,8 @@ export class CalendarV3Container implements OnInit, OnDestroy {
           this.operatorsSelectedOnLoad = settings.operatorsSelectedOnLoad;
           this.showGymInstructorsInOperators = settings.showGymInstructorsInOperators;
           this.defaultOperatorCategory = settings.defaultOperatorCategory || 'all';
+          this.appointmentClickAction =
+            settings.appointmentClickAction === 'summary-first' ? 'summary-first' : 'edit-first';
 
           // Le impostazioni di /settings (durata slot, vista, orari,
           // weekend) sono il default iniziale, ma vanno RIAPPLICATE se
@@ -709,8 +761,13 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         });
     } else if (config.viewMode === 'gyms') {
       this.loadGymData(dates);
+    } else if (config.viewMode === 'rooms') {
+      // La vista Studi si carica da sola (RoomsViewContainer reagisce alle date)
+      this.loading = false;
+      this.cdr.markForCheck();
     }
   }
+
 
   // ==================== ACTIONS ====================
 
@@ -761,11 +818,34 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     this.stateService.updateConfig({ viewType });
   }
 
-  onViewModeChange(viewMode: 'operators' | 'gyms'): void {
-    if (viewMode === 'gyms') {
-      this.stateService.updateConfig({ viewMode, slotDuration: 60 });
+  /** Flag da ripristinare quando si esce dalla vista Studi. */
+  private flagsBeforeRooms: { showWeekend: boolean; showWorkingHoursOnly: boolean } | null = null;
+
+  onViewModeChange(viewMode: CalendarV2Config['viewMode']): void {
+    const wasRooms = this.config.viewMode === 'rooms';
+
+    // Vista Studi: default orario lavoro ON e weekend OFF; i toggle in
+    // toolbar restano utilizzabili. All'uscita si ripristinano i valori
+    // precedenti per non alterare la vista operatori.
+    const restored = wasRooms && viewMode !== 'rooms' && this.flagsBeforeRooms
+      ? { ...this.flagsBeforeRooms }
+      : {};
+    if (wasRooms && viewMode !== 'rooms') this.flagsBeforeRooms = null;
+
+    if (viewMode === 'rooms' && !wasRooms) {
+      this.flagsBeforeRooms = {
+        showWeekend: this.config.showWeekend,
+        showWorkingHoursOnly: this.config.showWorkingHoursOnly,
+      };
+      this.stateService.updateConfig({
+        viewMode,
+        showWorkingHoursOnly: true,
+        showWeekend: false,
+      });
+    } else if (viewMode === 'gyms') {
+      this.stateService.updateConfig({ viewMode, slotDuration: 60, ...restored });
     } else {
-      this.stateService.updateConfig({ viewMode });
+      this.stateService.updateConfig({ viewMode, ...restored });
     }
   }
 
@@ -1519,8 +1599,45 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     /* vedi onGymSlotClick */
   }
 
-  onGymAppointmentClick(event: any): void {
-    console.log('[CalendarV3] Gym appointment click:', event.appointment?.id);
+  /**
+   * Click sul mini-chip di un appuntamento dentro uno slot palestra.
+   *
+   * La griglia ferma la propagazione allo slot (che significherebbe "prenota"),
+   * quindi qui l'intento e' inequivocabile: aprire QUELL'appuntamento in
+   * modifica. Si condivide il timer di `onGymSlotClick` cosi' il doppio click
+   * sul chip resta coerente col resto della palestra (= riepilogo dello slot).
+   */
+  onGymAppointmentClick(event: GymAppointmentClickEvent): void {
+    const slotEvent: GymSlotClickEvent = {
+      gymRoom: event.gymRoom,
+      date: event.date,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      slotInfo: event.slotInfo,
+      mouseEvent: event.mouseEvent,
+    };
+
+    // Sola lettura (istruttore): nessuna modifica possibile, si ricade sul
+    // comportamento dello slot (singolo → riepilogo, doppio → scheda del giorno).
+    if (this.readOnly) {
+      this.onGymSlotClick(slotEvent);
+      return;
+    }
+
+    // In modalita' selezione (flusso copia) il chip non apre nulla: la palestra
+    // non partecipa al copia/incolla, che vive sulla griglia operatori.
+    if (this.clipboard.isSelecting) return;
+
+    if (this.gymSlotClickTimer) {
+      clearTimeout(this.gymSlotClickTimer);
+      this.gymSlotClickTimer = null;
+      this.openGymSlotSummaryOverlay(slotEvent);
+      return;
+    }
+    this.gymSlotClickTimer = setTimeout(() => {
+      this.gymSlotClickTimer = null;
+      this.openGymAppointmentDialog(slotEvent, event.appointment);
+    }, CalendarV3Container.GYM_CLICK_DEBOUNCE_MS);
   }
 
   /**
@@ -1683,6 +1800,109 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Conferma + elimina un appuntamento della vista operatori, richiesto dal
+   * riquadro riassunto. Stessa scelta di scope della palestra sulle serie
+   * ricorrenti.
+   */
+  private confirmDeleteAppointment(appointment: Appointment): void {
+    if (appointment.isRecurring && appointment.recurringGroupId) {
+      const ref = this.dialog.open(RecurringDeleteDialogComponent, {
+        width: '560px',
+        data: {
+          appointmentId: String(appointment.id),
+          appointmentDate: String(appointment.date).slice(0, 10),
+          recurringGroupId: appointment.recurringGroupId,
+          clientName: appointment.title,
+        } as RecurringDeleteDialogData,
+      });
+      ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: RecurringDeleteDialogResult | undefined) => {
+        if (result && result.deletedCount > 0) {
+          this.reloadCurrentView();
+        }
+      });
+      return;
+    }
+
+    const ref = this.dialog.open(ConfirmMatDialogComponent, {
+      width: '400px',
+      data: {
+        title: 'Elimina appuntamento',
+        message: `Confermi l'eliminazione dell'appuntamento di ${appointment.title || 'questo paziente'}?`,
+        confirmText: 'Elimina',
+        cancelText: 'Annulla',
+        confirmColor: 'warn',
+        icon: 'delete',
+      } as ConfirmMatDialogData,
+    });
+
+    ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(async (confirmed) => {
+      if (!confirmed) return;
+      try {
+        await firstValueFrom(this.appointmentService.deleteAppointment(String(appointment.id)));
+        this.reloadCurrentView();
+      } catch (err: any) {
+        console.error('[CalendarV3] Error deleting appointment:', err);
+        alert(err?.graphQLErrors?.[0]?.message || "Errore durante l'eliminazione dell'appuntamento");
+      }
+    });
+  }
+
+  /**
+   * Condivisione del riepilogo appuntamento su WhatsApp o email. Apre il
+   * client esterno con il testo precompilato: non passa dal gateway WhatsApp,
+   * e' una scorciatoia per l'operatore.
+   */
+  private shareAppointment(appointment: Appointment, method?: 'email' | 'whatsapp'): void {
+    // WhatsApp non è una condivisione di testo come l'email: manda al paziente
+    // il recap vero, quello del sistema, che finisce nei log e negli stati di
+    // consegna. Aprire wa.me con un testo precompilato lasciava l'invio a mano
+    // dell'operatore e non lasciava traccia da nessuna parte.
+    if (method === 'whatsapp') {
+      this.sendAppointmentRecap(appointment);
+      return;
+    }
+
+    const operatorId = String(appointment.operatorId);
+    const user = this.allUsers.find((u) => String(u.operatorId ?? u.id) === operatorId);
+    const dateLabel = new Date(appointment.date + 'T00:00:00').toLocaleDateString('it-IT', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
+    const text =
+      `Appuntamento: ${appointment.title}\n` +
+      `Data: ${dateLabel}\n` +
+      `Ora: ${appointment.startTime} - ${appointment.endTime}\n` +
+      `Operatore: ${user?.name || 'N/A'}` +
+      (appointment.notes ? `\nNote: ${appointment.notes}` : '');
+
+    if (method === 'email') {
+      const subject = `Appuntamento - ${appointment.title}`;
+      window.location.href =
+        `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+    }
+  }
+
+  /**
+   * Invia subito al paziente il recap dell'appuntamento.
+   *
+   * Il gateway lo manda senza passare dalla finestra di raggruppamento: chi
+   * preme il pulsante si aspetta che parta ora, non fra qualche minuto.
+   */
+  private sendAppointmentRecap(appointment: Appointment): void {
+    if (!appointment?.id) return;
+
+    this.appointmentService.sendRecap(String(appointment.id)).subscribe({
+      next: () =>
+        this.snackBar.open('Recap WhatsApp inviato al paziente', 'OK', { duration: 3000 }),
+      error: (err) =>
+        this.snackBar.open(
+          err?.message || 'Invio del recap non riuscito',
+          'OK',
+          { duration: 5000 },
+        ),
+    });
+  }
+
   /** Chiude e distrugge l'overlay del riquadro riassunto. */
   private closeGymSummary(): void {
     if (this.gymSummaryOverlayRef) {
@@ -1724,21 +1944,74 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Click sul chip di un appuntamento (vista operatori).
+   *
+   * Singolo e doppio click fanno cose diverse, ma il browser emette comunque
+   * `click` prima di `dblclick`: la discriminazione avviene qui, sul solo
+   * stream `click`, con la stessa finestra di debounce usata in palestra.
+   *   - secondo click entro la finestra → azione "doppio click"
+   *   - nessun secondo click            → azione "singolo click"
+   * Quale sia l'una e quale l'altra lo decide l'impostazione
+   * `calendar.appointmentClickAction`.
+   */
   onEventClick(event: EventClickEvent): void {
-    // Read-only: click singolo → dettaglio appuntamento in sola lettura.
-    if (this.readOnly) {
-      this.openEventDialog({
-        appointment: event.appointment,
-        users: this.allUsers,
-        patients: this.patients,
-        readOnly: true,
-      });
+    // In modalita' selezione (flusso copia avviato da toolbar) il click copia
+    // l'appuntamento ed entra in fase incollo, invece di aprirne i dettagli:
+    // nessuna ambiguita' da risolvere, quindi niente debounce.
+    if (!this.readOnly && this.clipboard.isSelecting) {
+      this.startPaste(event.appointment);
       return;
     }
-    // In modalita' selezione (flusso copia avviato da toolbar) il click copia
-    // l'appuntamento ed entra in fase incollo, invece di aprirne i dettagli.
-    if (this.clipboard.isSelecting) {
-      this.startPaste(event.appointment);
+
+    if (this.eventClickTimer) {
+      clearTimeout(this.eventClickTimer);
+      this.eventClickTimer = null;
+      this.runEventAction(event, 'double');
+      return;
+    }
+    this.eventClickTimer = setTimeout(() => {
+      this.eventClickTimer = null;
+      this.runEventAction(event, 'single');
+    }, CalendarV3Container.GYM_CLICK_DEBOUNCE_MS);
+  }
+
+  /**
+   * No-op intenzionale: la discriminazione avviene in `onEventClick` sul solo
+   * stream `click` (vedi commento li'). Tenere anche `dblclick` collegato
+   * farebbe scattare due volte l'azione di doppio click.
+   */
+  onEventDblClick(_event: EventClickEvent): void {
+    /* vedi onEventClick */
+  }
+
+  /**
+   * Esegue l'azione associata al gesto sul chip appuntamento.
+   *
+   * In sola lettura le due azioni sono fisse (dettaglio / scheda appuntamenti
+   * del giorno) perche' l'operatore non puo' modificare nulla; in uso pieno
+   * seguono l'impostazione `calendar.appointmentClickAction`.
+   */
+  private runEventAction(event: EventClickEvent, gesture: 'single' | 'double'): void {
+    if (this.readOnly) {
+      if (gesture === 'single') {
+        this.openEventDialog({
+          appointment: event.appointment,
+          users: this.allUsers,
+          patients: this.patients,
+          readOnly: true,
+        });
+      } else {
+        this.goToAppointmentsScheduleForDay(event.appointment);
+      }
+      return;
+    }
+
+    const wantsSummary =
+      this.appointmentClickAction === 'summary-first' ? gesture === 'single' : gesture === 'double';
+
+    if (wantsSummary) {
+      this.openAppointmentSummaryOverlay(event);
       return;
     }
     this.openEventDialog({
@@ -1748,17 +2021,138 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     });
   }
 
-  onEventDblClick(event: EventClickEvent): void {
-    // Read-only: doppio click → scheda appuntamenti dell'utente, posizionata
-    // sul giorno dell'appuntamento cliccato.
-    if (this.readOnly) {
-      this.goToAppointmentsScheduleForDay(event.appointment);
+  /**
+   * Riquadro riassunto dell'appuntamento, ancorato al punto cliccato.
+   *
+   * Backdrop trasparente invece del `clickOutside` del componente: il gesto che
+   * apre l'overlay e' ancora in propagazione quando il portal viene creato, e
+   * il listener `document:click` del riquadro lo richiuderebbe all'istante.
+   */
+  private openAppointmentSummaryOverlay(event: EventClickEvent): void {
+    this.closeAppointmentSummary();
+
+    const origin = { x: event.mouseEvent.clientX, y: event.mouseEvent.clientY };
+    const positionStrategy = this.overlay
+      .position()
+      .flexibleConnectedTo(origin)
+      .withFlexibleDimensions(false)
+      .withPush(true)
+      .withPositions([
+        { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 8 },
+        { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -8 },
+        { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 8 },
+        { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
+      ]);
+
+    const overlayRef = this.overlay.create({
+      positionStrategy,
+      scrollStrategy: this.overlay.scrollStrategies.reposition(),
+      hasBackdrop: true,
+      backdropClass: 'cdk-overlay-transparent-backdrop',
+      panelClass: 'appointment-summary-overlay',
+    });
+    this.appointmentSummaryOverlayRef = overlayRef;
+
+    overlayRef.backdropClick().pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.closeAppointmentSummary());
+    overlayRef.keydownEvents().pipe(takeUntil(this.destroy$)).subscribe((e) => {
+      if (e.key === 'Escape') this.closeAppointmentSummary();
+    });
+
+    const ref = overlayRef.attach(new ComponentPortal(AppointmentSummaryComponent));
+    const operatorId = String(event.appointment.operatorId);
+    ref.instance.appointment = event.appointment;
+    ref.instance.user = this.allUsers.find(
+      (u) => String(u.operatorId ?? u.id) === operatorId,
+    );
+    ref.instance.action
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((action) => this.handleAppointmentSummaryAction(action));
+    ref.changeDetectorRef.detectChanges();
+  }
+
+  /** Chiude il riquadro riassunto appuntamento, se aperto. */
+  private closeAppointmentSummary(): void {
+    if (this.appointmentSummaryOverlayRef) {
+      this.appointmentSummaryOverlayRef.dispose();
+      this.appointmentSummaryOverlayRef = null;
+    }
+  }
+
+  /** Gestisce le azioni emesse dal riquadro riassunto appuntamento. */
+  private handleAppointmentSummaryAction(action: SummaryAction): void {
+    this.closeAppointmentSummary();
+    switch (action.type) {
+      case 'edit':
+        this.openEventDialog({
+          appointment: action.appointment,
+          users: this.allUsers,
+          patients: this.patients,
+        });
+        break;
+      case 'delete':
+        this.confirmDeleteAppointment(action.appointment);
+        break;
+      case 'chat':
+        this.openWhatsappChat(action.appointment);
+        break;
+      case 'share':
+        this.shareAppointment(action.appointment, action.shareMethod);
+        break;
+      case 'close':
+        break;
+    }
+  }
+
+  /**
+   * Toglie una chat dal pannello "Chat in corso".
+   *
+   * Oltre a togliere il parcheggio la segna come letta: se restassero messaggi
+   * non letti, il primo aggiornamento la rimetterebbe nel pannello e la X
+   * sembrerebbe non funzionare. Un messaggio NUOVO la fa tornare, ed è giusto.
+   */
+  onRemoveChatFromPanel(conversation: { id: string; unreadCount?: number }): void {
+    this.chatState.removeFromPanel(conversation);
+  }
+
+  /** Svuota le chat in corso, previa conferma: l'elenco non è recuperabile. */
+  onClearChatPanel(): void {
+    const count = this.chatState.panelConversations().length;
+    if (count === 0) return;
+    if (!confirm(`Vuoi togliere tutte le ${count} chat dall'elenco delle chat in corso?`)) return;
+    this.chatState.clearPanel();
+  }
+
+  /** Apre la ricerca paziente e, scelto il paziente, ne apre la chat. */
+  onNewChat(): void {
+    this.dialog
+      .open(NewChatDialogComponent, { autoFocus: false })
+      .afterClosed()
+      .subscribe((result: NewChatDialogResult | undefined) => {
+        if (!result) return;
+        this.chatState.openForPhone(result);
+      });
+  }
+
+  /**
+   * Apre il riquadro di chat WhatsApp col paziente dell'appuntamento. Il numero
+   * arriva dall'appuntamento stesso (denormalizzato alla prenotazione), quindi
+   * non serve caricare l'anagrafica.
+   */
+  private openWhatsappChat(appointment: Appointment): void {
+    const phone = appointment.clientPhone || appointment.patient?.cellulare || appointment.patient?.telefono;
+    if (!phone) {
+      this.snackBar.open(
+        'Nessun numero di telefono su questo appuntamento: impossibile aprire la chat.',
+        'OK',
+        { duration: 4000 },
+      );
       return;
     }
-    this.openEventDialog({
-      appointment: event.appointment,
-      users: this.allUsers,
-      patients: this.patients,
+    this.chatState.openForPhone({
+      phone,
+      patientId: appointment.patientId,
+      patientName: appointment.title,
     });
   }
 
@@ -1998,6 +2392,18 @@ export class CalendarV3Container implements OnInit, OnDestroy {
             forceOutsideAvailability: force,
           },
         ));
+
+        // "Rendi ricorrente" su un appuntamento singolo esistente: dopo
+        // l'update diventa il master e il backend crea le occorrenze
+        // successive. Un conflitto su una nuova occorrenza blocca tutto e
+        // finisce nel dialog dei conflitti serie (catch sotto).
+        if (result.repeatConfig) {
+          await firstValueFrom(this.appointmentService.makeRecurring(
+            apt.id as string,
+            result.repeatConfig,
+            force,
+          ));
+        }
       } else {
         await firstValueFrom(this.appointmentService.createAppointment({
           operatorId: apt.operatorId,

@@ -11,6 +11,7 @@ import {
 } from '../entities/availability-exception.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { findBlockingException } from '../utils/day-exception-semantics.util';
+import { isIntervalCovered } from '../utils/interval-coverage.util';
 import { GymExceptionService } from './gym-exception.service';
 import { AvailabilityService } from './availability.service';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
@@ -47,9 +48,15 @@ const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 ore
  *   proprie): il conflitto è risolto se l'appuntamento ricade interamente
  *   nelle fasce di disponibilità correnti dell'operatore
  *   (AvailabilityService.getOperatorsRawBands — template meno assenze, senza
- *   sottrarre gli appuntamenti). Necessario perché la detection al cambio
- *   template marca in blocco TUTTI gli appuntamenti futuri dell'operatore.
+ *   sottrarre gli appuntamenti).
  * - RECURRING_APPOINTMENT resta a risoluzione manuale.
+ *
+ * Passo finale, speculare: la DETECTION
+ * (AvailabilityService.detectAndMarkTemplateConflicts) marca gli
+ * appuntamenti fuori fascia MAI rilevati — anche quelli retroattivi,
+ * es. prenotati sotto un template e rimasti scoperti dopo l'attivazione del
+ * successivo nella timeline. Così l'"Aggiorna" della pagina conflitti
+ * (che passa da revalidateAll) fa emergere l'elenco completo.
  */
 @Injectable()
 export class ConflictRevalidationService {
@@ -73,9 +80,13 @@ export class ConflictRevalidationService {
 
   /**
    * Esegue la revalidazione solo se sono passate ≥ COOLDOWN_MS dall'ultima.
-   * Ritorna il numero di conflitti risolti (0 se skip per cooldown).
+   * Ritorna i conflitti risolti e rilevati (0/0 se skip per cooldown).
    */
-  async revalidateIfNeeded(): Promise<{ skipped: boolean; resolved: number }> {
+  async revalidateIfNeeded(): Promise<{
+    skipped: boolean;
+    resolved: number;
+    detected: number;
+  }> {
     const lastRun = await this.settingsService.getValue<string | null>(
       SETTINGS_KEY,
       null,
@@ -84,11 +95,11 @@ export class ConflictRevalidationService {
     if (lastRun) {
       const elapsed = Date.now() - new Date(lastRun).getTime();
       if (elapsed < COOLDOWN_MS) {
-        return { skipped: true, resolved: 0 };
+        return { skipped: true, resolved: 0, detected: 0 };
       }
     }
 
-    const resolved = await this.revalidateAll();
+    const { resolved, detected } = await this.revalidateAll();
 
     // Aggiorna timestamp
     await this.settingsService.upsert(SETTINGS_KEY, new Date().toISOString(), {
@@ -97,15 +108,15 @@ export class ConflictRevalidationService {
       category: 'conflicts',
     });
 
-    return { skipped: false, resolved };
+    return { skipped: false, resolved, detected };
   }
 
   /**
-   * Revalida TUTTI gli appointment con hasConflict=true. Rimuove il flag
-   * per quelli il cui conflitto non è più reale.
-   * Ritorna il numero di flag rimossi.
+   * Revalida TUTTI gli appointment con hasConflict=true (rimuove i flag non
+   * più reali) e poi rileva i conflitti template mai marcati (li aggiunge).
+   * Ritorna i conteggi di entrambe le direzioni.
    */
-  async revalidateAll(): Promise<number> {
+  async revalidateAll(): Promise<{ resolved: number; detected: number }> {
     // 0. Appuntamenti non più attivi (svolti/cancellati/no-show): l'elenco
     //    conflitti li mostrerebbe ma nessuna azione ha più senso → azzera.
     const staleResult = await this.appointmentRepo
@@ -136,13 +147,11 @@ export class ConflictRevalidationService {
       },
     });
 
-    if (conflictedAppointments.length === 0) {
-      return resolved;
+    if (conflictedAppointments.length > 0) {
+      this.logger.log(
+        `Revalidazione conflitti: ${conflictedAppointments.length} appointment da verificare`,
+      );
     }
-
-    this.logger.log(
-      `Revalidazione conflitti: ${conflictedAppointments.length} appointment da verificare`,
-    );
 
     const ABSENCE_REASONS = [
       ConflictReason.OPERATOR_SICK,
@@ -209,7 +218,7 @@ export class ConflictRevalidationService {
         for (const apt of templateConflicts) {
           const dayBands =
             bands.get(`${apt.operatorId}|${this.toDateStr(apt.appointmentDate)}`) || [];
-          if (this.isIntervalCovered(apt.startTime, apt.endTime, dayBands)) {
+          if (isIntervalCovered(apt.startTime, apt.endTime, dayBands)) {
             toResolve.push(apt.id);
           }
         }
@@ -234,7 +243,27 @@ export class ConflictRevalidationService {
       );
     }
 
-    return resolved + toResolve.length;
+    // --- 3. Detection speculare: marca i conflitti mai rilevati ---
+    // Sweep globale sugli appuntamenti futuri non flaggati: fa emergere
+    // anche i conflitti retroattivi (fuori fascia da prima che i trigger
+    // sulle assegnazioni esistessero). Un errore qui non deve rompere la
+    // pagina conflitti: la lista dei flag esistenti resta valida.
+    let detected = 0;
+    try {
+      const marked = await this.availabilityService.detectAndMarkTemplateConflicts();
+      detected = marked.length;
+      if (detected > 0) {
+        this.logger.log(
+          `Revalidazione conflitti: ${detected} conflitti template rilevati e marcati`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Detection conflitti template fallita: ${err?.message}`,
+      );
+    }
+
+    return { resolved: resolved + toResolve.length, detected };
   }
 
   /** Normalizza una data (Date o stringa ISO) in 'YYYY-MM-DD'. */
@@ -242,37 +271,6 @@ export class ConflictRevalidationService {
     return d instanceof Date
       ? d.toISOString().split('T')[0]
       : String(d).split('T')[0];
-  }
-
-  /**
-   * True se [startTime, endTime] è interamente coperto dalle fasce (in
-   * minuti). Le fasce contigue/sovrapposte vengono fuse, come nel guard
-   * assertWithinAvailability.
-   */
-  private isIntervalCovered(
-    startTime: string,
-    endTime: string,
-    bands: { start: number; end: number }[],
-  ): boolean {
-    const toMin = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + (m || 0);
-    };
-    const start = toMin(startTime);
-    const end = toMin(endTime);
-    if (end <= start || bands.length === 0) return false;
-
-    const sorted = [...bands].sort((a, b) => a.start - b.start);
-    const merged: { start: number; end: number }[] = [];
-    for (const b of sorted) {
-      const last = merged[merged.length - 1];
-      if (last && b.start <= last.end) {
-        last.end = Math.max(last.end, b.end);
-      } else {
-        merged.push({ ...b });
-      }
-    }
-    return merged.some((r) => r.start <= start && r.end >= end);
   }
 
   /**

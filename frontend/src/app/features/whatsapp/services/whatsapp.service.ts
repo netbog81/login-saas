@@ -30,6 +30,10 @@ const GET_WHATSAPP_CONFIG = gql`
       sendCancelNotification
       sendUpdateNotification
       recapBufferSeconds
+      reminderWindowEnabled
+      reminderWindowStart
+      reminderWindowEnd
+      reminderEarlyPolicy
       retentionDays
       createdAt
       updatedAt
@@ -215,6 +219,10 @@ const UPSERT_WHATSAPP_CONFIG = gql`
       sendCancelNotification
       sendUpdateNotification
       recapBufferSeconds
+      reminderWindowEnabled
+      reminderWindowStart
+      reminderWindowEnd
+      reminderEarlyPolicy
       retentionDays
       createdAt
       updatedAt

@@ -59,6 +59,8 @@ import { GymException } from './modules/availability/entities/gym-exception.enti
 import { GymExceptionSubstitute } from './modules/availability/entities/gym-exception-substitute.entity';
 import { OperatorAbsenceType } from './modules/availability/entities/operator-absence-type.entity';
 import { Room } from './modules/availability/entities/room.entity';
+import { Chair } from './modules/availability/entities/chair.entity';
+import { TemplateAssignmentRoomOverride } from './modules/availability/entities/template-assignment-room-override.entity';
 import { ServiceInstrument } from './modules/availability/entities/service-instrument.entity';
 import { AppointmentInstrument } from './modules/availability/entities/appointment-instrument.entity';
 import { AppointmentLog } from './modules/availability/entities/appointment-log.entity';
@@ -109,6 +111,8 @@ import { WhatsappTenantConfig } from './modules/whatsapp/config/entities/whatsap
 import { WhatsappMessageTemplate } from './modules/whatsapp/template/entities/whatsapp-message-template.entity';
 import { WhatsappMessageLog } from './modules/whatsapp/log/entities/whatsapp-message-log.entity';
 import { WhatsappWebhookEvent } from './modules/whatsapp/webhook/entities/whatsapp-webhook-event.entity';
+import { WhatsappConversation } from './modules/whatsapp/chat/entities/whatsapp-conversation.entity';
+import { WhatsappChatMessage } from './modules/whatsapp/chat/entities/whatsapp-chat-message.entity';
 import { WaitingListEntry } from './modules/availability/entities/waiting-list-entry.entity';
 // Task Message integration module
 import { TaskMessageModule } from './modules/task-message/task-message.module';
@@ -164,6 +168,8 @@ const ALL_ENTITIES = [
   GymExceptionSubstitute,
   OperatorAbsenceType,
   Room,
+  Chair,
+  TemplateAssignmentRoomOverride,
   ServiceInstrument,
   AppointmentInstrument,
   AppointmentLog,
@@ -205,6 +211,8 @@ const ALL_ENTITIES = [
   WhatsappMessageTemplate,
   WhatsappMessageLog,
   WhatsappWebhookEvent,
+  WhatsappConversation,
+  WhatsappChatMessage,
   // Task Message system
   TaskMessage,
   TaskMessageWebhookEvent,

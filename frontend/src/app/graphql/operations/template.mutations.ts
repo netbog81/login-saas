@@ -188,6 +188,32 @@ export const ASSIGN_TEMPLATE_TO_OPERATOR = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
       operator {
@@ -219,6 +245,8 @@ export const UPDATE_TEMPLATE_ASSIGNMENT = gql`
     $validUntil: String
     $patternStartDate: String
     $isCurrent: Boolean
+    $roomId: String
+    $chairId: String
   ) {
     updateTemplateAssignment(
       id: $id
@@ -226,6 +254,8 @@ export const UPDATE_TEMPLATE_ASSIGNMENT = gql`
       validUntil: $validUntil
       patternStartDate: $patternStartDate
       isCurrent: $isCurrent
+      roomId: $roomId
+      chairId: $chairId
     ) {
       id
       operatorId
@@ -235,6 +265,32 @@ export const UPDATE_TEMPLATE_ASSIGNMENT = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
       operator {
@@ -270,6 +326,32 @@ export const DEACTIVATE_TEMPLATE_ASSIGNMENT = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
     }
@@ -285,5 +367,111 @@ export const DELETE_TEMPLATE_ASSIGNMENT = gql`
 export const DEACTIVATE_ALL_TEMPLATE_ASSIGNMENTS_FOR_OPERATOR = gql`
   mutation DeactivateAllTemplateAssignmentsForOperator($operatorId: ID!) {
     deactivateAllTemplateAssignmentsForOperator(operatorId: $operatorId)
+  }
+`;
+export const SET_ASSIGNMENT_ROOM_OVERRIDES = gql`
+  mutation SetAssignmentRoomOverrides(
+    $assignmentId: ID!
+    $overrides: [AssignmentRoomOverrideInput!]!
+  ) {
+    setAssignmentRoomOverrides(assignmentId: $assignmentId, overrides: $overrides) {
+      id
+      roomId
+      chairId
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
+export const CHECK_ASSIGNMENT_ROOM_CONFLICTS = gql`
+  query CheckAssignmentRoomConflicts(
+    $input: AssignTemplateToOperatorInput!
+    $excludeAssignmentId: ID
+  ) {
+    checkAssignmentRoomConflicts(
+      input: $input
+      excludeAssignmentId: $excludeAssignmentId
+    ) {
+      blocking
+      warnings
+    }
+  }
+`;
+
+export const ASSIGNMENT_ROOM_AVAILABILITY = gql`
+  query AssignmentRoomAvailability(
+    $input: AssignTemplateToOperatorInput!
+    $excludeAssignmentId: ID
+  ) {
+    assignmentRoomAvailability(
+      input: $input
+      excludeAssignmentId: $excludeAssignmentId
+    ) {
+      rooms {
+        roomId
+        roomName
+        capacity
+        fullyFree
+        sharing
+        full
+        unavailableReason
+        busy {
+          dayInPattern
+          startTime
+          endTime
+          freeSeats
+          occupantNames
+          busyChairIds
+        }
+        chairs {
+          chairId
+          name
+          fullyFree
+          firstConflict
+        }
+      }
+    }
+  }
+`;
+
+export const UPDATE_PATTERN_GROUP_WITH_CONFLICTS = gql`
+  mutation UpdatePatternGroupWithConflicts(
+    $id: ID!
+    $input: UpdatePatternGroupInput!
+  ) {
+    updatePatternGroupWithConflicts(id: $id, input: $input) {
+      patternGroup {
+        id
+        name
+        description
+        patternDuration
+        isActive
+        patterns {
+          id
+          name
+          dayInPattern
+          startTime
+          endTime
+        }
+      }
+      hasConflicts
+      conflictsCount
+      removedRoomOverridesCount
+    }
   }
 `;

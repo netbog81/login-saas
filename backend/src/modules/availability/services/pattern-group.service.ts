@@ -2,10 +2,13 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException, 
 import { PatternGroup } from '../entities/pattern-group.entity';
 import { TemplatePattern } from '../entities/template-pattern.entity';
 import { TemplateAssignment } from '../entities/template-assignment.entity';
+import { TemplateAssignmentRoomOverride } from '../entities/template-assignment-room-override.entity';
 import { CreatePatternGroupInput } from '../dto/create-pattern-group.input';
 import { UpdatePatternGroupInput } from '../dto/update-pattern-group.input';
-import { AppointmentConflictService, ConflictCheckResult } from './appointment-conflict.service';
+import { ConflictCheckResult } from './appointment-conflict.service';
+import { AvailabilityService } from './availability.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { toDateString } from '../utils/date-string.util';
 
 /**
  * Risultato dell'update con informazioni sui conflitti
@@ -13,14 +16,16 @@ import { TenantContextService } from '@curandis/tenant-datasource';
 export interface PatternGroupUpdateResult {
   patternGroup: PatternGroup;
   conflicts: ConflictCheckResult;
+  /** Override studio/poltrona rimasti orfani (fascia/giorno rimossi) ed eliminati */
+  removedRoomOverrides: number;
 }
 
 @Injectable()
 export class PatternGroupService {
   constructor(
     private readonly tenantContext: TenantContextService,
-    @Inject(forwardRef(() => AppointmentConflictService))
-    private conflictService: AppointmentConflictService,
+    @Inject(forwardRef(() => AvailabilityService))
+    private availabilityService: AvailabilityService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -174,17 +179,98 @@ export class PatternGroupService {
       }
     });
 
-    // Verifica conflitti con appuntamenti esistenti
-    const conflicts = await this.conflictService.checkConflictsOnTemplateChange(id);
+    // Operatori con questo template nella loro timeline: le fasce sono
+    // cambiate, quindi (a) la cache di disponibilità va ricostruita e
+    // (b) gli appuntamenti futuri vanno riconfrontati con le fasce reali.
+    const assignedOps = await this.assignmentRepo.find({
+      select: ['operatorId'],
+      where: { patternGroupId: id, isCurrent: true },
+    });
+    const operatorIds = [...new Set(assignedOps.map((a) => a.operatorId))];
 
-    // Se ci sono conflitti e markConflicts è true, marca gli appuntamenti
-    if (conflicts.hasConflicts && markConflicts) {
-      const appointmentIds = conflicts.conflicts.map(c => c.appointment.id);
-      await this.conflictService.markTemplateConflicts(appointmentIds);
+    const todayStr = toDateString(new Date());
+    const cacheEnd = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+      .toISOString()
+      .split('T')[0];
+    for (const opId of operatorIds) {
+      await this.availabilityService.rebuildCache(opId, todayStr, cacheEnd);
     }
 
+    // Verifica conflitti reali contro le fasce per-data (timeline completa
+    // dell'operatore, non marcatura in blocco): con markConflicts=false è un
+    // dry-run che riporta i conflitti senza flaggarli.
+    const marked = await this.availabilityService.detectAndMarkTemplateConflicts(
+      operatorIds,
+      markConflicts,
+    );
+    const conflicts: ConflictCheckResult = {
+      hasConflicts: marked.length > 0,
+      conflicts: marked.map((apt) => ({
+        appointment: apt,
+        reason: 'Modifica al template di disponibilità',
+        sourceType: 'template_change' as const,
+        sourceId: id,
+      })),
+      totalCount: marked.length,
+    };
+
     const patternGroup = await this.findOne(id);
-    return { patternGroup, conflicts };
+
+    // Guardia studi: gli override studio/poltrona che si riferiscono a
+    // giorni/fasce che non esistono più nel template modificato vengono
+    // eliminati (e segnalati al chiamante per l'avviso in UI).
+    const removedRoomOverrides = await this.cleanupOrphanRoomOverrides(id, patternGroup);
+
+    return { patternGroup, conflicts, removedRoomOverrides };
+  }
+
+  /**
+   * Elimina gli override studio/poltrona delle assegnazioni di questo
+   * template che non intersecano più nessuna fascia: giorno fuori dalla
+   * durata, giorno senza fasce, o finestra oraria che non tocca più nulla.
+   * Gli override giornalieri (senza orario) restano finché il giorno ha fasce.
+   */
+  private async cleanupOrphanRoomOverrides(
+    patternGroupId: string,
+    patternGroup: PatternGroup,
+  ): Promise<number> {
+    const overrideRepo = this.dataSource.getRepository(TemplateAssignmentRoomOverride);
+    const overrides = await overrideRepo
+      .createQueryBuilder('o')
+      .innerJoin('o.assignment', 'a')
+      .where('a.patternGroupId = :patternGroupId', { patternGroupId })
+      .getMany();
+    if (overrides.length === 0) return 0;
+
+    const toMin = (t: string) => {
+      const [h, m] = String(t).split(':');
+      return parseInt(h, 10) * 60 + parseInt(m || '0', 10);
+    };
+    const bandsByDay = new Map<number, { start: number; end: number }[]>();
+    for (const p of patternGroup.patterns ?? []) {
+      if (!bandsByDay.has(p.dayInPattern)) bandsByDay.set(p.dayInPattern, []);
+      bandsByDay.get(p.dayInPattern)!.push({
+        start: toMin(p.startTime),
+        end: toMin(p.endTime),
+      });
+    }
+
+    const orphanIds = overrides
+      .filter((o) => {
+        if (o.dayInPattern >= patternGroup.patternDuration) return true;
+        const bands = bandsByDay.get(o.dayInPattern) ?? [];
+        if (bands.length === 0) return true;
+        if (!o.startTime || !o.endTime) return false;
+        const s = toMin(o.startTime);
+        const e = toMin(o.endTime);
+        return !bands.some((b) => b.start < e && b.end > s);
+      })
+      .map((o) => o.id);
+
+    if (orphanIds.length > 0) {
+      await overrideRepo.delete(orphanIds);
+    }
+    return orphanIds.length;
   }
 
   async delete(id: string): Promise<boolean> {

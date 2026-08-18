@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { WhatsappWebhookEvent } from '../entities/whatsapp-webhook-event.entity';
 import { WhatsappLogService, UpdateLogExtras } from '../../log/services/whatsapp-log.service';
 import { WhatsappMessageStatus, WhatsappMessageType } from '../../enums/whatsapp-enums';
+import { WhatsappChatService } from '../../chat/services/whatsapp-chat.service';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
 interface GatewayMetadata {
@@ -10,6 +11,8 @@ interface GatewayMetadata {
   tenantId?: string;
   patientId?: string;
   appointmentIds?: string[];
+  /** Solo per la chat: conversazione a cui appartiene il messaggio. */
+  conversationId?: string;
   status?: string;
   timestamp?: string;
 }
@@ -21,6 +24,7 @@ export class WhatsappWebhookService {
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly logService: WhatsappLogService,
+    private readonly chatService: WhatsappChatService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -64,7 +68,7 @@ export class WhatsappWebhookService {
 
     // 2. Try to update message log based on event type
     try {
-      await this.updateLogFromEvent(correlationId, rawPayload);
+      await this.updateLogFromEvent(correlationId, rawPayload, tenantId);
       await this.webhookEventRepo.update(savedEvent.id, { processed: true });
       this.logger.log(`[WA-WEBHOOK] Event ${savedEvent.id} processed successfully`);
     } catch (error: any) {
@@ -116,6 +120,7 @@ export class WhatsappWebhookService {
       tenantId: gm.tenant_id,
       patientId: gm.patient_id,
       appointmentIds: gm.appointment_ids,
+      conversationId: gm.conversation_id,
       status: gm.status,
       timestamp: gm.timestamp,
     };
@@ -138,8 +143,21 @@ export class WhatsappWebhookService {
   private async updateLogFromEvent(
     correlationId: string | undefined,
     payload: any,
+    tenantAlias?: string,
   ): Promise<void> {
     const gm = this.extractGatewayMetadata(payload);
+
+    // La chat viaggia sullo stesso webhook ma è tutt'altra cosa dai log
+    // automatici per appuntamento: si intercetta prima, altrimenti finirebbe
+    // fra gli "unknown gateway message_type".
+    if (
+      gm?.messageType === 'chat_inbound' ||
+      gm?.messageType === 'chat_outbound' ||
+      gm?.messageType === 'chat_outbound_external'
+    ) {
+      await this.handleChatEvent(gm, payload, tenantAlias);
+      return;
+    }
 
     if (gm) {
       await this.handleGatewayMetadataEvent(gm, payload);
@@ -148,6 +166,123 @@ export class WhatsappWebhookService {
 
     // Legacy fallback for Evolution events without gateway_metadata
     await this.handleLegacyEvent(correlationId, payload);
+  }
+
+  // ── Chat bidirezionale ──
+
+  /**
+   * Messaggio di chat: in arrivo dal paziente (`chat_inbound`), scritto dal
+   * telefono dello studio (`chat_outbound_external`) oppure aggiornamento di
+   * consegna di uno che abbiamo mandato noi (`chat_outbound`).
+   */
+  private async handleChatEvent(
+    gm: GatewayMetadata,
+    payload: any,
+    tenantAlias?: string,
+  ): Promise<void> {
+    const evolutionMessageId = this.extractEvolutionMessageId(payload);
+    // Tenant passato in modo ESPLICITO fino all'emissione SSE: qui siamo in un
+    // webhook, non in una richiesta utente, e affidarsi all'AsyncLocalStorage
+    // significa che basta un `await` fuori contesto perché l'evento venga
+    // scartato in silenzio e la chat non si aggiorni in tempo reale.
+    const alias = tenantAlias || gm.tenantId;
+
+    if (gm.messageType === 'chat_inbound' || gm.messageType === 'chat_outbound_external') {
+      // Gruppi, stati e liste broadcast NON sono conversazioni con un paziente:
+      // senza questo filtro ogni messaggio di un gruppo a cui il numero dello
+      // studio appartiene aprirebbe una "chat" fantasma nella inbox.
+      if (!this.isDirectChat(payload)) {
+        this.logger.debug('[WA-CHAT] Evento non di chat diretta (gruppo/stato): ignorato');
+        return;
+      }
+
+      const phone = this.extractPhone(payload);
+      if (!phone) {
+        this.logger.warn('[WA-CHAT] Messaggio di chat senza interlocutore riconoscibile');
+        return;
+      }
+      const body =
+        payload?.data?.message?.conversation ||
+        payload?.data?.message?.extendedTextMessage?.text;
+
+      const message = {
+        phone,
+        body,
+        // In v1 gli allegati non vengono scaricati: si registra il tipo così la
+        // cronologia resta coerente e l'operatore sa che è arrivato qualcosa.
+        mediaType: body ? undefined : this.extractMediaType(payload),
+        evolutionMessageId,
+        pushName: payload?.data?.pushName,
+        timestamp: this.extractMessageTimestamp(payload),
+      };
+
+      if (gm.messageType === 'chat_inbound') {
+        await this.chatService.recordInbound(message, alias);
+        this.logger.log(`[WA-CHAT] Messaggio in arrivo da ${phone} registrato`);
+      } else {
+        await this.chatService.recordExternalOutbound(message, alias);
+        this.logger.log(`[WA-CHAT] Messaggio inviato da telefono verso ${phone} registrato`);
+      }
+      return;
+    }
+
+    // chat_outbound: solo avanzamento di stato del messaggio già salvato.
+    const status = this.mapGatewayStatus(gm.status);
+    if (!status) {
+      this.logger.debug(`[WA-CHAT] Stato non mappato per chat_outbound: ${gm.status}`);
+      return;
+    }
+    const updated = await this.chatService.updateOutboundStatus(
+      { evolutionMessageId, correlationId: gm.correlationId },
+      status,
+      alias,
+    );
+    if (!updated) {
+      this.logger.debug(
+        `[WA-CHAT] Nessun messaggio da aggiornare (correlationId=${gm.correlationId})`,
+      );
+    }
+  }
+
+  /**
+   * True solo per le chat 1-a-1 con un numero.
+   *
+   * Il JID di WhatsApp distingue il tipo di destinatario dal suffisso:
+   * `@s.whatsapp.net` = persona, `@g.us` = gruppo, `status@broadcast` = stati,
+   * `@broadcast` = liste broadcast. Solo il primo è una conversazione con un
+   * paziente.
+   */
+  private isDirectChat(payload: any): boolean {
+    const remoteJid: string | undefined =
+      payload?.data?.key?.remoteJid || payload?.data?.remoteJid;
+    if (!remoteJid) return false;
+    return remoteJid.endsWith('@s.whatsapp.net');
+  }
+
+  /** Tipo di allegato di un messaggio non testuale, se riconoscibile. */
+  private extractMediaType(payload: any): string | undefined {
+    const message = payload?.data?.message;
+    if (!message) return undefined;
+    const known = [
+      'imageMessage',
+      'audioMessage',
+      'videoMessage',
+      'documentMessage',
+      'stickerMessage',
+      'locationMessage',
+      'contactMessage',
+    ];
+    const found = known.find((k) => message[k]);
+    return found ? found.replace('Message', '') : undefined;
+  }
+
+  /** Istante dichiarato da WhatsApp (secondi epoch), se presente. */
+  private extractMessageTimestamp(payload: any): Date | undefined {
+    const raw = payload?.data?.messageTimestamp;
+    if (!raw) return undefined;
+    const seconds = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+    if (!Number.isFinite(seconds)) return undefined;
+    return new Date(seconds * 1000);
   }
 
   // ── New gateway_metadata-based handling ──

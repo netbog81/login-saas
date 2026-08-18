@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
-import { SettingsService, GeneralSetting } from '../../services/settings.service';
+import { SettingsService, GeneralSetting, AppointmentClickAction } from '../../services/settings.service';
 import {
   NavigationSettingsService,
   NAV_SHOW_REGISTRY_KEY,
@@ -27,6 +27,7 @@ interface CalendarSettingsForm {
   operatorsSelectedOnLoad: boolean;
   showGymInstructorsInOperators: boolean;
   defaultOperatorCategory: string;
+  appointmentClickAction: AppointmentClickAction;
 }
 
 interface AutoAttendanceSettings {
@@ -68,6 +69,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     operatorsSelectedOnLoad: false,
     showGymInstructorsInOperators: true,
     defaultOperatorCategory: 'all',
+    appointmentClickAction: 'edit-first',
   };
   originalCalendarSettings: CalendarSettingsForm = { ...this.calendarSettings };
 
@@ -267,6 +269,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
         this.calendarSettings.defaultOperatorCategory,
         { valueType: 'string', category: 'calendar' }
       ),
+      calAppointmentClickAction: this.settingsService.upsertSetting(
+        'calendar.appointmentClickAction',
+        this.calendarSettings.appointmentClickAction,
+        { valueType: 'string', category: 'calendar' }
+      ),
       // Auto Attendance settings
       autoAttendanceEnabled: this.settingsService.updateSetting(
         'autoAttendance.enabled',
@@ -355,7 +362,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.calendarSettings.blockAppointmentsOutsideAvailability !== this.originalCalendarSettings.blockAppointmentsOutsideAvailability ||
       this.calendarSettings.operatorsSelectedOnLoad !== this.originalCalendarSettings.operatorsSelectedOnLoad ||
       this.calendarSettings.showGymInstructorsInOperators !== this.originalCalendarSettings.showGymInstructorsInOperators ||
-      this.calendarSettings.defaultOperatorCategory !== this.originalCalendarSettings.defaultOperatorCategory;
+      this.calendarSettings.defaultOperatorCategory !== this.originalCalendarSettings.defaultOperatorCategory ||
+      this.calendarSettings.appointmentClickAction !== this.originalCalendarSettings.appointmentClickAction;
 
     const autoAttendanceChanged =
       this.autoAttendanceSettings.enabled !== this.originalAutoAttendanceSettings.enabled ||

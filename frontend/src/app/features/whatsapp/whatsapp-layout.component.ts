@@ -25,6 +25,14 @@ import { MatIconModule } from '@angular/material/icon';
 
       <nav mat-tab-nav-bar [tabPanel]="tabPanel" class="whatsapp-nav">
         <a mat-tab-link
+           routerLink="chat"
+           routerLinkActive
+           #rla0="routerLinkActive"
+           [active]="rla0.isActive">
+          <mat-icon>forum</mat-icon>
+          <span>Chat</span>
+        </a>
+        <a mat-tab-link
            routerLink="monitor"
            routerLinkActive
            #rla1="routerLinkActive"

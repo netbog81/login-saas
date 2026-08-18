@@ -71,6 +71,10 @@
   background: rgba(239, 68, 68, 0.3);
 }
 
+.chat-btn:hover {
+  background: rgba(37, 211, 102, 0.35);
+}
+
 .share-dropdown {
   position: relative;
 
@@ -195,6 +199,16 @@
   svg {
     flex-shrink: 0;
     color: #9ca3af;
+  }
+
+  .contact-link {
+    color: #1d4ed8;
+    text-decoration: none;
+    font-variant-numeric: tabular-nums;
+
+    &:hover {
+      text-decoration: underline;
+    }
   }
 }
 

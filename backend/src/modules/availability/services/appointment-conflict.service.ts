@@ -1,11 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { In, MoreThanOrEqual } from 'typeorm';
 import { validate as isUuid } from 'uuid';
 import { AvailabilityAppointment, BookingStatus, ConflictReason } from '../entities/availability-appointment.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
 import { AppointmentLog, AppointmentLogEventType } from '../entities/appointment-log.entity';
-import { TemplateAssignment } from '../entities/template-assignment.entity';
-import { AvailabilityCache } from '../entities/availability-cache.entity';
 import { ExceptionType } from '../entities/availability-exception.entity';
 import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
 import { AttendanceEventType } from '../../../patients/entities/clinical-attendance-log.entity';
@@ -57,57 +54,10 @@ export class AppointmentConflictService {
 
   private get logRepo() { return this.dataSource.getRepository(AppointmentLog); }
 
-  private get assignmentRepo() { return this.dataSource.getRepository(TemplateAssignment); }
-
-  private get cacheRepo() { return this.dataSource.getRepository(AvailabilityCache); }
-
   // ==================== CONFLICT DETECTION ====================
-
-  /**
-   * Verifica conflitti quando si modifica un template (PatternGroup)
-   * NON crea log - solo alert operativo
-   */
-  async checkConflictsOnTemplateChange(
-    patternGroupId: string
-  ): Promise<ConflictCheckResult> {
-    // 1. Trova tutti gli operatori che usano questo pattern group
-    const assignments = await this.assignmentRepo.find({
-      where: { patternGroupId, isCurrent: true },
-      relations: ['operator']
-    });
-
-    if (assignments.length === 0) {
-      return { hasConflicts: false, conflicts: [], totalCount: 0 };
-    }
-
-    const operatorIds = assignments.map(a => a.operatorId);
-    const today = new Date();
-
-    // 2. Trova tutti gli appuntamenti futuri per questi operatori
-    const appointments = await this.appointmentRepo.find({
-      where: {
-        operatorId: In(operatorIds),
-        appointmentDate: MoreThanOrEqual(today),
-        bookingStatus: In([BookingStatus.SCHEDULED, BookingStatus.CONFIRMED])
-      },
-      relations: ['operator', 'service']
-    });
-
-    // 3. Per ora, segnala tutti gli appuntamenti come potenziali conflitti
-    // TODO: Implementare verifica dettagliata contro la cache di disponibilità
-    const conflicts: ConflictedAppointment[] = appointments.map(apt => ({
-      appointment: apt,
-      reason: 'Modifica al template di disponibilità',
-      sourceType: 'template_change' as const,
-      sourceId: patternGroupId
-    }));
-
-    return {
-      hasConflicts: conflicts.length > 0,
-      conflicts,
-      totalCount: conflicts.length
-    };
-  }
+  // La detection dei conflitti da template (cambio fasce, nuova assegnazione,
+  // modifica timeline) sta in AvailabilityService.detectAndMarkTemplateConflicts:
+  // confronta gli appuntamenti con le fasce reali per-data, non in blocco.
 
   /**
    * Verifica conflitti quando viene creata un'eccezione operatore
@@ -284,20 +234,6 @@ export class AppointmentConflictService {
   }
 
   // ==================== CONFLICT MARKING ====================
-
-  /**
-   * Marca appuntamenti come in conflitto per cambio template
-   * NON crea log (è solo un alert operativo)
-   */
-  async markTemplateConflicts(appointmentIds: string[]): Promise<void> {
-    if (appointmentIds.length === 0) return;
-
-    await this.appointmentRepo.update(appointmentIds, {
-      hasConflict: true,
-      conflictReason: ConflictReason.TEMPLATE_CHANGE,
-      conflictDetectedAt: new Date()
-    });
-  }
 
   /**
    * Marca appuntamenti come in conflitto per eccezione operatore

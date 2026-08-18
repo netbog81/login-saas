@@ -45,6 +45,13 @@ import {
 /** Soglia px sotto la quale il chip mostra solo il nome (orario nascosto). */
 const TIME_VISIBLE_MIN_HEIGHT = 36;
 
+/**
+ * Granularità (minuti) dello snap di drag e resize degli appuntamenti,
+ * indipendente dalla durata delle celle della griglia: con celle da 30/45'
+ * lo spostamento resta comunque possibile al quarto d'ora.
+ */
+const DRAG_SNAP_MINUTES = 15;
+
 @Component({
   selector: 'app-operator-grid-v3',
   standalone: true,
@@ -807,7 +814,13 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
       : 45;
     const pxPerSlot = this.gridData.slotHeightPx;
 
-    const minuteDelta = Math.round(delta.y / pxPerSlot) * slotDuration;
+    // Snap a 15': lo spostamento NON è vincolato alla granularità delle
+    // celle (es. 30/45') — altrimenti un rilascio a metà cella scatterebbe
+    // alla mezz'ora e l'orario scelto andrebbe perso. Griglie già più fini
+    // di 15' mantengono la propria granularità.
+    const snapMinutes = Math.min(DRAG_SNAP_MINUTES, slotDuration);
+    const pxPerMinute = pxPerSlot / slotDuration;
+    const minuteDelta = Math.round(delta.y / pxPerMinute / snapMinutes) * snapMinutes;
 
     // Hit-test orizzontale: su quale colonna (operatore/giorno) e' stato
     // rilasciato il chip. Va fatto PRIMA del reset() perche' usa le
@@ -907,7 +920,10 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
       document.removeEventListener('mouseup', onMouseUp);
 
       const deltaY = e.clientY - startY;
-      const minuteDelta = Math.round(deltaY / pxPerMinute / slotDuration) * slotDuration;
+      // Stesso snap a 15' del drag: la durata non deve essere vincolata
+      // alla granularità delle celle.
+      const snapMinutes = Math.min(DRAG_SNAP_MINUTES, slotDuration);
+      const minuteDelta = Math.round(deltaY / pxPerMinute / snapMinutes) * snapMinutes;
 
       chipEl.style.height = `${originalHeightPx}px`;
 

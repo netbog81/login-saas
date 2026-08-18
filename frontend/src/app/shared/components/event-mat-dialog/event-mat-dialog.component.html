@@ -90,6 +90,22 @@
         <mat-icon>person</mat-icon>
         <span>{{ selectedPatient.cognome }} {{ selectedPatient.nome }}</span>
       </div>
+
+      <!-- Recapito del paziente: serve all'operatore che deve chiamarlo,
+           quindi resta a vista senza aprire l'anagrafica. -->
+      <div class="patient-contact" *ngIf="patientPhone">
+        <mat-icon class="patient-contact-icon">phone</mat-icon>
+        <a class="patient-contact-value" [href]="'tel:' + patientPhone">{{ patientPhone }}</a>
+        <button mat-icon-button type="button" (click)="copyPatientPhone()"
+                [matTooltip]="phoneCopied ? 'Copiato' : 'Copia numero'">
+          <mat-icon>{{ phoneCopied ? 'check' : 'content_copy' }}</mat-icon>
+        </button>
+        <button mat-icon-button type="button" class="chat-button"
+                (click)="openWhatsappChat()"
+                matTooltip="Apri chat WhatsApp">
+          <mat-icon>forum</mat-icon>
+        </button>
+      </div>
     </div>
 
     <!-- Titolo (sempre visibile se nonRetribuito, altrimenti se no paziente) -->
@@ -172,12 +188,19 @@
       </div>
     </div>
 
-    <!-- Ricorrenza (solo in create mode) -->
-    <div class="recurring-section" *ngIf="!isEditMode">
+    <!-- Ricorrenza: in creazione, oppure in modifica di un singolo attivo
+         (per trasformarlo in serie: lui resta la prima occorrenza) -->
+    <div class="recurring-section" *ngIf="!isEditMode || canMakeRecurring">
       <mat-slide-toggle [(ngModel)]="repeatEnabled" [ngModelOptions]="{standalone: true}" (change)="onRepeatToggle()">
         <mat-icon>repeat</mat-icon>
-        Appuntamento ricorrente
+        {{ isEditMode ? 'Rendi ricorrente' : 'Appuntamento ricorrente' }}
       </mat-slide-toggle>
+
+      <div class="recurring-hint" *ngIf="isEditMode && repeatEnabled">
+        Questo appuntamento diventa la prima occorrenza della serie: le
+        successive verranno create al salvataggio, con gli stessi servizi e
+        strumenti.
+      </div>
 
       <div class="recurring-config" *ngIf="repeatEnabled">
         <div class="form-row">

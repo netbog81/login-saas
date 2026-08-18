@@ -85,6 +85,17 @@
   }
 }
 
+// Chat WhatsApp: colore del marchio già a riposo, così si distingue dalle
+// altre azioni della card senza doverci passare sopra col mouse.
+.btn-icon.btn-whatsapp {
+  color: #25d366;
+
+  &:hover {
+    background-color: #e7f9ef;
+    color: #128c7e;
+  }
+}
+
 // Stats
 .stats-row {
   display: grid;

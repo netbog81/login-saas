@@ -18,6 +18,7 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     // Servizi multipli (nuovo sistema ManyToMany)
     appointmentServices: mapAppointmentServices(aa.appointmentServices),
     patientId: aa.patientId?.toString() || undefined,
+    clientPhone: aa.clientPhone || undefined,
     notes: aa.notes || undefined,
 
     // Status

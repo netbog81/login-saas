@@ -152,7 +152,7 @@ export class TemplateEditorComponent {
   @Input() saving = false;
   @Output() saveTemplate = new EventEmitter<WhatsappTemplateInput>();
 
-  templateTypes: WhatsappTemplateType[] = ['RECAP_SINGLE', 'RECAP_MULTI', 'REMINDER_24H', 'CANCELLATION', 'UPDATE'];
+  templateTypes: WhatsappTemplateType[] = ['RECAP_SINGLE', 'RECAP_MULTI', 'REMINDER_24H', 'REMINDER_48H', 'CANCELLATION', 'UPDATE'];
   editingBodies: Record<string, string> = {};
   editingFooters: Record<string, string> = {};
   editingActive: Record<string, boolean> = {};

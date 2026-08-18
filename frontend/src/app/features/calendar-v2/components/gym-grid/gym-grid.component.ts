@@ -40,8 +40,20 @@ export interface GymSlotClickEvent {
   mouseEvent: MouseEvent;
 }
 
+/**
+ * Click su un mini-chip appuntamento dentro uno slot palestra.
+ *
+ * Porta con se' anche il contesto dello slot (room / data / orario / slotInfo):
+ * il dialog di modifica ne ha bisogno per l'intestazione e per caricare i
+ * servizi dell'operatore, esattamente come per la creazione.
+ */
 export interface GymAppointmentClickEvent {
   appointment: GymAppointment;
+  gymRoom: GymRoom;
+  date: string;
+  startTime: string;
+  endTime: string;
+  slotInfo: GymSlotInfo;
   mouseEvent: MouseEvent;
 }
 
@@ -128,7 +140,7 @@ interface GymColumn {
                 @for (apt of getSlotAppointments(col.room.id, col.date, slot.time); track apt.id) {
                   <div class="mini-apt"
                        [matTooltip]="apt.clientName + (apt.notes ? ' - ' + apt.notes : '')"
-                       (click)="onAppointmentClick(apt, $event)">
+                       (click)="onAppointmentClick(apt, col.room, col.date, slot, slotInfo, $event)">
                     {{ apt.clientName }}
                     @if (apt.isRecurring) {
                       <mat-icon class="recurring-badge">repeat</mat-icon>
@@ -420,8 +432,29 @@ export class GymGridComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  onAppointmentClick(apt: GymAppointment, event: MouseEvent): void {
+  /**
+   * Click sul mini-chip di un appuntamento: NON deve propagare allo slot
+   * (che significherebbe "prenota"), ma deve portare al container il contesto
+   * completo dello slot per aprire la scheda dell'appuntamento cliccato.
+   */
+  onAppointmentClick(
+    apt: GymAppointment,
+    room: GymRoom,
+    date: string,
+    slot: TimeSlot,
+    slotInfo: GymSlotInfo | undefined,
+    event: MouseEvent,
+  ): void {
     event.stopPropagation();
-    this.appointmentClick.emit({ appointment: apt, mouseEvent: event });
+    if (!slotInfo) return;
+    this.appointmentClick.emit({
+      appointment: apt,
+      gymRoom: room,
+      date,
+      startTime: slot.time,
+      endTime: slotInfo.endTime || slot.time,
+      slotInfo,
+      mouseEvent: event,
+    });
   }
 }

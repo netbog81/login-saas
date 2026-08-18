@@ -19,6 +19,7 @@ import { WhatsappMonitorContainer } from './features/whatsapp/containers/whatsap
 import { WhatsappSettingsContainer } from './features/whatsapp/containers/whatsapp-settings.container';
 import { WhatsappScheduledContainer } from './features/whatsapp/containers/whatsapp-scheduled.container';
 import { WhatsappLogManagementContainer } from './features/whatsapp/containers/whatsapp-log-management.container';
+import { WhatsappChatInboxContainer } from './features/whatsapp-chat/containers/whatsapp-chat-inbox.container';
 import { InstructorsLayoutComponent } from './features/instructors/layout/instructors-layout.component';
 import { InstructorAppointmentsContainer } from './features/instructors/containers/instructor-appointments.container';
 import { InstructorInProgressContainer } from './features/instructors/containers/instructor-in-progress.container';
@@ -220,7 +221,8 @@ export const routes: Routes = [
     data: { roles: ['admin', 'amministratore', 'superadmin', 'segreteria'] },
     title: 'WhatsApp Gateway',
     children: [
-      { path: '', redirectTo: 'monitor', pathMatch: 'full' },
+      { path: '', redirectTo: 'chat', pathMatch: 'full' },
+      { path: 'chat', component: WhatsappChatInboxContainer, title: 'Chat WhatsApp' },
       { path: 'monitor', component: WhatsappMonitorContainer, title: 'Monitor Messaggi' },
       { path: 'scheduled', component: WhatsappScheduledContainer, title: 'Messaggi in Programma' },
       { path: 'settings', component: WhatsappSettingsContainer, title: 'Configurazione WhatsApp' },

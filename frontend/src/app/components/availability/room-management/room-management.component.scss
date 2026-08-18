@@ -1,0 +1,390 @@
+.room-management {
+  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+  // Il tab-content del dashboard ha altezza fissa e overflow hidden:
+  // lo scroll dell'elenco studi deve avvenire qui dentro.
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+
+    h2 {
+      margin: 0;
+      font-size: 24px;
+      color: #333;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
+      .toggle-inactive {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        color: #666;
+        cursor: pointer;
+      }
+    }
+  }
+
+  .loading,
+  .error {
+    padding: 16px;
+    text-align: center;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+
+  .loading {
+    background: #f0f0f0;
+    color: #666;
+  }
+
+  .error {
+    background: #fee;
+    color: #c00;
+    border: 1px solid #fcc;
+  }
+
+  .rooms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 40px;
+  }
+
+  .room-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px 20px;
+
+    &.inactive {
+      opacity: 0.65;
+      background: #fafafa;
+    }
+
+    .room-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      .room-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        .color-dot {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        h3 {
+          margin: 0;
+          font-size: 18px;
+          color: #333;
+        }
+
+        .capacity-badge {
+          font-size: 12px;
+          font-weight: 600;
+          background: #e9ecef;
+          color: #495057;
+          padding: 3px 10px;
+          border-radius: 12px;
+        }
+
+        .inactive-badge {
+          font-size: 12px;
+          font-weight: 600;
+          background: #f8d7da;
+          color: #721c24;
+          padding: 3px 10px;
+          border-radius: 12px;
+        }
+      }
+
+      .room-actions {
+        display: flex;
+        gap: 6px;
+      }
+    }
+
+    .chairs-section {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+
+      .chairs-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+
+        .chairs-label {
+          font-size: 13px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #888;
+        }
+      }
+
+      .chairs-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chair-chip {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: #f5f9ff;
+        border: 1px solid #cce5ff;
+        border-radius: 16px;
+        padding: 4px 8px 4px 12px;
+
+        &.inactive {
+          background: #f0f0f0;
+          border-color: #ddd;
+
+          .chair-name {
+            color: #999;
+            text-decoration: line-through;
+          }
+        }
+
+        .chair-name {
+          font-size: 13px;
+          font-weight: 600;
+          color: #004085;
+        }
+
+        .chip-btn {
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          font-size: 12px;
+          padding: 2px 4px;
+          border-radius: 4px;
+
+          &:hover {
+            background: rgba(0, 0, 0, 0.08);
+          }
+        }
+      }
+
+      .no-chairs {
+        margin: 0;
+        font-size: 13px;
+        color: #999;
+        font-style: italic;
+      }
+
+      .chair-form {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        align-items: center;
+
+        .form-control {
+          max-width: 280px;
+        }
+      }
+    }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+  }
+}
+
+// Modal (stesso stile delle altre configurazioni)
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e0e0e0;
+
+    h3 {
+      margin: 0;
+      font-size: 18px;
+      color: #333;
+    }
+
+    .close-btn {
+      border: none;
+      background: transparent;
+      font-size: 24px;
+      cursor: pointer;
+      color: #999;
+
+      &:hover {
+        color: #333;
+      }
+    }
+  }
+
+  .modal-body {
+    padding: 20px;
+    overflow-y: auto;
+
+    .form-group {
+      margin-bottom: 16px;
+
+      label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 6px;
+      }
+
+      .form-text {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: #888;
+      }
+
+      .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+    }
+
+    .form-row {
+      display: flex;
+      gap: 16px;
+
+      .form-group {
+        flex: 1;
+      }
+    }
+
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid #e0e0e0;
+  }
+}
+
+.form-control {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+
+  &:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+  }
+
+  &.color-input {
+    padding: 2px;
+    height: 38px;
+  }
+}
+
+.btn {
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &.btn-sm {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+
+  &.btn-xs {
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+
+  &.btn-primary {
+    background: #007bff;
+    color: white;
+
+    &:hover {
+      background: #0069d9;
+    }
+  }
+
+  &.btn-secondary {
+    background: #e9ecef;
+    color: #333;
+
+    &:hover {
+      background: #dde1e5;
+    }
+  }
+
+  &.btn-danger {
+    background: #dc3545;
+    color: white;
+
+    &:hover {
+      background: #c82333;
+    }
+  }
+}

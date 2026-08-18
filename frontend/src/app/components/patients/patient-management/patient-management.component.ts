@@ -16,6 +16,7 @@ import { PatientVouchersDialogComponent } from '../../../features/voucher-fe/com
 import { PatientTableComponent } from '../../../features/operators-new/components/patients-list/patient-table/patient-table.component';
 import { PatientFolderDialogComponent } from '../../../features/operators-new/components/patient-folder-dialog/patient-folder-dialog.component';
 import { tokenizeQuery, matchesAllTokens } from '../../../shared/utils/token-match';
+import { WhatsappChatStateService } from '../../../features/whatsapp-chat/services/whatsapp-chat-state.service';
 
 type StatoAnagrafica = 'BOZZA' | 'PARZIALE' | 'COMPLETA' | 'DA_VERIFICARE';  // GraphQL enum key names
 
@@ -88,7 +89,8 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
     private addressAutocompleteService: AddressAutocompleteService,
     private ngZone: NgZone,
     private dialog: MatDialog,
-    private router: Router
+    private router: Router,
+    private chatState: WhatsappChatStateService
   ) {}
 
   ngOnInit(): void {
@@ -424,6 +426,22 @@ export class PatientManagementComponent implements OnInit, OnDestroy {
   onNewAppointment(patient: Patient): void {
     this.router.navigate(['/calendar'], {
       queryParams: { patientId: patient.id }
+    });
+  }
+
+  /**
+   * Apre il riquadro di chat WhatsApp col paziente, come dalla scheda
+   * appuntamento. Il riquadro vive nella shell dell'applicazione, quindi resta
+   * aperto anche cambiando pagina.
+   */
+  openWhatsappChat(patient: Patient): void {
+    const phone = this.getPhone(patient);
+    if (!phone) return;
+
+    this.chatState.openForPhone({
+      phone,
+      patientId: patient.id,
+      patientName: this.getDisplayName(patient),
     });
   }
 

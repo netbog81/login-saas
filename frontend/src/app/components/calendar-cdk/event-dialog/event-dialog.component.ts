@@ -101,6 +101,9 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
   private remoteSelectedPatient?: Patient;
   /** Timer di debounce per la search remota. */
   private searchDebounceHandle?: ReturnType<typeof setTimeout>;
+  /** Feedback temporaneo del pulsante "copia numero". */
+  phoneCopied = false;
+  private phoneCopiedTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private patientService: PatientService,
@@ -386,6 +389,38 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
     }
     // Usa == per gestire confronto stringa/numero (GraphQL ID può essere stringa)
     return this.data.patients.find(p => p.id == this.patientId);
+  }
+
+  /**
+   * Recapito del paziente: prima l'anagrafica (piu' aggiornata), poi il numero
+   * denormalizzato sull'appuntamento — la lista pazienti precaricata e'
+   * parziale, quindi da sola lascerebbe spesso il campo vuoto.
+   */
+  get patientPhone(): string {
+    const p = this.selectedPatient;
+    return p?.cellulare || p?.telefono || this.data.appointment?.clientPhone || '';
+  }
+
+  /** Copia il recapito negli appunti, con feedback sull'icona per 2s. */
+  copyPatientPhone(): void {
+    const phone = this.patientPhone;
+    if (!phone) return;
+    navigator.clipboard?.writeText(phone).then(
+      () => {
+        this.runInZone(() => (this.phoneCopied = true));
+        if (this.phoneCopiedTimer) clearTimeout(this.phoneCopiedTimer);
+        this.phoneCopiedTimer = setTimeout(
+          () => this.runInZone(() => (this.phoneCopied = false)),
+          2000,
+        );
+      },
+      (err) => console.warn('[EventDialog] Copia numero fallita:', err),
+    );
+  }
+
+  override ngOnDestroy(): void {
+    if (this.phoneCopiedTimer) clearTimeout(this.phoneCopiedTimer);
+    super.ngOnDestroy();
   }
 
   get canSave(): boolean {
@@ -1093,7 +1128,10 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       const updated = await firstValueFrom(
         this.appointmentService.markLateArrival(String(this.data.appointment.id), minutes)
       );
-      this.data.appointment = { ...this.data.appointment, ...updated } as Appointment;
+      // Doppio cast: `updated` porta il BookingStatus generato dallo schema
+      // GraphQL, omonimo ma distinto da quello del modello locale, quindi i due
+      // tipi non si sovrappongono abbastanza per una conversione diretta.
+      this.data.appointment = { ...this.data.appointment, ...updated } as unknown as Appointment;
       this.emit(this.result, { action: 'save', appointment: this.data.appointment });
     } catch (error) {
       console.error('Error marking late arrival:', error);
@@ -1109,7 +1147,8 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
       const updated = await firstValueFrom(
         this.appointmentService.clearLateArrival(String(this.data.appointment.id))
       );
-      this.data.appointment = { ...this.data.appointment, ...updated } as Appointment;
+      // Stesso motivo di onMarkLateArrival: BookingStatus generato ≠ BookingStatus locale.
+      this.data.appointment = { ...this.data.appointment, ...updated } as unknown as Appointment;
       this.emit(this.result, { action: 'save', appointment: this.data.appointment });
     } catch (error) {
       console.error('Error clearing late arrival:', error);

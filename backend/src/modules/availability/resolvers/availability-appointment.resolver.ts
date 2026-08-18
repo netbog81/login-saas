@@ -6,7 +6,7 @@ import { AvailabilityAppointment, ArrivalSource } from '../entities/availability
 import { CurrentUser, CurrentUserContext } from '../../users/decorators/current-user.decorator';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
-import { CreateAvailabilityAppointmentInput } from '../dto/create-availability-appointment.input';
+import { CreateAvailabilityAppointmentInput, RepeatConfigInput } from '../dto/create-availability-appointment.input';
 import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-appointment.input';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
@@ -370,6 +370,38 @@ export class AvailabilityAppointmentResolver {
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
   ): Promise<boolean> {
     return this.appointmentService.sendRecap(appointmentId);
+  }
+
+  /**
+   * Mutation: Invia SUBITO un unico messaggio WhatsApp con il riepilogo
+   * degli appuntamenti indicati (scheda paziente → lista filtrata).
+   * Passa dalla chat, non dalle code del gateway.
+   */
+  @Mutation(() => Boolean, { name: 'sendAppointmentsRecap' })
+  async sendAppointmentsRecap(
+    @Args('patientId', { type: () => ID }) patientId: string,
+    @Args('appointmentIds', { type: () => [ID] }) appointmentIds: string[],
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<boolean> {
+    return this.appointmentService.sendAppointmentsRecap(patientId, appointmentIds, {
+      userId: user?.userId,
+      userName: (user as any)?.name || (user as any)?.email,
+    });
+  }
+
+  /**
+   * Mutation: Trasforma un appuntamento singolo esistente in una serie
+   * ricorrente (l'appuntamento diventa il master, le occorrenze successive
+   * vengono create copiando servizi e strumenti).
+   */
+  @Mutation(() => AvailabilityAppointment, { name: 'makeAppointmentRecurring' })
+  @UseGuards(CalendarWriteGuard)
+  async makeAppointmentRecurring(
+    @Args('appointmentId', { type: () => ID }) appointmentId: string,
+    @Args('repeatConfig') repeatConfig: RepeatConfigInput,
+    @Args('force', { nullable: true }) force?: boolean,
+  ): Promise<AvailabilityAppointment> {
+    return this.appointmentService.makeRecurring(appointmentId, repeatConfig, force === true);
   }
 
   // ==================== RECURRING SERIES ====================

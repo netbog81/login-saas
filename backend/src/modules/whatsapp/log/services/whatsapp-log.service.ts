@@ -192,6 +192,32 @@ export class WhatsappLogService {
     return true;
   }
 
+  /**
+   * Annulla TUTTI i log ancora in sospeso di un appuntamento.
+   *
+   * Serve quando non è partito nulla davvero: se l'appuntamento viene disdetto
+   * mentre il recap è ancora nel buffer del gateway, restano appese sia la riga
+   * del recap sia quella della cancellazione, e nessuna delle due corrisponde a
+   * un messaggio arrivato al paziente.
+   */
+  async cancelAllByAppointmentId(appointmentId: string): Promise<number> {
+    const result = await this.logRepo.update(
+      {
+        appointmentId,
+        status: In([WhatsappMessageStatus.DISPATCHED, WhatsappMessageStatus.PENDING]),
+      },
+      { status: WhatsappMessageStatus.CANCELLED },
+    );
+
+    const affected = result.affected ?? 0;
+    if (affected > 0) {
+      this.logger.log(
+        `[WA-LOG] Annullati ${affected} log in sospeso per appointmentId=${appointmentId}`,
+      );
+    }
+    return affected;
+  }
+
   async findByFilters(
     filters: WhatsappLogFilterInput,
   ): Promise<WhatsappMessageLogPage> {

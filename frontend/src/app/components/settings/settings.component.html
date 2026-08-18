@@ -258,6 +258,22 @@
           l'opzione qui sopra è attiva; se non lo è, si ricade su "Tutte".
         </small>
       </div>
+
+      <div class="form-group">
+        <label for="appointmentClickAction">Click sull'appuntamento</label>
+        <select
+          id="appointmentClickAction"
+          [(ngModel)]="calendarSettings.appointmentClickAction"
+          (ngModelChange)="onSettingChange()">
+          <option value="edit-first">Click = modifica, doppio click = riepilogo</option>
+          <option value="summary-first">Click = riepilogo, doppio click = modifica</option>
+        </select>
+        <small class="hint">
+          Vale per gli appuntamenti della vista Operatori. La vista Palestra non
+          cambia: sullo slot libero il click prenota e il doppio click apre il
+          riepilogo dello slot.
+        </small>
+      </div>
     </section>
 
     <!-- Auto Attendance Section -->

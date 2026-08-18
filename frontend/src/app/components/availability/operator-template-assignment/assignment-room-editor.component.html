@@ -1,0 +1,115 @@
+<div class="editor-overlay">
+  <div class="editor-dialog">
+    <!-- Header -->
+    <div class="editor-header">
+      <h3>
+        Abbinamento studi — {{ patternGroup.name }}
+        <span class="operator-label" *ngIf="operatorLabel">per {{ operatorLabel }}</span>
+      </h3>
+      <button class="close-btn" (click)="onCancel()">×</button>
+    </div>
+
+    <!-- Pannello comandi (sempre visibile) -->
+    <div class="editor-toolbar">
+      <div class="toolbar-group">
+        <label>Studio</label>
+        <select class="form-control wide" [(ngModel)]="panelRoomId" (ngModelChange)="onPanelRoomChange()">
+          <option value="">Studio...</option>
+          <option *ngFor="let opt of panelRoomOptions" [value]="opt.id" [disabled]="opt.disabled">
+            {{ opt.name }}{{ opt.suffix }}
+          </option>
+        </select>
+      </div>
+
+      <div class="toolbar-group">
+        <label>Poltrona</label>
+        <select class="form-control wide" [(ngModel)]="panelChairId"
+                [disabled]="!panelRoomId || panelChairOptions.length === 0">
+          <option value="">Nessuna</option>
+          <option *ngFor="let opt of panelChairOptions" [value]="opt.id" [disabled]="opt.disabled">
+            {{ opt.name }}{{ opt.suffix }}
+          </option>
+        </select>
+      </div>
+
+      <div class="toolbar-group">
+        <label>Cella</label>
+        <select
+          class="form-control slot-select"
+          [ngModel]="slotMinutes"
+          (ngModelChange)="onSlotMinutesChange($event)"
+          title="Durata delle celle della griglia"
+        >
+          <option *ngFor="let m of slotOptions" [ngValue]="m">{{ m }} min</option>
+        </select>
+      </div>
+
+      <div class="toolbar-buttons">
+        <button class="btn btn-primary" (click)="applyToSelection()">Applica</button>
+        <button class="btn btn-danger" (click)="removeFromSelection()">Rimuovi</button>
+        <button class="btn btn-secondary" (click)="clearSelection()">Deseleziona</button>
+        <button class="btn btn-secondary" *ngIf="weeks.length > 1" (click)="replicateWeekOne()"
+                title="Copia gli abbinamenti della settimana 1 sulle settimane successive">
+          Replica sett. 1
+        </button>
+      </div>
+
+      <div class="toolbar-legend" *ngIf="legendRooms.length > 0">
+        <span class="legend-item" *ngFor="let room of legendRooms">
+          <span class="legend-dot" [style.background]="room.color || '#4A90E2'"></span>
+          {{ room.name }}
+        </span>
+      </div>
+
+      <div class="toolbar-hint">
+        Clic o clic-e-trascina per selezionare gli slot (Ctrl+clic per aggiungere),
+        poi scegli studio/poltrona e premi Applica.
+      </div>
+
+      <div class="toolbar-error" *ngIf="panelError">{{ panelError }}</div>
+    </div>
+
+    <!-- Griglia (scrollabile), settimane impilate -->
+    <div class="editor-body">
+      <div class="editor-week" *ngFor="let week of weeks">
+        <div class="week-title" *ngIf="weeks.length > 1">Settimana {{ week.index + 1 }}</div>
+
+        <div class="week-grid">
+          <div class="time-gutter">
+            <div class="gutter-spacer"></div>
+            <div class="hour-cell" *ngFor="let h of hours" [style.height.px]="hourPx">
+              {{ h }}:00
+            </div>
+          </div>
+
+          <div class="day-column" *ngFor="let day of week.days">
+            <div class="day-header">{{ day.label }}</div>
+            <div class="day-body" [style.height.px]="columnHeightPx">
+              <div
+                class="editor-cell"
+                *ngFor="let cell of day.cells; let i = index"
+                [style.top.px]="cell.topPx"
+                [style.height.px]="cell.heightPx"
+                [class.selected]="isSelected(cell)"
+                [class.assigned]="!!cell.roomId"
+                [class.full-warning]="cellFullForPanelRoom(cell)"
+                [style.border-left-color]="roomColor(cell)"
+                [title]="cellTooltip(cell)"
+                (mousedown)="onCellMouseDown(day, i, $event)"
+                (mouseenter)="onCellMouseEnter(day, i)"
+              >
+                <span class="cell-label" *ngIf="cell.roomId">{{ roomLabel(cell) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="editor-footer">
+      <button class="btn btn-secondary" (click)="onCancel()">Annulla</button>
+      <button class="btn btn-primary" (click)="onSave()">Conferma abbinamenti</button>
+    </div>
+  </div>
+</div>

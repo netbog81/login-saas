@@ -28,12 +28,15 @@ import {
   DEACTIVATE_TEMPLATE_ASSIGNMENT,
   DELETE_TEMPLATE_ASSIGNMENT,
   DEACTIVATE_ALL_TEMPLATE_ASSIGNMENTS_FOR_OPERATOR,
+  SET_ASSIGNMENT_ROOM_OVERRIDES,
+  CHECK_ASSIGNMENT_ROOM_CONFLICTS,
+  ASSIGNMENT_ROOM_AVAILABILITY,
+  UPDATE_PATTERN_GROUP_WITH_CONFLICTS,
 } from '../graphql/operations/template.mutations';
 import {
   AvailabilityTemplate,
   CreateAvailabilityTemplateInput,
   CreateTemplatePatternInput,
-  AssignTemplateToOperatorInput,
 } from '../graphql/generated/types';
 import {
   BackendTemplatePattern,
@@ -43,6 +46,10 @@ import {
   TimeSlot,
   DaySchedule,
   WeekSchedule,
+  AssignTemplateToOperatorInput,
+  AssignmentRoomOverrideInput,
+  RoomConflictCheckResult,
+  RoomAvailabilityInfo,
 } from '../graphql/types';
 
 @Injectable({
@@ -607,9 +614,11 @@ export class TemplateService extends BaseGraphQLService {
     id: string,
     updates: {
       validFrom?: string;
-      validUntil?: string;
+      validUntil?: string; // '' = rimuove la scadenza
       patternStartDate?: string;
       isCurrent?: boolean;
+      roomId?: string; // '' = rimuove lo studio
+      chairId?: string; // '' = rimuove la poltrona
     }
   ): Observable<TemplateAssignment> {
     return this.mutate<{ updateTemplateAssignment: any }>(
@@ -620,6 +629,52 @@ export class TemplateService extends BaseGraphQLService {
         { query: GET_TEMPLATE_ASSIGNMENT, variables: { id } },
       ]
     ).pipe(map((result) => result.updateTemplateAssignment));
+  }
+
+  /**
+   * Sostituisce integralmente gli override studio/poltrona di un'assegnazione
+   */
+  setAssignmentRoomOverrides(
+    assignmentId: string,
+    overrides: AssignmentRoomOverrideInput[]
+  ): Observable<TemplateAssignment> {
+    return this.mutate<{ setAssignmentRoomOverrides: any }>(
+      SET_ASSIGNMENT_ROOM_OVERRIDES,
+      { assignmentId, overrides },
+      [
+        { query: GET_TEMPLATE_ASSIGNMENTS },
+        { query: GET_TEMPLATE_ASSIGNMENT, variables: { id: assignmentId } },
+      ]
+    ).pipe(map((result) => result.setAssignmentRoomOverrides));
+  }
+
+  /**
+   * Disponibilità di studi e poltrone rispetto al template candidato
+   * (proiezione conservativa sulle date reali di validità). Alimenta le
+   * tendine filtrate e l'editor grafico.
+   */
+  getAssignmentRoomAvailability(
+    input: AssignTemplateToOperatorInput,
+    excludeAssignmentId?: string
+  ): Observable<RoomAvailabilityInfo[]> {
+    return this.query<{ assignmentRoomAvailability: { rooms: RoomAvailabilityInfo[] } }>(
+      ASSIGNMENT_ROOM_AVAILABILITY,
+      { input, excludeAssignmentId }
+    ).pipe(map((result) => result?.assignmentRoomAvailability?.rooms || []));
+  }
+
+  /**
+   * Pre-check dei conflitti di occupazione studi/poltrone: blocking impedirà
+   * il salvataggio, warnings è informativo (condivisione entro capacità).
+   */
+  checkAssignmentRoomConflicts(
+    input: AssignTemplateToOperatorInput,
+    excludeAssignmentId?: string
+  ): Observable<RoomConflictCheckResult> {
+    return this.query<{ checkAssignmentRoomConflicts: RoomConflictCheckResult }>(
+      CHECK_ASSIGNMENT_ROOM_CONFLICTS,
+      { input, excludeAssignmentId }
+    ).pipe(map((result) => result.checkAssignmentRoomConflicts));
   }
 
   /**
@@ -690,6 +745,29 @@ export class TemplateService extends BaseGraphQLService {
       { id: patternGroupId, input },
       [{ query: GET_ALL_PATTERN_GROUPS }]
     ).pipe(map((result) => result.updatePatternGroup));
+  }
+
+  /**
+   * Come updatePatternGroup ma restituisce anche i conteggi: appuntamenti in
+   * conflitto e override studio/poltrona rimossi perché orfani (guardia
+   * modifica template).
+   */
+  updatePatternGroupWithInfo(
+    patternGroupId: string,
+    pattern: TemplatePattern
+  ): Observable<{
+    patternGroup: PatternGroup;
+    hasConflicts: boolean;
+    conflictsCount: number;
+    removedRoomOverridesCount: number;
+  }> {
+    const input = this.convertPatternToPatternGroupInput(pattern);
+
+    return this.mutate<{ updatePatternGroupWithConflicts: any }>(
+      UPDATE_PATTERN_GROUP_WITH_CONFLICTS,
+      { id: patternGroupId, input },
+      [{ query: GET_ALL_PATTERN_GROUPS }, { query: GET_TEMPLATE_ASSIGNMENTS }]
+    ).pipe(map((result) => result.updatePatternGroupWithConflicts));
   }
 
   /**

@@ -6,6 +6,8 @@ import { WhatsappTenantConfig } from './config/entities/whatsapp-tenant-config.e
 import { WhatsappMessageTemplate } from './template/entities/whatsapp-message-template.entity';
 import { WhatsappMessageLog } from './log/entities/whatsapp-message-log.entity';
 import { WhatsappWebhookEvent } from './webhook/entities/whatsapp-webhook-event.entity';
+import { WhatsappConversation } from './chat/entities/whatsapp-conversation.entity';
+import { WhatsappChatMessage } from './chat/entities/whatsapp-chat-message.entity';
 
 // Services
 import { CryptoService } from './crypto/crypto.service';
@@ -15,6 +17,8 @@ import { WhatsappLogService } from './log/services/whatsapp-log.service';
 import { WhatsappWebhookService } from './webhook/services/whatsapp-webhook.service';
 import { WhatsappGatewayService } from './gateway/whatsapp-gateway.service';
 import { WhatsappScheduledService } from './scheduled/services/whatsapp-scheduled.service';
+import { WhatsappChatService } from './chat/services/whatsapp-chat.service';
+import { WhatsappUnreadSyncJob } from './chat/services/whatsapp-unread-sync.job';
 
 // Resolvers
 import { WhatsappConfigResolver } from './config/resolvers/whatsapp-config.resolver';
@@ -22,6 +26,7 @@ import { WhatsappTemplateResolver } from './template/resolvers/whatsapp-template
 import { WhatsappLogResolver } from './log/resolvers/whatsapp-log.resolver';
 import { WhatsappLogManagementResolver } from './log/resolvers/whatsapp-log-management.resolver';
 import { WhatsappScheduledResolver } from './scheduled/resolvers/whatsapp-scheduled.resolver';
+import { WhatsappChatResolver } from './chat/resolvers/whatsapp-chat.resolver';
 
 // Controller
 import { WhatsappWebhookController } from './webhook/webhook.controller';
@@ -45,14 +50,18 @@ import { TaskMessageModule } from '../task-message/task-message.module';
     WhatsappWebhookService,
     WhatsappGatewayService,
     WhatsappScheduledService,
+    WhatsappChatService,
+    WhatsappUnreadSyncJob,
     WhatsappConfigResolver,
     WhatsappTemplateResolver,
     WhatsappLogResolver,
     WhatsappLogManagementResolver,
-    WhatsappScheduledResolver],
+    WhatsappScheduledResolver,
+    WhatsappChatResolver],
   exports: [
     WhatsappGatewayService,
-    WhatsappConfigService],
+    WhatsappConfigService,
+    WhatsappChatService],
 })
 export class WhatsappModule {
   // NOTA containerization-2026-06-11: rimosso `onModuleInit` che chiamava

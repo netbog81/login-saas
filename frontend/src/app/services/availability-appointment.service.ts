@@ -22,6 +22,8 @@ import {
   MARK_APPOINTMENT_ATTENDED,
   REVERT_APPOINTMENT_ATTENDED,
   SEND_APPOINTMENT_RECAP,
+  SEND_APPOINTMENTS_RECAP,
+  MAKE_APPOINTMENT_RECURRING,
   CANCEL_RECURRING_SERIES,
   DELETE_RECURRING_SERIES,
   UPDATE_RECURRING_SERIES_TIME,
@@ -322,6 +324,33 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
       SEND_APPOINTMENT_RECAP,
       { appointmentId }
     ).pipe(map((result) => result.sendAppointmentRecap));
+  }
+
+  /**
+   * Invia un unico messaggio WhatsApp con il riepilogo degli appuntamenti
+   * indicati (invio istantaneo via chat, niente code del gateway).
+   */
+  sendAppointmentsRecap(patientId: string, appointmentIds: string[]): Observable<boolean> {
+    return this.mutate<{ sendAppointmentsRecap: boolean }>(
+      SEND_APPOINTMENTS_RECAP,
+      { patientId, appointmentIds }
+    ).pipe(map((result) => result.sendAppointmentsRecap));
+  }
+
+  /**
+   * Trasforma un appuntamento singolo esistente in serie ricorrente:
+   * l'appuntamento diventa il master, le occorrenze successive vengono
+   * create dal backend copiando servizi e strumenti.
+   */
+  makeRecurring(
+    appointmentId: string,
+    repeatConfig: unknown,
+    force?: boolean,
+  ): Observable<AvailabilityAppointment> {
+    return this.mutate<{ makeAppointmentRecurring: AvailabilityAppointment }>(
+      MAKE_APPOINTMENT_RECURRING,
+      { appointmentId, repeatConfig, force }
+    ).pipe(map((result) => result.makeAppointmentRecurring));
   }
 
   // ==================== RECURRING SERIES ====================

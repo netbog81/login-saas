@@ -133,6 +133,17 @@
           <span>{{ selectedPatient.nome }} {{ selectedPatient.cognome }}</span>
           <button class="btn-clear" (click)="onPatientSelect(null)">✕</button>
         </div>
+
+        <!-- Recapito del paziente: serve all'operatore che deve chiamarlo,
+             quindi resta a vista senza aprire l'anagrafica. -->
+        <div class="patient-contact" *ngIf="patientPhone">
+          <span class="patient-contact-label">Tel.</span>
+          <a class="patient-contact-value" [href]="'tel:' + patientPhone">{{ patientPhone }}</a>
+          <button type="button" class="btn-copy-phone" (click)="copyPatientPhone()"
+                  [title]="phoneCopied ? 'Copiato' : 'Copia numero'">
+            {{ phoneCopied ? '✓' : '⧉' }}
+          </button>
+        </div>
       </div>
 
       <!-- New patient form -->

@@ -7,7 +7,12 @@ import { TemplateAssignment } from '../entities/template-assignment.entity';
 import { AvailabilityException } from '../entities/availability-exception.entity';
 import { AvailabilityCache } from '../entities/availability-cache.entity';
 import { Operator } from '../entities/operator.entity';
-import { AvailabilityAppointment } from '../entities/availability-appointment.entity';
+import {
+  AvailabilityAppointment,
+  BookingStatus,
+  ConflictReason,
+} from '../entities/availability-appointment.entity';
+import { AppointmentType } from '../entities/appointment-type.enum';
 import { GroupException } from '../entities/group-exception.entity';
 import { CreateAvailabilityTemplateInput } from '../dto/create-availability-template.input';
 import { CreateTemplatePatternInput } from '../dto/create-template-pattern.input';
@@ -19,13 +24,19 @@ import {
   applyDayExceptions,
   classifyDayExceptions,
 } from '../utils/day-exception-semantics.util';
+import { isIntervalCovered } from '../utils/interval-coverage.util';
 import { OperatorAvailabilityV3, DayAvailabilityV3, TimeBlockV3 } from '../dto/operator-availability-v3.type';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { TemplateAssignmentService } from './template-assignment.service';
+import { RoomConflictService } from './room-conflict.service';
+import { TemplateAssignmentRoomOverride } from '../entities/template-assignment-room-override.entity';
 @Injectable()
 export class AvailabilityService {
   constructor(
     private readonly tenantContext: TenantContextService,
+    private readonly templateAssignmentService: TemplateAssignmentService,
+    private readonly roomConflictService: RoomConflictService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -561,6 +572,85 @@ export class AvailabilityService {
   }
 
   /**
+   * Rileva e marca (TEMPLATE_CHANGE) gli appuntamenti attivi da oggi in poi
+   * che non ricadono nelle fasce di disponibilità reali per-data (timeline
+   * dei template + eccezioni). Speculare alla revalidazione, che i flag li
+   * RIMUOVE quando il conflitto non è più reale: qui vengono AGGIUNTI quelli
+   * mai rilevati — es. appuntamenti prenotati sotto il template precedente e
+   * rimasti fuori fascia dopo l'attivazione del successivo nella timeline.
+   *
+   * Considera solo operatori con almeno un'assegnazione non revocata: per
+   * chi non lavora a template "fuori fascia" non significa nulla. Esclude i
+   * GYM (copertura con regole proprie) e gli appuntamenti già in conflitto
+   * (un motivo specifico, es. assenza, non va sovrascritto).
+   *
+   * `operatorIds` assente = tutti gli operatori: è la sweep globale usata
+   * dalla revalidazione on-read della pagina conflitti, che fa emergere
+   * anche i conflitti retroattivi. Con `mark=false` ritorna l'elenco senza
+   * marcare (dry-run).
+   */
+  async detectAndMarkTemplateConflicts(
+    operatorIds?: string[],
+    mark = true,
+  ): Promise<AvailabilityAppointment[]> {
+    const assignmentWhere: any = { isCurrent: true };
+    if (operatorIds) {
+      if (operatorIds.length === 0) return [];
+      assignmentWhere.operatorId = In(operatorIds);
+    }
+    const assignments = await this.assignmentRepo.find({
+      select: ['operatorId'],
+      where: assignmentWhere,
+    });
+    const templatedOps = [...new Set(assignments.map((a) => a.operatorId))];
+    if (templatedOps.length === 0) return [];
+
+    // Stringa YYYY-MM-DD, non Date: la colonna è `date` e un timestamp con
+    // l'ora corrente escluderebbe gli appuntamenti di oggi.
+    const today = toDateString(new Date());
+    const appointments = await this.appointmentRepo.find({
+      where: {
+        operatorId: In(templatedOps),
+        appointmentDate: MoreThanOrEqual(today as unknown as Date),
+        bookingStatus: In([BookingStatus.SCHEDULED, BookingStatus.CONFIRMED]),
+        hasConflict: false,
+        appointmentType: Not(AppointmentType.GYM),
+      },
+      relations: ['operator', 'service'],
+    });
+    if (appointments.length === 0) return [];
+
+    const dateStrs = appointments.map((a) => toDateString(a.appointmentDate));
+    const minDate = dateStrs.reduce((a, b) => (a < b ? a : b));
+    const maxDate = dateStrs.reduce((a, b) => (a > b ? a : b));
+
+    const bands = await this.getOperatorsRawBands(
+      [...new Set(appointments.map((a) => a.operatorId!))],
+      minDate,
+      maxDate,
+    );
+
+    const conflicted = appointments.filter((apt) => {
+      const dayBands =
+        bands.get(`${apt.operatorId}|${toDateString(apt.appointmentDate)}`) || [];
+      return !isIntervalCovered(apt.startTime, apt.endTime, dayBands);
+    });
+
+    if (mark && conflicted.length > 0) {
+      await this.appointmentRepo.update(
+        conflicted.map((a) => a.id),
+        {
+          hasConflict: true,
+          conflictReason: ConflictReason.TEMPLATE_CHANGE,
+          conflictDetectedAt: new Date(),
+        },
+      );
+    }
+
+    return conflicted;
+  }
+
+  /**
    * Sottrae gli intervalli occupati da una fascia, restituendo i tratti
    * liberi. Un minuto e' "occupato" quando il numero di appuntamenti che
    * lo coprono (pesati per participantCount) raggiunge maxCapacity.
@@ -836,11 +926,76 @@ export class AvailabilityService {
       );
     }
 
-    // Deactivate current assignments for this operator
-    await this.assignmentRepo.update(
-      { operatorId: input.operatorId, isCurrent: true },
-      { isCurrent: false }
+    // Timeline di assegnazioni: le assegnazioni precedenti restano valide nel
+    // loro periodo (isCurrent = "non revocata"). L'unica regola è che le
+    // validità dello stesso operatore non si sovrappongano.
+    const newFrom = toDateString(new Date(input.validFrom));
+    const newUntil = input.validUntil ? toDateString(new Date(input.validUntil)) : null;
+
+    if (newUntil && newUntil < newFrom) {
+      throw new BadRequestException(
+        'La data di fine validità non può precedere quella di inizio.'
+      );
+    }
+
+    let overlapping = await this.templateAssignmentService.findOverlapping(
+      input.operatorId,
+      newFrom,
+      newUntil
     );
+
+    // Opzione "chiudi la precedente": le assegnazioni già iniziate prima del
+    // nuovo periodo vengono chiuse al giorno precedente validFrom. Quelle che
+    // iniziano dentro il nuovo periodo restano un errore di sovrapposizione.
+    const truncated: TemplateAssignment[] = [];
+    if (input.truncatePrevious && overlapping.length > 0) {
+      const dayBefore = new Date(input.validFrom);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+
+      for (const prev of overlapping) {
+        if (toDateString(prev.validFrom) < newFrom) {
+          truncated.push(prev);
+          await this.assignmentRepo.update(prev.id, { validUntil: dayBefore });
+        }
+      }
+      if (truncated.length > 0) {
+        overlapping = await this.templateAssignmentService.findOverlapping(
+          input.operatorId,
+          newFrom,
+          newUntil
+        );
+      }
+    }
+
+    if (overlapping.length > 0) {
+      throw this.templateAssignmentService.buildOverlapError(overlapping);
+    }
+
+    // Studi/poltrone: coerenza (poltrona dentro lo studio, entità attive) e
+    // conflitti di occupazione con le assegnazioni degli altri operatori.
+    const candidate = {
+      operatorId: input.operatorId,
+      patternStartDate: new Date(input.patternStartDate),
+      validFrom: new Date(input.validFrom),
+      validUntil: input.validUntil ? new Date(input.validUntil) : null,
+      roomId: input.roomId ?? null,
+      chairId: input.chairId ?? null,
+      patternGroup,
+      roomOverrides: (input.overrides ?? []).map((o) => ({
+        dayInPattern: o.dayInPattern,
+        startTime: o.startTime ?? null,
+        endTime: o.endTime ?? null,
+        roomId: o.roomId,
+        chairId: o.chairId ?? null,
+      })),
+    };
+    await this.roomConflictService.validateRoomChairCoherence(candidate);
+    const conflicts = await this.roomConflictService.validateAssignment(candidate);
+    if (conflicts.blocking.length > 0) {
+      throw new BadRequestException(
+        `Conflitti di occupazione studi/poltrone:\n- ${conflicts.blocking.join('\n- ')}`
+      );
+    }
 
     // Create new assignment linking pattern group to operator
     const assignment = this.assignmentRepo.create({
@@ -849,17 +1004,49 @@ export class AvailabilityService {
       patternStartDate: new Date(input.patternStartDate),
       validFrom: new Date(input.validFrom),
       validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+      roomId: input.roomId ?? undefined,
+      chairId: input.chairId ?? undefined,
       isCurrent: true,
       version: 1
     });
 
     const saved = await this.assignmentRepo.save(assignment);
 
-    // Rebuild cache for affected period
-    const cacheEndDate = input.validUntil ||
+    // Override studio/poltrona per giorno/fascia
+    if (input.overrides && input.overrides.length > 0) {
+      const overrideRepo = this.dataSource.getRepository(TemplateAssignmentRoomOverride);
+      await overrideRepo.save(
+        input.overrides.map((o) =>
+          overrideRepo.create({
+            assignmentId: saved.id,
+            dayInPattern: o.dayInPattern,
+            startTime: o.startTime ?? undefined,
+            endTime: o.endTime ?? undefined,
+            roomId: o.roomId,
+            chairId: o.chairId ?? undefined,
+          }),
+        ),
+      );
+    }
+
+    // Rebuild cache for affected period. Se il troncamento ha chiuso
+    // assegnazioni che si estendevano oltre la fine del nuovo periodo, la
+    // ricostruzione deve coprire anche quelle date (che perdono disponibilità).
+    const defaultEndDate =
       new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0];
 
+    let cacheEndDate = input.validUntil || defaultEndDate;
+    for (const prev of truncated) {
+      const prevEnd = prev.validUntil ? toDateString(prev.validUntil) : defaultEndDate;
+      if (prevEnd > cacheEndDate) cacheEndDate = prevEnd;
+    }
+
     await this.rebuildCache(input.operatorId, input.validFrom, cacheEndDate);
+
+    // Appuntamenti già prenotati nel nuovo periodo (o nella coda troncata)
+    // che restano fuori dalle nuove fasce: vanno marcati subito, non solo
+    // alla prossima modifica delle fasce del template.
+    await this.detectAndMarkTemplateConflicts([input.operatorId]);
 
     // Reload with relations for GraphQL response
     const savedWithRelations = await this.assignmentRepo.findOne({

@@ -1,4 +1,4 @@
-import { Component, OnInit, Inject, ChangeDetectionStrategy, ChangeDetectorRef, inject, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject, ChangeDetectionStrategy, ChangeDetectorRef, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, FormControl, Validators } from '@angular/forms';
 import { MatDialogRef, MAT_DIALOG_DATA, MatDialogModule, MatDialog } from '@angular/material/dialog';
@@ -30,6 +30,8 @@ import { RecurringScopePanelComponent, RecurringScopeSelection } from '../recurr
 import { RecurringConflictsDialogComponent } from '../recurring-scope-panel/recurring-conflicts-dialog.component';
 import { NewPatientDialogComponent, NewPatientDialogResult } from '../new-patient-dialog';
 import { tokenizeQuery, matchesAllTokens } from '../../utils/token-match';
+import { WhatsappChatStateService } from '../../../features/whatsapp-chat/services/whatsapp-chat-state.service';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 /**
  * Dati passati al dialog per la creazione/modifica di un appuntamento.
@@ -120,7 +122,7 @@ export interface EventMatDialogResult {
   templateUrl: './event-mat-dialog.component.html',
   styleUrls: ['./event-mat-dialog.component.scss']
 })
-export class EventMatDialogComponent implements OnInit {
+export class EventMatDialogComponent implements OnInit, OnDestroy {
   private fb = inject(FormBuilder);
   private cdr = inject(ChangeDetectorRef);
   private dialog = inject(MatDialog);
@@ -139,6 +141,9 @@ export class EventMatDialogComponent implements OnInit {
   operatorServices: Service[] = [];
   selectedServices: SelectedServiceItem[] = [];
   loadingServices = false;
+  /** Feedback temporaneo del pulsante "copia numero". */
+  phoneCopied = false;
+  private phoneCopiedTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Instruments
   instrumentsEnabled = false;
@@ -179,11 +184,27 @@ export class EventMatDialogComponent implements OnInit {
   isEditMode = false;
   bookingStatus: BookingStatus = 'scheduled';
 
+  /**
+   * In modifica: un appuntamento singolo (non già in serie) e ancora attivo
+   * può essere trasformato in ricorrente. Lui resta la prima occorrenza; le
+   * successive vengono create dal backend (makeAppointmentRecurring).
+   */
+  get canMakeRecurring(): boolean {
+    return (
+      this.isEditMode &&
+      !this.readOnly &&
+      !this.data.appointment?.isRecurring &&
+      (this.bookingStatus === 'scheduled' || this.bookingStatus === 'confirmed')
+    );
+  }
+
   // Recurring series management
   futureSeriesCount = 0;
   loadingSeriesInfo = false;
   private recurringAppointmentService = inject(AvailabilityAppointmentService);
   private patientService = inject(PatientService);
+  private chatState = inject(WhatsappChatStateService);
+  private snackBar = inject(MatSnackBar);
 
   constructor(
     public dialogRef: MatDialogRef<EventMatDialogComponent, EventMatDialogResult>,
@@ -193,6 +214,10 @@ export class EventMatDialogComponent implements OnInit {
   /** Sola lettura: dettaglio appuntamento senza azioni di modifica. */
   get readOnly(): boolean {
     return this.data.readOnly === true;
+  }
+
+  ngOnDestroy(): void {
+    if (this.phoneCopiedTimer) clearTimeout(this.phoneCopiedTimer);
   }
 
   ngOnInit(): void {
@@ -283,9 +308,38 @@ export class EventMatDialogComponent implements OnInit {
     if (this.isEditMode && apt?.patientId) {
       const patient = this.patients.find(p => p.id == apt.patientId);
       if (patient) {
+        this._selectedPatient = patient;
         this.patientSearchControl.setValue(this.displayPatient(patient));
+      } else {
+        // La lista precaricata e' parziale: senza lookup mirato il campo
+        // resterebbe vuoto (e il telefono con lui). Nel frattempo mostra il
+        // nominativo scritto sull'appuntamento.
+        this.patientSearchControl.setValue(apt.title || '');
+        this.loadPatientById(String(apt.patientId));
       }
     }
+  }
+
+  /**
+   * Lookup mirato del paziente della prenotazione quando non e' nella lista
+   * precaricata. In caso di errore restano i dati denormalizzati.
+   */
+  private loadPatientById(patientId: string): void {
+    this.patientService.getPatient(patientId).subscribe({
+      next: (patient) => {
+        if (!patient) return;
+        // Se nel frattempo l'operatore ha scelto un altro paziente, il lookup
+        // in ritardo non deve sovrascrivere la scelta.
+        if (String(this.form.get('patientId')?.value) !== patientId) return;
+        if (!this.patients.find((p) => String(p.id) === String(patient.id))) {
+          this.patients = [patient, ...this.patients];
+        }
+        this._selectedPatient = patient;
+        this.patientSearchControl.setValue(this.displayPatient(patient));
+        this.cdr.markForCheck();
+      },
+      error: (err) => console.warn('[EventMatDialog] Lookup paziente fallito:', err),
+    });
   }
 
   /**
@@ -375,6 +429,58 @@ export class EventMatDialogComponent implements OnInit {
       return this._selectedPatient;
     }
     return this.patients.find((p) => p.id == patientId);
+  }
+
+  /**
+   * Recapito del paziente: prima l'anagrafica (piu' aggiornata), poi il numero
+   * denormalizzato sull'appuntamento. Serve all'operatore che deve chiamare il
+   * paziente senza uscire dalla scheda.
+   */
+  get patientPhone(): string {
+    const p = this.selectedPatient;
+    return p?.cellulare || p?.telefono || this.data.appointment?.clientPhone || '';
+  }
+
+  /**
+   * Apre il riquadro di chat WhatsApp col paziente dell'appuntamento. Il dialog
+   * resta aperto: si scrive al paziente mentre si sistema l'appuntamento.
+   */
+  openWhatsappChat(): void {
+    const phone = this.patientPhone;
+    if (!phone) return;
+    const patient = this.selectedPatient;
+    this.chatState.openForPhone({
+      phone,
+      patientId: this.form.get('patientId')?.value || undefined,
+      patientName: patient
+        ? `${patient.cognome ?? ''} ${patient.nome ?? ''}`.trim()
+        : this.data.appointment?.title,
+    });
+    // Il riquadro di chat sta sotto ai dialog modali (altrimenti coprirebbe i
+    // propri menu a tendina): senza avviso sembrerebbe non essere successo nulla.
+    this.snackBar.open(
+      'Chat WhatsApp aperta: la trovi chiudendo questa scheda.',
+      'OK',
+      { duration: 4000 },
+    );
+  }
+
+  /** Copia il recapito negli appunti, con feedback sull'icona per 2s. */
+  copyPatientPhone(): void {
+    const phone = this.patientPhone;
+    if (!phone) return;
+    navigator.clipboard?.writeText(phone).then(
+      () => {
+        this.phoneCopied = true;
+        this.cdr.markForCheck();
+        if (this.phoneCopiedTimer) clearTimeout(this.phoneCopiedTimer);
+        this.phoneCopiedTimer = setTimeout(() => {
+          this.phoneCopied = false;
+          this.cdr.markForCheck();
+        }, 2000);
+      },
+      (err) => console.warn('[EventMatDialog] Copia numero fallita:', err),
+    );
   }
 
   // ==================== OPERATOR & SERVICES ====================
@@ -963,7 +1069,13 @@ export class EventMatDialogComponent implements OnInit {
       services: services.length > 0 ? services : undefined,
       instruments: this.buildInstrumentData(),
       instrumentOrderMatters: this.instrumentOrderMatters,
-      repeatConfig: this.repeatEnabled && !this.isEditMode ? this.buildRepeatConfig() : undefined,
+      // In creazione: config della nuova serie. In modifica: presente solo se
+      // l'utente ha attivato "Rendi ricorrente" su un singolo attivo — il
+      // container chiama makeAppointmentRecurring dopo l'update.
+      repeatConfig:
+        this.repeatEnabled && (!this.isEditMode || this.canMakeRecurring)
+          ? this.buildRepeatConfig()
+          : undefined,
       nonRetribuito: f.nonRetribuito
     });
   }

@@ -102,6 +102,12 @@ export interface Appointment {
   appointmentServices?: AppointmentServiceItem[];
   patientId?: string;
   patient?: Patient;
+  /**
+   * Recapito telefonico denormalizzato sull'appuntamento al momento della
+   * prenotazione. Serve a mostrare il numero (e ad avviare la chat WhatsApp)
+   * senza dipendere dalla lista pazienti precaricata, che e' parziale.
+   */
+  clientPhone?: string;
   notes?: string;
 
   // Campi dal nuovo sistema AvailabilityAppointment

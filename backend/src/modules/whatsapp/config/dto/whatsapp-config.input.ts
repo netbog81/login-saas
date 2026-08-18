@@ -1,4 +1,5 @@
 import { InputType, Field, Int } from '@nestjs/graphql';
+import { WhatsappReminderEarlyPolicy } from '../../enums/whatsapp-enums';
 
 @InputType()
 export class WhatsappConfigInput {
@@ -32,6 +33,21 @@ export class WhatsappConfigInput {
   /** Finestra di raggruppamento recap in secondi (30-600). */
   @Field(() => Int, { nullable: true })
   recapBufferSeconds?: number;
+
+  /** Invia il promemoria in fascia oraria invece che alle 24h esatte. */
+  @Field({ nullable: true })
+  reminderWindowEnabled?: boolean;
+
+  /** Inizio fascia, HH:mm. */
+  @Field({ nullable: true })
+  reminderWindowStart?: string;
+
+  /** Fine fascia, HH:mm. Deve essere almeno 10 minuti dopo l'inizio. */
+  @Field({ nullable: true })
+  reminderWindowEnd?: string;
+
+  @Field(() => WhatsappReminderEarlyPolicy, { nullable: true })
+  reminderEarlyPolicy?: WhatsappReminderEarlyPolicy;
 
   @Field(() => Int, { nullable: true })
   retentionDays?: number;

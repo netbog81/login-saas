@@ -308,12 +308,74 @@ export interface CreateTemplatePatternInput {
   endTime: string;   // HH:mm format
 }
 
+export interface AssignmentRoomOverrideInput {
+  dayInPattern: number;
+  startTime?: string; // HH:MM, null = tutto il giorno
+  endTime?: string;
+  roomId: string;
+  chairId?: string;
+}
+
 export interface AssignTemplateToOperatorInput {
   operatorId: string;
-  templateName: string;
+  patternGroupId: string;
   patternStartDate: string; // YYYY-MM-DD format
   validFrom: string; // YYYY-MM-DD format
   validUntil?: string; // YYYY-MM-DD format
+  /** Chiude automaticamente al giorno prima le assegnazioni già in corso che si sovrappongono */
+  truncatePrevious?: boolean;
+  /** Studio di default per tutte le fasce dell'assegnazione */
+  roomId?: string;
+  /** Poltrona di default (deve appartenere allo studio) */
+  chairId?: string;
+  /** Override studio/poltrona per giorno/fascia */
+  overrides?: AssignmentRoomOverrideInput[];
+}
+
+export interface AssignmentRoomOverride {
+  id: string;
+  assignmentId: string;
+  dayInPattern: number;
+  startTime?: string;
+  endTime?: string;
+  roomId: string;
+  chairId?: string;
+  room?: { id: string; name: string };
+  chair?: { id: string; name: string };
+}
+
+export interface RoomConflictCheckResult {
+  blocking: string[];
+  warnings: string[];
+}
+
+// Disponibilità studi/poltrone rispetto a un template candidato
+export interface RoomBandBusyInfo {
+  dayInPattern: number;
+  startTime: string;
+  endTime: string;
+  freeSeats: number;
+  occupantNames: string[];
+  busyChairIds: string[];
+}
+
+export interface ChairAvailabilityInfo {
+  chairId: string;
+  name: string;
+  fullyFree: boolean;
+  firstConflict?: string;
+}
+
+export interface RoomAvailabilityInfo {
+  roomId: string;
+  roomName: string;
+  capacity: number;
+  fullyFree: boolean;
+  sharing: boolean;
+  full: boolean;
+  unavailableReason?: string;
+  busy: RoomBandBusyInfo[];
+  chairs: ChairAvailabilityInfo[];
 }
 
 // New entity types for separated pattern/assignment structure
@@ -359,10 +421,15 @@ export interface TemplateAssignment {
   validUntil?: Date;
   version: number;
   isCurrent: boolean;
+  roomId?: string;
+  chairId?: string;
   createdAt: Date;
   updatedAt: Date;
   operator?: Operator;
   patternGroup?: PatternGroup;
+  room?: { id: string; name: string };
+  chair?: { id: string; name: string };
+  roomOverrides?: AssignmentRoomOverride[];
 }
 
 /**

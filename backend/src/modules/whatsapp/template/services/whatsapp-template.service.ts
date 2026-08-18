@@ -11,6 +11,8 @@ const DEFAULT_TEMPLATES: Record<WhatsappTemplateType, string> = {
     'Gentile {name}, confermiamo i seguenti appuntamenti:\n{appointments}',
   [WhatsappTemplateType.REMINDER_24H]:
     'Promemoria: il suo appuntamento è domani alle {time}.',
+  [WhatsappTemplateType.REMINDER_48H]:
+    'Promemoria: il suo appuntamento è dopodomani alle {time}.',
   [WhatsappTemplateType.CANCELLATION]:
     'Gentile {name}, il suo appuntamento del {date} alle {time} è stato cancellato.',
   [WhatsappTemplateType.UPDATE]:

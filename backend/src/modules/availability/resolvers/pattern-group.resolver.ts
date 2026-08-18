@@ -23,6 +23,10 @@ export class PatternGroupUpdateOutput {
 
   @Field(() => [AvailabilityAppointment])
   conflictedAppointments: AvailabilityAppointment[];
+
+  /** Override studio/poltrona rimossi perché orfani dopo la modifica fasce */
+  @Field(() => Int)
+  removedRoomOverridesCount: number;
 }
 
 @UseInterceptors(AvailabilityChangedInterceptor)
@@ -73,6 +77,7 @@ export class PatternGroupResolver {
       hasConflicts: result.conflicts.hasConflicts,
       conflictsCount: result.conflicts.totalCount,
       conflictedAppointments: result.conflicts.conflicts.map(c => c.appointment),
+      removedRoomOverridesCount: result.removedRoomOverrides,
     };
   }
 

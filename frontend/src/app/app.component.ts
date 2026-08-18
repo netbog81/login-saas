@@ -7,6 +7,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ContextPreservationService } from './core/services/context-preservation.service';
 import { OidcAuthService } from './core/auth/oidc-auth.service';
 import { TenantResolverService } from './core/auth/tenant-resolver.service';
@@ -14,6 +15,12 @@ import { TaskMessageNotificationService } from './features/task-messages/service
 import { TaskMessageDialogComponent } from './features/task-messages/containers/task-message-dialog.component';
 import { ConflictService } from './services/conflict.service';
 import { NavigationSettingsService } from './services/navigation-settings.service';
+import { WhatsappChatHostContainer } from './features/whatsapp-chat/containers/whatsapp-chat-host.container';
+import { WhatsappChatStateService } from './features/whatsapp-chat/services/whatsapp-chat-state.service';
+import {
+  NewChatDialogComponent,
+  NewChatDialogResult,
+} from './features/whatsapp-chat/components/new-chat-dialog/new-chat-dialog.component';
 
 @Component({
   selector: 'app-root',
@@ -30,6 +37,8 @@ import { NavigationSettingsService } from './services/navigation-settings.servic
     MatDividerModule,
     MatBadgeModule,
     MatDialogModule,
+    MatTooltipModule,
+    WhatsappChatHostContainer,
   ],
   template: `
     <div class="app-container">
@@ -122,6 +131,64 @@ import { NavigationSettingsService } from './services/navigation-settings.servic
               <mat-icon class="msg-icon">mail</mat-icon>
               <span class="msg-label">Messaggi</span>
             </button>
+
+            <!-- Chat WhatsApp: sempre raggiungibile, anche dove la barra
+                 laterale del calendario (che ospita "Chat in corso") non c'è. -->
+            @if (authService.hasRole(SEGRETERIA_ROLES)) {
+              <button class="nav-item message-btn" [matMenuTriggerFor]="chatMenu"
+                [matBadge]="chatState.unreadTotal()"
+                [matBadgeHidden]="chatState.unreadTotal() === 0"
+                matBadgeColor="warn"
+                matBadgeSize="small"
+                matBadgeOverlap="true">
+                <mat-icon class="msg-icon">forum</mat-icon>
+                <span class="msg-label">Chat</span>
+              </button>
+              <mat-menu #chatMenu="matMenu" class="chat-quick-menu">
+                <div class="chat-menu-title" (click)="$event.stopPropagation()">Chat in corso</div>
+                @if (chatState.panelConversations().length === 0) {
+                  <div class="chat-menu-empty" (click)="$event.stopPropagation()">
+                    Nessuna chat in corso
+                  </div>
+                } @else {
+                  @for (conversation of chatState.panelConversations(); track conversation.id) {
+                    <div class="chat-menu-row">
+                      <button mat-menu-item (click)="chatState.openConversation(conversation)">
+                        <mat-icon>chat</mat-icon>
+                        <span>{{ conversation.patientName || conversation.contactName || conversation.phoneNumber }}</span>
+                        @if (conversation.unreadCount > 0) {
+                          <span class="chat-menu-badge">{{ conversation.unreadCount }}</span>
+                        }
+                      </button>
+                      <!-- Fuori dal mat-menu-item: un bottone dentro l'altro non
+                           è valido e il click finirebbe comunque sulla voce. -->
+                      <button class="chat-menu-remove" type="button"
+                        [matTooltip]="conversation.unreadCount > 0
+                          ? 'Segna come letta e togli dall\\'elenco'
+                          : 'Togli dalle chat in corso'"
+                        (click)="chatState.removeFromPanel(conversation); $event.stopPropagation()">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </div>
+                  }
+                }
+                <mat-divider></mat-divider>
+                <button mat-menu-item (click)="onNewChat()">
+                  <mat-icon>add_comment</mat-icon>
+                  <span>Nuova chat</span>
+                </button>
+                @if (chatState.panelConversations().length > 0) {
+                  <button mat-menu-item (click)="onClearChatPanel()">
+                    <mat-icon>playlist_remove</mat-icon>
+                    <span>Svuota chat in corso</span>
+                  </button>
+                }
+                <button mat-menu-item routerLink="/whatsapp">
+                  <mat-icon>open_in_new</mat-icon>
+                  <span>Apri tutte le conversazioni</span>
+                </button>
+              </mat-menu>
+            }
           </div>
           <div class="nav-user">
             <button mat-button [matMenuTriggerFor]="userMenu" class="user-button">
@@ -152,6 +219,12 @@ import { NavigationSettingsService } from './services/navigation-settings.servic
       <main class="app-content">
         <router-outlet></router-outlet>
       </main>
+
+      <!-- Finestre di chat WhatsApp: montate nella shell, non in una rotta,
+           così cambiando pagina le conversazioni aperte non si chiudono. -->
+      @if (authService.isAuthenticated() && authService.hasRole(SEGRETERIA_ROLES)) {
+        <app-whatsapp-chat-host></app-whatsapp-chat-host>
+      }
     </div>
   `,
   styles: [`
@@ -232,6 +305,73 @@ import { NavigationSettingsService } from './services/navigation-settings.servic
     }
     .msg-icon { font-size: 20px; width: 20px; height: 20px; }
 
+    /* Menu rapido chat WhatsApp */
+    .chat-menu-title {
+      padding: 10px 16px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .chat-menu-empty {
+      padding: 4px 16px 10px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+
+    /* La X convive con la voce di menu: la voce si prende lo spazio, la X sta
+       a destra e resta cliccabile senza aprire la chat. */
+    .chat-menu-row {
+      display: flex;
+      align-items: center;
+
+      .mat-mdc-menu-item {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+    }
+
+    .chat-menu-remove {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      margin-right: 6px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      cursor: pointer;
+
+      &:hover { background: rgba(0, 0, 0, 0.06); }
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: #94a3b8;
+      }
+    }
+
+    .chat-menu-badge {
+      margin-left: auto;
+      background: #25d366;
+      color: #08312a;
+      border-radius: 10px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     .nav-user {
       flex-shrink: 0;
     }
@@ -300,6 +440,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly dialog = inject(MatDialog);
   private readonly conflictService = inject(ConflictService);
   readonly navSettings = inject(NavigationSettingsService);
+  /** Stato delle chat WhatsApp: badge in barra e voci del menu rapido. */
+  readonly chatState = inject(WhatsappChatStateService);
   private cleanupContext: (() => void) | null = null;
 
   taskMessageUnreadCount = 0;
@@ -394,6 +536,25 @@ export class AppComponent implements OnInit, OnDestroy {
     this.taskMessageDialogRef.afterClosed().subscribe(() => {
       this.taskMessageDialogRef = null;
     });
+  }
+
+  /** Apre la ricerca paziente e, scelto il paziente, ne apre la chat. */
+  onNewChat(): void {
+    this.dialog
+      .open(NewChatDialogComponent, { autoFocus: false })
+      .afterClosed()
+      .subscribe((result: NewChatDialogResult | undefined) => {
+        if (!result) return;
+        this.chatState.openForPhone(result);
+      });
+  }
+
+  /** Svuota le chat in corso, previa conferma: l'elenco non è recuperabile. */
+  onClearChatPanel(): void {
+    const count = this.chatState.panelConversations().length;
+    if (count === 0) return;
+    if (!confirm(`Vuoi togliere tutte le ${count} chat dall'elenco delle chat in corso?`)) return;
+    this.chatState.clearPanel();
   }
 
   onLogout(): void {

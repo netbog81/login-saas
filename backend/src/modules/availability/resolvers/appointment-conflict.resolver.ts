@@ -57,6 +57,10 @@ export class ConflictRevalidationResult {
 
   @Field(() => Int)
   resolved: number;
+
+  /** Conflitti template rilevati e marcati ex novo dalla sweep di detection */
+  @Field(() => Int)
+  detected: number;
 }
 
 @Resolver()
@@ -79,8 +83,10 @@ export class AppointmentConflictResolver {
     @Args('conflictReason', { type: () => ConflictReason, nullable: true }) conflictReason?: ConflictReason
   ): Promise<AvailabilityAppointment[]> {
     // On-read revalidation: prima di ritornare la lista, verifica che ogni
-    // conflitto sia ancora reale. Rimuove i flag stale (senza cooldown:
-    // l'utente sta guardando la pagina /conflicts e vuole dati freschi).
+    // conflitto sia ancora reale. Rimuove i flag stale e, in direzione
+    // opposta, la sweep di detection marca i conflitti template mai
+    // rilevati (anche retroattivi). Senza cooldown: l'utente sta guardando
+    // la pagina /conflicts e vuole dati freschi.
     await this.revalidationService.revalidateAll();
 
     return this.conflictService.getConflictedAppointments({

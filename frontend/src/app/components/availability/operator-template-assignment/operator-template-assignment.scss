@@ -145,6 +145,11 @@
             color: #856404;
           }
 
+          &.status-future {
+            background: #cce5ff;
+            color: #004085;
+          }
+
           &.status-none {
             background: #f8d7da;
             color: #721c24;
@@ -185,6 +190,100 @@
             background: #fff3cd;
             padding: 6px 10px;
             border-radius: 4px;
+          }
+        }
+      }
+
+      .assignment-timeline {
+        padding: 12px 0;
+        border-top: 1px solid #f0f0f0;
+        margin-bottom: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        .timeline-row {
+          border: 1px solid #e8e8e8;
+          border-left-width: 4px;
+          border-radius: 6px;
+          padding: 8px 10px;
+          background: #fafafa;
+
+          &.row-active {
+            border-left-color: #28a745;
+            background: #f6fdf8;
+          }
+
+          &.row-future {
+            border-left-color: #007bff;
+            background: #f5f9ff;
+          }
+
+          &.row-expired {
+            border-left-color: #adb5bd;
+            opacity: 0.75;
+          }
+
+          .row-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+
+            .row-state {
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              padding: 2px 8px;
+              border-radius: 10px;
+              background: #e9ecef;
+              color: #495057;
+              white-space: nowrap;
+            }
+
+            .row-template {
+              font-size: 14px;
+              font-weight: 600;
+              color: #333;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              max-width: 160px;
+            }
+
+            .row-validity {
+              font-size: 13px;
+              color: #666;
+              margin-left: auto;
+              white-space: nowrap;
+            }
+          }
+
+          &.row-active .row-state {
+            background: #d4edda;
+            color: #155724;
+          }
+
+          &.row-future .row-state {
+            background: #cce5ff;
+            color: #004085;
+          }
+
+          .row-warning {
+            margin-top: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #856404;
+            background: #fff3cd;
+            padding: 4px 8px;
+            border-radius: 4px;
+          }
+
+          .row-actions {
+            display: flex;
+            gap: 6px;
+            justify-content: flex-end;
+            margin-top: 6px;
           }
         }
       }
@@ -418,4 +517,112 @@
   &:hover {
     background: #555;
   }
+}
+
+// Aggiunte timeline assegnazioni
+.btn-xs {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.modal {
+  .readonly-value {
+    padding: 8px 12px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+  }
+
+  .truncate-option {
+    background: #f5f9ff;
+    border: 1px solid #cce5ff;
+    border-radius: 6px;
+    padding: 10px 12px;
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #004085;
+      cursor: pointer;
+      margin-bottom: 4px;
+
+      input[type='checkbox'] {
+        width: 16px;
+        height: 16px;
+      }
+    }
+  }
+
+  .error {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-top: 8px;
+  }
+}
+
+// Studio/poltrona + override + warning conflitti
+.operator-assignment .assignment-timeline .timeline-row .row-room {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6c5ce7;
+}
+
+.modal {
+  .overrides-section {
+    .overrides-editor {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      .override-row {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr 0.8fr 1fr 1fr auto;
+        gap: 6px;
+        align-items: center;
+
+        .form-control {
+          padding: 6px 8px;
+          font-size: 13px;
+        }
+      }
+    }
+  }
+
+  .warning-box {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-top: 8px;
+
+    ul {
+      margin: 6px 0;
+      padding-left: 18px;
+    }
+  }
+
+  .error {
+    white-space: pre-line;
+  }
+}
+
+.modal .availability-hint {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #007bff;
+  font-style: italic;
 }

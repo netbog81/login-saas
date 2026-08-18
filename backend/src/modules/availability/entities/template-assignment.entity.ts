@@ -1,7 +1,10 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { ObjectType, Field, ID, Int, GraphQLISODateTime } from '@nestjs/graphql';
 import { Operator } from './operator.entity';
 import { PatternGroup } from './pattern-group.entity';
+import { Room } from './room.entity';
+import { Chair } from './chair.entity';
+import { TemplateAssignmentRoomOverride } from './template-assignment-room-override.entity';
 
 /**
  * TemplateAssignment - Assigns a pattern group to an operator with validity dates
@@ -47,6 +50,16 @@ export class TemplateAssignment {
   @Column({ default: true })
   isCurrent: boolean;
 
+  // Studio/poltrona di default per tutte le fasce dell'assegnazione;
+  // gli override per giorno/fascia stanno in roomOverrides.
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  roomId?: string;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  chairId?: string;
+
   @Field()
   @CreateDateColumn()
   createdAt: Date;
@@ -68,4 +81,20 @@ export class TemplateAssignment {
   @ManyToOne(() => PatternGroup, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'patternGroupId' })
   patternGroup: PatternGroup;
+
+  @Field(() => Room, { nullable: true })
+  @ManyToOne(() => Room, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'roomId' })
+  room?: Room;
+
+  @Field(() => Chair, { nullable: true })
+  @ManyToOne(() => Chair, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'chairId' })
+  chair?: Chair;
+
+  @Field(() => [TemplateAssignmentRoomOverride], { nullable: true })
+  @OneToMany(() => TemplateAssignmentRoomOverride, (o) => o.assignment, {
+    cascade: true,
+  })
+  roomOverrides?: TemplateAssignmentRoomOverride[];
 }

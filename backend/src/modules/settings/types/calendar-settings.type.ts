@@ -37,4 +37,12 @@ export class CalendarSettings {
 
   @Field()
   defaultOperatorCategory: string;
+
+  /**
+   * Cosa fa il click su un appuntamento nella vista operatori:
+   * - 'edit-first'    → click = modifica, doppio click = riepilogo (default)
+   * - 'summary-first' → click = riepilogo, doppio click = modifica
+   */
+  @Field()
+  appointmentClickAction: string;
 }

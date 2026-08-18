@@ -1,3 +1,10 @@
+/**
+ * Come collocare il promemoria degli appuntamenti che iniziano prima della fine
+ * della fascia di invio: per loro la fascia del giorno prima cadrebbe a meno di
+ * 24h dall'appuntamento.
+ */
+export type WhatsappReminderEarlyPolicy = 'SHIFT_PREVIOUS_DAY' | 'EXACT_24H' | 'FORCE_WINDOW';
+
 export interface WhatsappConfig {
   id: string;
   gatewayUrl: string;
@@ -8,6 +15,13 @@ export interface WhatsappConfig {
   sendUpdateNotification: boolean;
   /** Finestra di raggruppamento del recap in secondi (30-600). */
   recapBufferSeconds: number;
+  /** Promemoria in fascia oraria il giorno prima invece che alle 24h esatte. */
+  reminderWindowEnabled: boolean;
+  /** Inizio fascia, HH:mm. */
+  reminderWindowStart: string;
+  /** Fine fascia, HH:mm. */
+  reminderWindowEnd: string;
+  reminderEarlyPolicy: WhatsappReminderEarlyPolicy;
   retentionDays: number;
   createdAt: Date;
   updatedAt: Date;
@@ -24,10 +38,21 @@ export interface WhatsappConfigInput {
   sendCancelNotification?: boolean;
   sendUpdateNotification?: boolean;
   recapBufferSeconds?: number;
+  reminderWindowEnabled?: boolean;
+  reminderWindowStart?: string;
+  reminderWindowEnd?: string;
+  reminderEarlyPolicy?: WhatsappReminderEarlyPolicy;
   retentionDays?: number;
 }
 
-export type WhatsappTemplateType = 'RECAP_SINGLE' | 'RECAP_MULTI' | 'REMINDER_24H' | 'CANCELLATION' | 'UPDATE';
+export type WhatsappTemplateType =
+  | 'RECAP_SINGLE'
+  | 'RECAP_MULTI'
+  | 'REMINDER_24H'
+  /** Usato quando il promemoria parte due giorni prima (politica "anticipa alla fascia precedente"). */
+  | 'REMINDER_48H'
+  | 'CANCELLATION'
+  | 'UPDATE';
 
 export interface WhatsappTemplate {
   id: string;
@@ -167,6 +192,7 @@ export const TEMPLATE_TYPE_LABELS: Record<WhatsappTemplateType, string> = {
   RECAP_SINGLE: 'Recap Singolo',
   RECAP_MULTI: 'Recap Multiplo',
   REMINDER_24H: 'Promemoria 24h',
+  REMINDER_48H: 'Promemoria 48h',
   CANCELLATION: 'Cancellazione',
   UPDATE: 'Modifica appuntamento',
 };
@@ -180,7 +206,8 @@ export interface WhatsappTestResult {
 export const TEMPLATE_VARIABLES: Record<WhatsappTemplateType, string[]> = {
   RECAP_SINGLE: ['{name}', '{date}', '{time}'],
   RECAP_MULTI: ['{name}', '{appointments}'],
-  REMINDER_24H: ['{name}', '{time}'],
+  REMINDER_24H: ['{name}', '{date}', '{time}'],
+  REMINDER_48H: ['{name}', '{date}', '{time}'],
   CANCELLATION: ['{name}', '{date}', '{time}'],
   UPDATE: ['{name}', '{date}', '{time}'],
 };

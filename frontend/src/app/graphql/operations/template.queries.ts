@@ -99,6 +99,32 @@ export const GET_TEMPLATE_ASSIGNMENTS = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
       operator {
@@ -136,6 +162,32 @@ export const GET_TEMPLATE_ASSIGNMENT = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
       operator {
@@ -173,6 +225,32 @@ export const GET_TEMPLATE_ASSIGNMENTS_BY_OPERATOR = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
       operator {
@@ -210,6 +288,32 @@ export const GET_CURRENT_TEMPLATE_ASSIGNMENTS = gql`
       validUntil
       version
       isCurrent
+      roomId
+      chairId
+      room {
+        id
+        name
+      }
+      chair {
+        id
+        name
+      }
+      roomOverrides {
+        id
+        dayInPattern
+        startTime
+        endTime
+        roomId
+        chairId
+        room {
+          id
+          name
+        }
+        chair {
+          id
+          name
+        }
+      }
       createdAt
       updatedAt
       operator {

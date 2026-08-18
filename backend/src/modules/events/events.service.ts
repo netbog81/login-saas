@@ -13,7 +13,8 @@ export type CalendarEventType =
   | 'treatment_status_changed'
   | 'treatment_deleted'
   | 'task_message_changed'
-  | 'availability_changed';
+  | 'availability_changed'
+  | 'whatsapp_chat_changed';
 
 /**
  * Interfaccia unificata per tutti gli eventi realtime.
@@ -27,6 +28,8 @@ export interface CalendarEvent {
   // Per eventi trattamenti
   treatmentId?: string;
   operatorId?: string;
+  // Per la chat WhatsApp: quale conversazione va rinfrescata
+  conversationId?: string;
   // Comune
   newStatus?: string;
   timestamp: Date;

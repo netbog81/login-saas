@@ -93,9 +93,18 @@ export class TemplateManagement implements OnInit, OnDestroy {
     this.templateGroups = groups.map((group) => {
       const templates = this.templateService.convertGroupToTemplates(group);
 
+      // Con la timeline di assegnazioni isCurrent significa "non revocata":
+      // per il conteggio contano solo quelle in corso o future (non scadute).
+      const today = new Date().toISOString().split('T')[0];
       const operatorIds = new Set(
         assignments
-          .filter((a) => a.patternGroupId === group.id && a.isCurrent)
+          .filter(
+            (a) =>
+              a.patternGroupId === group.id &&
+              a.isCurrent &&
+              (!a.validUntil ||
+                String(a.validUntil).slice(0, 10) >= today)
+          )
           .map((a) => a.operatorId)
       );
 
@@ -323,7 +332,7 @@ export class TemplateManagement implements OnInit, OnDestroy {
       }
 
       this.templateService
-        .updatePatternGroup(patternGroupId, pattern)
+        .updatePatternGroupWithInfo(patternGroupId, pattern)
         .pipe(
           takeUntil(this.destroy$),
           catchError((err) => {
@@ -338,6 +347,16 @@ export class TemplateManagement implements OnInit, OnDestroy {
         )
         .subscribe((result) => {
           if (result) {
+            // Guardia studi: avvisa se la modifica delle fasce ha eliminato
+            // abbinamenti studio/poltrona rimasti senza fascia (orfani).
+            if (result.removedRoomOverridesCount > 0) {
+              alert(
+                `Attenzione: la modifica delle fasce orarie ha rimosso ` +
+                `${result.removedRoomOverridesCount} abbinament${result.removedRoomOverridesCount > 1 ? 'i' : 'o'} ` +
+                `studio/poltrona che si riferivano a giorni o fasce non più presenti nel template. ` +
+                `Controlla le assegnazioni degli operatori che usano questo template.`
+              );
+            }
             this.showBuilderModal = false;
             this.loadTemplates(); // Reload templates to show updated data
           }

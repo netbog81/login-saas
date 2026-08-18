@@ -26,6 +26,13 @@ import {
 } from '../models/whatsapp.models';
 import { ConfigFormComponent } from '../components/config-form/config-form.component';
 import { TemplateEditorComponent } from '../components/template-editor/template-editor.component';
+import { QuickRepliesEditorComponent } from '../../whatsapp-chat/components/quick-replies-editor/quick-replies-editor.component';
+import { QuickReply } from '../../whatsapp-chat/components/chat-composer/chat-composer.component';
+import {
+  WhatsappChatStateService,
+  QUICK_REPLIES_SETTING_KEY,
+} from '../../whatsapp-chat/services/whatsapp-chat-state.service';
+import { SettingsService } from '../../../services/settings.service';
 
 @Component({
   selector: 'app-whatsapp-settings',
@@ -42,6 +49,7 @@ import { TemplateEditorComponent } from '../components/template-editor/template-
     MatSnackBarModule,
     ConfigFormComponent,
     TemplateEditorComponent,
+    QuickRepliesEditorComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -160,6 +168,21 @@ import { TemplateEditorComponent } from '../components/template-editor/template-
           </app-template-editor>
         </mat-card-content>
       </mat-card>
+
+      <mat-card class="settings-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>bolt</mat-icon>
+          <mat-card-title>Risposte rapide chat</mat-card-title>
+          <mat-card-subtitle>Testi pronti proposti nella chat WhatsApp</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <app-quick-replies-editor
+            [quickReplies]="chatState.quickReplies()"
+            [saving]="savingQuickReplies"
+            (save)="onSaveQuickReplies($event)">
+          </app-quick-replies-editor>
+        </mat-card-content>
+      </mat-card>
     </div>
   `,
   styles: [`
@@ -276,6 +299,7 @@ export class WhatsappSettingsContainer implements OnInit, OnDestroy {
   templates: WhatsappTemplate[] = [];
   savingConfig = false;
   savingTemplate = false;
+  savingQuickReplies = false;
   testingConnection = false;
   testResult: boolean | null = null;
 
@@ -292,10 +316,54 @@ export class WhatsappSettingsContainer implements OnInit, OnDestroy {
     private snackBar: MatSnackBar,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
+    private settingsService: SettingsService,
+    /** Pubblico: il template legge da qui le risposte rapide correnti. */
+    public chatState: WhatsappChatStateService,
   ) {}
+
+  /**
+   * Salva le risposte rapide e le ricarica nello stato condiviso, così le
+   * finestre di chat già aperte si allineano senza ricaricare la pagina.
+   */
+  onSaveQuickReplies(replies: QuickReply[]): void {
+    this.savingQuickReplies = true;
+    this.cdr.markForCheck();
+
+    this.settingsService
+      .upsertSetting(QUICK_REPLIES_SETTING_KEY, replies, {
+        valueType: 'json',
+        category: 'whatsapp',
+        description: 'Risposte rapide proposte nella chat WhatsApp',
+      })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.ngZone.run(() => {
+            this.savingQuickReplies = false;
+            this.chatState.loadQuickReplies();
+            this.snackBar.open('Risposte rapide salvate', 'OK', { duration: 3000 });
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            this.savingQuickReplies = false;
+            this.snackBar.open(
+              err?.message || 'Errore nel salvataggio delle risposte rapide',
+              'OK',
+              { duration: 5000 },
+            );
+            this.cdr.markForCheck();
+          });
+        },
+      });
+  }
 
   ngOnInit(): void {
     this.loadData();
+    // Le risposte rapide vivono nello stato condiviso della chat: se
+    // l'operatore arriva qui senza aver aperto nessuna chat, vanno caricate.
+    this.chatState.loadQuickReplies();
   }
 
   ngOnDestroy(): void {

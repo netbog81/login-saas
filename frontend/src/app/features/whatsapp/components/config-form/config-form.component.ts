@@ -6,10 +6,21 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { WhatsappConfig, WhatsappConfigInput } from '../../models/whatsapp.models';
+import {
+  WhatsappConfig,
+  WhatsappConfigInput,
+  WhatsappReminderEarlyPolicy,
+} from '../../models/whatsapp.models';
 
 const MIN_SECRET_LENGTH = 16;
+
+/** Sotto i 10 minuti la distribuzione degli invii non ha spazio per lavorare. */
+const MIN_REMINDER_WINDOW_MINUTES = 10;
+
+/** Distanza minima fra due messaggi imposta dal gateway, per stimare la capienza. */
+const REMINDER_MIN_SPACING_SECONDS = 10;
 
 @Component({
   selector: 'app-config-form',
@@ -22,6 +33,7 @@ const MIN_SECRET_LENGTH = 16;
     MatButtonModule,
     MatIconModule,
     MatSlideToggleModule,
+    MatSelectModule,
     MatProgressSpinnerModule,
   ],
   template: `
@@ -85,6 +97,44 @@ const MIN_SECRET_LENGTH = 16;
                min="30" max="600" />
         <mat-hint [class.warn]="!isRecapBufferValid">{{ recapBufferHint }}</mat-hint>
       </mat-form-field>
+
+      <div class="toggle-row">
+        <mat-slide-toggle [(ngModel)]="reminderWindowEnabled" color="primary">
+          Promemoria in fascia oraria
+        </mat-slide-toggle>
+        <div class="toggle-hint">
+          Disattivato, il promemoria parte esattamente 24 ore prima dell'appuntamento.
+          Attivato, parte il giorno prima dentro la fascia scelta: il paziente ha così
+          margine reale per disdire entro le 24 ore, e gli invii non si concentrano
+          sugli orari degli appuntamenti.
+        </div>
+      </div>
+
+      @if (reminderWindowEnabled) {
+        <div class="window-row">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Inizio fascia</mat-label>
+            <input matInput type="time" [(ngModel)]="reminderWindowStart" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Fine fascia</mat-label>
+            <input matInput type="time" [(ngModel)]="reminderWindowEnd" />
+          </mat-form-field>
+        </div>
+
+        <div class="field-hint" [class.warn]="!isReminderWindowValid">{{ reminderWindowHint }}</div>
+
+        <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+          <mat-label>Appuntamenti che iniziano prima delle {{ reminderWindowEnd }}</mat-label>
+          <mat-select [(ngModel)]="reminderEarlyPolicy">
+            <mat-option value="SHIFT_PREVIOUS_DAY">Anticipa alla fascia del giorno precedente</mat-option>
+            <mat-option value="EXACT_24H">Invia a 24 ore esatte, fuori fascia</mat-option>
+            <mat-option value="FORCE_WINDOW">Invia comunque in fascia (meno di 24 ore)</mat-option>
+          </mat-select>
+          <mat-hint [class.warn]="reminderEarlyPolicy === 'FORCE_WINDOW'">{{ earlyPolicyHint }}</mat-hint>
+        </mat-form-field>
+      }
 
       <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
         <mat-label>Giorni di conservazione log</mat-label>
@@ -177,6 +227,29 @@ const MIN_SECRET_LENGTH = 16;
       margin-top: 4px;
     }
 
+    .window-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .window-row mat-form-field {
+      flex: 1 1 160px;
+    }
+
+    /* Hint sotto una coppia di campi affiancati: mat-hint appartiene a un solo
+       mat-form-field e qui la nota vale per entrambi gli orari. */
+    .field-hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: -8px;
+    }
+
+    .field-hint.warn {
+      color: #c62828;
+      font-weight: 500;
+    }
+
     .form-actions {
       display: flex;
       align-items: center;
@@ -232,6 +305,10 @@ export class ConfigFormComponent {
   sendCancelNotification = false;
   sendUpdateNotification = true;
   recapBufferSeconds = 60;
+  reminderWindowEnabled = false;
+  reminderWindowStart = '08:30';
+  reminderWindowEnd = '09:00';
+  reminderEarlyPolicy: WhatsappReminderEarlyPolicy = 'SHIFT_PREVIOUS_DAY';
   retentionDays = 730;
   showApiKey = false;
   showSecret = false;
@@ -251,6 +328,10 @@ export class ConfigFormComponent {
       this.sendCancelNotification = this.config.sendCancelNotification || false;
       this.sendUpdateNotification = this.config.sendUpdateNotification ?? true;
       this.recapBufferSeconds = this.config.recapBufferSeconds ?? 60;
+      this.reminderWindowEnabled = this.config.reminderWindowEnabled ?? false;
+      this.reminderWindowStart = this.config.reminderWindowStart || '08:30';
+      this.reminderWindowEnd = this.config.reminderWindowEnd || '09:00';
+      this.reminderEarlyPolicy = this.config.reminderEarlyPolicy || 'SHIFT_PREVIOUS_DAY';
       this.retentionDays = this.config.retentionDays ?? 730;
       // Don't set apiKey/webhookSecret from config (they're masked)
     }
@@ -306,6 +387,65 @@ export class ConfigFormComponent {
     );
   }
 
+  /** Durata della fascia in minuti, o null se un orario non è leggibile. */
+  private get reminderWindowMinutes(): number | null {
+    const start = this.parseHhMm(this.reminderWindowStart);
+    const end = this.parseHhMm(this.reminderWindowEnd);
+    return start === null || end === null ? null : end - start;
+  }
+
+  private parseHhMm(value: string): number | null {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value ?? '');
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  }
+
+  get isReminderWindowValid(): boolean {
+    if (!this.reminderWindowEnabled) return true;
+    const minutes = this.reminderWindowMinutes;
+    return minutes !== null && minutes >= MIN_REMINDER_WINDOW_MINUTES;
+  }
+
+  get reminderWindowHint(): string {
+    const minutes = this.reminderWindowMinutes;
+
+    if (minutes === null) {
+      return '⚠ Orari non validi: usa il formato HH:mm';
+    }
+    if (minutes < MIN_REMINDER_WINDOW_MINUTES) {
+      return `⚠ La fine deve essere almeno ${MIN_REMINDER_WINDOW_MINUTES} minuti dopo l'inizio`;
+    }
+
+    // Il gateway tiene almeno 10s fra due messaggi: oltre questa soglia gli
+    // ultimi promemoria escono comunque, ma dopo la fine della fascia.
+    const capacity = Math.floor((minutes * 60) / REMINDER_MIN_SPACING_SECONDS);
+    return (
+      `Fascia di ${minutes} minuti: gli invii vengono distribuiti al suo interno con intervalli ` +
+      `casuali. Ci stanno fino a ~${capacity} promemoria al giorno; oltre, gli ultimi slittano ` +
+      'dopo la fine della fascia.'
+    );
+  }
+
+  get earlyPolicyHint(): string {
+    switch (this.reminderEarlyPolicy) {
+      case 'EXACT_24H':
+        return (
+          "Il promemoria parte all'ora esatta dell'appuntamento, il giorno prima: " +
+          'fuori fascia e fuori dalla distribuzione.'
+        );
+      case 'FORCE_WINDOW':
+        return (
+          '⚠ Il promemoria parte comunque nella fascia del giorno prima, quindi con MENO di ' +
+          '24 ore di preavviso: è la condizione che la fascia serve a evitare.'
+        );
+      default:
+        return (
+          'Il promemoria arretra alla fascia del giorno ancora precedente, così il preavviso ' +
+          'resta sopra le 24 ore. Per questi invii viene usato il template «Promemoria 48h» ' +
+          '(dove scrivere «dopodomani»); se non è compilato si ricade su «Promemoria 24h».'
+        );
+    }
+  }
+
   get hasInvalidSecretLength(): boolean {
     return (
       (this.apiKey.length > 0 && this.apiKey.length < MIN_SECRET_LENGTH) ||
@@ -315,7 +455,7 @@ export class ConfigFormComponent {
   }
 
   onSave(): void {
-    if (this.hasInvalidSecretLength || !this.isRecapBufferValid) return;
+    if (this.hasInvalidSecretLength || !this.isRecapBufferValid || !this.isReminderWindowValid) return;
     const input: WhatsappConfigInput = {
       gatewayUrl: this.gatewayUrl,
       tenantApiId: this.tenantApiId,
@@ -323,6 +463,10 @@ export class ConfigFormComponent {
       sendCancelNotification: this.sendCancelNotification,
       sendUpdateNotification: this.sendUpdateNotification,
       recapBufferSeconds: this.recapBufferSeconds,
+      reminderWindowEnabled: this.reminderWindowEnabled,
+      reminderWindowStart: this.reminderWindowStart,
+      reminderWindowEnd: this.reminderWindowEnd,
+      reminderEarlyPolicy: this.reminderEarlyPolicy,
       retentionDays: this.retentionDays,
     };
     if (this.apiKey) input.apiKey = this.apiKey;

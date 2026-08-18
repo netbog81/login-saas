@@ -32,9 +32,7 @@
       <div
         *ngFor="let item of filteredOperators; trackBy: trackByOperatorId"
         class="operator-card"
-        [class.selected]="selectedOperator === item"
         [class.has-template]="item.status !== 'none'"
-        (click)="selectOperator(item)"
       >
         <!-- Card Header -->
         <div class="card-header">
@@ -48,44 +46,56 @@
           </div>
         </div>
 
-        <!-- Template Details -->
-        <div class="card-details" *ngIf="item.assignment">
-          <div class="detail-row">
-            <span class="label">Template:</span>
-            <span class="value">{{ item.patternGroupName }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="label">Validità:</span>
-            <span class="value">{{ getValidityLabel(item) }}</span>
-          </div>
-          <div class="detail-row" *ngIf="getExpirationWarning(item)">
-            <span class="warning-message">
-              {{ getExpirationWarning(item) }}
-            </span>
+        <!-- Timeline assegnazioni -->
+        <div class="assignment-timeline" *ngIf="item.rows.length > 0">
+          <div
+            *ngFor="let row of item.rows; trackBy: trackByAssignmentId"
+            class="timeline-row"
+            [ngClass]="'row-' + row.state"
+          >
+            <div class="row-main">
+              <span class="row-state">{{ getRowStateLabel(row) }}</span>
+              <span class="row-template" [title]="row.patternGroupName">{{ row.patternGroupName }}</span>
+              <span class="row-validity">{{ getRowValidityLabel(row) }}</span>
+            </div>
+            <div class="row-room" *ngIf="getRowRoomLabel(row)">
+              🚪 {{ getRowRoomLabel(row) }}
+            </div>
+            <div class="row-warning" *ngIf="getRowExpirationWarning(row)">
+              ⚠️ {{ getRowExpirationWarning(row) }}
+            </div>
+            <div class="row-actions">
+              <button
+                class="btn btn-xs btn-secondary"
+                (click)="openEditModal(item, row)"
+                title="Modifica le date di validità"
+              >
+                Modifica
+              </button>
+              <button
+                class="btn btn-xs btn-danger"
+                (click)="removeRow(item, row)"
+                [title]="row.state === 'future' ? 'Elimina assegnazione futura' : 'Revoca assegnazione'"
+              >
+                {{ row.state === 'future' ? 'Elimina' : 'Revoca' }}
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- No Template Message -->
-        <div class="no-template" *ngIf="!item.assignment">
+        <div class="no-template" *ngIf="item.rows.length === 0">
           <p>Nessun template assegnato</p>
         </div>
 
         <!-- Card Actions -->
-        <div class="card-actions" (click)="$event.stopPropagation()">
+        <div class="card-actions">
           <button
             class="btn btn-sm btn-primary"
-            (click)="openAssignModal(item)"
-            [title]="item.assignment ? 'Modifica assegnazione' : 'Assegna template'"
+            (click)="openCreateModal(item)"
+            title="Aggiungi una nuova assegnazione alla timeline"
           >
-            {{ item.assignment ? 'Modifica' : 'Assegna' }}
-          </button>
-          <button
-            class="btn btn-sm btn-danger"
-            (click)="removeAssignment(item)"
-            *ngIf="item.assignment"
-            title="Rimuovi assegnazione"
-          >
-            Rimuovi
+            + Nuova assegnazione
           </button>
         </div>
       </div>
@@ -105,21 +115,23 @@
     <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>
-          Assegna Template a {{ currentOperator?.operator?.name }}
+          {{ modalMode === 'create' ? 'Nuova assegnazione per' : 'Modifica assegnazione di' }}
+          {{ currentOperator?.operator?.name }}
           {{ currentOperator?.operator?.surname || '' }}
         </h3>
         <button class="close-btn" (click)="onAssignCancel()">×</button>
       </div>
 
       <div class="modal-body">
-        <div class="form-group">
-          <label for="patternGroupSelect">Pattern Group *</label>
+        <div class="form-group" *ngIf="modalMode === 'create'">
+          <label for="patternGroupSelect">Template *</label>
           <select
             id="patternGroupSelect"
             class="form-control"
             [(ngModel)]="selectedPatternGroupId"
+            (ngModelChange)="onAssignFieldChange()"
           >
-            <option value="">Seleziona un pattern group...</option>
+            <option value="">Seleziona un template...</option>
             <option *ngFor="let pg of assignablePatternGroups" [value]="pg.id">
               {{ pg.name }} ({{ pg.patternDuration }} giorni)
             </option>
@@ -130,6 +142,15 @@
           </small>
         </div>
 
+        <div class="form-group" *ngIf="modalMode === 'edit'">
+          <label>Template</label>
+          <div class="readonly-value">{{ editingRow?.patternGroupName }}</div>
+          <small class="form-text">
+            Per cambiare template: elimina o chiudi questa assegnazione e
+            creane una nuova.
+          </small>
+        </div>
+
         <div class="form-group">
           <label for="patternStartDate">Data Inizio Pattern *</label>
           <input
@@ -137,6 +158,7 @@
             type="date"
             class="form-control"
             [(ngModel)]="assignPatternStartDate"
+            (ngModelChange)="onAssignFieldChange()"
           />
           <small class="form-text">
             Data di riferimento per l'inizio del ciclo del pattern
@@ -151,6 +173,7 @@
               type="date"
               class="form-control"
               [(ngModel)]="assignValidFrom"
+              (ngModelChange)="onAssignFieldChange()"
             />
           </div>
 
@@ -161,13 +184,140 @@
               type="date"
               class="form-control"
               [(ngModel)]="assignValidUntil"
+              (ngModelChange)="onAssignFieldChange()"
             />
+            <small class="form-text" *ngIf="modalMode === 'edit'">
+              Lascia vuoto per rendere l'assegnazione senza scadenza
+            </small>
           </div>
         </div>
 
-        <div class="info-message" *ngIf="currentOperator?.assignment">
-          <strong>Nota:</strong> Questa operazione sostituirà l'assegnazione
-          esistente del pattern group "{{ currentOperator?.patternGroupName }}".
+        <div class="form-group truncate-option" *ngIf="modalMode === 'create' && truncatableRow">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="truncatePrevious" />
+            Chiudi automaticamente l'assegnazione precedente
+          </label>
+          <small class="form-text">
+            "{{ truncatableRow?.patternGroupName }}"
+            ({{ getRowValidityLabel(truncatableRow!) }}) verrà chiusa al
+            {{ truncateUntilLabel }}.
+          </small>
+        </div>
+
+        <!-- Studio e poltrona di default (tendine filtrate su disponibilità reale) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="roomSelect">
+              Studio (opzionale)
+              <span class="availability-hint" *ngIf="availabilityLoading">verifica disponibilità...</span>
+            </label>
+            <select
+              id="roomSelect"
+              class="form-control"
+              [(ngModel)]="selectedRoomId"
+              (ngModelChange)="onRoomChange()"
+            >
+              <option value="">Nessuno studio</option>
+              <option
+                *ngFor="let opt of defaultRoomOptions"
+                [value]="opt.id"
+                [disabled]="opt.disabled"
+              >
+                {{ opt.name }}{{ opt.suffix }}
+              </option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="chairSelect">Poltrona (opzionale)</label>
+            <select
+              id="chairSelect"
+              class="form-control"
+              [(ngModel)]="selectedChairId"
+              (ngModelChange)="invalidateConflictCheck()"
+              [disabled]="!selectedRoomId || defaultChairOptions.length === 0"
+            >
+              <option value="">Nessuna poltrona</option>
+              <option
+                *ngFor="let opt of defaultChairOptions"
+                [value]="opt.id"
+                [disabled]="opt.disabled"
+              >
+                {{ opt.name }}{{ opt.suffix }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Modalità grafica: sempre visibile, attiva appena c'è un template -->
+        <div class="form-group">
+          <button
+            type="button"
+            class="btn btn-sm btn-primary"
+            (click)="openRoomEditor()"
+            [disabled]="!editorPatternGroup"
+          >
+            🎨 Modalità grafica — abbina studi alle fasce del template
+          </button>
+          <small class="form-text" *ngIf="!editorPatternGroup">
+            Seleziona prima un template per usare la modalità grafica.
+          </small>
+        </div>
+
+        <!-- Override per giorno/fascia -->
+        <div class="form-group overrides-section">
+          <button type="button" class="btn btn-sm btn-secondary" (click)="showOverrides = !showOverrides">
+            {{ showOverrides ? '▾' : '▸' }} Studi per giorno/fascia (avanzato)
+            <span *ngIf="overridesDraft.length > 0">— {{ overridesDraft.length }}</span>
+          </button>
+
+          <div class="overrides-editor" *ngIf="showOverrides">
+            <div class="override-row" *ngFor="let ov of overridesDraft; let i = index">
+              <select class="form-control" [(ngModel)]="ov.dayInPattern" (ngModelChange)="invalidateConflictCheck()">
+                <option *ngFor="let day of overrideDayOptions" [ngValue]="day.value">
+                  {{ day.label }}
+                </option>
+              </select>
+              <input type="time" class="form-control" [(ngModel)]="ov.startTime"
+                     (ngModelChange)="invalidateConflictCheck()" title="Dalle (vuoto = tutto il giorno)" />
+              <input type="time" class="form-control" [(ngModel)]="ov.endTime"
+                     (ngModelChange)="invalidateConflictCheck()" title="Alle" />
+              <select class="form-control" [(ngModel)]="ov.roomId" (ngModelChange)="onOverrideRoomChange(ov)">
+                <option value="">Studio...</option>
+                <option *ngFor="let opt of overrideRoomOptions(ov)" [value]="opt.id" [disabled]="opt.disabled">
+                  {{ opt.name }}{{ opt.suffix }}
+                </option>
+              </select>
+              <select class="form-control" [(ngModel)]="ov.chairId"
+                      (ngModelChange)="invalidateConflictCheck()"
+                      [disabled]="!ov.roomId || overrideChairOptions(ov).length === 0">
+                <option value="">Poltrona...</option>
+                <option *ngFor="let opt of overrideChairOptions(ov)" [value]="opt.id" [disabled]="opt.disabled">
+                  {{ opt.name }}{{ opt.suffix }}
+                </option>
+              </select>
+              <button type="button" class="btn btn-xs btn-danger" (click)="removeOverrideDraft(i)">✕</button>
+            </div>
+            <button type="button" class="btn btn-xs btn-secondary" (click)="addOverrideDraft()">
+              + Aggiungi override
+            </button>
+            <small class="form-text">
+              Fascia vuota = tutto il giorno. L'override sostituisce lo studio
+              di default per quel giorno/fascia del pattern.
+            </small>
+          </div>
+        </div>
+
+        <div class="warning-box" *ngIf="conflictWarnings.length > 0">
+          <strong>Condivisione studi (posti sufficienti):</strong>
+          <ul>
+            <li *ngFor="let w of conflictWarnings">{{ w }}</li>
+          </ul>
+          <small>Premi "Salva comunque" per confermare.</small>
+        </div>
+
+        <div class="error" *ngIf="modalError">
+          {{ modalError }}
         </div>
       </div>
 
@@ -175,10 +325,28 @@
         <button class="btn btn-secondary" (click)="onAssignCancel()">
           Annulla
         </button>
-        <button class="btn btn-primary" (click)="onAssignSave()">
-          Salva Assegnazione
+        <button class="btn btn-primary" (click)="onAssignSave()" [disabled]="checkingConflicts">
+          {{ checkingConflicts
+              ? 'Verifica conflitti...'
+              : conflictWarnings.length > 0
+                ? 'Salva comunque'
+                : modalMode === 'create' ? 'Salva Assegnazione' : 'Salva Modifiche' }}
         </button>
       </div>
     </div>
   </div>
+
+  <!-- Editor grafico abbinamento studi (dialog quasi-fullscreen) -->
+  <app-assignment-room-editor
+    *ngIf="showRoomEditor && editorPatternGroup"
+    [patternGroup]="editorPatternGroup"
+    [rooms]="rooms"
+    [roomAvailability]="roomAvailability"
+    [initialRoomId]="selectedRoomId"
+    [initialChairId]="selectedChairId"
+    [initialOverrides]="overridesDraft"
+    [operatorLabel]="(currentOperator?.operator?.name || '') + ' ' + (currentOperator?.operator?.surname || '')"
+    (save)="onRoomEditorSave($event)"
+    (cancelEditor)="onRoomEditorCancel()">
+  </app-assignment-room-editor>
 </div>

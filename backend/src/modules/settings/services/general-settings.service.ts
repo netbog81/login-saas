@@ -33,6 +33,10 @@ export const SETTINGS_KEYS = {
   CALENDAR_OPERATORS_SELECTED_ON_LOAD: 'calendar.operatorsSelectedOnLoad',
   CALENDAR_SHOW_GYM_INSTRUCTORS: 'calendar.showGymInstructorsInOperators',
   CALENDAR_DEFAULT_OPERATOR_CATEGORY: 'calendar.defaultOperatorCategory',
+  CALENDAR_APPOINTMENT_CLICK_ACTION: 'calendar.appointmentClickAction',
+
+  // WhatsApp
+  WHATSAPP_QUICK_REPLIES: 'whatsapp.quickReplies',
 
   // Auto Attendance (cambio automatico stato appuntamento)
   AUTO_ATTENDANCE_ENABLED: 'autoAttendance.enabled',
@@ -289,6 +293,38 @@ export class GeneralSettingsService {
         valueType: 'string',
         category: 'calendar'
       },
+      {
+        key: SETTINGS_KEYS.CALENDAR_APPOINTMENT_CLICK_ACTION,
+        value: 'edit-first',
+        description:
+          'Cosa fa il click su un appuntamento nella vista operatori: ' +
+          'edit-first = click apre la modifica e doppio click il riepilogo; ' +
+          'summary-first = il contrario',
+        valueType: 'string',
+        category: 'calendar'
+      },
+      // WhatsApp — risposte rapide della chat
+      {
+        key: SETTINGS_KEYS.WHATSAPP_QUICK_REPLIES,
+        value: [
+          {
+            label: 'Confermiamo',
+            text: 'Buongiorno, le confermiamo l\'appuntamento. A presto!',
+          },
+          {
+            label: 'Richiamo io',
+            text: 'Buongiorno, la richiamiamo a breve per accordarci.',
+          },
+          {
+            label: 'Ci scusiamo',
+            text: 'Ci scusiamo per il disagio, stiamo verificando e le facciamo sapere.',
+          },
+        ],
+        description:
+          'Risposte rapide proposte nella chat WhatsApp: elenco di oggetti { label, text }',
+        valueType: 'json',
+        category: 'whatsapp'
+      },
       // Auto Attendance
       {
         key: SETTINGS_KEYS.AUTO_ATTENDANCE_ENABLED,
@@ -425,8 +461,9 @@ export class GeneralSettingsService {
     operatorsSelectedOnLoad: boolean;
     showGymInstructorsInOperators: boolean;
     defaultOperatorCategory: string;
+    appointmentClickAction: string;
   }> {
-    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground, blockAppointmentsOutsideAvailability, operatorsSelectedOnLoad, showGymInstructorsInOperators, defaultOperatorCategory] = await Promise.all([
+    const [startHour, endHour, showWorkingHoursOnly, showWeekend, slotDuration, defaultView, showUnavailableCellsBackground, blockAppointmentsOutsideAvailability, operatorsSelectedOnLoad, showGymInstructorsInOperators, defaultOperatorCategory, appointmentClickAction] = await Promise.all([
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_START_HOUR, 7),
       this.getValue<number>(SETTINGS_KEYS.CALENDAR_END_HOUR, 21),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_WORKING_HOURS_ONLY, true),
@@ -438,6 +475,7 @@ export class GeneralSettingsService {
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_OPERATORS_SELECTED_ON_LOAD, false),
       this.getValue<boolean>(SETTINGS_KEYS.CALENDAR_SHOW_GYM_INSTRUCTORS, true),
       this.getValue<string>(SETTINGS_KEYS.CALENDAR_DEFAULT_OPERATOR_CATEGORY, 'all'),
+      this.getValue<string>(SETTINGS_KEYS.CALENDAR_APPOINTMENT_CLICK_ACTION, 'edit-first'),
     ]);
 
     return {
@@ -452,6 +490,7 @@ export class GeneralSettingsService {
       operatorsSelectedOnLoad,
       showGymInstructorsInOperators,
       defaultOperatorCategory,
+      appointmentClickAction,
     };
   }
 

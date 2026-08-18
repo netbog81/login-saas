@@ -28,6 +28,8 @@ import { GymException } from './entities/gym-exception.entity';
 import { GymExceptionSubstitute } from './entities/gym-exception-substitute.entity';
 import { OperatorAbsenceType } from './entities/operator-absence-type.entity';
 import { Room } from './entities/room.entity';
+import { Chair } from './entities/chair.entity';
+import { TemplateAssignmentRoomOverride } from './entities/template-assignment-room-override.entity';
 import { ServiceInstrument } from './entities/service-instrument.entity';
 import { AppointmentInstrument } from './entities/appointment-instrument.entity';
 import { AppointmentLog } from './entities/appointment-log.entity';
@@ -62,6 +64,8 @@ import { InstrumentService } from './services/instrument.service';
 import { GymRoomService } from './services/gym-room.service';
 import { GymScheduleService } from './services/gym-schedule.service';
 import { RoomService } from './services/room.service';
+import { ChairService } from './services/chair.service';
+import { RoomConflictService } from './services/room-conflict.service';
 import { TemplateAssignmentService } from './services/template-assignment.service';
 import { PatternGroupService } from './services/pattern-group.service';
 import { HolidayService } from './services/holiday.service';
@@ -95,6 +99,7 @@ import { InstrumentResolver } from './resolvers/instrument.resolver';
 import { GymRoomResolver } from './resolvers/gym-room.resolver';
 import { GymScheduleResolver } from './resolvers/gym-schedule.resolver';
 import { RoomResolver } from './resolvers/room.resolver';
+import { ChairResolver } from './resolvers/chair.resolver';
 import { TemplateAssignmentResolver } from './resolvers/template-assignment.resolver';
 import { PatternGroupResolver } from './resolvers/pattern-group.resolver';
 import { AvailabilityExceptionResolver } from './resolvers/availability-exception.resolver';
@@ -142,6 +147,8 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     GymRoomService,
     GymScheduleService,
     RoomService,
+    ChairService,
+    RoomConflictService,
     TemplateAssignmentService,
     PatternGroupService,
     HolidayService,
@@ -176,6 +183,7 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     GymRoomResolver,
     GymScheduleResolver,
     RoomResolver,
+    ChairResolver,
     TemplateAssignmentResolver,
     PatternGroupResolver,
     AvailabilityExceptionResolver,
@@ -203,6 +211,8 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     GymRoomService,
     GymScheduleService,
     RoomService,
+    ChairService,
+    RoomConflictService,
     TemplateAssignmentService,
     PatternGroupService,
     HolidayService,

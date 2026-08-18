@@ -77,8 +77,10 @@ export interface PatientAppointmentsDialogData {
           [appointments]="appointments"
           [loading]="loading"
           [canCancel]="canCancel"
+          [sendingBatch]="sendingBatch"
           (cancelAppointment)="onCancel($event)"
-          (sendRecap)="onSendRecap($event)">
+          (sendRecap)="onSendRecap($event)"
+          (sendRecapBatch)="onSendRecapBatch($event)">
         </app-patient-appointments-list>
       </div>
     </div>
@@ -182,6 +184,7 @@ export class PatientAppointmentsDialogComponent implements OnInit, OnDestroy {
   patient: Patient = this.data.patient;
   appointments: AvailabilityAppointment[] = [];
   loading = false;
+  sendingBatch = false;
   error: string | null = null;
 
   ngOnInit(): void {
@@ -235,6 +238,41 @@ export class PatientAppointmentsDialogComponent implements OnInit, OnDestroy {
           console.error('[PatientAppointmentsDialog] Error cancelling appointment:', err);
           this.ngZone.run(() => {
             this.snackBar.open('Errore nella cancellazione', 'OK', { duration: 3000 });
+            this.cdr.markForCheck();
+          });
+        },
+      });
+  }
+
+  /**
+   * Invio di UN unico messaggio WhatsApp con il riepilogo degli appuntamenti
+   * filtrati. Istantaneo: passa dalla chat, non dalle code del gateway.
+   */
+  onSendRecapBatch(appts: AvailabilityAppointment[]): void {
+    if (appts.length === 0 || this.sendingBatch) return;
+    this.sendingBatch = true;
+    this.cdr.markForCheck();
+
+    this.appointmentService.sendAppointmentsRecap(this.patient.id, appts.map((a) => a.id))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.ngZone.run(() => {
+            this.sendingBatch = false;
+            this.snackBar.open(
+              `Recap WhatsApp inviato (${appts.length} appuntament${appts.length > 1 ? 'i' : 'o'})`,
+              'OK',
+              { duration: 3000 },
+            );
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          console.error('[PatientAppointmentsDialog] Error sending batch recap:', err);
+          this.ngZone.run(() => {
+            this.sendingBatch = false;
+            const msg = err?.graphQLErrors?.[0]?.message || 'Errore nell\'invio del recap';
+            this.snackBar.open(msg, 'OK', { duration: 5000 });
             this.cdr.markForCheck();
           });
         },

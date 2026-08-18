@@ -4,7 +4,11 @@ import { Appointment } from '../../../models/appointment.model';
 import { User } from '../../../models/user.model';
 
 export interface SummaryAction {
-  type: 'edit' | 'delete' | 'share' | 'close';
+  /**
+   * `chat` apre la conversazione WhatsApp interna col paziente; `share` resta
+   * la condivisione del riepilogo verso client esterni (mail o wa.me).
+   */
+  type: 'edit' | 'delete' | 'share' | 'chat' | 'close';
   appointment: Appointment;
   shareMethod?: 'email' | 'whatsapp';
 }
@@ -53,11 +57,24 @@ export class AppointmentSummaryComponent {
     });
   }
 
+  /**
+   * "Recap WhatsApp": NON è una condivisione del testo come per l'email —
+   * fa partire subito al paziente il messaggio di recap dell'appuntamento,
+   * lo stesso che riceve alla prenotazione.
+   */
   onShareWhatsapp(): void {
     this.action.emit({
       type: 'share',
       appointment: this.appointment,
       shareMethod: 'whatsapp'
+    });
+  }
+
+  /** Apre la chat WhatsApp interna col paziente (non wa.me). */
+  onOpenChat(): void {
+    this.action.emit({
+      type: 'chat',
+      appointment: this.appointment
     });
   }
 
@@ -70,6 +87,24 @@ export class AppointmentSummaryComponent {
 
   get formattedTime(): string {
     return `${this.appointment.startTime} - ${this.appointment.endTime}`;
+  }
+
+  /**
+   * Recapito telefonico del paziente: prima l'anagrafica se caricata, poi il
+   * numero denormalizzato sull'appuntamento (sempre presente se la
+   * prenotazione l'aveva). Serve all'operatore che deve chiamare il paziente.
+   */
+  get contactPhone(): string {
+    const p = this.appointment.patient;
+    return p?.cellulare || p?.telefono || this.appointment.clientPhone || '';
+  }
+
+  get contactEmail(): string {
+    return this.appointment.patient?.email || '';
+  }
+
+  get hasContacts(): boolean {
+    return !!(this.contactPhone || this.contactEmail);
   }
 
   get duration(): string {

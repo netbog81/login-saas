@@ -1,0 +1,153 @@
+<div class="room-management">
+  <div class="header">
+    <h2>Studi e Poltrone</h2>
+    <div class="header-actions">
+      <label class="toggle-inactive">
+        <input type="checkbox" [(ngModel)]="showInactive" />
+        Mostra disattivati
+      </label>
+      <button class="btn btn-primary" (click)="openRoomForm()">+ Nuovo Studio</button>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="loading">Caricamento in corso...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <div class="rooms-list" *ngIf="!loading">
+    <div
+      *ngFor="let room of visibleRooms; trackBy: trackByRoomId"
+      class="room-card"
+      [class.inactive]="!room.isActive"
+    >
+      <div class="room-header">
+        <div class="room-title">
+          <span class="color-dot" [style.background]="room.color || '#4A90E2'"></span>
+          <h3>{{ room.name }}</h3>
+          <span class="capacity-badge" title="Capacità effettiva (poltrone attive o capienza)">
+            {{ effectiveCapacity(room) }} post{{ effectiveCapacity(room) === 1 ? 'o' : 'i' }}
+          </span>
+          <span class="inactive-badge" *ngIf="!room.isActive">Disattivato</span>
+        </div>
+        <div class="room-actions">
+          <button class="btn btn-sm btn-secondary" (click)="openRoomForm(room)">Modifica</button>
+          <button class="btn btn-sm btn-secondary" (click)="toggleRoomActive(room)">
+            {{ room.isActive ? 'Disattiva' : 'Riattiva' }}
+          </button>
+          <button class="btn btn-sm btn-danger" (click)="deleteRoom(room)">Elimina</button>
+        </div>
+      </div>
+
+      <div class="chairs-section">
+        <div class="chairs-header">
+          <span class="chairs-label">Poltrone</span>
+          <button class="btn btn-xs btn-secondary" (click)="openChairForm(room)">+ Poltrona</button>
+        </div>
+
+        <div class="chairs-list" *ngIf="visibleChairs(room).length > 0; else noChairs">
+          <div
+            *ngFor="let chair of visibleChairs(room); trackBy: trackByChairId"
+            class="chair-chip"
+            [class.inactive]="!chair.isActive"
+          >
+            <span class="chair-name">{{ chair.name }}</span>
+            <button class="chip-btn" title="Rinomina" (click)="openChairForm(room, chair)">✏️</button>
+            <button class="chip-btn" [title]="chair.isActive ? 'Disattiva' : 'Riattiva'" (click)="toggleChairActive(chair)">
+              {{ chair.isActive ? '⏸' : '▶' }}
+            </button>
+            <button class="chip-btn" title="Elimina" (click)="deleteChair(room, chair)">🗑</button>
+          </div>
+        </div>
+        <ng-template #noChairs>
+          <p class="no-chairs">
+            Nessuna poltrona configurata — ai fini dei conflitti vale la
+            capienza dello studio ({{ room.capacity }}).
+          </p>
+        </ng-template>
+
+        <!-- Form poltrona inline -->
+        <div class="chair-form" *ngIf="chairFormRoomId === room.id">
+          <input
+            type="text"
+            class="form-control"
+            [(ngModel)]="chairName"
+            [placeholder]="editingChairId ? 'Nuovo nome poltrona' : 'Nome poltrona (es. Poltrona 1)'"
+            (keyup.enter)="saveChair()"
+          />
+          <button class="btn btn-sm btn-primary" (click)="saveChair()">
+            {{ editingChairId ? 'Rinomina' : 'Aggiungi' }}
+          </button>
+          <button class="btn btn-sm btn-secondary" (click)="closeChairForm()">Annulla</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="empty-state" *ngIf="visibleRooms.length === 0">
+      <p>Nessuno studio configurato. Crea il primo studio con "+ Nuovo Studio".</p>
+    </div>
+  </div>
+
+  <!-- Modal studio -->
+  <div class="modal-overlay" *ngIf="showRoomForm"
+       (mousedown)="onOverlayMouseDown($event)"
+       (click)="onOverlayClick($event)">
+    <div class="modal" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditMode ? 'Modifica Studio' : 'Nuovo Studio' }}</h3>
+        <button class="close-btn" (click)="closeRoomForm()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="roomName">Nome *</label>
+          <input
+            id="roomName"
+            type="text"
+            class="form-control"
+            [(ngModel)]="editingRoom.name"
+            placeholder="Es. Studio 1"
+          />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="roomCapacity">Capienza</label>
+            <input
+              id="roomCapacity"
+              type="number"
+              min="1"
+              class="form-control"
+              [(ngModel)]="editingRoom.capacity"
+            />
+            <small class="form-text">
+              Usata per i conflitti solo se lo studio non ha poltrone configurate
+            </small>
+          </div>
+
+          <div class="form-group">
+            <label for="roomColor">Colore</label>
+            <input
+              id="roomColor"
+              type="color"
+              class="form-control color-input"
+              [(ngModel)]="editingRoom.color"
+            />
+          </div>
+        </div>
+
+        <div class="form-group" *ngIf="isEditMode">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editingRoom.isActive" />
+            Studio attivo
+          </label>
+        </div>
+
+        <div class="error" *ngIf="error">{{ error }}</div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeRoomForm()">Annulla</button>
+        <button class="btn btn-primary" (click)="saveRoom()">Salva</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -13,6 +13,13 @@ export interface GeneralSetting {
   updatedAt: Date;
 }
 
+/**
+ * Cosa fa il click su un appuntamento nella vista operatori del calendario.
+ * - 'edit-first'    → click = modifica, doppio click = riepilogo (default)
+ * - 'summary-first' → click = riepilogo, doppio click = modifica
+ */
+export type AppointmentClickAction = 'edit-first' | 'summary-first';
+
 export interface CalendarSettings {
   startHour: number;
   endHour: number;
@@ -25,6 +32,7 @@ export interface CalendarSettings {
   operatorsSelectedOnLoad: boolean;
   showGymInstructorsInOperators: boolean;
   defaultOperatorCategory: string;
+  appointmentClickAction: AppointmentClickAction;
 }
 
 const GET_ALL_SETTINGS = gql`
@@ -135,6 +143,7 @@ const GET_CALENDAR_SETTINGS = gql`
       operatorsSelectedOnLoad
       showGymInstructorsInOperators
       defaultOperatorCategory
+      appointmentClickAction
     }
   }
 `;
@@ -243,6 +252,7 @@ export class SettingsService extends BaseGraphQLService {
       operatorsSelectedOnLoad: false,
       showGymInstructorsInOperators: true,
       defaultOperatorCategory: 'all',
+      appointmentClickAction: 'edit-first',
     };
 
     return this.query<{ calendarSettings: CalendarSettings }>(GET_CALENDAR_SETTINGS)

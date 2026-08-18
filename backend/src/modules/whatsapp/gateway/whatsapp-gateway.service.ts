@@ -7,7 +7,11 @@ import { WhatsappTenantConfig } from '../config/entities/whatsapp-tenant-config.
 import { WhatsappLogService } from '../log/services/whatsapp-log.service';
 import { WhatsappTemplateService } from '../template/services/whatsapp-template.service';
 import { WhatsappMessageStatus, WhatsappMessageType, WhatsappTemplateType } from '../enums/whatsapp-enums';
-import { DispatchBookingPayload, DispatchUpdatePayload } from './dto/dispatch-booking.dto';
+import {
+  DispatchBookingPayload,
+  DispatchUpdatePayload,
+  ReminderWindowFields,
+} from './dto/dispatch-booking.dto';
 import { AvailabilityAppointment } from '../../availability/entities/availability-appointment.entity';
 
 /**
@@ -54,6 +58,7 @@ export class WhatsappGatewayService {
   async dispatchBooking(
     appointment: AvailabilityAppointment,
     patient: WhatsappPatientContact,
+    options?: { immediateRecap?: boolean },
   ): Promise<void> {
     try {
       this.logger.log(`[WA-DISPATCH] START appointmentId=${appointment.id}, patientId=${patient.id}`);
@@ -90,11 +95,15 @@ export class WhatsappGatewayService {
       const { date: fmtDate, time: fmtTime } = this.formatAppointment(appointment);
       const variables = { name: patientName, date: fmtDate, time: fmtTime };
 
-      const [recapMessage, reminderMessage, recapMultiTemplate] = await Promise.all([
-        this.renderTemplateOrUndefined(WhatsappTemplateType.RECAP_SINGLE, variables),
-        this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_24H, variables),
-        this.rawTemplateOrUndefined(WhatsappTemplateType.RECAP_MULTI),
-      ]);
+      const [recapMessage, reminderMessage, reminderMessageEarly, recapMultiTemplate] =
+        await Promise.all([
+          this.renderTemplateOrUndefined(WhatsappTemplateType.RECAP_SINGLE, variables),
+          this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_24H, variables),
+          // Quale dei due promemoria verrà usato lo decide il gateway, che è
+          // l'unico a sapere in che giorno cadrà l'invio: si mandano entrambi.
+          this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_48H, variables),
+          this.rawTemplateOrUndefined(WhatsappTemplateType.RECAP_MULTI),
+        ]);
 
       // Create log entry before calling gateway (status DISPATCHED)
       await this.logService.createLog({
@@ -118,9 +127,14 @@ export class WhatsappGatewayService {
           name: patientName,
           recapMessage,
           reminderMessage,
+          reminderMessageEarly,
           recapMultiTemplate,
           recapLine: `- ${fmtDate} alle ${fmtTime}`,
           recapDelaySeconds: config.recapBufferSeconds ?? undefined,
+          // Solo per il reinvio manuale: una prenotazione normale deve poter
+          // essere accorpata alle altre dello stesso paziente.
+          ...(options?.immediateRecap ? { recapImmediate: true } : {}),
+          ...this.reminderWindowFields(config),
         },
         correlationId,
       };
@@ -199,11 +213,12 @@ export class WhatsappGatewayService {
       // spostare il reminder 24h sul nuovo orario.
       const sendNotification = config.sendUpdateNotification !== false;
 
-      const [updateMessage, reminderMessage] = await Promise.all([
+      const [updateMessage, reminderMessage, reminderMessageEarly] = await Promise.all([
         sendNotification
           ? this.renderTemplateOrUndefined(WhatsappTemplateType.UPDATE, variables)
           : Promise.resolve(undefined),
         this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_24H, variables),
+        this.renderTemplateOrUndefined(WhatsappTemplateType.REMINDER_48H, variables),
       ]);
 
       if (sendNotification) {
@@ -229,7 +244,9 @@ export class WhatsappGatewayService {
           name: patientName,
           updateMessage,
           reminderMessage,
+          reminderMessageEarly,
           sendUpdateNotification: sendNotification,
+          ...this.reminderWindowFields(config),
         },
         correlationId,
       };
@@ -352,12 +369,69 @@ export class WhatsappGatewayService {
       );
 
       this.logger.log(`[WA-CANCEL] SUCCESS status=${response.status}`);
+
+      // Il gateway ha tolto il recap dal buffer prima che partisse: al paziente
+      // non è arrivato niente, quindi nemmeno i log devono raccontare un
+      // messaggio inviato e poi smentito. Si annullano entrambe le righe.
+      if (response.data?.recapSuppressed === true) {
+        await this.logService.cancelAllByAppointmentId(appointment.id);
+        this.logger.log(
+          `[WA-CANCEL] Recap soppresso per ${appointment.id}: disdetta dentro la finestra di raggruppamento`,
+        );
+      }
     } catch (error: any) {
       const responseData = error?.response?.data ? JSON.stringify(error.response.data) : 'no response data';
       this.logger.error(
         `[WA-CANCEL] FAILED appointmentId=${appointment.id}: ${error?.message} | response: ${responseData}`,
       );
     }
+  }
+
+  /**
+   * Invia un messaggio di chat scritto a mano dalla segreteria.
+   *
+   * A differenza dei dispatch (fire-and-forget) l'errore viene PROPAGATO: chi
+   * scrive in una chat deve sapere subito se il messaggio non è partito,
+   * altrimenti resterebbe convinto di aver risposto al paziente.
+   */
+  async sendChatMessage(params: {
+    phone: string;
+    text: string;
+    correlationId: string;
+    conversationId: string;
+    userId?: string;
+  }): Promise<void> {
+    const { config, apiKey } = await this.requireGatewayAccess();
+
+    const phone = this.formatPhoneNumber(params.phone);
+    if (!phone) {
+      throw new BadRequestException(`Numero di telefono non valido: ${params.phone}`);
+    }
+
+    const url = `${config.gatewayUrl}/whatsapp/chat/send`;
+    this.logger.log(
+      `[WA-CHAT] POST ${url} conversationId=${params.conversationId} correlationId=${params.correlationId}`,
+    );
+
+    await firstValueFrom(
+      this.httpService.post(
+        url,
+        {
+          phone,
+          text: params.text,
+          correlationId: params.correlationId,
+          conversationId: params.conversationId,
+        },
+        {
+          headers: {
+            'x-tenant-id': config.tenantApiId,
+            'x-tenant-api-key': apiKey,
+            'x-user-id': params.userId || 'SYSTEM',
+          },
+          timeout: 10000,
+        },
+      ),
+    );
   }
 
   /**
@@ -383,6 +457,64 @@ export class WhatsappGatewayService {
     return response.data ?? [];
   }
 
+  /**
+   * Non letti per numero secondo WhatsApp.
+   *
+   * Unica fonte del dato: l'evento `chats.update` di Evolution non trasporta il
+   * contatore, quindi una conversazione aperta da WhatsApp Web non lo comunica
+   * a nessuno. Va interrogato.
+   */
+  async getUnreadCounts(): Promise<Record<string, number>> {
+    const { config, apiKey } = await this.requireGatewayAccess();
+
+    const response = await firstValueFrom(
+      this.httpService.get<Record<string, number>>(
+        `${config.gatewayUrl}/whatsapp/chats/unread`,
+        {
+          headers: {
+            'x-tenant-id': config.tenantApiId,
+            'x-tenant-api-key': apiKey,
+          },
+          timeout: 20000,
+        },
+      ),
+    );
+
+    return response.data ?? {};
+  }
+
+  /**
+   * Stato di lettura delle conversazioni secondo WhatsApp.
+   *
+   * Va oltre il contatore, che per molte chat è nullo: guarda anche lo storico
+   * di stato dei messaggi in arrivo, dove compare la lettura fatta dalla
+   * segreteria su WhatsApp Web anche quando non ha risposto.
+   */
+  async getChatReadStates(
+    items: { phone: string; messageId?: string }[],
+  ): Promise<Record<string, 'read' | 'unread' | 'unknown'>> {
+    if (items.length === 0) return {};
+
+    const { config, apiKey } = await this.requireGatewayAccess();
+
+    const response = await firstValueFrom(
+      this.httpService.post<Record<string, 'read' | 'unread' | 'unknown'>>(
+        `${config.gatewayUrl}/whatsapp/chats/read-state`,
+        { items },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-tenant-id': config.tenantApiId,
+            'x-tenant-api-key': apiKey,
+          },
+          timeout: 60000,
+        },
+      ),
+    );
+
+    return response.data ?? {};
+  }
+
   /** Annulla un singolo invio programmato. `false` se il job non esiste più. */
   async cancelScheduled(jobId: string): Promise<boolean> {
     const { config, apiKey } = await this.requireGatewayAccess();
@@ -406,6 +538,22 @@ export class WhatsappGatewayService {
       if (error?.response?.status === 404) return false;
       throw error;
     }
+  }
+
+  /**
+   * Parametri della fascia di invio del promemoria, mandati al gateway solo se
+   * il tenant l'ha accesa: in loro assenza il gateway resta sul comportamento
+   * storico (promemoria alle 24h esatte). Spegnere la fascia non richiede quindi
+   * nessun coordinamento fra i due servizi.
+   */
+  private reminderWindowFields(config: WhatsappTenantConfig): ReminderWindowFields {
+    if (!config.reminderWindowEnabled) return {};
+
+    return {
+      reminderWindowStart: config.reminderWindowStart,
+      reminderWindowEnd: config.reminderWindowEnd,
+      reminderEarlyPolicy: config.reminderEarlyPolicy,
+    };
   }
 
   /** Config attiva + API key decifrata, o eccezione parlante. */

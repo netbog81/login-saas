@@ -4,6 +4,8 @@ import { Operator } from './operator.entity';
 import { Service } from './service.entity';
 import { Site } from './site.entity';
 import { GymRoom } from './gym-room.entity';
+import { Room } from './room.entity';
+import { Chair } from './chair.entity';
 import { AppointmentType } from './appointment-type.enum';
 import { AppointmentInstrument } from './appointment-instrument.entity';
 import { AppointmentService } from './appointment-service.entity';
@@ -279,6 +281,19 @@ export class AvailabilityAppointment {
   @Column('uuid', { nullable: true })
   gymRoomId?: string;
 
+  /**
+   * Snapshot dello studio/poltrona ereditati dall'assegnazione template
+   * dell'operatore al momento della prenotazione (o dello spostamento).
+   * Restano validi anche se le assegnazioni cambiano in seguito.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  roomId?: string;
+
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { nullable: true })
+  chairId?: string;
+
   @Field()
   @Column({ default: false })
   instrumentOrderMatters: boolean;
@@ -510,6 +525,16 @@ export class AvailabilityAppointment {
   @ManyToOne(() => GymRoom, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'gymRoomId' })
   gymRoom?: GymRoom;
+
+  @Field(() => Room, { nullable: true })
+  @ManyToOne(() => Room, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'roomId' })
+  room?: Room;
+
+  @Field(() => Chair, { nullable: true })
+  @ManyToOne(() => Chair, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'chairId' })
+  chair?: Chair;
 
   @Field(() => Site)
   @ManyToOne(() => Site, { onDelete: 'RESTRICT' })

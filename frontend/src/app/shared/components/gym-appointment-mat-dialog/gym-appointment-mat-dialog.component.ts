@@ -1,4 +1,4 @@
-import { Component, Inject, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, Inject, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
 import { MatDialogRef, MAT_DIALOG_DATA, MatDialogModule, MatDialog } from '@angular/material/dialog';
@@ -27,6 +27,8 @@ import { RecurringScopePanelComponent, RecurringScopeSelection } from '../recurr
 import { RecurringConflictsDialogComponent } from '../recurring-scope-panel/recurring-conflicts-dialog.component';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { tokenizeQuery, matchesAllTokens } from '../../utils/token-match';
+import { WhatsappChatStateService } from '../../../features/whatsapp-chat/services/whatsapp-chat-state.service';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 /**
  * Dati passati al dialog per la creazione di un appuntamento palestra.
@@ -120,8 +122,25 @@ export interface GymAppointmentMatDialogResult {
       <mat-divider></mat-divider>
 
       <form [formGroup]="form" class="appointment-form">
+        <!-- Paziente in MODIFICA: sola lettura. Riassegnare la prenotazione a
+             un altro paziente e' un'azione rara e distruttiva, quindi richiede
+             lo sblocco esplicito con "Cambia paziente". -->
+        <div class="patient-locked" *ngIf="patientLocked">
+          <mat-icon class="patient-locked-icon">person</mat-icon>
+          <div class="patient-locked-text">
+            <span class="patient-locked-label">Paziente</span>
+            <span class="patient-locked-name">{{ lockedPatientName || '—' }}</span>
+          </div>
+          <button mat-stroked-button type="button" (click)="unlockPatient()"
+                  matTooltip="Riassegna la prenotazione a un altro paziente">
+            <mat-icon>swap_horiz</mat-icon>
+            Cambia paziente
+          </button>
+        </div>
+
         <!-- Paziente con Autocomplete -->
-        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width"
+                        *ngIf="!patientLocked">
           <mat-label>Paziente *</mat-label>
           <input matInput
                  [matAutocomplete]="patientAuto"
@@ -148,6 +167,22 @@ export interface GymAppointmentMatDialogResult {
             Seleziona un paziente
           </mat-error>
         </mat-form-field>
+
+        <!-- Telefono del paziente: serve all'operatore che deve chiamarlo,
+             quindi e' visibile senza aprire l'anagrafica. -->
+        <div class="patient-contact" *ngIf="patientPhone">
+          <mat-icon class="patient-contact-icon">phone</mat-icon>
+          <a class="patient-contact-value" [href]="'tel:' + patientPhone">{{ patientPhone }}</a>
+          <button mat-icon-button type="button" (click)="copyPatientPhone()"
+                  [matTooltip]="phoneCopied ? 'Copiato' : 'Copia numero'">
+            <mat-icon>{{ phoneCopied ? 'check' : 'content_copy' }}</mat-icon>
+          </button>
+          <button mat-icon-button type="button" class="chat-button"
+                  (click)="openWhatsappChat()"
+                  matTooltip="Apri chat WhatsApp">
+            <mat-icon>forum</mat-icon>
+          </button>
+        </div>
 
         <!-- Servizi (multiselect) -->
         <div class="services-section" *ngIf="data.slotInfo.operator">
@@ -335,6 +370,72 @@ export interface GymAppointmentMatDialogResult {
       font-size: 0.875rem;
     }
 
+    /* Paziente in sola lettura (modalita' modifica). */
+    .patient-locked {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      background: #fafafa;
+    }
+
+    .patient-locked-icon {
+      color: #667eea;
+      flex: 0 0 auto;
+    }
+
+    .patient-locked-text {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .patient-locked-label {
+      font-size: 0.75rem;
+      color: #666;
+      line-height: 1.2;
+    }
+
+    .patient-locked-name {
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Recapito telefonico del paziente. */
+    .patient-contact {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: -8px;
+      color: #555;
+    }
+
+    .patient-contact-icon {
+      color: #667eea;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    .patient-contact-value {
+      color: #1976d2;
+      text-decoration: none;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .patient-contact-value:hover {
+      text-decoration: underline;
+    }
+
+    .chat-button mat-icon {
+      color: #25d366;
+    }
+
     .services-section {
       margin-top: 8px;
     }
@@ -478,7 +579,7 @@ export interface GymAppointmentMatDialogResult {
     }
   `]
 })
-export class GymAppointmentMatDialogComponent implements OnInit {
+export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
   private fb = inject(FormBuilder);
   private cdr = inject(ChangeDetectorRef);
   private dialog = inject(MatDialog);
@@ -486,6 +587,8 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   private gymRoomService = inject(GymRoomService);
   private patientService = inject(PatientService);
   private recurringAppointmentService = inject(AvailabilityAppointmentService);
+  private chatState = inject(WhatsappChatStateService);
+  private snackBar = inject(MatSnackBar);
 
   // Form
   form!: FormGroup;
@@ -499,6 +602,20 @@ export class GymAppointmentMatDialogComponent implements OnInit {
   loadingServices = false;
   saving = false;
   serverError = '';
+
+  /**
+   * Modalita' modifica: il paziente parte in sola lettura e si sblocca solo
+   * con "Cambia paziente". Senza questo, un click distratto sull'autocomplete
+   * riassegnava la prenotazione a un altro paziente.
+   */
+  patientUnlocked = false;
+  /** Nome mostrato nel blocco paziente in sola lettura. */
+  lockedPatientName = '';
+  /** Recapito telefonico del paziente selezionato (cellulare, poi fisso). */
+  patientPhone = '';
+  /** Feedback temporaneo del pulsante "copia numero". */
+  phoneCopied = false;
+  private phoneCopiedTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Serie ricorrente esistente (modalità modifica)
   loadingSeriesInfo = false;
@@ -537,6 +654,10 @@ export class GymAppointmentMatDialogComponent implements OnInit {
     }
   }
 
+  ngOnDestroy(): void {
+    if (this.phoneCopiedTimer) clearTimeout(this.phoneCopiedTimer);
+  }
+
   /** Data (YYYY-MM-DD) dell'occorrenza in modifica, per scope/serie. */
   get currentAppointmentDate(): string {
     return String(this.data.appointment?.appointmentDate ?? this.data.date ?? '').slice(0, 10);
@@ -547,21 +668,49 @@ export class GymAppointmentMatDialogComponent implements OnInit {
     return !!this.data.appointment;
   }
 
+  /** True finche' il paziente della prenotazione non e' stato sbloccato. */
+  get patientLocked(): boolean {
+    return this.isEditMode && !this.patientUnlocked;
+  }
+
+  /**
+   * Sblocca il campo paziente per riassegnare la prenotazione. Il valore
+   * corrente resta nel campo, cosi' l'operatore vede da cosa sta partendo.
+   */
+  unlockPatient(): void {
+    this.patientUnlocked = true;
+    this.cdr.markForCheck();
+  }
+
   /**
    * Prefill del form a partire dall'appuntamento da modificare: paziente,
    * note e servizi. La ricorrenza non e' modificabile in edit (single
    * occurrence), quindi viene ignorata.
    */
   private prefillFromAppointment(apt: GymAppointment): void {
-    // Paziente: valorizza il control e il display dell'autocomplete.
+    // Paziente: il control dell'autocomplete vuole l'OGGETTO Patient, non la
+    // stringa gia' formattata — `[displayWith]="displayPatient"` riapplica il
+    // formatter al valore del control, e su una stringa produceva
+    // "undefined undefined" al posto del nome.
+    this.lockedPatientName = apt.clientName || '';
+    this.patientPhone = apt.clientPhone || '';
+
     if (apt.patientId) {
       this.form.patchValue({ patientId: apt.patientId });
-      const existing = this.patients.find((p) => p.id == apt.patientId);
+      const existing = this.patients.find((p) => String(p.id) === String(apt.patientId));
       if (existing) {
-        this.patientSearchControl.setValue(this.displayPatient(existing));
-      } else if (apt.clientName) {
-        this.patientSearchControl.setValue(apt.clientName);
+        this.applySelectedPatient(existing);
+      } else {
+        // Paziente fuori dalla lista precaricata (che e' parziale): fallback
+        // immediato sui dati dell'appuntamento, poi lookup mirato per avere
+        // nome e recapito aggiornati dall'anagrafica.
+        this.patientSearchControl.setValue(this.syntheticPatientFrom(apt) as any);
+        this.loadPatientById(String(apt.patientId), apt);
       }
+    } else if (apt.clientName) {
+      // Prenotazione storica senza paziente collegato: mostra comunque il
+      // nominativo scritto sull'appuntamento.
+      this.patientSearchControl.setValue(this.syntheticPatientFrom(apt) as any);
     }
 
     this.form.patchValue({ notes: apt.notes || '' });
@@ -729,10 +878,15 @@ export class GymAppointmentMatDialogComponent implements OnInit {
 
   /**
    * Funzione display per l'autocomplete paziente.
+   *
+   * Tollera anche una stringa: MatAutocomplete applica `displayWith` a
+   * QUALSIASI valore del control (anche a quello digitato a mano), e su una
+   * stringa l'accesso a `.cognome`/`.nome` avrebbe reso "undefined undefined".
    */
-  displayPatient = (patient: Patient | null): string => {
+  displayPatient = (patient: Patient | string | null): string => {
     if (!patient) return '';
-    return `${patient.cognome} ${patient.nome}`;
+    if (typeof patient === 'string') return patient;
+    return `${patient.cognome ?? ''} ${patient.nome ?? ''}`.trim();
   };
 
   /**
@@ -746,9 +900,99 @@ export class GymAppointmentMatDialogComponent implements OnInit {
       if (!this.patients.find((p) => p.id === patient.id)) {
         this.patients = [patient, ...this.patients];
       }
-      this.form.patchValue({ patientId: patient.id });
-      this.cdr.markForCheck();
+      this.applySelectedPatient(patient);
     }
+  }
+
+  /**
+   * Punto unico in cui un paziente diventa "quello della prenotazione":
+   * allinea id nel form, display dell'autocomplete, nome del blocco bloccato
+   * e recapito telefonico.
+   */
+  private applySelectedPatient(patient: Patient): void {
+    this.form.patchValue({ patientId: patient.id });
+    this.patientSearchControl.setValue(patient as any);
+    this.lockedPatientName = this.displayPatient(patient);
+    this.patientPhone = patient.cellulare || patient.telefono || this.patientPhone || '';
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Paziente "finto" costruito dai dati denormalizzati sull'appuntamento.
+   * Serve a mostrare subito nome e telefono quando l'anagrafica non e' (ancora)
+   * disponibile, senza lasciare il campo vuoto.
+   */
+  private syntheticPatientFrom(apt: GymAppointment): Patient {
+    return {
+      id: apt.patientId ?? '',
+      nome: '',
+      cognome: apt.clientName ?? '',
+      cellulare: apt.clientPhone,
+      email: apt.clientEmail,
+    } as unknown as Patient;
+  }
+
+  /**
+   * Lookup mirato del paziente quando non e' nella lista precaricata (che e'
+   * parziale: l'anagrafica ha migliaia di record). In caso di errore restano i
+   * dati denormalizzati sull'appuntamento.
+   */
+  private loadPatientById(patientId: string, apt: GymAppointment): void {
+    this.patientService.getPatient(patientId).subscribe({
+      next: (patient) => {
+        if (!patient) return;
+        if (!this.patients.find((p) => String(p.id) === String(patient.id))) {
+          this.patients = [patient, ...this.patients];
+        }
+        // Se nel frattempo l'operatore ha sbloccato e scelto un altro
+        // paziente, il lookup in ritardo non deve sovrascrivere la scelta.
+        if (String(this.form.get('patientId')?.value) !== patientId) return;
+        this.applySelectedPatient(patient);
+      },
+      error: (err) => {
+        console.warn('[GymMatDialog] Lookup paziente fallito:', err);
+        this.lockedPatientName = apt.clientName || '';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  /**
+   * Apre il riquadro di chat WhatsApp col paziente della prenotazione.
+   * Il dialog resta aperto: si scrive al paziente mentre si sistema la
+   * prenotazione, non al suo posto.
+   */
+  openWhatsappChat(): void {
+    if (!this.patientPhone) return;
+    this.chatState.openForPhone({
+      phone: this.patientPhone,
+      patientId: this.form.get('patientId')?.value || undefined,
+      patientName: this.lockedPatientName || undefined,
+    });
+    // Il riquadro di chat sta sotto ai dialog modali (altrimenti coprirebbe i
+    // propri menu a tendina): senza avviso sembrerebbe non essere successo nulla.
+    this.snackBar.open(
+      'Chat WhatsApp aperta: la trovi chiudendo questa scheda.',
+      'OK',
+      { duration: 4000 },
+    );
+  }
+
+  /** Copia il recapito negli appunti, con feedback sull'icona per 2s. */
+  copyPatientPhone(): void {
+    if (!this.patientPhone) return;
+    navigator.clipboard?.writeText(this.patientPhone).then(
+      () => {
+        this.phoneCopied = true;
+        this.cdr.markForCheck();
+        if (this.phoneCopiedTimer) clearTimeout(this.phoneCopiedTimer);
+        this.phoneCopiedTimer = setTimeout(() => {
+          this.phoneCopied = false;
+          this.cdr.markForCheck();
+        }, 2000);
+      },
+      (err) => console.warn('[GymMatDialog] Copia numero fallita:', err),
+    );
   }
 
   /**
@@ -768,10 +1012,7 @@ export class GymAppointmentMatDialogComponent implements OnInit {
       if (result && !result.cancelled && result.patient) {
         // Aggiungi il paziente alla lista e selezionalo
         this.patients = [...this.patients, result.patient];
-        this.form.patchValue({ patientId: result.patient.id });
-        // Imposta il display dell'autocomplete con il nome del paziente
-        this.patientSearchControl.setValue(this.displayPatient(result.patient));
-        this.cdr.markForCheck();
+        this.applySelectedPatient(result.patient);
       }
     });
   }
@@ -880,9 +1121,16 @@ export class GymAppointmentMatDialogComponent implements OnInit {
       // Recupera i dati del paziente selezionato per clientName
       // Usa == perché patient.id (da GraphQL) potrebbe essere string o number
       const selectedPatient = this.patients.find(p => p.id == this.form.value.patientId);
+      // In modifica il paziente puo' non essere nella lista precaricata (che e'
+      // parziale): senza fallback sui dati gia' sull'appuntamento, il salvataggio
+      // azzererebbe nominativo e recapiti.
+      const apt = this.data.appointment;
       const clientName = selectedPatient
         ? `${selectedPatient.cognome} ${selectedPatient.nome}`
-        : '';
+        : (apt?.clientName || '');
+      const clientPhone =
+        selectedPatient?.cellulare || selectedPatient?.telefono || apt?.clientPhone || undefined;
+      const clientEmail = selectedPatient?.email || apt?.clientEmail || undefined;
 
       // Costruisci config ricorrenza se abilitata
       const repeatConfigData = this.repeatEnabled ? {
@@ -901,9 +1149,9 @@ export class GymAppointmentMatDialogComponent implements OnInit {
         const updateInput: UpdateGymAppointmentInput = {
           patientId: this.form.value.patientId || undefined,
           clientName: clientName,
-          clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || undefined,
+          clientPhone: clientPhone,
           // Email omessa se vuota: il backend valida @IsEmail e rifiuta "".
-          clientEmail: selectedPatient?.email || undefined,
+          clientEmail: clientEmail,
           notes: this.form.value.notes || undefined,
           services: services.length > 0 ? services : undefined,
         };
@@ -917,9 +1165,9 @@ export class GymAppointmentMatDialogComponent implements OnInit {
           gymRoomId: this.data.gymRoom.id,
           patientId: this.form.value.patientId || undefined,
           clientName: clientName,
-          clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || '',
+          clientPhone: clientPhone || '',
           // Email omessa se vuota: il backend valida @IsEmail e rifiuta "".
-          clientEmail: selectedPatient?.email || undefined,
+          clientEmail: clientEmail,
           appointmentDate: this.data.date,
           startTime: this.data.startTime,
           endTime: this.data.endTime,
@@ -1067,8 +1315,10 @@ export class GymAppointmentMatDialogComponent implements OnInit {
         endTime: apt.endTime,
         patientId: this.form.value.patientId || undefined,
         clientName: clientName || undefined,
-        clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || undefined,
-        clientEmail: selectedPatient?.email || undefined,
+        // Fallback sui dati dell'appuntamento: il paziente puo' non essere
+        // nella lista precaricata e non vanno azzerati i recapiti.
+        clientPhone: selectedPatient?.cellulare || selectedPatient?.telefono || apt.clientPhone || undefined,
+        clientEmail: selectedPatient?.email || apt.clientEmail || undefined,
         notes: this.form.value.notes || undefined,
         services: services.length > 0 ? services : undefined,
         rangeFrom: sel.rangeFrom,
