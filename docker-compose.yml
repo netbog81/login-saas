@@ -110,6 +110,10 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      # Credenziale di sola lettura per il package registry GitLab, da cui
+      # arrivano template-core e template-editor.
+      secrets:
+        - npmrc
     image: curandis/clinico-frontend:latest
     container_name: curandis-clinico-frontend
     restart: unless-stopped

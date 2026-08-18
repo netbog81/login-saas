@@ -17,12 +17,14 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json* ./
-# Tarball dei pacchetti @curandis (template-core/template-editor): le
-# dipendenze `file:local-libs/...` devono esistere PRIMA di npm ci.
-COPY frontend/local-libs ./local-libs
 # Cache mount BuildKit: la cache npm persiste tra i build, così quando
 # cambia il lockfile i pacchetti non vengono riscaricati da zero.
-RUN --mount=type=cache,target=/root/.npm npm ci
+# @curandis/* dal package registry GitLab (project 4), non più da tarball in
+# local-libs. Il registry è privato: la credenziale arriva come secret
+# BuildKit, montata solo per la durata del RUN e mai scritta in un layer.
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=secret,id=npmrc,target=/root/.npmrc \
+    npm ci
 
 COPY frontend/. .
 # Cache di build Angular persistente tra i build (esbuild/webpack cache):
