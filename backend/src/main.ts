@@ -6,7 +6,6 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import * as fs from 'fs';
 import * as os from 'os';
 
 // __dirname varia tra host (dist/src/) e container (dist/). Provo entrambi i
@@ -52,24 +51,6 @@ async function readKvSecret(
     throw new Error(`KV vuoto per "${kvPath}"`);
   }
   return data;
-}
-
-/** Estrae il token corrente da Agent sink o da env (AppRole mode). */
-function resolveOpenbaoToken(isAgentMode: boolean): string {
-  if (isAgentMode) {
-    const sinkPath = process.env.OPENBAO_AGENT_TOKEN_PATH;
-    if (!sinkPath) {
-      throw new Error('OPENBAO_AGENT_MODE=true ma OPENBAO_AGENT_TOKEN_PATH non impostato');
-    }
-    return fs.readFileSync(sinkPath, 'utf8').trim();
-  }
-  const directToken = process.env.OPENBAO_TOKEN || '';
-  if (!directToken) {
-    throw new Error(
-      'AppRole mode in bootstrap: serve OPENBAO_TOKEN o passare a OPENBAO_AGENT_MODE=true',
-    );
-  }
-  return directToken;
 }
 
 function getLocalIp(): string {
@@ -133,7 +114,14 @@ async function bootstrap() {
   // ─────────────────────────────────────────────────────────────────
   try {
     const endpoint = process.env.OPENBAO_ADDR || 'http://127.0.0.1:8200';
-    const token = resolveOpenbaoToken(isAgentMode);
+    // Il sink dell'Agent può non esistere ancora: a freddo il container parte
+    // prima che l'Agent abbia autenticato (server OpenBao irraggiungibile al
+    // boot), e leggerlo subito farebbe morire il processo per ENOENT. In dev
+    // il timeout è corto: un box senza Agent deve fallire subito, non fra due
+    // minuti.
+    const token = await openbaoService.waitForToken(
+      isDevelopment ? { timeoutMs: 5_000 } : undefined,
+    );
 
     try {
       const rmq = await readKvSecret(endpoint, 'kv/clinico/rabbitmq', token);
