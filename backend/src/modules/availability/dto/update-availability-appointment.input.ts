@@ -35,6 +35,22 @@ export class UpdateAvailabilityAppointmentInput {
   operatorId?: string;
 
   /**
+   * Sposta una prenotazione palestra in un'altra sala.
+   *
+   * È l'equivalente palestra di `operatorId`: dove per un appuntamento
+   * standard l'alternativa a uno slot occupato è un altro operatore, in
+   * palestra è un'altra sala — l'istruttore non si sceglie, lo assegna il
+   * template della sala di destinazione.
+   *
+   * Il service leggeva già questo campo per il check di chiusura e capienza,
+   * ma non era dichiarato qui: la mutation lo scartava prima di arrivarci.
+   */
+  @Field(() => ID, { nullable: true, description: 'Sposta la prenotazione palestra in un\'altra sala' })
+  @IsOptional()
+  @IsUUID('4', { message: 'ID sala palestra non valido' })
+  gymRoomId?: string;
+
+  /**
    * @deprecated Usa services invece. Mantenuto per retrocompatibilità.
    */
   @Field(() => ID, { nullable: true, deprecationReason: 'Usa services invece' })

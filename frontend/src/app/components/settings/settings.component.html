@@ -335,6 +335,64 @@
       </div>
     </section>
 
+    <!-- Incassi sconto FE -->
+    <section class="settings-section">
+      <h2>Incassi sconto FE</h2>
+      <p class="section-description">
+        I trattamenti con sconto FE si incassano solo nel clinico (contanti o voucher FE):
+        nessuna fattura li sollecita, per questo la cartella paziente mostra un allarme rosso
+        "FE" con l'elenco di quelli mai incassati.
+      </p>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="scontoFeCollectAnyOperator"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Permetti a tutti gli operatori di incassare sconto FE</span>
+        </label>
+        <small class="hint">
+          Se attivo, qualsiasi operatore abilitato all'incasso può registrare il pagamento
+          degli sconto FE eseguiti da <strong>altri</strong> operatori (fisioterapisti e istruttori
+          di palestra). Se disattivo ognuno incassa solo i propri.
+          <strong>In entrambi i casi tutti vedono l'elenco completo</strong> degli scoperti del paziente.
+          Segreteria e amministratori incassano sempre tutto; chi ha "può incassare pagamenti"
+          disattivato sulla scheda operatore non incassa comunque nulla.
+        </small>
+      </div>
+    </section>
+
+    <!-- Gestione assenze -->
+    <section class="settings-section">
+      <h2>Assenze e no show</h2>
+      <p class="section-description">
+        Chi può registrare che un paziente non si è presentato. È un fatto osservato,
+        non una decisione economica: chi lo vede per primo è spesso l'operatore in sala.
+        La decisione se addebitare o esonerare resta comunque alla segreteria.
+      </p>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-option">
+          <input
+            type="checkbox"
+            [(ngModel)]="noShowOperatorsCanMark"
+            (ngModelChange)="onSettingChange()"
+          />
+          <span>Permetti agli operatori di segnare i no show</span>
+        </label>
+        <small class="hint">
+          Se attivo, medici, fisioterapisti e istruttori di palestra trovano i pulsanti
+          "Non presentato" e "Arrivato" nella pagina <strong>I miei appuntamenti</strong> e nella
+          postazione palestra. Se disattivo quei pulsanti non compaiono affatto e la marcatura
+          resta alla sola segreteria. Segreteria e amministratori possono sempre, dal calendario.
+          <strong>Il gesto è reversibile in entrambi i sensi</strong>: rimettendo "Arrivato" l'assenza
+          esce dai conteggi no show e resta tracciata come arrivo in ritardo.
+        </small>
+      </div>
+    </section>
+
     <!-- Auto Start Treatment Section -->
     <section class="settings-section">
       <h2>Avvio Automatico Trattamento</h2>

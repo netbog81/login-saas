@@ -28,6 +28,10 @@ import {
   NoTemplateError,
 } from '../../document-templates/services/attendance-certificate.service';
 import {
+  ConfirmDeleteDialogComponent,
+  ConfirmDeleteDialogData,
+} from '../../../core/components/confirm-delete-dialog/confirm-delete-dialog.component';
+import {
   Trattamento,
   TrattamentiFilters,
   TrattamentiViewMode,
@@ -35,6 +39,7 @@ import {
   TreatmentBillingStatus,
   PaymentMethod,
   PaymentTenderLine,
+  OrphanDeletionResult,
 } from '../models/trattamento.model';
 
 import { TrattamentiFiltersComponent } from '../components/trattamenti-filters/trattamenti-filters.component';
@@ -107,6 +112,16 @@ const SECRETARY_ROLES = ['admin', 'amministratore', 'superadmin', 'segreteria'];
                   Invia a fatturazione
                 </button>
               }
+              <!-- Pulizia in blocco: compare solo se la selezione contiene
+                   trattamenti orfani, e agisce SOLO su quelli (gli altri
+                   restano selezionati e intoccati). -->
+              @if (!readOnlyMode && orphanSelectionCount(sel); as orphanCount) {
+                <button mat-flat-button color="warn" (click)="deleteOrphanSelection()"
+                  [matTooltip]="'Elimina i ' + orphanCount + ' trattamenti selezionati il cui appuntamento è stato cancellato'">
+                  <mat-icon>delete_forever</mat-icon>
+                  Elimina {{ orphanCount }} senza appuntamento
+                </button>
+              }
               <button mat-icon-button (click)="state.clearSelection()" matTooltip="Deseleziona">
                 <mat-icon>close</mat-icon>
               </button>
@@ -156,6 +171,7 @@ const SECRETARY_ROLES = ['admin', 'amministratore', 'superadmin', 'segreteria'];
         (readyForBillingChange)="state.setFilters({ readyForBilling: $event })"
         (isInvoicedChange)="state.setFilters({ isInvoicedToPatient: $event })"
         (scontoFEChange)="state.setFilters({ scontoFE: $event })"
+        (withoutAppointmentChange)="state.setFilters({ withoutAppointment: $event })"
         (viewModeChange)="state.setViewMode($event)"
         (clearDates)="state.setFilters({ dateFrom: null, dateTo: null })"
         (reset)="state.resetFilters()">
@@ -173,7 +189,8 @@ const SECRETARY_ROLES = ['admin', 'amministratore', 'superadmin', 'segreteria'];
         (openDetail)="openDetail($event)"
         (sendOne)="sendOne($event)"
         (closeTreatment)="closeOne($event)"
-        (generateCertificate)="generateCertificate($event)">
+        (generateCertificate)="generateCertificate($event)"
+        (deleteOrphan)="deleteOrphan($event)">
       </app-trattamenti-list>
 
       <!-- Paginazione server-side (solo segreteria: la vista operatore ha
@@ -825,6 +842,235 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
     });
   }
 
+  // ==================== TRATTAMENTI ORFANI ====================
+
+  /**
+   * Trattamento ORFANO: l'appuntamento di riferimento è stato cancellato dal
+   * calendario, quindi in lista compare senza ora. Dopo la migration 1798 la
+   * FK va a NULL invece di portarsi via il trattamento (prima era CASCADE e
+   * si perdevano anche i fatturati), quindi queste righe restano e vanno
+   * ripulite a mano.
+   */
+  private isOrphan(t: Trattamento): boolean {
+    return !t.appointment;
+  }
+
+  /**
+   * Quanti, fra i selezionati, sono orfani. Zero è falsy, così il bottone di
+   * pulizia in blocco non compare quando la selezione non ne contiene.
+   */
+  orphanSelectionCount(selectedIds: Set<string>): number {
+    if (selectedIds.size === 0) return 0;
+    return this.visibleOrphans(selectedIds).length;
+  }
+
+  /**
+   * Gli orfani selezionati fra quelli EFFETTIVAMENTE a schermo.
+   *
+   * Si parte da `flatTreatments` e non da `state.treatments`: il filtro
+   * client-side su billingStatuses può nascondere righe che restano
+   * selezionate, e su un'azione distruttiva quello che si cancella deve
+   * essere esattamente quello che si vede.
+   */
+  private visibleOrphans(selectedIds: Set<string>): Trattamento[] {
+    return this.flatTreatments.filter(
+      t => selectedIds.has(t.id) && this.isOrphan(t),
+    );
+  }
+
+  /**
+   * Elimina un singolo trattamento orfano, previa conferma.
+   *
+   * Il backend fa tutto in una transazione: se il trattamento era già stato
+   * inviato ad accounting annulla PRIMA l'invio (così non resta un billable
+   * appeso in "Da fatturare") e cestina POI. Rifiuta con un messaggio
+   * leggibile se il trattamento è già fatturato, è stato pagato con un
+   * voucher FE o è già incluso in un conguaglio operatore.
+   */
+  deleteOrphan(t: Trattamento): void {
+    if (!this.isOrphan(t)) return;
+
+    const ref = this.dialog.open<
+      ConfirmDeleteDialogComponent,
+      ConfirmDeleteDialogData,
+      boolean
+    >(ConfirmDeleteDialogComponent, {
+      width: '520px',
+      data: {
+        title: 'Elimina trattamento senza appuntamento',
+        message: this.orphanSummary(t),
+        warning: this.orphanWarnings([t]) ?? undefined,
+        confirmLabel: 'Elimina',
+      },
+    });
+
+    ref.afterClosed().subscribe(confirmed => {
+      if (!confirmed) return;
+      this.service.deleteOrphan(t.id).subscribe({
+        next: () => {
+          this.snackBar.open(
+            'Trattamento eliminato. Puoi recuperarlo dal cestino (Amministrazione).',
+            'OK',
+            { duration: 6000 },
+          );
+          this.reload();
+        },
+        error: err => {
+          this.snackBar.open(this.extractError(err), 'OK', { duration: 10000 });
+        },
+      });
+    });
+  }
+
+  /**
+   * Pulizia in blocco: agisce SOLO sugli orfani della selezione, gli altri
+   * restano dove sono.
+   *
+   * Il backend non è atomico per scelta (un trattamento bloccato non deve
+   * impedire di ripulire gli altri) e torna l'esito riga per riga. Dopo il
+   * reload i cestinati spariscono dalla lista e la loro selezione decade da
+   * sola (`setTreatments` pota le selezioni non più visibili): i bloccati
+   * restano selezionati, così si possono riprendere uno per uno con l'icona
+   * di riga, che mostra il motivo preciso.
+   */
+  deleteOrphanSelection(): void {
+    const orphans = this.visibleOrphans(this.state.selectedIds);
+    if (orphans.length === 0) return;
+
+    const ref = this.dialog.open<
+      ConfirmDeleteDialogComponent,
+      ConfirmDeleteDialogData,
+      boolean
+    >(ConfirmDeleteDialogComponent, {
+      width: '560px',
+      data: {
+        title: `Elimina ${orphans.length} trattamenti senza appuntamento`,
+        message:
+          `Stai per eliminare ${orphans.length} trattamenti il cui appuntamento ` +
+          'è stato cancellato dal calendario. Finiscono nel cestino, da cui un ' +
+          'amministratore può recuperarli.',
+        warning: this.orphanWarnings(orphans) ?? undefined,
+        confirmLabel: `Elimina ${orphans.length} trattamenti`,
+      },
+    });
+
+    ref.afterClosed().subscribe(confirmed => {
+      if (!confirmed) return;
+      this.service.deleteOrphans(orphans.map(t => t.id)).subscribe({
+        next: results => {
+          this.reportOrphanBatch(results);
+          this.reload();
+        },
+        error: err => {
+          this.snackBar.open(this.extractError(err), 'OK', { duration: 10000 });
+        },
+      });
+    });
+  }
+
+  /** Riga di riepilogo di un trattamento nel dialog di conferma. */
+  private orphanSummary(t: Trattamento): string {
+    const data = t.startedAt
+      ? new Date(t.startedAt).toLocaleDateString('it-IT')
+      : 'data sconosciuta';
+    const paziente = t.patient
+      ? `${t.patient.nome} ${t.patient.cognome}`
+      : 'paziente non indicato';
+    const operatore = t.operator
+      ? `${t.operator.name ?? ''} ${t.operator.surname ?? ''}`.trim()
+      : 'operatore rimosso';
+    // Una sola riga di testo: il dialog di conferma rende il messaggio in un
+    // <p>, quindi eventuali a-capo verrebbero comunque collassati.
+    return (
+      `${paziente} — ${operatore} — ${data} — € ${this.euro(t.price ?? 0)}. ` +
+      "L'appuntamento di riferimento è stato cancellato dal calendario. " +
+      'Il trattamento finisce nel cestino, da cui un amministratore può recuperarlo.'
+    );
+  }
+
+  /**
+   * Avvisi da mostrare in evidenza nel dialog. Null se non ce n'è nessuno.
+   *
+   * Sono i due effetti che l'utente non vede dalla lista: l'incasso che
+   * sparisce dai conteggi e l'annullo automatico dell'invio ad accounting.
+   */
+  private orphanWarnings(treatments: Trattamento[]): string | null {
+    const parts: string[] = [];
+
+    const pagati = treatments.filter(t => t.isPaid);
+    if (pagati.length > 0) {
+      const totale = pagati.reduce(
+        (sum, t) => sum + Number(t.accountingTotalAmount ?? t.price ?? 0),
+        0,
+      );
+      parts.push(
+        pagati.length === 1
+          ? `Risulta incassato € ${this.euro(totale)}: l'incasso sparirà dai Conti FE e dai totali.`
+          : `${pagati.length} risultano incassati per € ${this.euro(totale)} in totale: ` +
+            'quegli incassi spariranno dai Conti FE e dai totali.',
+      );
+    }
+
+    const inviati = treatments.filter(
+      t =>
+        t.billingStatus === TreatmentBillingStatus.Sent ||
+        t.billingStatus === TreatmentBillingStatus.Pending,
+    );
+    if (inviati.length > 0) {
+      parts.push(
+        inviati.length === 1
+          ? "È già stato inviato a fatturazione: l'invio verrà annullato automaticamente prima di eliminarlo, così non resta appeso in «Da fatturare»."
+          : `${inviati.length} sono già stati inviati a fatturazione: l'invio verrà annullato ` +
+            'automaticamente prima di eliminarli, così non restano appesi in «Da fatturare».',
+      );
+    }
+
+    return parts.length > 0 ? parts.join(' ') : null;
+  }
+
+  /**
+   * Riepiloga l'esito della pulizia in blocco. I bloccati arrivano già col
+   * motivo formulato dal backend: lo mostriamo raggruppato per motivo, senza
+   * riscriverlo, così l'utente sa esattamente cosa è rimasto e perché.
+   */
+  private reportOrphanBatch(results: OrphanDeletionResult[]): void {
+    const eliminati = results.filter(r => r.deleted).length;
+    const bloccati = results.filter(r => !r.deleted);
+
+    if (bloccati.length === 0) {
+      this.snackBar.open(
+        `${eliminati} trattamenti eliminati. Puoi recuperarli dal cestino (Amministrazione).`,
+        'OK',
+        { duration: 6000 },
+      );
+      return;
+    }
+
+    const perMotivo = new Map<string, number>();
+    for (const r of bloccati) {
+      const motivo = r.reason ?? 'motivo non specificato';
+      perMotivo.set(motivo, (perMotivo.get(motivo) ?? 0) + 1);
+    }
+    const dettaglio = Array.from(perMotivo.entries())
+      .map(([motivo, n]) => (n > 1 ? `${n}× ${motivo}` : motivo))
+      .join(' · ');
+
+    this.snackBar.open(
+      `${eliminati} eliminati, ${bloccati.length} non eliminabili — ${dettaglio} ` +
+        '(restano selezionati)',
+      'OK',
+      { duration: 15000 },
+    );
+  }
+
+  /** Importo in formato italiano, senza simbolo (lo mette il chiamante). */
+  private euro(value: number): string {
+    return Number(value).toLocaleString('it-IT', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
   // ==================== ATTESTATO DI PRESENZA ====================
 
   /**
@@ -1188,6 +1434,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
           undefined,
           result.tenderLines,
           opts.replace, // replaceExisting
+          result.partial,
         ).subscribe({
           next: (updated) => {
             this.state.updateTreatment(updated);
@@ -1429,6 +1676,7 @@ export class TrattamentiContainer implements OnInit, OnDestroy {
           undefined,
           result.tenderLines,
           false, // replaceExisting
+          result.partial,
         ).subscribe({
           next: (updated) => {
             this.state.updateTreatment(updated);

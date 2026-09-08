@@ -46,6 +46,18 @@ export const SETTINGS_KEYS = {
   NO_SHOW_LATE_CANCELLATION_HOURS: 'noShow.lateCancellationHours',
   NO_SHOW_LATE_ARRIVAL_TOLERANCE_MINUTES: 'noShow.lateArrivalToleranceMinutes',
   NO_SHOW_RECENT_WINDOW_DAYS: 'noShow.recentWindowDays',
+  // Se true (default) anche operatori, medici, fisioterapisti e istruttori
+  // possono segnare "non presentato" e correggerlo in "presentato" dalla
+  // propria pagina. Se false l'azione resta alla sola segreteria/admin e ai
+  // non abilitati la UI non mostra nulla.
+  NO_SHOW_OPERATORS_CAN_MARK: 'noShow.operatorsCanMark',
+
+  // Incassi sconto FE
+  // Se true, qualsiasi operatore abilitato all'incasso (canCollectPayment)
+  // può registrare l'incasso dei trattamenti sconto FE di QUALSIASI collega.
+  // Se false (default) ognuno incassa solo i propri, pur vedendo tutti gli
+  // scoperti FE del paziente nel riquadro di allarme della cartella.
+  SCONTO_FE_COLLECT_ANY_OPERATOR: 'payments.scontoFeCollectAnyOperator',
 
   // Auto Start Treatment (apertura automatica trattamento alla presa in carico)
   AUTO_START_TREATMENT_ON_ATTENDED: 'autoStartTreatment.onAttended',
@@ -355,6 +367,14 @@ export class GeneralSettingsService {
         valueType: 'boolean',
         category: 'autoStartTreatment'
       },
+      // Incassi sconto FE
+      {
+        key: SETTINGS_KEYS.SCONTO_FE_COLLECT_ANY_OPERATOR,
+        value: false,
+        description: 'Permetti a tutti gli operatori di incassare i trattamenti con sconto FE (anche quelli di altri operatori)',
+        valueType: 'boolean',
+        category: 'payments'
+      },
       // Gestione assenze ingiustificate
       {
         key: SETTINGS_KEYS.NO_SHOW_LATE_CANCELLATION_HOURS,
@@ -414,6 +434,18 @@ export class GeneralSettingsService {
         this.getValue<number>(SETTINGS_KEYS.NO_SHOW_RECENT_WINDOW_DAYS, 30),
       ]);
     return { lateCancellationHours, lateArrivalToleranceMinutes, recentWindowDays };
+  }
+
+  /**
+   * Helper: gli operatori (non segreteria) possono segnare presenze e assenze?
+   *
+   * Default `true`: e' il comportamento che gli istruttori di palestra hanno
+   * gia' oggi dalla propria pagina, e togliergliela di soppiatto sarebbe una
+   * regressione. Chi vuole accentrare la decisione in segreteria mette la
+   * voce a false dalle Impostazioni.
+   */
+  async canOperatorsMarkAttendance(): Promise<boolean> {
+    return this.getValue<boolean>(SETTINGS_KEYS.NO_SHOW_OPERATORS_CAN_MARK, true);
   }
 
   /**
@@ -531,6 +563,21 @@ export class GeneralSettingsService {
     ]);
 
     return { enabled, offsetMinutes };
+  }
+
+  // ==================== SCONTO FE HELPERS ====================
+
+  /**
+   * Helper: qualsiasi operatore abilitato all'incasso può registrare
+   * l'incasso dei trattamenti sconto FE eseguiti da ALTRI operatori?
+   *
+   * Default false (conservativo): ognuno incassa solo i propri. La
+   * VISIBILITÀ degli scoperti FE del paziente non dipende da questo flag —
+   * il riquadro di allarme li elenca sempre tutti, il flag governa solo
+   * quali si possono incassare.
+   */
+  async isScontoFeCollectAnyOperatorEnabled(): Promise<boolean> {
+    return this.getValue<boolean>(SETTINGS_KEYS.SCONTO_FE_COLLECT_ANY_OPERATOR, false);
   }
 
   // ==================== AUTO START TREATMENT HELPERS ====================

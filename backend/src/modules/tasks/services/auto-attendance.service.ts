@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { DataSource } from 'typeorm';
+import { Brackets, DataSource } from 'typeorm';
 import { AvailabilityAppointment, BookingStatus } from '../../availability/entities/availability-appointment.entity';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { EventsService } from '../../events/events.service';
@@ -101,10 +101,24 @@ export class AutoAttendanceService {
           })
           .andWhere('apt.autoStatusChanged = false')
           .andWhere('apt.nonRetribuito = false')
+          // L'orario va in un gruppo SUO. Scritta come stringa piatta
+          // (`A < :d OR (A = :d AND B <= :t)`) l'espressione veniva
+          // concatenata con AND alle condizioni precedenti SENZA parentesi
+          // esterne: in SQL AND lega piu' di OR, quindi diventava
+          // `(stato AND flag AND retribuito AND passato) OR (oggi_iniziato)`
+          // e il secondo ramo si portava dietro OGNI appuntamento di oggi
+          // gia' iniziato, qualunque fosse il suo stato. Effetto: ogni minuto
+          // il cron rimetteva ad ATTENDED anche i no-show appena segnati, le
+          // disdette e le fasce non retribuite. `Brackets` garantisce le
+          // parentesi e rende impossibile ricadere nell'errore.
           .andWhere(
-            `(apt.appointmentDate < :targetDate) OR
-             (apt.appointmentDate = :targetDate AND apt.startTime <= :targetTime)`,
-            { targetDate, targetTime: targetTimeStr },
+            new Brackets((qb) => {
+              qb.where('apt.appointmentDate < :targetDate', { targetDate })
+                .orWhere(
+                  '(apt.appointmentDate = :targetDate AND apt.startTime <= :targetTime)',
+                  { targetDate, targetTime: targetTimeStr },
+                );
+            }),
           )
           .getMany();
 

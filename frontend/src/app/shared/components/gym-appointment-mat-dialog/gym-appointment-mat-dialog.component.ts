@@ -29,6 +29,24 @@ import { AvailabilityAppointmentService } from '../../../services/availability-a
 import { tokenizeQuery, matchesAllTokens } from '../../utils/token-match';
 import { WhatsappChatStateService } from '../../../features/whatsapp-chat/services/whatsapp-chat-state.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import {
+  RecurrenceEditorComponent,
+  DEFAULT_REPEAT_CONFIG,
+  buildRepeatConfigPayload,
+} from '../recurrence-editor';
+import {
+  ConflictBannerComponent,
+  ConflictBannerAction,
+} from '../../../features/conflicts/components/conflict-banner/conflict-banner.component';
+import { ConflictService } from '../../../features/conflicts/services/conflict.service';
+import {
+  ConflictInfo,
+  ConflictResolutionAction,
+  ConflictResolutionResult,
+} from '../../../features/conflicts/models/conflict.model';
+import { GymRoomLookup } from '../../../features/gym-appointments/services/gym-rebooking.service';
+import { RecurringOccurrencePreview } from '../../../features/calendar-v3/models/recurring-resolution.model';
+import { GymResolvedOccurrence } from '../../../features/gym-appointments/models/gym-move.model';
 
 /**
  * Dati passati al dialog per la creazione di un appuntamento palestra.
@@ -46,6 +64,12 @@ export interface GymAppointmentMatDialogData {
    * Campo opzionale: i caller esistenti che non lo passano restano invariati.
    */
   appointment?: GymAppointment;
+  /**
+   * Sale attive: servono a proporre destinazioni alternative quando si
+   * sposta o si risolve una serie. Se assente, la ricerca resta confinata
+   * alla sala corrente — comportamento dei caller che non la passano.
+   */
+  rooms?: GymRoomLookup[];
 }
 
 /**
@@ -54,6 +78,13 @@ export interface GymAppointmentMatDialogData {
 export interface GymAppointmentMatDialogResult {
   created: boolean;
   appointmentId?: string;
+  /**
+   * Il conflitto si risolve spostando: il dialog si chiude e il container
+   * apre il pannello di ricerca slot palestra. Non lo fa il dialog perché
+   * quel pannello ha bisogno dell'elenco delle sale attive, che il container
+   * ha già caricato per la griglia.
+   */
+  requestMove?: boolean;
 }
 
 /**
@@ -93,12 +124,24 @@ export interface GymAppointmentMatDialogResult {
     MatRadioModule,
     FormsModule,
     ServiceMultiSelectComponent,
-    RecurringScopePanelComponent
+    RecurringScopePanelComponent,
+    RecurrenceEditorComponent,
+    ConflictBannerComponent,
   ],
   template: `
     <h2 mat-dialog-title>{{ isEditMode ? 'Modifica Appuntamento Palestra' : 'Nuovo Appuntamento Palestra' }}</h2>
 
     <mat-dialog-content>
+      <!-- Conflitto di disponibilità: in cima, prima di ogni campo. In
+           palestra nasce quando un'assenza dell'istruttore lascia lo slot
+           scoperto e nessun sostituto lo copre. -->
+      <app-conflict-banner
+        [conflict]="conflictInfo"
+        [readOnly]="resolvingConflict"
+        moveTooltip="Cerca uno slot libero (anche in un'altra sala) e spostala lì"
+        (action)="onConflictAction($event)">
+      </app-conflict-banner>
+
       <!-- Info Slot (read-only) -->
       <div class="slot-info">
         <div class="info-row">
@@ -212,75 +255,20 @@ export interface GymAppointmentMatDialogResult {
         </mat-form-field>
       </form>
 
-      <!-- Ricorrenza (solo in creazione: l'update modifica la singola occorrenza) -->
-      <div class="recurring-section" *ngIf="!isEditMode">
-        <mat-slide-toggle [(ngModel)]="repeatEnabled" (change)="onRepeatToggle()">
-          <mat-icon>repeat</mat-icon>
-          Appuntamento ricorrente
-        </mat-slide-toggle>
-
-        <div class="recurring-config" *ngIf="repeatEnabled">
-          <div class="form-row">
-            <mat-form-field appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Ripeti</mat-label>
-              <mat-select [(ngModel)]="repeatConfig.type">
-                <mat-option value="daily">Ogni giorno</mat-option>
-                <mat-option value="weekly">Ogni settimana</mat-option>
-                <mat-option value="monthly">Ogni mese</mat-option>
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" subscriptSizing="dynamic" class="interval-field">
-              <mat-label>Intervallo</mat-label>
-              <input matInput type="number" [(ngModel)]="repeatConfig.interval" min="1" max="12">
-              <span matTextSuffix>{{ getIntervalLabel() }}</span>
-            </mat-form-field>
-          </div>
-
-          <!-- Giorni della settimana (solo per weekly) -->
-          <div class="weekday-selector" *ngIf="repeatConfig.type === 'weekly'">
-            <label>Giorni della settimana</label>
-            <div class="weekday-buttons">
-              <button mat-mini-fab
-                      *ngFor="let day of weekdays; let i = index"
-                      [color]="isDaySelected(i) ? 'primary' : ''"
-                      (click)="toggleDay(i)"
-                      type="button">
-                {{ day }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Fine ricorrenza -->
-          <div class="end-config">
-            <label>Termina</label>
-            <div class="end-options">
-              <mat-radio-group [(ngModel)]="repeatConfig.endType">
-                <div class="end-option">
-                  <mat-radio-button value="after">Dopo</mat-radio-button>
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="occurrences-field">
-                    <input matInput type="number" [(ngModel)]="repeatConfig.occurrences"
-                           [disabled]="repeatConfig.endType !== 'after'" min="1" max="52">
-                  </mat-form-field>
-                  <span>volte</span>
-                </div>
-                <div class="end-option">
-                  <mat-radio-button value="until">Fino al</mat-radio-button>
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="until-field">
-                    <input matInput type="date" [(ngModel)]="repeatConfig.untilDate"
-                           [disabled]="repeatConfig.endType !== 'until'">
-                  </mat-form-field>
-                </div>
-              </mat-radio-group>
-            </div>
-          </div>
-
-          <div class="recurring-preview" *ngIf="getOccurrencesPreview()">
-            <mat-icon>info</mat-icon>
-            <span>{{ getOccurrencesPreview() }}</span>
-          </div>
-        </div>
-      </div>
+      <!-- Ricorrenza: in creazione, oppure in modifica di una prenotazione
+           singola ancora attiva (diventa la prima occorrenza della serie).
+           L'editor è lo stesso del dialog operatori: la regola di
+           ripetizione non ha nulla di specifico dell'una o dell'altra vista. -->
+      <app-recurrence-editor
+        *ngIf="!isEditMode || canMakeRecurring"
+        [(enabled)]="repeatEnabled"
+        [(config)]="repeatConfig"
+        [baseDate]="currentAppointmentDate || data.date"
+        [toggleLabel]="isEditMode ? 'Rendi ricorrente' : 'Appuntamento ricorrente'"
+        [hint]="isEditMode
+          ? 'Questa prenotazione diventa la prima occorrenza della serie: le successive verranno create al salvataggio, nella stessa fascia oraria.'
+          : null">
+      </app-recurrence-editor>
 
       <!-- Gestione serie ricorrenti in modifica: pannello "Applica a" con
            Applica modifiche / Elimina (parità con la modalità operatori).
@@ -302,6 +290,16 @@ export interface GymAppointmentMatDialogResult {
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
+      <!-- "Sposta" solo in modifica: in creazione lo slot è già quello su cui
+           si è cliccato, e cambiarlo qui equivarrebbe a ricominciare. -->
+      <button mat-stroked-button type="button" *ngIf="isEditMode"
+              [disabled]="saving"
+              matTooltip="Cerca uno slot libero, anche in un'altra sala"
+              (click)="onRequestMove()">
+        <mat-icon>swap_horiz</mat-icon>
+        Sposta
+      </button>
+      <span class="actions-spacer"></span>
       <button mat-stroked-button type="button" (click)="onCancel()" [disabled]="saving">
         Annulla
       </button>
@@ -473,6 +471,8 @@ export interface GymAppointmentMatDialogResult {
       color: #721c24;
     }
 
+    .actions-spacer { flex: 1 1 auto; }
+
     mat-dialog-actions {
       padding: 16px 24px;
     }
@@ -621,17 +621,20 @@ export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
   loadingSeriesInfo = false;
   futureSeriesCount: number | null = null;
 
-  // Recurring
+  // Recurring — l'editor è condiviso col dialog operatori, e con esso la
+  // configurazione di partenza e la conversione verso il payload GraphQL.
   repeatEnabled = false;
-  repeatConfig = {
-    type: 'weekly' as 'daily' | 'weekly' | 'monthly',
-    interval: 1,
-    selectedDays: [] as number[],
-    endType: 'after' as 'after' | 'until',
-    occurrences: 4,
-    untilDate: ''
-  };
-  weekdays = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+  repeatConfig: RepeatConfig = { ...DEFAULT_REPEAT_CONFIG };
+
+  // Conflitto di disponibilità
+  private conflictService = inject(ConflictService);
+  /**
+   * Conflitto già chiuso in questa sessione del dialog. "Accetta" risolve
+   * senza chiudere, e il banner deve sparire subito: ricaricare la
+   * prenotazione solo per far sparire un riquadro sarebbe un giro inutile.
+   */
+  conflictCleared = false;
+  resolvingConflict = false;
 
   constructor(
     public dialogRef: MatDialogRef<GymAppointmentMatDialogComponent, GymAppointmentMatDialogResult>,
@@ -1025,67 +1028,149 @@ export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  // ==================== RECURRING METHODS ====================
+  // ==================== RECURRING ====================
+  //
+  // L'editor della regola vive in shared/components/recurrence-editor ed è
+  // lo stesso del dialog operatori. Qui resta solo il criterio di quando
+  // offrire "Rendi ricorrente", che dipende dallo stato della prenotazione.
 
-  onRepeatToggle(): void {
-    if (!this.repeatEnabled) {
-      this.repeatConfig = {
-        type: 'weekly',
-        interval: 1,
-        selectedDays: [],
-        endType: 'after',
-        occurrences: 4,
-        untilDate: ''
-      };
-    } else {
-      const selectedDate = this.data.date ? new Date(this.data.date) : new Date();
-      const dayOfWeek = selectedDate.getDay();
-      this.repeatConfig.selectedDays = [dayOfWeek];
+  /**
+   * In modifica: una prenotazione singola (non già in serie) e ancora attiva
+   * può diventare ricorrente. Resta lei la prima occorrenza; le successive
+   * le crea il backend (makeAppointmentRecurring).
+   */
+  get canMakeRecurring(): boolean {
+    const apt = this.data.appointment;
+    if (!apt) return false;
+    const status = (apt.bookingStatus || '').toLowerCase();
+    return (
+      !apt.isRecurring &&
+      !apt.recurringGroupId &&
+      (status === 'scheduled' || status === 'confirmed')
+    );
+  }
+
+  // ==================== CONFLITTO DI DISPONIBILITÀ ====================
+
+  get conflictInfo(): ConflictInfo {
+    const apt = this.data.appointment;
+    return {
+      hasConflict: !!apt?.hasConflict && !this.conflictCleared,
+      reason: apt?.conflictReason,
+      detectedAt: apt?.conflictDetectedAt,
+    };
+  }
+
+  onConflictAction(action: ConflictBannerAction): void {
+    switch (action) {
+      case 'accept':
+        this.acceptConflict();
+        break;
+      case 'move':
+        this.onRequestMove();
+        break;
+      case 'manage':
+        this.openConflictDialog();
+        break;
     }
+  }
+
+  /** "Accetta": la prenotazione resta dov'è e la segnalazione sparisce. */
+  private acceptConflict(): void {
+    const apt = this.data.appointment;
+    if (!apt || this.resolvingConflict) return;
+
+    this.resolvingConflict = true;
     this.cdr.markForCheck();
+
+    this.conflictService
+      .resolveConflict(String(apt.id), ConflictResolutionAction.Keep)
+      .subscribe({
+        next: () => {
+          this.resolvingConflict = false;
+          this.conflictCleared = true;
+          this.snackBar.open('Conflitto accettato: prenotazione confermata.', 'OK', {
+            duration: 3000,
+          });
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          this.resolvingConflict = false;
+          this.serverError =
+            'Impossibile accettare il conflitto' + (err?.message ? `: ${err.message}` : '.');
+          this.cdr.markForCheck();
+        },
+      });
   }
 
-  isDaySelected(dayIndex: number): boolean {
-    return this.repeatConfig.selectedDays?.includes(dayIndex) || false;
+  /** Dialog completo di risoluzione, sopra questo. */
+  private async openConflictDialog(): Promise<void> {
+    const apt = this.data.appointment;
+    if (!apt) return;
+
+    const m = await import(
+      '../../../features/conflicts/containers/conflict-resolve-dialog.container'
+    );
+
+    const ref = this.dialog.open(m.ConflictResolveDialogContainer, {
+      autoFocus: false,
+      data: {
+        appointment: {
+          id: String(apt.id),
+          appointmentDate: apt.appointmentDate,
+          startTime: apt.startTime,
+          endTime: apt.endTime,
+          clientName: apt.clientName,
+          clientPhone: apt.clientPhone,
+          patientId: apt.patientId,
+          operatorId: apt.operatorId,
+          operatorName: apt.operator
+            ? `${apt.operator.name} ${apt.operator.surname || ''}`.trim()
+            : null,
+          operatorColor: apt.operator?.color,
+          gymRoomId: apt.gymRoomId,
+          gymRoomName: apt.gymRoom?.name ?? this.data.gymRoom?.name,
+          conflictReason: apt.conflictReason,
+          conflictDetectedAt: apt.conflictDetectedAt,
+          isRecurring: apt.isRecurring,
+          recurringGroupId: apt.recurringGroupId,
+        },
+        origin: 'gym',
+        canMove: true,
+        moveTooltip: "Cerca uno slot libero (anche in un'altra sala) e spostala lì",
+      },
+    });
+
+    ref.afterClosed().subscribe((res: ConflictResolutionResult | undefined) => {
+      if (!res) return;
+      if (res.outcome === 'move') {
+        this.onRequestMove();
+        return;
+      }
+      if (res.outcome === 'resolved') {
+        // "Accetta" tocca solo il flag: si può restare aperti. Riprogrammare
+        // o cancellare invece cambia la prenotazione sotto ai campi mostrati.
+        if (res.action === ConflictResolutionAction.Keep) {
+          this.conflictCleared = true;
+          this.cdr.markForCheck();
+        } else {
+          this.dialogRef.close({ created: true, appointmentId: String(apt.id) });
+        }
+      }
+    });
   }
 
-  toggleDay(dayIndex: number): void {
-    if (!this.repeatConfig.selectedDays) {
-      this.repeatConfig.selectedDays = [];
-    }
-    const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
-    if (index === -1) {
-      this.repeatConfig.selectedDays.push(dayIndex);
-      this.repeatConfig.selectedDays.sort();
-    } else {
-      this.repeatConfig.selectedDays.splice(index, 1);
-    }
-    this.cdr.markForCheck();
-  }
-
-  getIntervalLabel(): string {
-    switch (this.repeatConfig.type) {
-      case 'daily': return this.repeatConfig.interval === 1 ? 'giorno' : 'giorni';
-      case 'weekly': return this.repeatConfig.interval === 1 ? 'settimana' : 'settimane';
-      case 'monthly': return this.repeatConfig.interval === 1 ? 'mese' : 'mesi';
-      default: return '';
-    }
-  }
-
-  getOccurrencesPreview(): string {
-    if (!this.repeatEnabled) return '';
-    let count = 0;
-    if (this.repeatConfig.endType === 'after') {
-      count = this.repeatConfig.occurrences || 1;
-    } else if (this.repeatConfig.endType === 'until' && this.repeatConfig.untilDate && this.data.date) {
-      const start = new Date(this.data.date);
-      const end = new Date(this.repeatConfig.untilDate);
-      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      if (this.repeatConfig.type === 'daily') count = Math.ceil(days / this.repeatConfig.interval);
-      else if (this.repeatConfig.type === 'weekly') count = Math.ceil(days / 7 / this.repeatConfig.interval) * (this.repeatConfig.selectedDays?.length || 1);
-      else if (this.repeatConfig.type === 'monthly') count = Math.ceil(days / 30 / this.repeatConfig.interval);
-    }
-    return count > 0 ? `(circa ${count} appuntamenti)` : '';
+  /**
+   * Chiude il dialog chiedendo al container di aprire il pannello di
+   * spostamento: è lui ad avere l'elenco delle sale attive fra cui cercare.
+   */
+  onRequestMove(): void {
+    if (!this.isEditMode) return;
+    this.dialogRef.close({
+      created: false,
+      appointmentId: String(this.data.appointment!.id),
+      requestMove: true,
+    });
   }
 
   /**
@@ -1132,15 +1217,26 @@ export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
         selectedPatient?.cellulare || selectedPatient?.telefono || apt?.clientPhone || undefined;
       const clientEmail = selectedPatient?.email || apt?.clientEmail || undefined;
 
-      // Costruisci config ricorrenza se abilitata
-      const repeatConfigData = this.repeatEnabled ? {
-        type: this.repeatConfig.type,
-        interval: this.repeatConfig.interval,
-        selectedDays: this.repeatConfig.type === 'weekly' ? this.repeatConfig.selectedDays : undefined,
-        endType: this.repeatConfig.endType,
-        occurrences: this.repeatConfig.endType === 'after' ? this.repeatConfig.occurrences : undefined,
-        untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
-      } : undefined;
+      // Config ricorrenza: stessa conversione del dialog operatori.
+      const repeatConfigData = this.repeatEnabled
+        ? buildRepeatConfigPayload(this.repeatConfig)
+        : undefined;
+
+      // Anteprima e risoluzione occorrenza per occorrenza. Si passa di qui
+      // anche quando non ci sono conflitti: così le date scritte sono
+      // esattamente quelle che l'utente ha visto, invece di essere
+      // rigenerate dal backend un istante dopo.
+      let resolvedOccurrences: GymResolvedOccurrence[] | undefined;
+      if (repeatConfigData) {
+        const resolved = await this.resolveGymSeries(repeatConfigData);
+        if (resolved === null) {
+          // Serie annullata dall'utente: niente da salvare.
+          this.saving = false;
+          this.cdr.markForCheck();
+          return;
+        }
+        resolvedOccurrences = resolved;
+      }
 
       let result: GymAppointment;
 
@@ -1158,6 +1254,21 @@ export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
         result = await firstValueFrom(
           this.gymRoomService.updateAppointment(this.data.appointment!.id, updateInput),
         );
+
+        // "Rendi ricorrente": la prenotazione appena salvata diventa la
+        // prima occorrenza e il backend crea le successive. Va DOPO
+        // l'update, così le occorrenze nascono già coi dati aggiornati
+        // (paziente, note, servizi) invece che con quelli di prima.
+        if (repeatConfigData && this.canMakeRecurring) {
+          await firstValueFrom(
+            this.recurringAppointmentService.makeRecurring(
+              String(this.data.appointment!.id),
+              repeatConfigData,
+              false,
+              resolvedOccurrences,
+            ),
+          );
+        }
       } else {
         // CREAZIONE (con report: le occorrenze ricorrenti in conflitto
         // vengono saltate dal backend ed elencate qui sotto).
@@ -1175,7 +1286,18 @@ export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
           // MULTISERVIZIO: array invece di singolo serviceId
           services: services.length > 0 ? services : undefined,
           isRecurring: this.repeatEnabled || undefined,
-          repeatConfig: repeatConfigData
+          repeatConfig: repeatConfigData,
+          // Piano risolto: senza questo le decisioni prese occorrenza per
+          // occorrenza verrebbero mostrate all'utente e poi ignorate, perché
+          // il backend rigenererebbe comunque le date dalla regola.
+          occurrences: resolvedOccurrences?.length
+            ? resolvedOccurrences.map((o) => ({
+                date: o.date,
+                startTime: o.startTime,
+                endTime: o.endTime,
+                gymRoomId: o.gymRoomId,
+              }))
+            : undefined,
         };
         const report = await firstValueFrom(this.gymRoomService.createAppointmentWithReport(input));
         result = report.appointment;
@@ -1225,6 +1347,98 @@ export class GymAppointmentMatDialogComponent implements OnInit, OnDestroy {
       this.saving = false;
       this.cdr.markForCheck();
     }
+  }
+
+  /**
+   * Chiede al backend il piano della serie palestra e, se qualche occorrenza
+   * è in conflitto, apre il riquadro di risoluzione.
+   *
+   * Ritorna:
+   * - l'elenco delle occorrenze risolte (da passare a create/makeRecurring)
+   * - `undefined` se l'anteprima non è disponibile: si prosegue col flusso
+   *   storico, che in caso di conflitti avvisa a posteriori
+   * - `null` se l'utente ha annullato l'intera serie
+   *
+   * PERCHÉ PASSARE DALL'ANTEPRIMA ANCHE SENZA CONFLITTI: l'alternativa
+   * sarebbe far rigenerare le date al backend, e allora il piano visto e
+   * quello scritto potrebbero non coincidere. Costa una query e toglie di
+   * mezzo un'intera classe di "ma io avevo visto un'altra cosa".
+   */
+  private async resolveGymSeries(
+    repeatConfig: RepeatConfig,
+  ): Promise<GymResolvedOccurrence[] | undefined | null> {
+    const gymRoomId = this.data.appointment?.gymRoomId ?? this.data.gymRoom.id;
+    const startDate = this.currentAppointmentDate || this.data.date;
+    const startTime = this.hhmm(this.data.appointment?.startTime ?? this.data.startTime);
+    const endTime = this.hhmm(this.data.appointment?.endTime ?? this.data.endTime);
+
+    let preview: RecurringOccurrencePreview[];
+    try {
+      preview = await firstValueFrom(
+        this.recurringAppointmentService.previewRecurringSeries({
+          gymRoomId,
+          patientId: this.form.value.patientId || undefined,
+          startDate,
+          startTime,
+          endTime,
+          repeatConfig: repeatConfig as any,
+          excludeAppointmentId: this.isEditMode
+            ? String(this.data.appointment!.id)
+            : undefined,
+        }),
+      );
+    } catch (err: any) {
+      // Anteprima non disponibile (rete, backend vecchio): si prosegue col
+      // flusso storico. Meglio di un salvataggio impedito da un problema
+      // sull'anteprima.
+      console.warn('[GymAppointmentMatDialog] Anteprima serie non disponibile:', err?.message ?? err);
+      return undefined;
+    }
+
+    if (preview.length === 0) return undefined;
+
+    const asResolved = (o: RecurringOccurrencePreview): GymResolvedOccurrence => ({
+      appointmentId: o.appointmentId,
+      date: o.date,
+      startTime: o.startTime,
+      endTime: o.endTime,
+    });
+
+    if (!preview.some((o) => !!o.conflict)) {
+      return preview.map(asResolved);
+    }
+
+    const m = await import(
+      '../../../features/gym-appointments/containers/gym-recurring-resolution-dialog.container'
+    );
+
+    const ref = this.dialog.open(m.GymRecurringResolutionDialogContainer, {
+      width: '820px',
+      maxWidth: '96vw',
+      maxHeight: '88vh',
+      autoFocus: false,
+      data: {
+        occurrences: preview,
+        gymRoomId,
+        // Senza l'elenco sale il riquadro cerca solo nella sala corrente:
+        // è la degradazione giusta per i caller che non lo passano.
+        rooms: this.data.rooms ?? [
+          { id: this.data.gymRoom.id, name: this.data.gymRoom.name, color: this.data.gymRoom.color },
+        ],
+        title: this.isEditMode
+          ? 'Serie palestra: occorrenze da sistemare'
+          : 'Nuova serie palestra: occorrenze da sistemare',
+      },
+    });
+
+    const outcome = await firstValueFrom(ref.afterClosed());
+    if (!outcome || outcome.action === 'cancel') return null;
+    return outcome.occurrences;
+  }
+
+  /** Orari dal backend come 'HH:MM:SS': le mutation vogliono 'HH:MM'. */
+  private hhmm(t: string | null | undefined): string {
+    return (t ?? '').slice(0, 5);
   }
 
   /**

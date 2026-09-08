@@ -12,6 +12,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatIconModule } from '@angular/material/icon';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 
 import { TrattamentiService } from '../../services/trattamenti.service';
 import {
@@ -56,6 +57,12 @@ export interface PagamentoSplitDialogResult {
   collectedBy: string;
   amount: number;
   tenderLines: PaymentTenderLine[];
+  /**
+   * 2026-09-04 — Incasso PARZIALE: le righe coprono solo una quota del
+   * trattamento, il resto verrà fatturato. Il trattamento non risulta pagato
+   * finché non sarà incassata la fattura del residuo.
+   */
+  partial?: boolean;
 }
 
 /** Riga editabile nel dialog (UI). `selection` codifica metodo o voucher scelto. */
@@ -85,6 +92,7 @@ interface UiTenderRow {
     MatInputModule,
     MatSelectModule,
     MatIconModule,
+    MatCheckboxModule,
   ],
   changeDetection: ChangeDetectionStrategy.Default,
   templateUrl: './pagamento-split-dialog.component.html',
@@ -190,10 +198,53 @@ export class PagamentoSplitDialogComponent implements OnInit {
     return Math.abs(this.sum() - this.data.totalAmount) <= 0.01;
   }
 
+  /**
+   * 2026-09-04 — Incasso parziale con voucher di anticipo fattura.
+   *
+   * Serve quando il credito del buono copre solo una parte: la quota si
+   * scala subito, il residuo si fattura, e il trattamento risulta pagato
+   * solo quando anche quella fattura è incassata. Senza, l'unico modo di
+   * registrare il buono era dichiarare pagato l'intero trattamento.
+   */
+  partial = false;
+
+  /**
+   * Il parziale ha senso solo dove c'è un residuo da fatturare: mai sui
+   * trattamenti scontoFE (l'incasso resta nel clinico) né sulle fatture
+   * cumulative (si saldano per intero).
+   */
+  get canBePartial(): boolean {
+    return !this.data.scontoFE && !this.data.multiInvoice;
+  }
+
+  /** Nel parziale ogni riga dev'essere un voucher di anticipo. */
+  get partialRowsValid(): boolean {
+    return this.rows.every((r) => r.selection.startsWith('voucher:'));
+  }
+
+  get partialAmountValid(): boolean {
+    const s = this.sum();
+    return s > 0 && s < this.data.totalAmount - 0.01;
+  }
+
+  /** Residuo che resterà da fatturare. */
+  residual(): number {
+    return this.round(Math.max(0, this.data.totalAmount - this.sum()));
+  }
+
+  onPartialChange(value: boolean): void {
+    this.partial = value;
+  }
+
   canSubmit(): boolean {
     if (this.loading) return false;
     if (!this.collectedBy) return false;
-    if (!this.sumMatches) return false;
+    if (this.partial) {
+      if (!this.canBePartial) return false;
+      if (!this.partialRowsValid || !this.partialAmountValid) return false;
+    } else if (!this.sumMatches) {
+      return false;
+    }
     return this.rows.every((r) => !!r.selection && r.amount > 0);
   }
 
@@ -217,6 +268,7 @@ export class PagamentoSplitDialogComponent implements OnInit {
       collectedBy: this.collectedBy,
       amount: this.sum(),
       tenderLines,
+      partial: this.partial || undefined,
     });
   }
 

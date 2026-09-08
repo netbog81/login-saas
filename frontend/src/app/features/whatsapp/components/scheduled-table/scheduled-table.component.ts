@@ -53,7 +53,7 @@ import {
               <mat-icon class="type-icon">{{ typeIcon(m.type) }}</mat-icon>
               {{ typeLabel(m.type) }}
             </span>
-            @if (m.type === 'recap' && m.bufferedCount) {
+            @if (isGrouped(m.type) && m.bufferedCount) {
               <span class="badge">{{ m.bufferedCount }} appuntamenti</span>
             }
           </td>
@@ -190,6 +190,14 @@ export class ScheduledTableComponent {
 
   typeIcon(type: WhatsappScheduledType): string {
     return SCHEDULED_TYPE_ICONS[type] || 'send';
+  }
+
+  /**
+   * Messaggi ancora in composizione: il testo non esiste, esiste il conteggio
+   * di quanti appuntamenti ci sono finiti dentro finora.
+   */
+  isGrouped(type: WhatsappScheduledType): boolean {
+    return type === 'recap' || type === 'update_recap' || type === 'cancel_recap';
   }
 
   preview(content: string): string {

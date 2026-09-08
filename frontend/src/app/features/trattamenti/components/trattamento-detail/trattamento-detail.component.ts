@@ -569,7 +569,10 @@ export interface DetailDialogData {
                   <span class="badge-ok">Pagato</span>
                   @if (treatment.paidAt) { il {{ formatDateTime(treatment.paidAt) }} }
                   @if (treatment.price != null) { — € {{ treatment.price | number:'1.2-2' }} }
-                  @if (treatment.paymentMethod) { · {{ treatment.paymentMethod }} }
+                  @if (treatment.paymentMethodLabel || treatment.paymentMethod) {
+                    · {{ treatment.paymentMethodLabel || treatment.paymentMethod }}
+                  }
+                  @if (treatment.collectedByName) { · incassato da <strong>{{ treatment.collectedByName }}</strong> }
                 } @else {
                   <span class="badge-no">Non pagato</span>
                 }
@@ -598,6 +601,81 @@ export interface DetailDialogData {
             </div>
           </mat-tab>
         }
+
+        <!-- TAB SEGRETERIA
+             Raccoglie cio' che serve a chi sta al telefono col paziente:
+             le indicazioni di riprogrammazione lasciate dall'operatore e le
+             note interne della segreteria. Prima le note stavano in fondo
+             alla scheda Clinici, in mezzo a dolore e strumenti, e la
+             riprogrammazione non si vedeva affatto da qui. -->
+        <mat-tab label="Segreteria">
+          <div class="tab-panel">
+            <h3 class="section-h">Riprogrammazione</h3>
+
+            @if (hasReschedulingInfo) {
+              <div class="reschedule-box">
+                <div class="reschedule-row">
+                  <span class="rs-label">Richiesta dall'operatore</span>
+                  <span class="rs-value">
+                    @if (treatment.rescheduleRequested) {
+                      <span class="badge-ok">Sì</span>
+                    } @else {
+                      <span class="badge-no">Non richiesta</span>
+                    }
+                  </span>
+                </div>
+
+                <div class="reschedule-row">
+                  <span class="rs-label">Quando</span>
+                  <span class="rs-value">{{ reschedulingWhen }}</span>
+                </div>
+
+                @if (treatment.suggestInDays != null) {
+                  <div class="reschedule-row">
+                    <span class="rs-label">Fra quanti giorni</span>
+                    <span class="rs-value">{{ treatment.suggestInDays }}</span>
+                  </div>
+                }
+
+                @if (treatment.suggestDateRangeStart || treatment.suggestDateRangeEnd) {
+                  <div class="reschedule-row">
+                    <span class="rs-label">Intervallo suggerito</span>
+                    <span class="rs-value">
+                      dal {{ formatDate(treatment.suggestDateRangeStart) }}
+                      al {{ formatDate(treatment.suggestDateRangeEnd) }}
+                    </span>
+                  </div>
+                }
+
+                <div class="reschedule-row notes-row">
+                  <span class="rs-label">Note di riprogrammazione</span>
+                  <p class="rs-notes">{{ treatment.reschedulingNotes || '—' }}</p>
+                </div>
+              </div>
+            } @else {
+              <p class="empty-hint">
+                L'operatore non ha chiesto di riprogrammare questo trattamento.
+              </p>
+            }
+
+            <mat-divider></mat-divider>
+
+            <h3 class="section-h">Note segreteria</h3>
+            <div class="clinical-field">
+              @if (canEditEconomics) {
+                <mat-form-field appearance="outline" class="full-width">
+                  <textarea matInput rows="4"
+                    placeholder="Appunti interni: richiami, accordi col paziente, ..."
+                    [value]="treatment.secretaryNotes || ''"
+                    (change)="onSecretaryNotesChange($event)">
+                  </textarea>
+                </mat-form-field>
+              } @else {
+                <p>{{ treatment.secretaryNotes || '—' }}</p>
+              }
+            </div>
+          </div>
+        </mat-tab>
 
         <!-- TAB DATI CLINICI (readonly segreteria, readonly per tutti qui) -->
         <mat-tab label="Clinici">
@@ -643,21 +721,6 @@ export interface DetailDialogData {
               }
             </div>
 
-            <mat-divider></mat-divider>
-
-            <div class="clinical-field">
-              <label>Note segreteria</label>
-              @if (canEditEconomics) {
-                <mat-form-field appearance="outline" class="full-width">
-                  <textarea matInput rows="3"
-                    [value]="treatment.secretaryNotes || ''"
-                    (change)="onSecretaryNotesChange($event)">
-                  </textarea>
-                </mat-form-field>
-              } @else {
-                <p>{{ treatment.secretaryNotes || '—' }}</p>
-              }
-            </div>
           </div>
         </mat-tab>
       </mat-tab-group>
@@ -749,6 +812,32 @@ export interface DetailDialogData {
     .invoice-status { padding: 8px 0; }
     .badge-ok { color: #2e7d32; font-weight: 500; }
     .badge-no { color: #9e9e9e; }
+    /* Scheda Segreteria: la riprogrammazione e' una scheda-dati, non un
+       form — coppie etichetta/valore su due colonne, la nota a tutta riga. */
+    .reschedule-box {
+      padding: 12px;
+      background: rgba(0,0,0,0.03);
+      border-radius: 4px;
+      border-left: 3px solid #1976d2;
+      margin-bottom: 8px;
+    }
+    .reschedule-row {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 12px;
+      padding: 5px 0;
+      align-items: baseline;
+    }
+    .reschedule-row.notes-row {
+      grid-template-columns: 1fr;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      margin-top: 6px;
+      padding-top: 8px;
+    }
+    .rs-label { color: rgba(0,0,0,0.6); font-weight: 500; }
+    .rs-value { color: rgba(0,0,0,0.87); }
+    .rs-notes { margin: 4px 0 0; white-space: pre-wrap; }
+    .empty-hint { color: rgba(0,0,0,0.54); margin: 8px 0 16px; }
     .clinical-field { padding: 8px 0; }
     .clinical-field label {
       display: block;
@@ -1156,10 +1245,51 @@ export class TrattamentoDetailComponent {
     this.sendToBilling.emit();
   }
 
-  formatDate(iso: string): string {
-    if (!iso) return '';
+  formatDate(iso: string | null | undefined): string {
+    if (!iso) return '—';
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
+  }
+
+  // ==================== SEGRETERIA ====================
+
+  /**
+   * C'e' qualcosa da dire sulla riprogrammazione? Basta un solo segnale:
+   * l'operatore puo' aver scritto solo la nota senza scegliere un tipo, e
+   * quella nota e' comunque la cosa piu' utile per chi richiama il paziente.
+   */
+  get hasReschedulingInfo(): boolean {
+    const t = this.treatment;
+    return !!(
+      t.rescheduleRequested ||
+      t.suggestInDays != null ||
+      t.suggestDateRangeStart ||
+      t.suggestDateRangeEnd ||
+      t.reschedulingNotes ||
+      (t.reschedulingType && t.reschedulingType !== 'none')
+    );
+  }
+
+  /** Traduzione leggibile di `reschedulingType` ('none' | 'days' | 'range'). */
+  get reschedulingWhen(): string {
+    const t = this.treatment;
+    switch (t.reschedulingType) {
+      case 'days':
+        return t.suggestInDays != null
+          ? `Fra ${t.suggestInDays} giorni`
+          : 'Fra un numero di giorni (non indicato)';
+      case 'range':
+        return 'In un intervallo di date';
+      case 'none':
+        return 'Nessuna indicazione';
+      default:
+        // Tipo non impostato ma qualche dato c'e': lo si desume.
+        if (t.suggestInDays != null) return `Fra ${t.suggestInDays} giorni`;
+        if (t.suggestDateRangeStart || t.suggestDateRangeEnd) {
+          return 'In un intervallo di date';
+        }
+        return 'Nessuna indicazione';
+    }
   }
 
   formatDateTime(isoOrDate: string | Date): string {

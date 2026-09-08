@@ -19,6 +19,9 @@ import { TenantResolverService } from '../../../../core/auth/tenant-resolver.ser
             @if (isTenantMismatch()) {
               <mat-icon style="color:#ed6c02;font-size:28px;width:28px;height:28px">warning</mat-icon>
               Organizzazione errata
+            } @else if (isLoginLoop()) {
+              <mat-icon style="color:#ed6c02;font-size:28px;width:28px;height:28px">sync_problem</mat-icon>
+              Accesso non completato
             } @else {
               <mat-icon class="unauthorized-icon">block</mat-icon>
               Accesso negato
@@ -34,6 +37,21 @@ import { TenantResolverService } from '../../../../core/auth/tenant-resolver.ser
             <p style="color:#666;font-size:0.875rem;margin-top:8px">
               Accedi con un account associato a questa organizzazione oppure vai alla tua.
             </p>
+          } @else if (isLoginLoop()) {
+            <p>
+              Il rientro da Keycloak non è andato a buon fine più volte di seguito,
+              quindi ci siamo fermati invece di continuare a ricaricare la pagina.
+            </p>
+            <p style="color:#666;font-size:0.875rem;margin-top:8px">
+              Di norma succede quando il gestionale è aperto in <strong>più schede</strong>:
+              ogni scheda sovrascrive il login dell'altra. Chiudi le altre schede di
+              questo indirizzo e riprova. Se non basta, esci e rientra.
+            </p>
+            @if (loginError()) {
+              <p style="color:#999;font-size:0.75rem;margin-top:12px;word-break:break-word">
+                Dettaglio tecnico: {{ loginError() }}
+              </p>
+            }
           } @else {
             <p>Non hai i permessi necessari per accedere a questa sezione.</p>
           }
@@ -49,6 +67,15 @@ import { TenantResolverService } from '../../../../core/auth/tenant-resolver.ser
             <button mat-raised-button color="primary" (click)="switchAccount()">
               <mat-icon>switch_account</mat-icon>
               Accedi con un altro account
+            </button>
+          } @else if (isLoginLoop()) {
+            <button mat-stroked-button (click)="switchAccount()">
+              <mat-icon>logout</mat-icon>
+              Esci e rientra
+            </button>
+            <button mat-raised-button color="primary" (click)="retryLogin()">
+              <mat-icon>refresh</mat-icon>
+              Riprova
             </button>
           } @else {
             <button mat-raised-button color="primary" (click)="goHome()">
@@ -85,6 +112,8 @@ export class UnauthorizedComponent implements OnInit {
   private readonly tenantResolver = inject(TenantResolverService);
 
   readonly isTenantMismatch = signal(false);
+  readonly isLoginLoop = signal(false);
+  readonly loginError = signal<string | null>(null);
   readonly tokenOrg = signal<string | null>(null);
   readonly requestedTenant = signal<string | null>(null);
 
@@ -94,7 +123,15 @@ export class UnauthorizedComponent implements OnInit {
       this.isTenantMismatch.set(true);
       this.tokenOrg.set(this.oidcAuth.getTokenOrgAlias());
       this.requestedTenant.set(this.tenantResolver.getTenantAlias());
+    } else if (reason === 'login_loop') {
+      this.isLoginLoop.set(true);
+      this.loginError.set(this.oidcAuth.getLoginErrorDetail());
     }
+  }
+
+  /** Riparte da zero col login, dopo che l'utente ha chiuso le altre schede. */
+  retryLogin(): void {
+    this.oidcAuth.retryLogin();
   }
 
   goHome(): void {

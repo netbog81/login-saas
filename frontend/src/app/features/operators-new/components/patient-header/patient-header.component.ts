@@ -60,6 +60,20 @@ import { Patient } from '../../../../models/patient.model';
 
         <!-- Stats -->
         <div class="patient-stats">
+          <!-- Allarme sconto FE: acceso SOLO se il paziente ha trattamenti
+               con sconto FE mai incassati (fisioterapia o palestra). Cliccando
+               si apre l'elenco con l'azione "Incassa" riga per riga. -->
+          @if (feAlertCount > 0) {
+            <button
+              type="button"
+              class="stat stat-fe-alert"
+              [matTooltip]="feAlertTooltip()"
+              (click)="onViewFeAlert()">
+              <mat-icon>notification_important</mat-icon>
+              <span class="value">{{ feAlertCount }}</span>
+              <span class="label">FE</span>
+            </button>
+          }
           <div class="stat" matTooltip="Percorsi terapeutici">
             <mat-icon>route</mat-icon>
             <span class="value">{{ pathsCount }}</span>
@@ -274,6 +288,40 @@ import { Patient } from '../../../../models/patient.model';
       }
     }
 
+    /* Allarme sconto FE non incassati: rosso, pulsa finché resta scoperto */
+    button.stat-fe-alert {
+      border: 1px solid #fecaca;
+      cursor: pointer;
+      font-family: inherit;
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+      transition: all 0.2s;
+      animation: fe-alert-pulse 2s ease-in-out infinite;
+
+      mat-icon {
+        color: #dc2626;
+      }
+
+      .value {
+        color: #991b1b;
+      }
+
+      .label {
+        color: #dc2626;
+        font-weight: 700;
+      }
+
+      &:hover {
+        box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+        transform: translateY(-1px);
+        animation: none;
+      }
+    }
+
+    @keyframes fe-alert-pulse {
+      0%, 100% { box-shadow: 0 1px 3px rgba(220, 38, 38, 0.25); }
+      50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.18); }
+    }
+
     /* Riquadro documenti: come stat-anamnesi, apre il tab Documenti */
     button.stat-documenti {
       border: none;
@@ -393,6 +441,13 @@ export class PatientHeaderComponent {
   @Input() anamnesisExists = false;
   /** Numero documenti della scheda paziente (tutti i livelli). */
   @Input() documentsCount = 0;
+  /**
+   * Trattamenti con sconto FE mai incassati del paziente (fisioterapia +
+   * palestra). > 0 accende il riquadro di allarme rosso "FE".
+   */
+  @Input() feAlertCount = 0;
+  /** Totale scoperto sconto FE, per il tooltip del riquadro. */
+  @Input() feAlertTotalAmount = 0;
 
   @Output() viewDetails = new EventEmitter<void>();
   @Output() createPath = new EventEmitter<void>();
@@ -400,6 +455,8 @@ export class PatientHeaderComponent {
   @Output() viewAnamnesis = new EventEmitter<void>();
   /** Richiesta di aprire il tab Documenti della scheda paziente. */
   @Output() viewDocuments = new EventEmitter<void>();
+  /** Richiesta di aprire l'elenco degli sconto FE da incassare. */
+  @Output() viewFeAlert = new EventEmitter<void>();
 
   /**
    * URL per la modifica avanzata del subject, nella sezione Anagrafiche
@@ -438,6 +495,21 @@ export class PatientHeaderComponent {
 
   onViewDocuments(): void {
     this.viewDocuments.emit();
+  }
+
+  onViewFeAlert(): void {
+    this.viewFeAlert.emit();
+  }
+
+  /** Tooltip del riquadro allarme: quanti scoperti e per quanto. */
+  feAlertTooltip(): string {
+    const what = this.feAlertCount === 1
+      ? '1 trattamento con sconto FE non incassato'
+      : `${this.feAlertCount} trattamenti con sconto FE non incassati`;
+    const amount = this.feAlertTotalAmount > 0
+      ? ` (€ ${this.feAlertTotalAmount.toFixed(2)})`
+      : '';
+    return `${what}${amount} — clicca per vederli e registrare l'incasso`;
   }
 
   getAge(): number | null {

@@ -1,10 +1,11 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, Injector, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { OAuthService, AuthConfig } from 'angular-oauth2-oidc';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { UserInfo, UserMeResponse } from './auth.models';
 import { TenantResolverService } from './tenant-resolver.service';
+import { Router } from '@angular/router';
 
 /**
  * Servizio di autenticazione basato su Keycloak OIDC.
@@ -24,10 +25,50 @@ export class OidcAuthService {
   private readonly http = inject(HttpClient);
   private readonly tenantResolver = inject(TenantResolverService);
 
+  private readonly injector = inject(Injector);
+
   readonly currentUser = signal<UserInfo | null>(null);
   /** True se il token è per un'org diversa dal subdomain corrente. */
   readonly isTenantMismatch = signal(false);
   private sessionWatchersAttached = false;
+
+  /**
+   * Tetto ai login consecutivi falliti, contati PER SCHEDA (sessionStorage).
+   *
+   * Ogni percorso d'errore di questo modulo chiama login(), che rimanda a
+   * Keycloak; se la sessione SSO è viva Keycloak risponde subito con un nuovo
+   * code, l'app ritenta, fallisce di nuovo e riparte. Con un fallimento
+   * permanente dello scambio del code — nonce sovrascritto da un'altra scheda
+   * dello stesso gestionale, storage del browser bloccato, orologio del PC
+   * fuori tolleranza — il risultato è la pagina che si ricarica all'infinito
+   * senza mai caricare e senza dire perché. Oltre la soglia ci fermiamo e
+   * mandiamo su /unauthorized?reason=login_loop con il motivo tecnico.
+   */
+  private static readonly LOGIN_ATTEMPTS_KEY = 'curandis.oidc.login_attempts';
+  private static readonly MAX_LOGIN_ATTEMPTS = 3;
+  /** Motivo dell'ultimo fallimento, per mostrarlo nella pagina d'errore. */
+  private static readonly LOGIN_ERROR_KEY = 'curandis.oidc.login_error';
+  /**
+   * Lock cross-scheda sul giro di login. nonce e code_verifier vivono in
+   * localStorage, che è UNO per origin: due schede del clinico che partono
+   * insieme verso Keycloak si sovrascrivono a vicenda e nessuna delle due
+   * riesce più a validare il proprio state → loop permanente a due voci.
+   * Chi trova il lock fresco di un'altra scheda aspetta il suo token invece
+   * di partire a sua volta.
+   */
+  private static readonly FLOW_LOCK_KEY = 'curandis.oidc.flow_lock';
+  private static readonly FLOW_LOCK_TTL_MS = 20_000;
+
+  /** Identificativo di questa scheda, per riconoscere il proprio lock. */
+  private readonly tabId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  /** True mentre stiamo aspettando che un'altra scheda completi il login. */
+  readonly waitingForOtherTab = signal(false);
+
+  /** Lock cross-scheda sul refresh: vedi refreshNow(). */
+  private static readonly REFRESH_LOCK_KEY = 'curandis.oidc.refresh_lock';
+  private static readonly REFRESH_LOCK_TTL_MS = 12_000;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshInFlight: Promise<boolean> | null = null;
 
   /**
    * Configura angular-oauth2-oidc con le coordinate Keycloak.
@@ -91,7 +132,13 @@ export class OidcAuthService {
     // localStorage invece del default sessionStorage: una nuova tab riusa la
     // sessione senza rifare il giro di redirect. Allineato al registry.
     this.oauthService.setStorage(localStorage);
-    this.oauthService.setupAutomaticSilentRefresh();
+    // NIENTE setupAutomaticSilentRefresh(): lo scheduler della libreria chiama
+    // refreshToken() per conto suo, fuori dal single-flight di questo service.
+    // Con la rotation dei refresh token attiva su Keycloak, due refresh
+    // paralleli sullo stesso token fanno leggere al secondo un riuso e la
+    // sessione viene invalidata — dati che smettono di caricarsi senza
+    // redirect. Schedula tutto refreshNow(), unico punto d'ingresso.
+    // Stessa forma dell'host della suite (curandis-suite/.../auth.service.ts).
     this.attachSessionWatchers();
   }
 
@@ -105,31 +152,165 @@ export class OidcAuthService {
     if (this.sessionWatchersAttached) return;
     this.sessionWatchersAttached = true;
 
-    // Punto unico di intercettazione: ogni refreshToken() fallito (timer del
-    // silent refresh, interceptor, visibilitychange) emette questo evento.
-    // Se non resta un access token valido, la sessione è finita → login.
+    // Ogni token nuovo (login o refresh) ri-arma il timer sulla sua scadenza.
     this.oauthService.events.subscribe((event) => {
-      if (event.type === 'token_refresh_error' && !this.oauthService.hasValidAccessToken()) {
-        console.warn('[OIDC] Refresh fallito e token scaduto → redirect al login');
-        this.currentUser.set(null);
-        this.login();
+      if (event.type === 'token_received' || event.type === 'token_refreshed') {
+        this.scheduleRefresh();
+      }
+      if (event.type === 'logout' || event.type === 'session_terminated') {
+        this.cancelRefresh();
       }
     });
 
     // Tab in background: il browser throttla i timer, al rientro il token può
-    // essere già scaduto senza che il silent refresh sia mai partito.
-    // Al ritorno in foreground tentiamo subito il refresh; l'eventuale
-    // fallimento viene gestito dal listener token_refresh_error qui sopra.
+    // essere già scaduto senza che il refresh sia mai partito.
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible') return;
-        if (!this.oauthService.hasValidAccessToken() && this.oauthService.getRefreshToken()) {
-          this.oauthService.refreshToken().catch(() => {
-            /* gestito dal listener token_refresh_error */
-          });
+        if (this.oauthService.hasValidAccessToken()) {
+          // Ri-arma: il timer potrebbe essere stato droppato in background.
+          this.scheduleRefresh();
+          return;
+        }
+        if (this.oauthService.getRefreshToken()) {
+          this.attemptRefresh();
         }
       });
     }
+  }
+
+  /**
+   * Refresh deduplicato: **unico** punto da cui parte un refreshToken().
+   *
+   * Deduplica su due livelli, perché la rotation dei refresh token di Keycloak
+   * punisce il secondo refresh partito con lo stesso token (lo legge come
+   * riuso e invalida la sessione):
+   *
+   *  - nella scheda: single-flight, i chiamanti concorrenti (timer,
+   *    visibilitychange, interceptor su N richieste parallele) condividono
+   *    la stessa promessa;
+   *  - fra schede: lock in localStorage. Il refresh token è uno solo per
+   *    origin, quindi due schede che rinfrescano insieme fanno esattamente il
+   *    danno di cui sopra. Chi trova il lock aspetta il token dell'altra
+   *    scheda — che compare in localStorage, da cui la libreria rilegge.
+   */
+  async refreshNow(): Promise<boolean> {
+    if (this.refreshLockHeldByOtherTab()) {
+      const expiration = this.oauthService.getAccessTokenExpiration();
+      if (await this.waitForTokenFromOtherTab(expiration)) {
+        this.scheduleRefresh();
+        return true;
+      }
+      // Lock orfano (scheda chiusa a metà refresh): proseguiamo noi.
+    }
+
+    if (this.refreshInFlight) return this.refreshInFlight;
+
+    this.refreshInFlight = (async () => {
+      this.takeRefreshLock();
+      try {
+        await this.oauthService.refreshToken();
+        return true;
+      } catch (err) {
+        // Con la rotation un invalid_grant può voler dire solo "un'altra
+        // scheda mi ha battuto sul tempo": prima di dare la sessione per
+        // morta, rileggi lo storage — il token nuovo potrebbe essere già lì.
+        if (this.oauthService.hasValidAccessToken()) return true;
+        console.warn('[OIDC] refreshToken fallito:', err);
+        return false;
+      } finally {
+        this.releaseRefreshLock();
+        this.refreshInFlight = null;
+      }
+    })();
+
+    return this.refreshInFlight;
+  }
+
+  /** Timer di refresh a (scadenza - 60s), mai prima di 5s. */
+  private scheduleRefresh(): void {
+    this.cancelRefresh();
+    const expiresAt = this.oauthService.getAccessTokenExpiration();
+    if (!expiresAt) return;
+    const delay = Math.max(expiresAt - Date.now() - 60_000, 5_000);
+    this.refreshTimer = setTimeout(() => void this.attemptRefresh(), delay);
+  }
+
+  private cancelRefresh(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
+  /**
+   * Refresh + gestione dell'esito. Un fallimento con token ancora valido è
+   * transitorio (rete assente, timer throttlato): si riprova fra poco invece
+   * di lasciar morire la sessione in silenzio. Senza più token si va al login.
+   */
+  private async attemptRefresh(): Promise<void> {
+    const ok = await this.refreshNow();
+    if (ok) return;
+
+    if (!this.oauthService.hasValidAccessToken()) {
+      console.warn('[OIDC] Refresh fallito e token scaduto → redirect al login');
+      this.currentUser.set(null);
+      this.login();
+      return;
+    }
+    this.cancelRefresh();
+    this.refreshTimer = setTimeout(() => void this.attemptRefresh(), 20_000);
+  }
+
+  private refreshLockHeldByOtherTab(): boolean {
+    try {
+      const raw = localStorage.getItem(OidcAuthService.REFRESH_LOCK_KEY);
+      if (!raw) return false;
+      const lock = JSON.parse(raw);
+      return (
+        typeof lock?.tabId === 'string' &&
+        lock.tabId !== this.tabId &&
+        typeof lock?.ts === 'number' &&
+        Date.now() - lock.ts < OidcAuthService.REFRESH_LOCK_TTL_MS
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private takeRefreshLock(): void {
+    try {
+      localStorage.setItem(
+        OidcAuthService.REFRESH_LOCK_KEY,
+        JSON.stringify({ tabId: this.tabId, ts: Date.now() }),
+      );
+    } catch {
+      /* storage non disponibile: resta il single-flight di scheda */
+    }
+  }
+
+  private releaseRefreshLock(): void {
+    try {
+      localStorage.removeItem(OidcAuthService.REFRESH_LOCK_KEY);
+    } catch {
+      /* niente da fare */
+    }
+  }
+
+  /**
+   * Aspetta che la scheda col lock scriva un token con scadenza più avanti di
+   * quella che avevamo. Torna false se non arriva entro il TTL: il lock era
+   * orfano e tocca a noi.
+   */
+  private async waitForTokenFromOtherTab(previousExpiration: number | null): Promise<boolean> {
+    const deadline = Date.now() + OidcAuthService.REFRESH_LOCK_TTL_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const now = this.oauthService.getAccessTokenExpiration();
+      if (now && (!previousExpiration || now > previousExpiration)) return true;
+      if (!this.refreshLockHeldByOtherTab()) break;
+    }
+    return false;
   }
 
   /**
@@ -139,12 +320,45 @@ export class OidcAuthService {
    */
   async initialize(): Promise<boolean> {
     try {
-      await this.oauthService.loadDiscoveryDocumentAndTryLogin();
+      await this.oauthService.loadDiscoveryDocument();
     } catch (err) {
       console.warn('[OIDC] Discovery fallita, si usano gli endpoint statici:', err);
     }
 
-    const hasToken = this.oauthService.hasValidAccessToken();
+    // tryLogin() a parte, e non più incatenato alla discovery: prima un
+    // errore qui veniva loggato come "discovery fallita" e ingoiato, quindi
+    // il code tornato da Keycloak non veniva mai scambiato e l'app ripartiva
+    // verso il login all'infinito. Ora il motivo vero viene registrato e
+    // mostrato all'utente quando i tentativi finiscono.
+    try {
+      await this.oauthService.tryLogin();
+    } catch (err) {
+      const detail = this.describeLoginError(err);
+      console.error('[OIDC] Scambio del code fallito:', detail, err);
+      this.storeLoginError(detail);
+    }
+
+    let hasToken = this.oauthService.hasValidAccessToken();
+
+    // Access token scaduto ma refresh token ancora in storage: la sessione
+    // può essere ancora buona. Rinfrescala QUI, prima che parta il router,
+    // o il guard manderebbe a Keycloak un utente che non aveva bisogno di
+    // rifare il giro (e in background, a timer throttlati, è il caso normale
+    // del rientro sulla scheda).
+    if (!hasToken && this.oauthService.getRefreshToken()) {
+      await this.refreshNow();
+      hasToken = this.oauthService.hasValidAccessToken();
+    }
+
+    if (hasToken) {
+      // Login riuscito (o sessione già valida): riparti da zero col contatore
+      // e libera il lock, così le altre schede possono proseguire.
+      this.resetLoginAttempts();
+      this.clearFlowLock();
+      // Arma il timer: al session restore `token_received` non viene emesso,
+      // quindi senza questa chiamata nessuno lo farebbe partire.
+      this.scheduleRefresh();
+    }
     const idClaims = this.oauthService.getIdentityClaims() as any;
     const tokenOrg = this.extractOrgAlias(idClaims);
     const subdomain = this.tenantResolver.getTenantAlias();
@@ -189,7 +403,165 @@ export class OidcAuthService {
    * Fa redirect completo alla pagina di login Keycloak.
    */
   login(): void {
+    // Un'altra scheda è già in volo verso Keycloak: se partissimo anche noi
+    // ci sovrascriveremmo nonce e code_verifier a vicenda (localStorage è uno
+    // per origin) e nessuna delle due completerebbe mai il login.
+    const lock = this.readFlowLock();
+    if (lock && lock.tabId !== this.tabId && Date.now() - lock.ts < OidcAuthService.FLOW_LOCK_TTL_MS) {
+      console.warn('[OIDC] Login già in corso in un\'altra scheda: attendo il suo token');
+      this.waitForOtherTabLogin();
+      return;
+    }
+
+    const attempts = this.bumpLoginAttempts();
+    if (attempts > OidcAuthService.MAX_LOGIN_ATTEMPTS) {
+      console.error(`[OIDC] ${attempts - 1} tentativi di login falliti di fila: mi fermo`);
+      this.waitingForOtherTab.set(false);
+      this.clearFlowLock();
+      this.injector
+        .get(Router)
+        .navigate(['/unauthorized'], { queryParams: { reason: 'login_loop' } });
+      return;
+    }
+
+    this.writeFlowLock();
     this.oauthService.initCodeFlow();
+  }
+
+  /**
+   * Riprova il login azzerando contatore e lock. Usato dal bottone "Riprova"
+   * della pagina d'errore, dopo che l'utente ha chiuso le altre schede.
+   */
+  retryLogin(): void {
+    this.resetLoginAttempts();
+    this.clearFlowLock();
+    this.clearLoginError();
+    this.login();
+  }
+
+  /** Motivo tecnico dell'ultimo login fallito (per la pagina d'errore). */
+  getLoginErrorDetail(): string | null {
+    try {
+      return sessionStorage.getItem(OidcAuthService.LOGIN_ERROR_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Aspetta che la scheda che ha preso il lock porti a casa il token: appena
+   * compare in localStorage ricarichiamo e proseguiamo con la sua sessione.
+   * Se non arriva entro il TTL riprendiamo il giro per conto nostro, così un
+   * lock orfano (scheda chiusa a metà login) non blocca l'app.
+   */
+  private waitForOtherTabLogin(): void {
+    if (this.waitingForOtherTab()) return;
+    this.waitingForOtherTab.set(true);
+
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (this.oauthService.hasValidAccessToken()) {
+        clearInterval(timer);
+        window.location.reload();
+        return;
+      }
+      const lock = this.readFlowLock();
+      const lockStale = !lock || Date.now() - lock.ts > OidcAuthService.FLOW_LOCK_TTL_MS;
+      if (lockStale && Date.now() - startedAt > OidcAuthService.FLOW_LOCK_TTL_MS) {
+        clearInterval(timer);
+        this.waitingForOtherTab.set(false);
+        this.clearFlowLock();
+        this.login();
+      }
+    }, 1000);
+  }
+
+  private readFlowLock(): { tabId: string; ts: number } | null {
+    try {
+      const raw = localStorage.getItem(OidcAuthService.FLOW_LOCK_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return typeof parsed?.tabId === 'string' && typeof parsed?.ts === 'number' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeFlowLock(): void {
+    try {
+      localStorage.setItem(
+        OidcAuthService.FLOW_LOCK_KEY,
+        JSON.stringify({ tabId: this.tabId, ts: Date.now() }),
+      );
+    } catch {
+      /* storage non disponibile: si prosegue senza lock */
+    }
+  }
+
+  private clearFlowLock(): void {
+    try {
+      localStorage.removeItem(OidcAuthService.FLOW_LOCK_KEY);
+    } catch {
+      /* niente da fare */
+    }
+  }
+
+  private bumpLoginAttempts(): number {
+    const next = this.readLoginAttempts() + 1;
+    try {
+      sessionStorage.setItem(OidcAuthService.LOGIN_ATTEMPTS_KEY, String(next));
+    } catch {
+      /* senza storage il tetto non è applicabile: meglio provare che bloccare */
+    }
+    return next;
+  }
+
+  private readLoginAttempts(): number {
+    try {
+      return Number(sessionStorage.getItem(OidcAuthService.LOGIN_ATTEMPTS_KEY)) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private resetLoginAttempts(): void {
+    try {
+      sessionStorage.removeItem(OidcAuthService.LOGIN_ATTEMPTS_KEY);
+    } catch {
+      /* niente da fare */
+    }
+  }
+
+  private storeLoginError(detail: string): void {
+    try {
+      sessionStorage.setItem(OidcAuthService.LOGIN_ERROR_KEY, detail);
+    } catch {
+      /* niente da fare */
+    }
+  }
+
+  private clearLoginError(): void {
+    try {
+      sessionStorage.removeItem(OidcAuthService.LOGIN_ERROR_KEY);
+    } catch {
+      /* niente da fare */
+    }
+  }
+
+  /** Rende leggibile l'errore di angular-oauth2-oidc (che emette OAuthErrorEvent). */
+  private describeLoginError(err: any): string {
+    const type = err?.type;
+    if (type === 'invalid_nonce_in_state') {
+      return 'state/nonce non corrispondente (invalid_nonce_in_state): il login è stato ' +
+        'iniziato da un\'altra scheda o lo storage del browser è stato ripulito';
+    }
+    if (type === 'code_error') {
+      return `Keycloak ha rifiutato il code: ${err?.params?.error || 'code_error'}`;
+    }
+    if (type === 'token_error') {
+      return `scambio del code fallito al token endpoint: ${err?.params?.error || 'token_error'}`;
+    }
+    return err?.message || type || 'errore sconosciuto durante il login';
   }
 
   /**
@@ -197,6 +569,10 @@ export class OidcAuthService {
    */
   logout(): void {
     this.currentUser.set(null);
+    this.resetLoginAttempts();
+    this.clearFlowLock();
+    this.cancelRefresh();
+    this.releaseRefreshLock();
     this.oauthService.revokeTokenAndLogout();
   }
 
@@ -233,6 +609,10 @@ export class OidcAuthService {
       };
 
       this.currentUser.set(user);
+      // Sessione completa: il giro di login è chiuso davvero.
+      this.resetLoginAttempts();
+      this.clearLoginError();
+      this.clearFlowLock();
       return user;
     } catch (err: any) {
       if (err?.status === 403) {
@@ -256,6 +636,11 @@ export class OidcAuthService {
   forceLogin(): void {
     this.currentUser.set(null);
     this.isTenantMismatch.set(false);
+    // Ripartenza voluta dall'utente: azzera contatore, lock ed errore, o la
+    // pagina d'errore si ripresenterebbe al ritorno da Keycloak.
+    this.resetLoginAttempts();
+    this.clearFlowLock();
+    this.clearLoginError();
     this.oauthService.logOut();
   }
 

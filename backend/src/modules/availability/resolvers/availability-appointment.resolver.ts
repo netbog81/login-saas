@@ -1,9 +1,11 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards, UseInterceptors } from '@nestjs/common';
 import { CalendarWriteGuard } from '../guards/calendar-write.guard';
+import { AttendanceMarkGuard } from '../guards/attendance-mark.guard';
 import { AppointmentChangedInterceptor } from '../mutation-event.interceptors';
 import { AvailabilityAppointment, ArrivalSource } from '../entities/availability-appointment.entity';
 import { CurrentUser, CurrentUserContext } from '../../users/decorators/current-user.decorator';
+import { AppUserService } from '../../users/services/app-user.service';
 import { AppointmentService as AppointmentServiceEntity } from '../entities/appointment-service.entity';
 import { AvailabilityAppointmentService } from '../services/availability-appointment.service';
 import { CreateAvailabilityAppointmentInput, RepeatConfigInput } from '../dto/create-availability-appointment.input';
@@ -11,8 +13,14 @@ import { UpdateAvailabilityAppointmentInput } from '../dto/update-availability-a
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { GymSlotInfo, GymSlotInfoWithContext } from '../dto/gym-slot-info.type';
 import { GymAvailabilityService } from '../services/gym-availability.service';
+import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { RecurringSeriesScope, UpdateRecurringSeriesTimeInput, UpdateRecurringSeriesInput } from '../dto/recurring-series.input';
-import { RecurringSeriesOperationResult, GymAppointmentCreationResult } from '../dto/recurring-series-conflict.output';
+import {
+  RecurringSeriesOperationResult, GymAppointmentCreationResult, RecurringOccurrencePreview,
+} from '../dto/recurring-series-conflict.output';
+import {
+  RecurringOccurrenceInput, RecurringSeriesPreviewInput,
+} from '../dto/recurring-occurrence.input';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
@@ -36,7 +44,22 @@ export class AvailabilityAppointmentResolver {
     private readonly tenantContext: TenantContextService,
     private readonly appointmentService: AvailabilityAppointmentService,
     private readonly gymAvailabilityService: GymAvailabilityService,
+    private readonly settingsService: GeneralSettingsService,
+    private readonly appUserService: AppUserService,
   ){}
+
+  /**
+   * `AppUser.id` di chi sta facendo l'operazione, dal JWT. Null se non
+   * risolvibile (utente non ancora mappato nel tenant): le colonne di audit
+   * sono nullable, meglio un null onesto che un valore inventato.
+   */
+  private async resolveAppUserId(
+    user: CurrentUserContext | undefined,
+  ): Promise<string | null> {
+    if (!user?.userId) return null;
+    const appUser = await this.appUserService.findByKeycloakId(user.userId);
+    return appUser?.id ?? null;
+  }
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
   private get dataSource() {
@@ -79,7 +102,8 @@ export class AvailabilityAppointmentResolver {
   async getAppointmentsByOperator(
     @Args('operatorId', { type: () => ID }) operatorId: string,
     @Args('startDate') startDate: string,
-    @Args('endDate') endDate: string,
+    // Facoltativo: omesso significa "da startDate in poi", senza limite.
+    @Args('endDate', { nullable: true }) endDate?: string,
   ): Promise<AvailabilityAppointment[]> {
     return this.appointmentService.findByOperatorAndDateRange(operatorId, startDate, endDate);
   }
@@ -153,9 +177,27 @@ export class AvailabilityAppointmentResolver {
   }
 
   /**
+   * Query: l'utente collegato puo' marcare presenze/assenze?
+   *
+   * Risponde con la stessa regola del guard (ruolo + impostazione
+   * `noShow.operatorsCanMark`), cosi' la UI non deve re-implementarla e non
+   * puo' andare fuori sincrono: se qui e' false l'operatore non vede proprio
+   * i pulsanti, invece di scoprire il divieto con un errore dopo il click.
+   */
+  @Query(() => Boolean, { name: 'canMarkAttendance' })
+  async canMarkAttendance(
+    @CurrentUser() user: CurrentUserContext,
+  ): Promise<boolean> {
+    const roles: string[] = (user as any)?.roles ?? [];
+    if (roles.some((r) => SECRETARY_ROLES.includes(r))) return true;
+    return this.settingsService.canOperatorsMarkAttendance();
+  }
+
+  /**
    * Mutation: Segna come no-show (legacy - mantiene compatibilità)
    */
   @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentAsNoShow' })
+  @UseGuards(AttendanceMarkGuard)
   async markAsNoShow(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<AvailabilityAppointment> {
@@ -174,15 +216,23 @@ export class AvailabilityAppointmentResolver {
   async cancelAppointmentWithNotice(
     @Args('id', { type: () => ID }) id: string,
     @Args('reason') reason: string,
-    @Args('cancelledBy', { type: () => ID }) cancelledBy: string,
+    @Args('cancelledBy', { type: () => ID, nullable: true }) _cancelledBy?: string,
+    @CurrentUser() user?: CurrentUserContext,
   ): Promise<AvailabilityAppointment> {
-    return this.appointmentService.cancelAppointment(id, reason, cancelledBy);
+    // `cancelledBy` è IGNORATO: resta nello schema solo per i client già
+    // deployati. Ci mandavano etichette di ruolo ('secretary', 'system')
+    // invece di un id, e la colonna è `uuid` → "invalid input syntax for
+    // type uuid". Chi ha disdetto lo sappiamo dal JWT, che è anche l'unica
+    // fonte non falsificabile dal client.
+    const cancelledByUserId = await this.resolveAppUserId(user);
+    return this.appointmentService.cancelAppointment(id, reason, cancelledByUserId);
   }
 
   /**
    * Mutation: Segna appuntamento come no-show (incrementa contatore paziente)
    */
   @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentNoShow' })
+  @UseGuards(AttendanceMarkGuard)
   async markNoShow(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<AvailabilityAppointment> {
@@ -194,6 +244,7 @@ export class AvailabilityAppointmentResolver {
    * Abilita la creazione di un trattamento
    */
   @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentAttended' })
+  @UseGuards(AttendanceMarkGuard)
   async markAttended(
     @Args('id', { type: () => ID }) id: string,
     @CurrentUser() user: CurrentUserContext,
@@ -213,7 +264,7 @@ export class AvailabilityAppointmentResolver {
    * sia all'operatore/istruttore (dalla sua pagina): è un fatto osservato,
    * non una decisione economica.
    */
-  @UseGuards(CalendarWriteGuard)
+  @UseGuards(AttendanceMarkGuard)
   @Mutation(() => AvailabilityAppointment, { name: 'markAppointmentLateArrival' })
   async markLateArrival(
     @Args('id', { type: () => ID }) id: string,
@@ -230,7 +281,7 @@ export class AvailabilityAppointmentResolver {
   /**
    * Mutation: annulla la registrazione del ritardo (click sbagliato).
    */
-  @UseGuards(CalendarWriteGuard)
+  @UseGuards(AttendanceMarkGuard)
   @Mutation(() => AvailabilityAppointment, { name: 'clearAppointmentLateArrival' })
   async clearLateArrival(
     @Args('id', { type: () => ID }) id: string,
@@ -243,6 +294,7 @@ export class AvailabilityAppointmentResolver {
    * Utile per correggere click accidentali
    */
   @Mutation(() => AvailabilityAppointment, { name: 'revertAppointmentAttended' })
+  @UseGuards(AttendanceMarkGuard)
   async revertAttended(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<AvailabilityAppointment> {
@@ -400,8 +452,27 @@ export class AvailabilityAppointmentResolver {
     @Args('appointmentId', { type: () => ID }) appointmentId: string,
     @Args('repeatConfig') repeatConfig: RepeatConfigInput,
     @Args('force', { nullable: true }) force?: boolean,
+    @Args('occurrences', { type: () => [RecurringOccurrenceInput], nullable: true })
+    occurrences?: RecurringOccurrenceInput[],
   ): Promise<AvailabilityAppointment> {
-    return this.appointmentService.makeRecurring(appointmentId, repeatConfig, force === true);
+    return this.appointmentService.makeRecurring(
+      appointmentId, repeatConfig, force === true, occurrences,
+    );
+  }
+
+  /**
+   * Query: piano di una serie ricorrente PRIMA di crearla — le date che
+   * verrebbero generate, ciascuna con l'eventuale conflitto.
+   *
+   * Non scrive niente. È il passo che permette all'utente di decidere
+   * occorrenza per occorrenza (conferma / sposta / salta) invece di ricevere
+   * un blocco secco su tutta la serie.
+   */
+  @Query(() => [RecurringOccurrencePreview], { name: 'recurringSeriesPreview' })
+  async recurringSeriesPreview(
+    @Args('input') input: RecurringSeriesPreviewInput,
+  ): Promise<RecurringOccurrencePreview[]> {
+    return this.appointmentService.previewRecurringSeries(input);
   }
 
   // ==================== RECURRING SERIES ====================

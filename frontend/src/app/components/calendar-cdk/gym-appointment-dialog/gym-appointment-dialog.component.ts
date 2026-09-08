@@ -1029,7 +1029,6 @@ export class GymAppointmentDialogComponent extends BaseComponent implements OnIn
         this.appointmentService.cancelWithNotice(
           this.data.appointment.id,
           reason,
-          'system' // TODO: sostituire con ID utente corrente
         )
       );
       this.runInZone(() => {

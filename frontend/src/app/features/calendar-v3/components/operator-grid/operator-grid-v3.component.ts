@@ -41,6 +41,8 @@ import {
   DragMoveEvent,
   AvailableSlotPosition,
 } from '../../../calendar-v2/models/calendar-v2.model';
+import { ConflictBadgeComponent } from '../../../conflicts/components/conflict-badge/conflict-badge.component';
+import { conflictReasonLabel } from '../../../conflicts/models/conflict.model';
 
 /** Soglia px sotto la quale il chip mostra solo il nome (orario nascosto). */
 const TIME_VISIBLE_MIN_HEIGHT = 36;
@@ -56,7 +58,7 @@ const DRAG_SNAP_MINUTES = 15;
   selector: 'app-operator-grid-v3',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, DragDropModule, MatTooltipModule, MatIconModule],
+  imports: [CommonModule, DragDropModule, MatTooltipModule, MatIconModule, ConflictBadgeComponent],
   template: `
     @if (gridData) {
       <!-- ===== HEADER AREA (fuori dal scroll) ===== -->
@@ -136,36 +138,64 @@ const DRAG_SNAP_MINUTES = 15;
                   </div>
                 }
 
-                <!-- Eventi posizionati (assoluti sopra le celle) -->
+                <!-- Eventi posizionati (assoluti sopra le celle).
+                     Le assenze non sono trascinabili: su una striscia da 22px
+                     un clic diventa facilmente un micro-trascinamento e si
+                     sposterebbe un appuntamento senza volerlo. -->
                 @for (event of col.events; track event.appointment.id) {
                   <div class="event-chip"
                        [class.read-only]="readOnly"
                        [class.highlighted]="event.appointment.id === highlightedAppointmentId"
+                       [class.has-conflict]="event.hasConflict"
+                       [class.no-show]="event.isNoShow"
                        [class.copyable]="selectionMode"
                        cdkDrag
                        [cdkDragData]="event"
-                       [cdkDragDisabled]="selectionMode || pasteMode || readOnly"
+                       [cdkDragDisabled]="selectionMode || pasteMode || readOnly || event.isNoShow"
                        (cdkDragStarted)="onDragStarted()"
                        (cdkDragEnded)="onDragEnded($event, event)"
                        [style.top.px]="event.topPx"
                        [style.height.px]="event.heightPx"
-                       [style.left.%]="event.leftPct"
-                       [style.width.%]="event.widthPct"
+                       [style.left]="chipLeft(event)"
+                       [style.width]="chipWidth(event)"
                        [style.background]="event.color"
-                       [matTooltip]="event.title + ' | ' + event.timeLabel"
+                       [matTooltip]="tooltipFor(event)"
                        (click)="onEventClick($event, event)"
                        (dblclick)="onEventDblClick($event, event)">
-                    <div class="event-content">
-                      <span class="event-title">{{ event.title }}</span>
-                      @if (event.heightPx >= TIME_VISIBLE_MIN_HEIGHT) {
-                        <span class="event-time">{{ event.timeLabel }}</span>
+                    @if (event.isNoShow) {
+                      <!-- Assenza: il chip si ritira su una striscia stretta a
+                           sinistra. La fascia e' tornata prenotabile davvero
+                           (il backend non la considera piu' occupata), quindi
+                           deve tornare libera anche al doppio clic: se il chip
+                           restasse a tutta larghezza continuerebbe a
+                           intercettarlo e non si potrebbe piu' prenotare
+                           nessuno li'. Nome e orario restano nel tooltip. -->
+                      <div class="no-show-strip">
+                        <mat-icon>person_off</mat-icon>
+                      </div>
+                    } @else {
+                      <div class="event-content">
+                        <!-- Il triangolo va PRIMA del nome: su chip stretti il
+                             testo viene troncato da destra, e un badge in coda
+                             sarebbe il primo a sparire proprio sugli
+                             appuntamenti che più devono farsi notare. -->
+                        @if (event.hasConflict) {
+                          <app-conflict-badge
+                            [conflict]="{ hasConflict: true, reason: event.conflictReason, detectedAt: event.conflictDetectedAt }"
+                            [size]="event.heightPx < TIME_VISIBLE_MIN_HEIGHT ? 'sm' : 'md'">
+                          </app-conflict-badge>
+                        }
+                        <span class="event-title">{{ event.title }}</span>
+                        @if (event.heightPx >= TIME_VISIBLE_MIN_HEIGHT) {
+                          <span class="event-time">{{ event.timeLabel }}</span>
+                        }
+                        @if (event.isRecurring) {
+                          <mat-icon class="recurring-icon">repeat</mat-icon>
+                        }
+                      </div>
+                      @if (!readOnly) {
+                        <div class="resize-handle" (mousedown)="onResizeStart($event, event)"></div>
                       }
-                      @if (event.isRecurring) {
-                        <mat-icon class="recurring-icon">repeat</mat-icon>
-                      }
-                    </div>
-                    @if (!readOnly) {
-                      <div class="resize-handle" (mousedown)="onResizeStart($event, event)"></div>
                     }
                   </div>
                 }
@@ -422,6 +452,53 @@ const DRAG_SNAP_MINUTES = 15;
       }
     }
 
+    /* Paziente non presentato: striscia stretta a lato, sbiadita e a righe.
+       Resta visibile come promemoria dell'assenza (prima l'appuntamento
+       spariva del tutto dal calendario) ma non occupa piu' la fascia, che e'
+       tornata libera per una nuova prenotazione. Il nome del paziente non ci
+       sta: vive nel tooltip. */
+    .event-chip.no-show {
+      opacity: 0.6;
+      padding: 0;
+      background-image: repeating-linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.3) 0,
+        rgba(255, 255, 255, 0.3) 4px,
+        transparent 4px,
+        transparent 8px
+      );
+      border: 1px dashed rgba(255, 255, 255, 0.9);
+
+      &:hover {
+        opacity: 0.95;
+      }
+    }
+
+    .no-show-strip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        color: white;
+      }
+    }
+
+    /* Conflitto di disponibilità: contorno tratteggiato rosso in aggiunta al
+       triangolo. Il chip conserva il colore dell'operatore (serve a leggere
+       la griglia a colpo d'occhio) quindi la segnalazione deve stare sul
+       bordo, dove nessun colore operatore può confondersi con essa. */
+    .event-chip.has-conflict {
+      outline: 2px dashed #dc2626;
+      outline-offset: -2px;
+    }
+
     /* In sola lettura (vista operatore) il resize-handle non viene
        renderizzato: manca la striscia bianca che per la segreteria separa
        visivamente i chip impilati, e appuntamenti consecutivi dello stesso
@@ -454,6 +531,15 @@ const DRAG_SNAP_MINUTES = 15;
       overflow: hidden;
       flex: 1;
       min-width: 0;
+    }
+
+    /* Il badge è un componente figlio: il suo host va allineato a mano,
+       perché .event-content usa align-items:baseline (giusto per testo e
+       orario) e un'icona su baseline resterebbe appesa troppo in basso. */
+    .event-content app-conflict-badge {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-self: center;
     }
 
     .event-title {
@@ -658,6 +744,56 @@ export class OperatorGridV3Component implements AfterViewInit, OnDestroy {
 
   /** Esposto al template per la soglia di visibilita' orario. */
   readonly TIME_VISIBLE_MIN_HEIGHT = TIME_VISIBLE_MIN_HEIGHT;
+
+  /**
+   * Tooltip del chip. Il motivo del conflitto entra qui e non solo nel badge
+   * perché il triangolo è alto 12px: puntarlo con precisione su una griglia
+   * settimanale fitta è un esercizio di mira, mentre il chip è un bersaglio
+   * grande e chi ci passa sopra vuole già sapere cosa non va.
+   */
+  /**
+   * Larghezza della striscia con cui si disegna un'assenza, in pixel.
+   * Fissa e non percentuale: le colonne cambiano larghezza con lo zoom e col
+   * numero di operatori, e una percentuale darebbe una striscia a volte
+   * invisibile e a volte larga mezza fascia.
+   */
+  readonly NO_SHOW_STRIP_PX = 22;
+
+  /** Striscia + respiro: da qui in poi comincia lo spazio prenotabile. */
+  private readonly NO_SHOW_GUTTER_PX = 24;
+
+  /** Posizione orizzontale del chip: la striscia dell'assenza sta a sinistra. */
+  chipLeft(event: PositionedEvent): string {
+    if (event.isNoShow) return '0';
+    if (!event.overlapsNoShow) return `${event.leftPct}%`;
+    // Lo spazio utile e' la colonna meno la grondaia dell'assenza, poi
+    // ripartito fra gli appuntamenti sovrapposti come al solito.
+    const g = this.NO_SHOW_GUTTER_PX;
+    return `calc(${g}px + (100% - ${g}px) * ${event.leftPct / 100})`;
+  }
+
+  /**
+   * Larghezza del chip. Il no-show occupa solo la striscia e lascia libero il
+   * resto della cella, che torna cliccabile come uno slot vuoto: e' li' che il
+   * doppio clic apre la creazione di un nuovo appuntamento.
+   */
+  chipWidth(event: PositionedEvent): string {
+    if (event.isNoShow) return `${this.NO_SHOW_STRIP_PX}px`;
+    if (!event.overlapsNoShow) return `${event.widthPct}%`;
+    const g = this.NO_SHOW_GUTTER_PX;
+    return `calc((100% - ${g}px) * ${event.widthPct / 100})`;
+  }
+
+  tooltipFor(event: PositionedEvent): string {
+    const lines = [`${event.title} | ${event.timeLabel}`];
+    if (event.isNoShow) {
+      lines.push('🚫 Paziente non presentato');
+    }
+    if (event.hasConflict) {
+      lines.push(`⚠ ${conflictReasonLabel(event.conflictReason)}`);
+    }
+    return lines.join('\n');
+  }
 
   private scrollListener?: () => void;
   private isDragging = false;

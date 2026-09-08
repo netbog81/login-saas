@@ -30,6 +30,13 @@ export class WhatsappConfigInput {
   @Field({ nullable: true })
   sendUpdateNotification?: boolean;
 
+  /**
+   * Manda al paziente, insieme al recap della prenotazione, il link per
+   * aggiungere i propri appuntamenti al calendario del telefono.
+   */
+  @Field({ nullable: true })
+  patientCalendarFeedEnabled?: boolean;
+
   /** Finestra di raggruppamento recap in secondi (30-600). */
   @Field(() => Int, { nullable: true })
   recapBufferSeconds?: number;

@@ -68,7 +68,15 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
           <th mat-header-cell *matHeaderCellDef>Data</th>
           <td mat-cell *matCellDef="let t">
             {{ formatDate(t.appointment?.appointmentDate || (t.startedAt || '').slice(0, 10)) }}<br>
-            <small>{{ t.appointment?.startTime || '—' }}</small>
+            @if (t.appointment) {
+              <small>{{ t.appointment.startTime }}</small>
+            } @else {
+              <small class="orphan-hint"
+                     matTooltip="Appuntamento cancellato dal calendario: il trattamento non ha più un orario di riferimento">
+                <mat-icon class="orphan-hint-icon">event_busy</mat-icon>
+                senza appuntamento
+              </small>
+            }
           </td>
         </ng-container>
 
@@ -125,12 +133,13 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                  stanno nel tooltip dell'icona "layers". Fattura singola: totale
                  REALE confermato da accounting (con bollo) se emessa, altrimenti
                  il prezzo clinico. -->
-            € {{ (isMultiInvoice(t)
-                    ? (t.accountingTreatmentLinesAmount ?? t.price ?? 0)
-                    : (t.accountingTotalAmount ?? t.price ?? 0)) | number:'1.2-2' }}
+            € {{ displayAmount(t) | number:'1.2-2' }}
             @if (isMultiInvoice(t)) {
               <mat-icon class="flag-icon" style="color: #7b1fa2"
                         [matTooltip]="multiInvoiceTooltip(t)">layers</mat-icon>
+            } @else if (advanceCovered(t) > 0) {
+              <mat-icon class="flag-icon" style="color: #00796b"
+                        [matTooltip]="advanceTooltip(t)">savings</mat-icon>
             } @else if (t.accountingTotalAmount != null && t.accountingTotalAmount !== t.price) {
               <mat-icon class="flag-icon" matTooltip="Totale fattura (marca da bollo inclusa)" style="color: #1976d2">receipt_long</mat-icon>
             }
@@ -174,6 +183,18 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                 : 'Attestato non disponibile: nessun appuntamento collegato'">
               <mat-icon>history_edu</mat-icon>
             </button>
+            <!-- Eliminazione riservata ai trattamenti ORFANI: l'appuntamento
+                 non c'è più, quindi la riga non è più raggiungibile né
+                 correggibile dal calendario. Sugli altri si agisce
+                 dall'appuntamento, non da qui. -->
+            @if (canManage && isOrphan(t)) {
+              <button mat-icon-button
+                class="orphan-delete"
+                (click)="deleteOrphan.emit(t); $event.stopPropagation()"
+                matTooltip="Elimina: l'appuntamento di riferimento è stato cancellato">
+                <mat-icon>delete_forever</mat-icon>
+              </button>
+            }
           </td>
         </ng-container>
 
@@ -225,7 +246,8 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                       (selectAllToggle)="selectAllToggle.emit($event)"
                       (openDetail)="openDetail.emit($event)"
                       (closeTreatment)="closeTreatment.emit($event)"
-                      (generateCertificate)="generateCertificate.emit($event)">
+                      (generateCertificate)="generateCertificate.emit($event)"
+                      (deleteOrphan)="deleteOrphan.emit($event)">
                     </app-trattamenti-list>
                   </mat-expansion-panel>
                 }
@@ -242,7 +264,8 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
                 (openDetail)="openDetail.emit($event)"
                 (sendOne)="sendOne.emit($event)"
                 (closeTreatment)="closeTreatment.emit($event)"
-                (generateCertificate)="generateCertificate.emit($event)">
+                (generateCertificate)="generateCertificate.emit($event)"
+                (deleteOrphan)="deleteOrphan.emit($event)">
               </app-trattamenti-list>
             }
           </mat-expansion-panel>
@@ -273,6 +296,18 @@ const STATUS_CHIP: Record<TreatmentStatus, { label: string; color: string }> = {
     .billing-chip {
       margin-left: 6px;
     }
+    .orphan-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      color: #b45309;
+      font-style: italic;
+    }
+    .orphan-hint-icon {
+      font-size: 14px;
+      width: 14px; height: 14px;
+    }
+    .orphan-delete { color: #b91c1c; }
     .flag-icon {
       font-size: 18px;
       vertical-align: middle;
@@ -312,11 +347,23 @@ export class TrattamentiListComponent {
   @Output() closeTreatment = new EventEmitter<Trattamento>();
   /** Genera l'attestato di presenza dal template predefinito. */
   @Output() generateCertificate = new EventEmitter<Trattamento>();
+  /** Elimina un trattamento orfano (appuntamento cancellato dal calendario). */
+  @Output() deleteOrphan = new EventEmitter<Trattamento>();
 
   /** Esposto al template per confrontare lo stato del trattamento. */
   readonly TreatmentStatus = TreatmentStatus;
 
   columns = ['select', 'date', 'patient', 'operator', 'status', 'price', 'actions'];
+
+  /**
+   * Trattamento ORFANO: nessun appuntamento collegato, quindi in lista non
+   * ha ora di riferimento. Si testa la RELAZIONE e non `appointmentId`, così
+   * copre sia l'appuntamento cancellato davvero (FK a NULL dalla migration
+   * 1798) sia quello solo cestinato (il backend lo esclude dal join).
+   */
+  isOrphan(t: Trattamento): boolean {
+    return !t.appointment;
+  }
 
   isSelected(id: string): boolean {
     return this.selectedIds.has(id);
@@ -384,6 +431,48 @@ export class TrattamentiListComponent {
   }
 
   /** Il documento corrente copre più trattamenti (fattura cumulativa). */
+  /**
+   * 2026-09-04 — Quota già coperta da un voucher "anticipo fattura".
+   * Zero (o assente) per tutti gli altri trattamenti.
+   */
+  advanceCovered(t: Trattamento): number {
+    return Number(t.accountingAdvanceCoveredAmount ?? 0);
+  }
+
+  /**
+   * Importo mostrato in elenco: il valore della PRESTAZIONE, non del documento.
+   *
+   * Con un anticipo di mezzo i due numeri divergono: una seduta da 55 € con 35
+   * già coperti viene fatturata per il solo residuo, e il documento totalizza
+   * 20. Mostrare quel 20 come importo della seduta era fuorviante — il valore
+   * si ricompone sommando la quota del documento e la quota dell'anticipo.
+   *
+   * Senza anticipo non cambia niente: fattura cumulativa → quota del
+   * trattamento; fattura singola → totale confermato dalla contabilità, marca
+   * da bollo inclusa.
+   */
+  displayAmount(t: Trattamento): number {
+    if (this.isMultiInvoice(t)) {
+      return Number(t.accountingTreatmentLinesAmount ?? t.price ?? 0);
+    }
+    const covered = this.advanceCovered(t);
+    if (covered > 0) {
+      return Number(t.accountingTreatmentLinesAmount ?? 0) + covered;
+    }
+    return Number(t.accountingTotalAmount ?? t.price ?? 0);
+  }
+
+  advanceTooltip(t: Trattamento): string {
+    const covered = this.advanceCovered(t);
+    const onDocument = Number(t.accountingTreatmentLinesAmount ?? 0);
+    const fmt = (n: number) => `€ ${n.toFixed(2).replace('.', ',')}`;
+    if (onDocument <= 0) {
+      return `Interamente coperta da un anticipo fattura (${fmt(covered)}).`;
+    }
+    return `${fmt(onDocument)} sulla fattura n. ${t.patientInvoiceNumber ?? '—'}`
+      + ` + ${fmt(covered)} già coperti da un anticipo fattura.`;
+  }
+
   isMultiInvoice(t: Trattamento): boolean {
     return (t.accountingDocumentTreatmentCount ?? 1) > 1
       && t.accountingTotalAmount != null;

@@ -33,6 +33,7 @@ import {
   QUICK_REPLIES_SETTING_KEY,
 } from '../../whatsapp-chat/services/whatsapp-chat-state.service';
 import { SettingsService } from '../../../services/settings.service';
+import { NotificationChannelsContainer } from '../../notification-channels/containers/notification-channels.container';
 
 @Component({
   selector: 'app-whatsapp-settings',
@@ -50,6 +51,7 @@ import { SettingsService } from '../../../services/settings.service';
     ConfigFormComponent,
     TemplateEditorComponent,
     QuickRepliesEditorComponent,
+    NotificationChannelsContainer,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -71,6 +73,11 @@ import { SettingsService } from '../../../services/settings.service';
           </app-config-form>
         </mat-card-content>
       </mat-card>
+
+      <!-- Canali: sta subito dopo la connessione perche' e' la domanda
+           successiva naturale — collegato il gateway, da dove escono i
+           messaggi. Prima dei template, che sono il "cosa si dice". -->
+      <app-notification-channels class="settings-card"></app-notification-channels>
 
       <mat-card class="settings-card">
         <mat-card-header>

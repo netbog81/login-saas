@@ -23,6 +23,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatIconModule } from '@angular/material/icon';
 import { GymSlotInfo, GymAppointment } from '../../../../services/gym-room.service';
 import { TimeSlot } from '../../models/calendar-v2.model';
+import { ConflictBadgeComponent } from '../../../conflicts/components/conflict-badge/conflict-badge.component';
+import { conflictReasonLabel } from '../../../conflicts/models/conflict.model';
 
 export interface GymRoom {
   id: string;
@@ -68,7 +70,7 @@ interface GymColumn {
   selector: 'app-gym-grid-v2',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, MatTooltipModule, MatIconModule],
+  imports: [CommonModule, MatTooltipModule, MatIconModule, ConflictBadgeComponent],
   template: `
     <!-- Day group headers (weekly) -->
     @if (isWeekly) {
@@ -121,6 +123,7 @@ interface GymColumn {
                  [class.slot-full]="slotInfo && !slotInfo.isAvailable && !slotInfo.isClosed"
                  [class.slot-closed]="slotInfo?.isClosed"
                  [class.slot-no-template]="!slotInfo"
+                 [class.slot-has-conflict]="hasConflictInSlot(col.room.id, col.date, slot.time)"
                  [style.height.px]="slotHeight"
                  [style.border-left-color]="slotInfo?.operator?.color || 'transparent'"
                  (click)="onSlotClick(col.room, col.date, slot, slotInfo, $event)"
@@ -139,8 +142,19 @@ interface GymColumn {
                 </div>
                 @for (apt of getSlotAppointments(col.room.id, col.date, slot.time); track apt.id) {
                   <div class="mini-apt"
-                       [matTooltip]="apt.clientName + (apt.notes ? ' - ' + apt.notes : '')"
+                       [class.apt-conflict]="apt.hasConflict"
+                       [matTooltip]="appointmentTooltip(apt)"
                        (click)="onAppointmentClick(apt, col.room, col.date, slot, slotInfo, $event)">
+                    <!-- Il triangolo apre il chip: in palestra i mini-chip
+                         sono impilati e larghi quanto la colonna, quindi il
+                         nome viene troncato da destra e un badge in coda
+                         sparirebbe proprio dove serve. -->
+                    @if (apt.hasConflict) {
+                      <app-conflict-badge
+                        [conflict]="{ hasConflict: true, reason: apt.conflictReason, detectedAt: apt.conflictDetectedAt }"
+                        size="sm">
+                      </app-conflict-badge>
+                    }
                     {{ apt.clientName }}
                     @if (apt.isRecurring) {
                       <mat-icon class="recurring-badge">repeat</mat-icon>
@@ -322,6 +336,28 @@ interface GymColumn {
       &:hover { background: rgba(99, 102, 241, 0.15); }
     }
 
+    /* Prenotazione in conflitto: fondo e bordo rossi in aggiunta al
+       triangolo. Il mini-chip è alto ~12px, troppo poco perché un'icona da
+       sola si noti scorrendo una griglia settimanale. */
+    .mini-apt.apt-conflict {
+      background: #fee2e2;
+      box-shadow: inset 0 0 0 1px #fca5a5;
+      color: #7f1d1d;
+      &:hover { background: #fecaca; }
+    }
+
+    .mini-apt app-conflict-badge {
+      display: inline-flex;
+      vertical-align: middle;
+      margin-right: 2px;
+    }
+
+    /* Slot che contiene almeno una prenotazione in conflitto: marcatore sul
+       bordo della cella, per trovarla senza dover leggere i singoli chip. */
+    .gym-slot.slot-has-conflict {
+      box-shadow: inset 3px 0 0 #dc2626;
+    }
+
     .recurring-badge {
       font-size: 10px;
       width: 10px;
@@ -401,6 +437,23 @@ export class GymGridComponent implements AfterViewInit, OnDestroy {
     const dateMap = this.allAppointments.get(date);
     const apts = dateMap?.get(roomId);
     return apts?.filter((a: any) => a.startTime === time) || [];
+  }
+
+  /** True se lo slot contiene almeno una prenotazione in conflitto. */
+  hasConflictInSlot(roomId: string, date: string, time: string): boolean {
+    return this.getSlotAppointments(roomId, date, time).some((a) => a.hasConflict);
+  }
+
+  /**
+   * Tooltip del mini-chip. Il motivo entra qui e non solo nel badge: il
+   * triangolo qui è da 12px, e su una griglia settimanale puntarlo è
+   * scomodo — il chip invece è tutto bersaglio.
+   */
+  appointmentTooltip(apt: GymAppointment): string {
+    const base = apt.clientName + (apt.notes ? ` - ${apt.notes}` : '');
+    return apt.hasConflict
+      ? `${base}\n⚠ ${conflictReasonLabel(apt.conflictReason)}`
+      : base;
   }
 
   getOperatorFullName(slotInfo: GymSlotInfo): string {

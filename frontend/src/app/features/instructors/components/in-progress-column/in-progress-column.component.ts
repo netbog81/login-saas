@@ -102,39 +102,45 @@ import { Treatment } from '../../../../models/treatment.model';
             </button>
           }
 
-          <!-- Ritardo: l'istruttore è chi vede davvero entrare il paziente,
-               e col cambio automatico di stato l'appuntamento risulta già
-               "presentato" all'orario previsto. -->
-          @if (registeredLateMinutes !== null) {
-            <div class="late-registered">
-              <mat-icon>schedule</mat-icon>
-              <span>Arrivato con {{ registeredLateMinutes }} min di ritardo</span>
-            </div>
-          } @else {
-            <button mat-stroked-button class="full-width mark-btn late-btn"
-                    (click)="onMarkLateArrival()">
-              <mat-icon>schedule</mat-icon>
-              Arrivato in ritardo
+          <!-- Ritardo e assenza: l'istruttore è chi vede davvero entrare il
+               paziente, e col cambio automatico di stato l'appuntamento
+               risulta già "presentato" all'orario previsto. Le due azioni
+               compaiono solo se l'impostazione
+               «Permetti agli operatori di segnare i no show» è attiva. -->
+          @if (canMarkAttendance) {
+            @if (registeredLateMinutes !== null) {
+              <div class="late-registered">
+                <mat-icon>schedule</mat-icon>
+                <span>Arrivato con {{ registeredLateMinutes }} min di ritardo</span>
+              </div>
+            } @else {
+              <button mat-stroked-button class="full-width mark-btn late-btn"
+                      (click)="onMarkLateArrival()">
+                <mat-icon>schedule</mat-icon>
+                Arrivato in ritardo
+              </button>
+            }
+
+            <!-- Bottone segna non presentato -->
+            <button mat-stroked-button color="warn" class="full-width mark-btn"
+                    (click)="onMarkNoShow()">
+              <mat-icon>person_off</mat-icon>
+              Segna non presentato
             </button>
           }
-
-          <!-- Bottone segna non presentato -->
-          <button mat-stroked-button color="warn" class="full-width mark-btn"
-                  (click)="onMarkNoShow()">
-            <mat-icon>person_off</mat-icon>
-            Segna non presentato
-          </button>
         } @else {
           <!-- Paziente non presentato -->
           <div class="no-show-message">
             <mat-icon>person_off</mat-icon>
             <p>Paziente non presentato</p>
           </div>
-          <button mat-raised-button color="primary" class="full-width"
-                  (click)="onMarkAttended()">
-            <mat-icon>person_add</mat-icon>
-            Ripristina come presentato
-          </button>
+          @if (canMarkAttendance) {
+            <button mat-raised-button color="primary" class="full-width"
+                    (click)="onMarkAttended()">
+              <mat-icon>person_add</mat-icon>
+              Ripristina come presentato
+            </button>
+          }
         }
       </div>
     </div>
@@ -305,6 +311,12 @@ export class InProgressColumnComponent implements OnInit {
   @Input() activePaths: TherapeuticPath[] = [];
   @Input() existingTreatment: Treatment | null = null;
   @Input() isAttended = true;
+  /**
+   * L'utente puo' marcare presenze/assenze? Deciso dal backend
+   * (`canMarkAttendance`: ruolo + impostazione `noShow.operatorsCanMark`).
+   * Se falso i pulsanti spariscono invece di dare errore dopo il click.
+   */
+  @Input() canMarkAttendance = false;
 
   @Output() startTreatment = new EventEmitter<{ appointmentId: string; pathId: string }>();
   @Output() openTreatment = new EventEmitter<Treatment>();

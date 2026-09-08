@@ -122,6 +122,8 @@ export interface Treatment {
   paymentMethod?: PaymentMethod;
   paidAt?: Date | string;
   collectedBy?: string;
+  /** Nome di chi ha registrato l'incasso (risolto dal backend). */
+  collectedByName?: string | null;
 
   // Invoicing - Patient
   isInvoicedToPatient: boolean;

@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 
 import { ClinicalEventsConfig } from './clinical-events.config';
 import { ClinicalEventPublisher } from './clinical-event.publisher';
+import { EventOutboxService } from './event-outbox.service';
+import { StuckMessageRecoveryService } from './stuck-message-recovery.service';
 import { ClinicalEventBuffer } from './clinical-event-buffer.service';
 import { ClinicalEventBufferMiddleware } from './clinical-event-buffer.middleware';
 import { AccountingEventConsumer } from './accounting-event.consumer';
@@ -46,6 +48,8 @@ import { AppUsersModule } from '../users/app-users.module';
     CatalogEventMapper,
     DlqMonitorService,
     DlqMonitorResolver,
+    EventOutboxService,
+    StuckMessageRecoveryService,
   ],
   exports: [
     ClinicalEventPublisher,
@@ -54,6 +58,7 @@ import { AppUsersModule } from '../users/app-users.module';
     ClinicalEventsConfig,
     TreatmentEventMapper,
     CatalogEventMapper,
+    EventOutboxService,
   ],
 })
 export class ClinicalEventsModule {}

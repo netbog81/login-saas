@@ -1,14 +1,29 @@
 import { Component, Input, Output, EventEmitter, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Appointment } from '../../../models/appointment.model';
+import {
+  ConflictBannerComponent,
+  ConflictBannerAction,
+} from '../../../features/conflicts/components/conflict-banner/conflict-banner.component';
+import { ConflictInfo } from '../../../features/conflicts/models/conflict.model';
 import { User } from '../../../models/user.model';
 
 export interface SummaryAction {
   /**
    * `chat` apre la conversazione WhatsApp interna col paziente; `share` resta
    * la condivisione del riepilogo verso client esterni (mail o wa.me).
+   *
+   * `conflict-*` sono le tre uscite del riquadro conflitto: accetta subito,
+   * apri il pannello di spostamento, apri il dialog completo. Il riepilogo
+   * non chiama nessuna mutation — le esegue il container.
    */
-  type: 'edit' | 'delete' | 'share' | 'chat' | 'close';
+  type: 'edit' | 'delete' | 'share' | 'chat' | 'close'
+    | 'conflict-accept' | 'conflict-move' | 'conflict-manage'
+    // Le due uscite di un appuntamento segnato "non presentato":
+    // `mark-attended` toglie l'assenza (il paziente era arrivato dopo tutto),
+    // `book-slot` apre la creazione di un nuovo appuntamento nella stessa
+    // fascia, che il no-show ha di fatto liberato.
+    | 'mark-attended' | 'book-slot';
   appointment: Appointment;
   shareMethod?: 'email' | 'whatsapp';
 }
@@ -16,7 +31,7 @@ export interface SummaryAction {
 @Component({
   selector: 'app-appointment-summary',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ConflictBannerComponent],
   templateUrl: './appointment-summary.component.html',
   styleUrls: ['./appointment-summary.component.scss']
 })
@@ -83,6 +98,43 @@ export class AppointmentSummaryComponent {
       type: 'close',
       appointment: this.appointment
     });
+  }
+
+  /**
+   * Appuntamento con paziente assente. Sblocca il riquadro dedicato: sono le
+   * uniche due azioni che su un no-show si vogliono davvero, e non si
+   * ricavano da nessun altro pulsante di questo riepilogo.
+   */
+  get isNoShow(): boolean {
+    return (this.appointment?.bookingStatus || '').toLowerCase() === 'no_show';
+  }
+
+  /** "Il paziente e' arrivato": toglie l'assenza e la scala dai conteggi. */
+  onMarkAttended(): void {
+    this.action.emit({ type: 'mark-attended', appointment: this.appointment });
+  }
+
+  /** Prenota un altro paziente nella fascia lasciata libera dall'assenza. */
+  onBookSlot(): void {
+    this.action.emit({ type: 'book-slot', appointment: this.appointment });
+  }
+
+  /** Conflitto dell'appuntamento nella forma attesa dal banner. */
+  get conflictInfo(): ConflictInfo {
+    return {
+      hasConflict: !!this.appointment?.hasConflict,
+      reason: this.appointment?.conflictReason,
+      detectedAt: this.appointment?.conflictDetectedAt,
+    };
+  }
+
+  onConflictAction(action: ConflictBannerAction): void {
+    const map = {
+      accept: 'conflict-accept',
+      move: 'conflict-move',
+      manage: 'conflict-manage',
+    } as const;
+    this.action.emit({ type: map[action], appointment: this.appointment });
   }
 
   get formattedTime(): string {

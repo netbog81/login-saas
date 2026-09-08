@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import {
   Injectable,
   Logger,
@@ -17,7 +18,7 @@ import { ProcessedClinicalEvent } from './processed-clinical-event.entity';
 import { Treatment } from '../availability/entities/treatment.entity';
 import { PaymentMethod } from '../availability/entities/treatment-enums';
 import { TreatmentBillingStatus } from '../availability/entities/treatment-billing-status.enum';
-import { EventsService } from '../events/events.service';
+import { EventsService, CalendarEvent } from '../events/events.service';
 import {
   AccountingInboundEventType,
   BillableCancellationRejectedPayload,
@@ -122,14 +123,46 @@ export class AccountingEventConsumer
    * minimo (treatmentId + newStatus) è sufficiente perché il frontend
    * faccia un refetch mirato del singolo treatment.
    */
+  /**
+   * Notifiche SSE accumulate durante la transazione, emesse SOLO dopo il
+   * commit.
+   *
+   * 2026-09-02 — Prima venivano emesse dentro la transazione, subito dopo il
+   * `save()`. Il browser le riceveva e rileggeva il trattamento da un'altra
+   * connessione, che la riga aggiornata non la vedeva ancora: si ritrovava
+   * lo stato VECCHIO e restava lì, perché altri eventi non ne arrivavano.
+   * L'interfaccia mostrava "Invio in corso…" e non faceva comparire
+   * "Incassa" su una fattura già emessa.
+   *
+   * Era una corsa fra due tempi che il commit di solito vinceva. Ha smesso
+   * di vincerla quando l'outbox transazionale ha aggiunto una INSERT prima
+   * del commit: da 6-12ms a 30ms, abbastanza da far arrivare prima la
+   * richiesta del browser. La causa vera però è l'ordine, non la latenza:
+   * una notifica "il dato è cambiato" non va mandata prima che il dato sia
+   * visibile a chi la riceve.
+   */
+  private readonly pendingSse = new AsyncLocalStorage<CalendarEvent[]>();
+
   private emitTreatmentChanged(treatment: Treatment): void {
-    this.eventsService.emit({
+    const event: CalendarEvent = {
       type: 'treatment_status_changed',
       treatmentId: treatment.id,
       operatorId: treatment.operatorId,
       newStatus: treatment.billingStatus,
       timestamp: new Date(),
-    });
+    };
+    const pending = this.pendingSse.getStore();
+    if (pending) {
+      pending.push(event);
+      return;
+    }
+    // Fuori da una transazione gestita: nessuna attesa da rispettare.
+    this.eventsService.emit(event);
+  }
+
+  /** Emette le notifiche accumulate. Da chiamare DOPO il commit. */
+  private flushPendingSse(pending: CalendarEvent[]): void {
+    for (const event of pending) this.eventsService.emit(event);
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -296,6 +329,10 @@ export class AccountingEventConsumer
             requestId: event!.eventId,
           },
           () => {
+            // Le notifiche SSE si accumulano qui e partono solo a commit
+            // avvenuto: vedi `pendingSse`.
+            const pendingSse: CalendarEvent[] = [];
+            this.pendingSse.run(pendingSse, () => {
             ds
               .transaction(async (manager) => {
                 // 4a) Idempotency: INSERT processed_clinical_events ON CONFLICT DO NOTHING.
@@ -322,8 +359,13 @@ export class AccountingEventConsumer
                 // 4b) Dispatch a handler specifico.
                 await this.dispatch(event!, manager);
               })
-              .then(() => resolve())
+              .then(() => {
+                // Commit avvenuto: ora il dato è visibile a chi rileggerà.
+                this.flushPendingSse(pendingSse);
+                resolve();
+              })
               .catch((err) => reject(err));
+            });
           },
         );
       });
@@ -467,6 +509,29 @@ export class AccountingEventConsumer
     const treatment = await this.findTreatmentOrWarn(manager, treatmentId, event);
     if (!treatment) return;
 
+    // 2026-09-04 — Non retrocedere un trattamento già fatturato.
+    //
+    // `billable.received` dice "la prestazione è arrivata in contabilità", ed
+    // è normalmente il primo evento del ciclo. Ma l'ordine di arrivo non è
+    // garantito: una prestazione coperta per intero da un voucher "anticipo
+    // fattura" nasce già fatturata, e il suo `billable.invoiced` può
+    // precedere il received. Applicandolo alla lettera, il trattamento
+    // tornava PENDING e ricompariva fra quelli da fatturare pur avendo già
+    // numero fattura e incasso (verificato su bdq: trattamento fatturato
+    // sull'anticipo 3650, rimasto PENDING).
+    //
+    // Il controllo è sullo STESSO billable: un id diverso significa che la
+    // prestazione è stata rimandata in contabilità dopo un richiamo, e lì il
+    // ritorno a PENDING è corretto.
+    const sameBillable = treatment.accountingBillableEventId === billableEventId;
+    if (sameBillable && treatment.billingStatus === TreatmentBillingStatus.INVOICED) {
+      this.logger.log(
+        `billable.received per ${treatmentId} già fatturato sullo stesso billable `
+          + `${billableEventId}: stato INVOICED conservato (evento fuori ordine).`,
+      );
+      return;
+    }
+
     treatment.billingStatus = TreatmentBillingStatus.PENDING;
     treatment.accountingBillableEventId = billableEventId;
     await manager.save(Treatment, treatment);
@@ -511,9 +576,19 @@ export class AccountingEventConsumer
       return;
     }
 
+    // 2026-09-03 — Documento ESTERNO: la prestazione è stata scalata da un
+    // voucher "anticipo fattura" che fa capo a una fattura del gestionale
+    // precedente. È fatturata a tutti gli effetti, ma non esiste un
+    // SalesDocument da cui tirare il PDF: `accountingDocumentId` resta NULL e
+    // il riferimento vive nei due campi dedicati. La UI se ne accorge da lì e
+    // nasconde la stampa invece di offrire un bottone che fallirebbe.
+    const external = p.externalDocumentRef;
+
     treatment.billingStatus = TreatmentBillingStatus.INVOICED;
     treatment.accountingBillableEventId = p.billableEventId;
-    treatment.accountingDocumentId = p.documentId;
+    treatment.accountingDocumentId = (p.documentId ?? null) as any;
+    treatment.accountingExternalRefNumber = (external?.number ?? null) as any;
+    treatment.accountingExternalRefDate = (external?.date?.slice(0, 10) ?? null) as any;
     treatment.accountingDocumentType = p.documentType;
     treatment.accountingInvoiceUrl = p.documentUrl ?? undefined;
     treatment.accountingInvoiceIssuedAt = new Date(p.issuedAt);
@@ -536,6 +611,15 @@ export class AccountingEventConsumer
         : (null as any);
     treatment.accountingDocumentTreatmentCount =
       p.documentTreatmentCount ?? (null as any);
+    // 2026-09-04 — Quota coperta da un anticipo: sta FUORI dal documento
+    // corrente, e senza di essa il valore della prestazione si confondeva col
+    // totale del residuo. Stesso invariante degli altri campi accounting:
+    // se l'evento non la porta, si azzera invece di lasciare in piedi quella
+    // di un documento precedente.
+    treatment.accountingAdvanceCoveredAmount =
+      p.advanceCoveredAmount != null && Number(p.advanceCoveredAmount) > 0
+        ? Number(p.advanceCoveredAmount)
+        : (null as any);
     // L'emissione è andata a buon fine → azzera l'eventuale motivo di blocco
     // (es. era bloccato per indirizzo mancante, ora risolto e fatturato).
     treatment.billingHoldReason = undefined;
@@ -599,6 +683,10 @@ export class AccountingEventConsumer
     treatment.billingStatus = TreatmentBillingStatus.PENDING;
     treatment.accountingBillableEventId = p.billableEventId;
     treatment.accountingDocumentId = null as any;
+    // Anche il riferimento esterno se ne va: la prestazione non è più
+    // fatturata da nessuna parte.
+    treatment.accountingExternalRefNumber = null as any;
+    treatment.accountingExternalRefDate = null as any;
     treatment.accountingInvoiceUrl = null as any;
     treatment.accountingInvoiceIssuedAt = null as any;
     treatment.accountingDocumentType = null as any;
@@ -617,6 +705,13 @@ export class AccountingEventConsumer
     treatment.accountingTotalAmount = null as any;
     treatment.accountingTreatmentLinesAmount = null as any;
     treatment.accountingDocumentTreatmentCount = null as any;
+    // 2026-09-02 — Via anche l'eventuale "richiamo rifiutato". Quei rifiuti
+    // dicono sempre la stessa cosa ("esiste già la fattura N: annullala
+    // prima"), e questo evento è proprio la notizia che il documento è stato
+    // annullato: tenerlo a video lascia in pagina un allarme rosso che
+    // chiede di fare una cosa già fatta.
+    treatment.lastRecallRejectionMessage = null as any;
+    treatment.lastRecallRejectionAt = null as any;
     await manager.save(Treatment, treatment);
     this.emitTreatmentChanged(treatment);
   }
@@ -863,6 +958,17 @@ export class AccountingEventConsumer
     // (returned-to-clinical raggiunge l'effetto desiderato del recall).
     treatment.recallRequestId = null as any;
     treatment.recallRequestedAt = null as any;
+    // 2026-09-02 — E con lui l'esito dei tentativi precedenti: la
+    // restituzione ottiene ciò che il richiamo non era riuscito a ottenere,
+    // quindi un "richiamo rifiutato" a video sarebbe una risposta a una
+    // domanda che non si pone più. Stesso discorso per l'annullamento
+    // dell'invio: descrive un giro precedente, e qui il trattamento torna
+    // indietro pulito come dopo `billable.received`.
+    treatment.lastRecallRejectionMessage = null as any;
+    treatment.lastRecallRejectionAt = null as any;
+    treatment.cancelledAt = null as any;
+    treatment.cancelledByUserId = null as any;
+    treatment.cancellationReason = null as any;
 
     await manager.save(Treatment, treatment);
     this.emitTreatmentChanged(treatment);
@@ -919,6 +1025,23 @@ export class AccountingEventConsumer
         paymentRecordedSource: 'accounting',
         paymentMethod: this.mapAccountingPaymentMethod(p.paymentMethod),
         paidAt: new Date(p.paidAt),
+        // 2026-09-04 — Se l'incasso è la copertura di un voucher "anticipo
+        // fattura", il metodo da solo non dice niente: 'voucher' non esiste
+        // fra i cinque metodi del clinico e finisce in "altro". La riga di
+        // tender porta il nome del buono, e il dettaglio pagamento mostra
+        // quella invece di una parola generica.
+        ...(p.voucherCode
+          ? {
+              paymentTenderLines: [
+                {
+                  kind: 'voucher',
+                  voucherId: p.voucherId ?? null,
+                  amount: p.amount,
+                  label: `Voucher anticipo fattura n. ${p.voucherCode}`,
+                },
+              ],
+            }
+          : {}),
       })
       .where('id = :id AND "isPaid" = false', { id: p.treatmentId })
       .returning('id')
@@ -1017,7 +1140,24 @@ export class AccountingEventConsumer
     treatmentId: string,
     event: CurandisEvent<unknown>,
   ): Promise<Treatment | null> {
-    const treatment = await manager.findOne(Treatment, { where: { id: treatmentId } });
+    // 2026-09-04 — Lock sulla riga: gli eventi dello STESSO trattamento vanno
+    // applicati uno alla volta.
+    //
+    // I tre eventi di una prestazione coperta da anticipo (`invoiced`,
+    // `payment-recorded`, `received`) arrivano insieme e il consumer li
+    // processa in parallelo, ognuno nella sua transazione. Senza lock ognuno
+    // legge il trattamento com'era PRIMA che gli altri committassero, e
+    // l'ultimo a scrivere cancella il lavoro degli altri: su bdq il
+    // `received` ha riportato a PENDING un trattamento che l'`invoiced`
+    // aveva appena marcato fatturato, 0,2 millisecondi prima. Le guardie
+    // "non retrocedere" c'erano già: leggevano solo uno stato vecchio.
+    //
+    // Il lock è su una riga sola e sempre la stessa: non introduce ordini di
+    // acquisizione incrociati, quindi niente deadlock.
+    const treatment = await manager.findOne(Treatment, {
+      where: { id: treatmentId },
+      lock: { mode: 'pessimistic_write' },
+    });
     if (!treatment) {
       this.logger.warn(
         `Treatment ${treatmentId} non trovato (event ${event.eventType} ${event.eventId}). ` +

@@ -86,6 +86,17 @@ export class WhatsappTenantConfig {
   @Column({ length: 20, default: WhatsappReminderEarlyPolicy.SHIFT_PREVIOUS_DAY })
   reminderEarlyPolicy: WhatsappReminderEarlyPolicy;
 
+  /**
+   * Manda al paziente, insieme al recap della prenotazione, il link per
+   * aggiungere i propri appuntamenti al calendario del telefono.
+   *
+   * Una mail sola per paziente: da lì in poi il calendario si aggiorna da sé a
+   * ogni spostamento o disdetta, senza altra posta. Spento di default.
+   */
+  @Field()
+  @Column({ default: false })
+  patientCalendarFeedEnabled: boolean;
+
   @Field(() => Int)
   @Column({ type: 'int', default: 730 })
   retentionDays: number;

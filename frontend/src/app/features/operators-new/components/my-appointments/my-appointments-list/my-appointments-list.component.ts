@@ -1,6 +1,8 @@
 import {
   Component,
+  EventEmitter,
   Input,
+  Output,
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -9,6 +11,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatButtonModule } from '@angular/material/button';
 
 import {
   MyAppointment,
@@ -61,6 +64,7 @@ const STATUS_COLOR: Record<MyAppointmentStatus, string> = {
     MatIconModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
+    MatButtonModule,
   ],
   template: `
     @if (loading) {
@@ -106,6 +110,30 @@ const STATUS_COLOR: Record<MyAppointmentStatus, string> = {
                 </span>
               </td>
             </ng-container>
+            <ng-container matColumnDef="attendance">
+              <th mat-header-cell *matHeaderCellDef>Presenza</th>
+              <td mat-cell *matCellDef="let a">
+                @if (a.bookingStatus === 'no_show') {
+                  <button mat-stroked-button color="primary" type="button"
+                          [disabled]="pendingId === a.id"
+                          matTooltip="Il paziente è arrivato: annulla l'assenza"
+                          (click)="markAttended.emit(a.id)">
+                    <mat-icon>person_add</mat-icon>
+                    Arrivato
+                  </button>
+                } @else if (canMarkNoShow(a)) {
+                  <button mat-stroked-button color="warn" type="button"
+                          [disabled]="pendingId === a.id"
+                          matTooltip="Registra l'assenza: si può togliere in qualsiasi momento"
+                          (click)="markNoShow.emit(a.id)">
+                    <mat-icon>person_off</mat-icon>
+                    Non presentato
+                  </button>
+                } @else {
+                  <span class="no-action">—</span>
+                }
+              </td>
+            </ng-container>
             <tr mat-header-row *matHeaderRowDef="groupedColumns"></tr>
             <tr mat-row *matRowDef="let row; columns: groupedColumns"></tr>
           </table>
@@ -141,6 +169,35 @@ const STATUS_COLOR: Record<MyAppointmentStatus, string> = {
               [style.background]="statusColor(a.bookingStatus)">
               {{ statusLabel(a.bookingStatus) }}
             </span>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="attendance">
+          <th mat-header-cell *matHeaderCellDef>Presenza</th>
+          <td mat-cell *matCellDef="let a">
+            <!-- L'operatore in sala e' chi si accorge per primo che il
+                 paziente non e' venuto. La colonna compare solo se
+                 l'impostazione «Permetti agli operatori di segnare i no show»
+                 e' attiva; il gesto e' reversibile e non falsa i conteggi
+                 (rimettendo «Arrivato» l'assenza torna un ritardo). -->
+            @if (a.bookingStatus === 'no_show') {
+              <button mat-stroked-button color="primary" type="button"
+                      [disabled]="pendingId === a.id"
+                      matTooltip="Il paziente è arrivato: annulla l'assenza"
+                      (click)="markAttended.emit(a.id)">
+                <mat-icon>person_add</mat-icon>
+                Arrivato
+              </button>
+            } @else if (canMarkNoShow(a)) {
+              <button mat-stroked-button color="warn" type="button"
+                      [disabled]="pendingId === a.id"
+                      matTooltip="Registra l'assenza: si può togliere in qualsiasi momento"
+                      (click)="markNoShow.emit(a.id)">
+                <mat-icon>person_off</mat-icon>
+                Non presentato
+              </button>
+            } @else {
+              <span class="no-action">—</span>
+            }
           </td>
         </ng-container>
         <tr mat-header-row *matHeaderRowDef="flatColumns"></tr>
@@ -194,6 +251,9 @@ const STATUS_COLOR: Record<MyAppointmentStatus, string> = {
         margin: 0 0 8px;
         color: #1976d2;
       }
+      .no-action {
+        color: rgba(0, 0, 0, 0.35);
+      }
       .patient-header .count {
         color: rgba(0, 0, 0, 0.55);
         font-weight: 400;
@@ -207,9 +267,39 @@ export class MyAppointmentsListComponent {
   @Input() groups: AppointmentGroup[] = [];
   @Input() groupedView = false;
   @Input() loading = false;
+  /**
+   * L'operatore puo' marcare presenze/assenze? Deciso dal backend
+   * (`canMarkAttendance`), non dal ruolo indovinato qui.
+   */
+  @Input() canMarkAttendance = false;
+  /** Appuntamento con una marcatura in volo: bottone disabilitato. */
+  @Input() pendingId: string | null = null;
 
-  readonly flatColumns = ['date', 'patient', 'service', 'status'];
-  readonly groupedColumns = ['date', 'service', 'status'];
+  @Output() markNoShow = new EventEmitter<string>();
+  @Output() markAttended = new EventEmitter<string>();
+
+  get flatColumns(): string[] {
+    const base = ['date', 'patient', 'service', 'status'];
+    return this.canMarkAttendance ? [...base, 'attendance'] : base;
+  }
+
+  get groupedColumns(): string[] {
+    const base = ['date', 'service', 'status'];
+    return this.canMarkAttendance ? [...base, 'attendance'] : base;
+  }
+
+  /**
+   * Si segna assente solo un appuntamento vivo e gia' iniziato: prima
+   * dell'orario non si puo' sapere, e su disdette o cancellazioni l'assenza
+   * non ha significato.
+   */
+  canMarkNoShow(a: MyAppointment): boolean {
+    if (!['scheduled', 'confirmed', 'attended'].includes(a.bookingStatus)) {
+      return false;
+    }
+    const start = new Date(`${a.appointmentDate}T${a.startTime}`);
+    return !Number.isNaN(start.getTime()) && start.getTime() <= Date.now();
+  }
 
   statusLabel(s: MyAppointmentStatus): string {
     return STATUS_LABEL[s] ?? s;

@@ -4,11 +4,13 @@
   "description": "Backend NestJS per calendario multiutente",
   "scripts": {
     "build": "nest build",
+    "check:entities": "ts-node scripts/check-entities-registered.ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "schema:sync": "docker cp curandis-clinico-backend:/tmp/schema.gql src/schema.gql && echo \"schema.gql allineato al backend in esecuzione\"",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typeorm": "typeorm-ts-node-commonjs -d src/typeorm.config.ts",
     "migration:show": "npm run typeorm -- migration:show",

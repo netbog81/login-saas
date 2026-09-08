@@ -27,11 +27,23 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { GymRoom } from '../../../calendar-v2/components/gym-grid/gym-grid.component';
 import { GymSlotInfo, GymAppointment } from '../../../../services/gym-room.service';
+import {
+  ConflictBannerComponent,
+  ConflictBannerAction,
+} from '../../../conflicts/components/conflict-banner/conflict-banner.component';
+import { ConflictBadgeComponent } from '../../../conflicts/components/conflict-badge/conflict-badge.component';
+import { ConflictInfo } from '../../../conflicts/models/conflict.model';
 
 /** Azione emessa dal riquadro verso il container (Layer 2). */
 export interface GymSlotSummaryV3Action {
-  type: 'edit' | 'delete' | 'add' | 'close';
-  /** Valorizzato per `edit` / `delete`. */
+  /**
+   * `conflict-*` sono le tre uscite del riquadro conflitto di una singola
+   * prenotazione: accetta subito, apri il pannello di spostamento, apri il
+   * dialog completo. Il riquadro non chiama mutation: le esegue il container.
+   */
+  type: 'edit' | 'delete' | 'add' | 'close'
+    | 'conflict-accept' | 'conflict-move' | 'conflict-manage';
+  /** Valorizzato per `edit` / `delete` / `conflict-*`. */
   appointment?: GymAppointment;
 }
 
@@ -46,6 +58,8 @@ export interface GymSlotSummaryV3Action {
     MatIconModule,
     MatDividerModule,
     MatTooltipModule,
+    ConflictBannerComponent,
+    ConflictBadgeComponent,
   ],
   template: `
     <mat-card class="gym-summary" (click)="$event.stopPropagation()">
@@ -97,9 +111,19 @@ export interface GymSlotSummaryV3Action {
         <!-- Lista prenotazioni -->
         <div class="appointments" *ngIf="appointments.length > 0; else emptyState">
           <div class="list-label">Prenotazioni ({{ appointments.length }})</div>
-          <div class="appointment-item" *ngFor="let apt of appointments; trackBy: trackByAppointment">
+          <div class="appointment-item"
+               [class.no-show]="isNoShow(apt)"
+               *ngFor="let apt of appointments; trackBy: trackByAppointment">
             <div class="apt-info">
               <div class="apt-name">
+                <app-conflict-badge *ngIf="apt.hasConflict"
+                                    [conflict]="conflictInfoFor(apt)">
+                </app-conflict-badge>
+                <!-- L'assenza resta in lista invece di sparire: cosi' si sa
+                     che quel posto era prenotato e chi non e' venuto. -->
+                <mat-icon class="no-show-icon"
+                          *ngIf="isNoShow(apt)"
+                          matTooltip="Paziente non presentato">person_off</mat-icon>
                 {{ getPatientName(apt) }}
                 <mat-icon class="recurring-icon"
                           *ngIf="apt.isRecurring"
@@ -109,6 +133,19 @@ export interface GymSlotSummaryV3Action {
                 <mat-icon>call</mat-icon>{{ apt.clientPhone }}
               </div>
               <div class="apt-notes" *ngIf="apt.notes">{{ apt.notes }}</div>
+
+              <!-- Il riquadro conflitto sta DENTRO la riga della singola
+                   prenotazione, non in testa allo slot: nello stesso slot
+                   possono convivere prenotazioni segnalate e regolari, e un
+                   avviso sopra la lista non direbbe quale delle dieci. -->
+              <app-conflict-banner
+                *ngIf="apt.hasConflict"
+                [conflict]="conflictInfoFor(apt)"
+                [compact]="true"
+                [readOnly]="readOnly"
+                moveTooltip="Cerca uno slot libero (anche in un'altra sala) e spostala lì"
+                (action)="onConflictAction($event, apt)">
+              </app-conflict-banner>
             </div>
             <div class="apt-actions">
               <button mat-icon-button type="button" matTooltip="Modifica" (click)="emitEdit(apt)">
@@ -239,6 +276,23 @@ export interface GymSlotSummaryV3Action {
       margin-bottom: 8px;
     }
 
+    /* Assenza in palestra: riga sbiadita con bordo rosso, il posto resta
+       comunque libero per una nuova prenotazione. */
+    .appointment-item.no-show {
+      opacity: 0.6;
+      border-left: 3px solid #d32f2f;
+    }
+    .appointment-item.no-show .apt-name {
+      text-decoration: line-through;
+    }
+    .no-show-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: #d32f2f;
+      vertical-align: middle;
+    }
+
     .apt-info {
       min-width: 0;
       flex: 1;
@@ -315,6 +369,9 @@ export class GymSlotSummaryV3Component {
   @Input() appointments: GymAppointment[] = [];
   @Input() date!: string;
 
+  /** Sola lettura (istruttore): nasconde le azioni sul conflitto. */
+  @Input() readOnly = false;
+
   @Output() action = new EventEmitter<GymSlotSummaryV3Action>();
 
   get availableSpots(): number {
@@ -345,6 +402,11 @@ export class GymSlotSummaryV3Component {
     return apt.clientName || 'Paziente senza nome';
   }
 
+  /** Prenotazione con paziente assente: si mostra marcata, non si nasconde. */
+  isNoShow(apt: GymAppointment): boolean {
+    return String((apt as any)?.bookingStatus ?? '').toLowerCase() === 'no_show';
+  }
+
   trackByAppointment(_index: number, apt: GymAppointment): string {
     return apt.id;
   }
@@ -359,6 +421,24 @@ export class GymSlotSummaryV3Component {
 
   emitEdit(apt: GymAppointment): void {
     this.action.emit({ type: 'edit', appointment: apt });
+  }
+
+  /** Conflitto della prenotazione nella forma attesa da badge e banner. */
+  conflictInfoFor(apt: GymAppointment): ConflictInfo {
+    return {
+      hasConflict: !!apt.hasConflict,
+      reason: apt.conflictReason,
+      detectedAt: apt.conflictDetectedAt,
+    };
+  }
+
+  onConflictAction(action: ConflictBannerAction, apt: GymAppointment): void {
+    const map = {
+      accept: 'conflict-accept',
+      move: 'conflict-move',
+      manage: 'conflict-manage',
+    } as const;
+    this.action.emit({ type: map[action], appointment: apt });
   }
 
   emitDelete(apt: GymAppointment): void {

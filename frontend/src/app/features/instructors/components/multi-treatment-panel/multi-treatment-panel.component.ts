@@ -96,11 +96,15 @@ export interface PanelCompleteResult {
             <mat-icon>person_off</mat-icon>
             <p>Paziente non presentato</p>
           </div>
-          <button mat-raised-button color="primary" class="full-width"
-                  (click)="markAttended.emit(columnState.appointment.id)">
-            <mat-icon>person_add</mat-icon>
-            Ripristina come presentato
-          </button>
+          <!-- Solo se l'impostazione «Permetti agli operatori di segnare i
+               no show» e' attiva: altrimenti la correzione la fa la segreteria. -->
+          @if (canMarkAttendance) {
+            <button mat-raised-button color="primary" class="full-width"
+                    (click)="markAttended.emit(columnState.appointment.id)">
+              <mat-icon>person_add</mat-icon>
+              Ripristina come presentato
+            </button>
+          }
         </div>
       }
 
@@ -415,6 +419,9 @@ export class MultiTreatmentPanelComponent implements OnInit {
 
   @Output() save = new EventEmitter<PanelSaveResult>();
   @Output() completeTreatment = new EventEmitter<PanelCompleteResult>();
+  /** Vedi `InProgressColumnComponent.canMarkAttendance`. */
+  @Input() canMarkAttendance = false;
+
   @Output() markAttended = new EventEmitter<string>();
   @Output() markNoShow = new EventEmitter<string>();
   @Output() openPatientFolder = new EventEmitter<string>();

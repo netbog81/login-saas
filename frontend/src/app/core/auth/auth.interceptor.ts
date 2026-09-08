@@ -4,6 +4,7 @@ import { Observable, from, switchMap, catchError, throwError } from 'rxjs';
 import { OAuthService } from 'angular-oauth2-oidc';
 import { environment } from '../../../environments/environment';
 import { TenantResolverService } from './tenant-resolver.service';
+import { OidcAuthService } from './oidc-auth.service';
 
 /**
  * Soglia in millisecondi sotto la quale consideriamo il token "in scadenza imminente"
@@ -14,32 +15,22 @@ import { TenantResolverService } from './tenant-resolver.service';
 const TOKEN_REFRESH_THRESHOLD_MS = 30_000;
 
 /**
- * Single-flight: se più richieste partono insieme con un token scaduto, vogliamo
- * un solo refresh in volo e le altre richieste devono attendere lo stesso Promise.
+ * Il refresh NON si fa qui: passa da OidcAuthService.refreshNow(), che è
+ * l'unico punto d'ingresso e deduplica sia dentro la scheda (single-flight
+ * condiviso con timer e visibilitychange) sia fra schede (lock in
+ * localStorage). Un refresh parallelo a un altro, con la rotation attiva su
+ * Keycloak, invaliderebbe la sessione.
  */
-let refreshInFlight: Promise<boolean> | null = null;
-
-function refreshTokenSingleFlight(oauthService: OAuthService): Promise<boolean> {
-  if (!refreshInFlight) {
-    // Se non c'è refresh_token in storage, refreshToken() fallirebbe comunque.
-    // Restituiamo subito false così l'interceptor propaga il 401 al guard,
-    // che redirigerà al login Keycloak.
-    if (!oauthService.getRefreshToken()) {
-      return Promise.resolve(false);
-    }
-
-    refreshInFlight = oauthService
-      .refreshToken()
-      .then(() => true)
-      .catch((err) => {
-        console.warn('[AuthInterceptor] refreshToken fallito:', err);
-        return false;
-      })
-      .finally(() => {
-        refreshInFlight = null;
-      });
+function refreshAccessToken(
+  auth: OidcAuthService,
+  oauthService: OAuthService,
+): Promise<boolean> {
+  // Senza refresh_token in storage il refresh fallirebbe comunque: propaga
+  // subito il 401 al guard, che manderà al login Keycloak.
+  if (!oauthService.getRefreshToken()) {
+    return Promise.resolve(false);
   }
-  return refreshInFlight;
+  return auth.refreshNow();
 }
 
 /**
@@ -124,10 +115,12 @@ function sendWithAuth(
  *    mancato la finestra (browser in background, sleep, clock skew).
  * 2. Recovery reattivo: se il backend risponde 401, prova un refresh e ritenta
  *    la richiesta una sola volta. Se anche il retry fallisce, l'errore propaga.
- * 3. Single-flight: refresh concorrenti vengono coalesciuti in un solo Promise.
+ * 3. Deduplica: il refresh passa da OidcAuthService.refreshNow(), condiviso
+ *    con il timer e col rientro in foreground, e serializzato anche fra schede.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const oauthService = inject(OAuthService);
+  const auth = inject(OidcAuthService);
   const tenantResolver = inject(TenantResolverService);
   const apiUrl = environment.apiUrl;
 
@@ -148,7 +141,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   // 1. Refresh proattivo se il token è scaduto o sta per scadere.
   const proactive$: Observable<boolean> = tokenExpiringSoon(oauthService)
-    ? from(refreshTokenSingleFlight(oauthService))
+    ? from(refreshAccessToken(auth, oauthService))
     : from(Promise.resolve(true));
 
   return proactive$.pipe(
@@ -160,7 +153,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         return throwError(() => error);
       }
 
-      return from(refreshTokenSingleFlight(oauthService)).pipe(
+      return from(refreshAccessToken(auth, oauthService)).pipe(
         switchMap((ok) => {
           if (!ok) {
             return throwError(() => error);

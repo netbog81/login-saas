@@ -35,6 +35,7 @@ export const TREATMENT_FRAGMENT = gql`
     paymentMethod
     paidAt
     collectedBy
+    collectedByName
     isInvoicedToPatient
     invoicedToPatientAt
     patientInvoiceNumber

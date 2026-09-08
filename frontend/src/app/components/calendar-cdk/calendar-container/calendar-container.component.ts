@@ -54,7 +54,7 @@ import { mapAvailabilityAppointmentToAppointment } from '../../../utils/appointm
 // Shared Components
 import { NewPatientDialogComponent, NewPatientDialogResult } from '../../../shared/components/new-patient-dialog';
 import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogResult } from '../../../shared/components/gym-appointment-mat-dialog';
-import { EventMatDialogComponent, EventMatDialogResult } from '../../../shared/components/event-mat-dialog';
+import { EventMatDialogComponent, EventMatDialogResult, wireAttendanceActions } from '../../../shared/components/event-mat-dialog';
 
 @Component({
   selector: 'app-calendar-container',
@@ -1708,13 +1708,19 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
    */
   private openEventMatDialog(data: EventDialogData): void {
     const dialogRef = this.dialog.open(EventMatDialogComponent, {
-      width: '600px',
+      width: '520px',
       maxHeight: '90vh',
+      panelClass: 'event-mat-dialog-pane',
       disableClose: false,
       data: {
         ...data,
         instrumentCategories: this.instrumentCategories
       }
+    });
+
+    // Azioni di presenza col dialog aperto (vedi wireAttendanceActions).
+    wireAttendanceActions(dialogRef, this.availabilityAppointmentService, () => {
+      void this.loadAppointmentsForCurrentView().then(() => this.cdr.markForCheck());
     });
 
     dialogRef.afterClosed().subscribe(async (result: EventMatDialogResult | undefined) => {
@@ -1762,7 +1768,7 @@ export class CalendarContainerComponent implements OnInit, OnDestroy {
         );
       } else if (result.action === 'cancel-with-notice' && result.appointmentId) {
         await this.runStatusAction(
-          () => this.availabilityAppointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria', 'secretary'),
+          () => this.availabilityAppointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria'),
           'disdire l\'appuntamento',
         );
       }

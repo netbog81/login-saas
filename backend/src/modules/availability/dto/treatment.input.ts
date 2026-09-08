@@ -95,6 +95,17 @@ export class RecordPaymentInput {
   @IsOptional()
   @IsBoolean()
   replaceExisting?: boolean;
+
+  /**
+   * 2026-09-04 — Incasso PARZIALE: copre solo una quota del trattamento, il
+   * resto verrà fatturato. Ammesso solo con righe voucher di anticipo
+   * fattura. Il trattamento NON risulta pagato: lo diventerà quando sarà
+   * incassata la fattura del residuo.
+   */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  partial?: boolean;
 }
 
 /** Una riga di tender di un incasso split (PARTE 2/4). */

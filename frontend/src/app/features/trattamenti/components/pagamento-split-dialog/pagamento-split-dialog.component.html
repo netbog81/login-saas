@@ -77,10 +77,36 @@
       <mat-icon>card_giftcard</mat-icon> Emetti voucher FE
     </button>
 
+    @if (canBePartial) {
+      <mat-checkbox class="partial-toggle" [ngModel]="partial"
+                    (ngModelChange)="onPartialChange($event)">
+        Incasso parziale — il resto sarà fatturato
+      </mat-checkbox>
+      @if (partial) {
+        <p class="hint">
+          Solo righe con voucher di anticipo fattura. Il trattamento resta
+          <strong>da incassare</strong>: risulterà pagato quando sarà incassata
+          la fattura del residuo.
+        </p>
+      }
+    }
+
     <div class="totals">
-      <span [class.ok]="sumMatches" [class.mismatch]="!sumMatches">
-        Totale righe: € {{ sum() | number:'1.2-2' }} / € {{ data.totalAmount | number:'1.2-2' }}
-      </span>
+      @if (partial) {
+        <span [class.ok]="partialAmountValid" [class.mismatch]="!partialAmountValid">
+          Coperto ora: € {{ sum() | number:'1.2-2' }} di € {{ data.totalAmount | number:'1.2-2' }}
+          — da fatturare: € {{ residual() | number:'1.2-2' }}
+        </span>
+        @if (!partialRowsValid) {
+          <div class="mismatch">
+            Nell'incasso parziale ogni riga dev'essere un voucher di anticipo fattura.
+          </div>
+        }
+      } @else {
+        <span [class.ok]="sumMatches" [class.mismatch]="!sumMatches">
+          Totale righe: € {{ sum() | number:'1.2-2' }} / € {{ data.totalAmount | number:'1.2-2' }}
+        </span>
+      }
     </div>
   </ng-container>
 </mat-dialog-content>

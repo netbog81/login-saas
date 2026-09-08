@@ -24,6 +24,7 @@ export type AbsenceImpactPreview = {
   __typename?: 'AbsenceImpactPreview';
   attendedWithoutTreatment: Array<AvailabilityAppointment>;
   conflicts: Array<AvailabilityAppointment>;
+  removedAvailabilityCount: Scalars['Int']['output'];
 };
 
 export type AbsenceTypeSnapshot = {
@@ -45,6 +46,7 @@ export type AppUser = {
   attributes?: Maybe<Scalars['JSONObject']['output']>;
   createdAt: Scalars['DateTime']['output'];
   email?: Maybe<Scalars['String']['output']>;
+  googleAccountEmail?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
   keycloakId?: Maybe<Scalars['String']['output']>;
@@ -86,6 +88,20 @@ export type AppointmentInstrumentInput = {
   startOffsetMinutes: Scalars['Int']['input'];
 };
 
+export type AppointmentNotificationIssue = {
+  __typename?: 'AppointmentNotificationIssue';
+  announcedFor?: Maybe<Scalars['String']['output']>;
+  appointmentDate: Scalars['String']['output'];
+  appointmentId: Scalars['ID']['output'];
+  bookedAt: Scalars['String']['output'];
+  cancelledAt?: Maybe<Scalars['String']['output']>;
+  kind: NotificationIssueKind;
+  lastMessageAt?: Maybe<Scalars['DateTime']['output']>;
+  lastMessageStatus?: Maybe<Scalars['String']['output']>;
+  startTime: Scalars['String']['output'];
+  unreachable: Scalars['Boolean']['output'];
+};
+
 export type AppointmentService = {
   __typename?: 'AppointmentService';
   appointmentId: Scalars['ID']['output'];
@@ -114,27 +130,58 @@ export enum AppointmentType {
   Standard = 'STANDARD'
 }
 
+/** Come è stato registrato l'arrivo del paziente */
+export enum ArrivalSource {
+  ManualOperator = 'MANUAL_OPERATOR',
+  ManualSecretary = 'MANUAL_SECRETARY',
+  NoShowRevert = 'NO_SHOW_REVERT',
+  WaitingRoom = 'WAITING_ROOM'
+}
+
 export type AssignRoleInput = {
   appUserId: Scalars['ID']['input'];
   roleId: Scalars['ID']['input'];
 };
 
 export type AssignTemplateToOperatorInput = {
+  chairId?: InputMaybe<Scalars['ID']['input']>;
   operatorId: Scalars['ID']['input'];
+  overrides?: InputMaybe<Array<AssignmentRoomOverrideInput>>;
   patternGroupId: Scalars['ID']['input'];
   patternStartDate: Scalars['String']['input'];
+  roomId?: InputMaybe<Scalars['ID']['input']>;
+  truncatePrevious?: InputMaybe<Scalars['Boolean']['input']>;
   validFrom: Scalars['String']['input'];
   validUntil?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type AssignmentRoomOverrideInput = {
+  chairId?: InputMaybe<Scalars['ID']['input']>;
+  dayInPattern: Scalars['Int']['input'];
+  endTime?: InputMaybe<Scalars['String']['input']>;
+  roomId: Scalars['ID']['input'];
+  startTime?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type AttendanceStats = {
   __typename?: 'AttendanceStats';
   /** Cancellazioni per anno solare. Formato: { "2026": 3, "2025": 1 } */
   cancellationsByYear: Scalars['JSON']['output'];
+  /** Ritardi per anno solare (era no-show, poi presentato). Formato: { "2026": 1 } */
+  lateArrivalsByYear: Scalars['JSON']['output'];
   /** No-show per anno solare. Formato: { "2026": 2, "2025": 0 } */
   noShowsByYear: Scalars['JSON']['output'];
   totalCancellations: Scalars['Int']['output'];
+  totalLateArrivals: Scalars['Int']['output'];
   totalNoShows: Scalars['Int']['output'];
+};
+
+export type AvailabilityAlreadyCovered = {
+  __typename?: 'AvailabilityAlreadyCovered';
+  date: Scalars['String']['output'];
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+  windows: Array<Scalars['String']['output']>;
 };
 
 export type AvailabilityAppointment = {
@@ -143,12 +190,17 @@ export type AvailabilityAppointment = {
   appointmentDate: Scalars['String']['output'];
   appointmentServices?: Maybe<Array<AppointmentService>>;
   appointmentType: AppointmentType;
+  arrivalMarkedBy?: Maybe<Scalars['ID']['output']>;
+  arrivalSource?: Maybe<ArrivalSource>;
+  arrivedAt?: Maybe<Scalars['DateTime']['output']>;
   autoStatusChanged: Scalars['Boolean']['output'];
   bookingStatus: BookingStatus;
   cancellationHoursNotice?: Maybe<Scalars['Float']['output']>;
   cancellationReason?: Maybe<Scalars['String']['output']>;
   cancelledAt?: Maybe<Scalars['DateTime']['output']>;
   cancelledBy?: Maybe<Scalars['ID']['output']>;
+  chair?: Maybe<Chair>;
+  chairId?: Maybe<Scalars['ID']['output']>;
   clientEmail?: Maybe<Scalars['String']['output']>;
   clientName: Scalars['String']['output'];
   clientPhone?: Maybe<Scalars['String']['output']>;
@@ -170,6 +222,7 @@ export type AvailabilityAppointment = {
   isMaster: Scalars['Boolean']['output'];
   isRecurring: Scalars['Boolean']['output'];
   isSubstitution: Scalars['Boolean']['output'];
+  lateMinutes?: Maybe<Scalars['Int']['output']>;
   masterAppointmentId?: Maybe<Scalars['ID']['output']>;
   maxParticipants?: Maybe<Scalars['Int']['output']>;
   nonRetribuito: Scalars['Boolean']['output'];
@@ -183,6 +236,8 @@ export type AvailabilityAppointment = {
   patientId?: Maybe<Scalars['ID']['output']>;
   recurringGroupId?: Maybe<Scalars['ID']['output']>;
   repeatConfig?: Maybe<Scalars['JSON']['output']>;
+  room?: Maybe<Room>;
+  roomId?: Maybe<Scalars['ID']['output']>;
   service?: Maybe<Service>;
   /** @deprecated Usa appointmentServices invece */
   serviceId?: Maybe<Scalars['ID']['output']>;
@@ -196,6 +251,15 @@ export type AvailabilityAppointment = {
   treatmentStartedAt?: Maybe<Scalars['DateTime']['output']>;
   treatmentStatus?: Maybe<TreatmentStatus>;
   updatedAt: Scalars['DateTime']['output'];
+  wasNoShowReverted: Scalars['Boolean']['output'];
+};
+
+export type AvailabilityBlocker = {
+  __typename?: 'AvailabilityBlocker';
+  date: Scalars['String']['output'];
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
 };
 
 export type AvailabilityException = {
@@ -215,6 +279,19 @@ export type AvailabilityException = {
   reason?: Maybe<Scalars['String']['output']>;
   sourceGroupId?: Maybe<Scalars['ID']['output']>;
   startTime?: Maybe<Scalars['String']['output']>;
+};
+
+export type AvailabilityImpactPreview = {
+  __typename?: 'AvailabilityImpactPreview';
+  alreadyCovered: Array<AvailabilityAlreadyCovered>;
+  blockers: Array<AvailabilityBlocker>;
+  creatableCount: Scalars['Int']['output'];
+};
+
+export type AvailabilityRemovalResult = {
+  __typename?: 'AvailabilityRemovalResult';
+  conflictCount: Scalars['Int']['output'];
+  deleted: Scalars['Int']['output'];
 };
 
 export type AvailabilitySlot = {
@@ -292,6 +369,7 @@ export type BulkDeleteOperatorFeSettlementsResult = {
 
 export type CalendarSettings = {
   __typename?: 'CalendarSettings';
+  appointmentClickAction: Scalars['String']['output'];
   blockAppointmentsOutsideAvailability: Scalars['Boolean']['output'];
   defaultOperatorCategory: Scalars['String']['output'];
   defaultView: Scalars['String']['output'];
@@ -303,6 +381,35 @@ export type CalendarSettings = {
   showWorkingHoursOnly: Scalars['Boolean']['output'];
   slotDuration: Scalars['Int']['output'];
   startHour: Scalars['Int']['output'];
+};
+
+export type CalendarSyncSetting = {
+  __typename?: 'CalendarSyncSetting';
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  keepCalendarOnDisconnect: Scalars['Boolean']['output'];
+  keepPastAppointments: Scalars['Boolean']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type Chair = {
+  __typename?: 'Chair';
+  color?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  isActive: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  room?: Maybe<Room>;
+  roomId: Scalars['ID']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type ChairAvailabilityInfo = {
+  __typename?: 'ChairAvailabilityInfo';
+  chairId: Scalars['ID']['output'];
+  firstConflict?: Maybe<Scalars['String']['output']>;
+  fullyFree: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
 };
 
 export type CheckPhysiotherapistAvailabilityInput = {
@@ -357,6 +464,7 @@ export enum ConflictResolutionAction {
 
 export type ConflictRevalidationResult = {
   __typename?: 'ConflictRevalidationResult';
+  detected: Scalars['Int']['output'];
   resolved: Scalars['Int']['output'];
   skipped: Scalars['Boolean']['output'];
 };
@@ -367,6 +475,13 @@ export type ConflictStatsOutput = {
   byReason: Scalars['JSONObject']['output'];
   totalConflicts: Scalars['Int']['output'];
 };
+
+export enum ContactState {
+  Invalid = 'INVALID',
+  NoContact = 'NO_CONTACT',
+  Unknown = 'UNKNOWN',
+  Usable = 'USABLE'
+}
 
 export type CreateAppUserInput = {
   attributes?: InputMaybe<Scalars['JSONObject']['input']>;
@@ -390,6 +505,8 @@ export type CreateAvailabilityAppointmentInput = {
   /** Appuntamento non retribuito (pausa pranzo, rappresentante, etc.) */
   nonRetribuito?: InputMaybe<Scalars['Boolean']['input']>;
   notes?: InputMaybe<Scalars['String']['input']>;
+  /** Piano risolto nel riquadro conflitti: le occorrenze da creare davvero, con gli spostamenti gia' decisi. Quando presente sostituisce la generazione dalle regole. */
+  occurrences?: InputMaybe<Array<RecurringOccurrenceInput>>;
   operatorId: Scalars['ID']['input'];
   patientId?: InputMaybe<Scalars['ID']['input']>;
   /** Configurazione per appuntamenti ricorrenti */
@@ -411,22 +528,6 @@ export type CreateAvailabilityTemplateInput = {
   startTime: Scalars['String']['input'];
   validFrom: Scalars['String']['input'];
   validUntil?: InputMaybe<Scalars['String']['input']>;
-};
-
-export type CreateDocumentInput = {
-  category: DocumentCategory;
-  description?: InputMaybe<Scalars['String']['input']>;
-  externalDoctorName?: InputMaybe<Scalars['String']['input']>;
-  fileName: Scalars['String']['input'];
-  fileSize: Scalars['Int']['input'];
-  mimeType: Scalars['String']['input'];
-  notes?: InputMaybe<Scalars['String']['input']>;
-  originalFileName?: InputMaybe<Scalars['String']['input']>;
-  storagePath: Scalars['String']['input'];
-  therapeuticPathId: Scalars['ID']['input'];
-  thumbnailPath?: InputMaybe<Scalars['String']['input']>;
-  type: DocumentType;
-  uploadedBy?: InputMaybe<Scalars['ID']['input']>;
 };
 
 export type CreateDocumentTemplateInput = {
@@ -480,6 +581,7 @@ export type CreateGymAppointmentInput = {
   gymRoomId: Scalars['ID']['input'];
   isRecurring?: InputMaybe<Scalars['Boolean']['input']>;
   notes?: InputMaybe<Scalars['String']['input']>;
+  occurrences?: InputMaybe<Array<RecurringOccurrenceInput>>;
   patientId?: InputMaybe<Scalars['ID']['input']>;
   repeatConfig?: InputMaybe<Scalars['JSON']['input']>;
   serviceId?: InputMaybe<Scalars['ID']['input']>;
@@ -550,6 +652,17 @@ export type CreateOperatorAbsencesInput = {
   operatorIds: Array<Scalars['ID']['input']>;
   reason?: InputMaybe<Scalars['String']['input']>;
   startTime?: InputMaybe<Scalars['String']['input']>;
+  weekdays?: InputMaybe<Array<Scalars['Int']['input']>>;
+};
+
+export type CreateOperatorAvailabilityInput = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  endTime: Scalars['String']['input'];
+  operatorIds: Array<Scalars['ID']['input']>;
+  reason?: InputMaybe<Scalars['String']['input']>;
+  startTime: Scalars['String']['input'];
+  weekdays?: InputMaybe<Array<Scalars['Int']['input']>>;
 };
 
 export type CreateOperatorInput = {
@@ -657,6 +770,15 @@ export type CreateRegistryIndividualInput = {
   vatNumber?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type CreateScheduleChangeInput = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  operatorIds: Array<Scalars['ID']['input']>;
+  reason?: InputMaybe<Scalars['String']['input']>;
+  weekdays?: InputMaybe<Array<Scalars['Int']['input']>>;
+  windows: Array<ScheduleWindowInput>;
+};
+
 export type CreateSecretaryInput = {
   canManageAppointments?: InputMaybe<Scalars['Boolean']['input']>;
   canManageBilling?: InputMaybe<Scalars['Boolean']['input']>;
@@ -670,7 +792,8 @@ export type CreateSecretaryInput = {
 export type CreateTaskMessageInput = {
   availableFrom?: InputMaybe<Scalars['DateTime']['input']>;
   content: Scalars['String']['input'];
-  recipientUserId: Scalars['String']['input'];
+  recipientGroup?: InputMaybe<TaskMessageRecipientGroup>;
+  recipientUserId?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type CreateTemplatePatternInput = {
@@ -748,15 +871,6 @@ export type DlqStatusGql = {
   totalMessages: Scalars['Float']['output'];
 };
 
-/** Category of attached document */
-export enum DocumentCategory {
-  Consent = 'CONSENT',
-  Other = 'OTHER',
-  Prescription = 'PRESCRIPTION',
-  Radiology = 'RADIOLOGY',
-  Report = 'REPORT'
-}
-
 export type DocumentTemplate = {
   __typename?: 'DocumentTemplate';
   content: Scalars['JSON']['output'];
@@ -773,14 +887,6 @@ export type DocumentTemplate = {
 export enum DocumentTemplateType {
   AttendanceCertificate = 'ATTENDANCE_CERTIFICATE',
   SettlementFe = 'SETTLEMENT_FE'
-}
-
-/** Type of attached document */
-export enum DocumentType {
-  Image = 'IMAGE',
-  Other = 'OTHER',
-  Pdf = 'PDF',
-  Video = 'VIDEO'
 }
 
 export type EvaluationExam = {
@@ -890,6 +996,15 @@ export enum ExceptionType {
   Vacation = 'VACATION'
 }
 
+export type ExtraAvailabilityResult = {
+  __typename?: 'ExtraAvailabilityResult';
+  alreadyCovered: Array<AvailabilityAlreadyCovered>;
+  blockers: Array<AvailabilityBlocker>;
+  createdCount: Scalars['Int']['output'];
+  exceptions: Array<AvailabilityException>;
+  sourceGroupId: Scalars['ID']['output'];
+};
+
 export type GeneralSettings = {
   __typename?: 'GeneralSettings';
   category?: Maybe<Scalars['String']['output']>;
@@ -907,6 +1022,38 @@ export type GenerateOperatorFeSettlementsInput = {
   includeUnpaid?: Scalars['Boolean']['input'];
   operatorAppUserIds: Array<Scalars['ID']['input']>;
   to: Scalars['String']['input'];
+};
+
+/** Stato del collegamento a Google Calendar */
+export enum GoogleCalendarConnectionStatus {
+  Active = 'ACTIVE',
+  Error = 'ERROR',
+  Expired = 'EXPIRED',
+  Revoked = 'REVOKED'
+}
+
+export type GoogleCalendarStatus = {
+  __typename?: 'GoogleCalendarStatus';
+  alertEmail: Scalars['Boolean']['output'];
+  alertWhatsapp: Scalars['Boolean']['output'];
+  calendarName?: Maybe<Scalars['String']['output']>;
+  canConnect: Scalars['Boolean']['output'];
+  connected: Scalars['Boolean']['output'];
+  connectedAt?: Maybe<Scalars['DateTime']['output']>;
+  daysLeft?: Maybe<Scalars['Int']['output']>;
+  declaredEmail?: Maybe<Scalars['String']['output']>;
+  expiresAt?: Maybe<Scalars['DateTime']['output']>;
+  expiringSoon: Scalars['Boolean']['output'];
+  googleEmail?: Maybe<Scalars['String']['output']>;
+  lastErrorMessage?: Maybe<Scalars['String']['output']>;
+  lastSyncAt?: Maybe<Scalars['DateTime']['output']>;
+  needsReconnect: Scalars['Boolean']['output'];
+  operatorEmail?: Maybe<Scalars['String']['output']>;
+  operatorId: Scalars['ID']['output'];
+  operatorPhone?: Maybe<Scalars['String']['output']>;
+  status?: Maybe<GoogleCalendarConnectionStatus>;
+  suggestedCalendarName: Scalars['String']['output'];
+  testingMode: Scalars['Boolean']['output'];
 };
 
 export type GroupException = {
@@ -1196,8 +1343,27 @@ export type LinkKeycloakUserInput = {
   keycloakUserId: Scalars['String']['input'];
 };
 
+export type LinkWhatsappConversationPatientInput = {
+  conversationId: Scalars['ID']['input'];
+  patientId?: InputMaybe<Scalars['ID']['input']>;
+  patientName?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type MarkObjectiveAchievedInput = {
   raggiunto: Scalars['Boolean']['input'];
+};
+
+/** Modalità di ricorrenza mensile: per data o per giorno della settimana */
+export enum MonthlyMode {
+  DayOfMonth = 'DAY_OF_MONTH',
+  DayOfWeek = 'DAY_OF_WEEK'
+}
+
+export type MonthlyRuleInput = {
+  /** 1..4 = prima..quarta occorrenza nel mese, -1 = ultima */
+  ordinal: Scalars['Int']['input'];
+  /** Giorno della settimana (0=Dom, 1=Lun, ..., 6=Sab) */
+  weekday: Scalars['Int']['input'];
 };
 
 export type Mutation = {
@@ -1207,6 +1373,7 @@ export type Mutation = {
   addTreatmentServiceLine: Treatment;
   anonymizeExpiredWhatsappLogs: WhatsappLogManagementResult;
   anonymizeWhatsappLogs: WhatsappLogManagementResult;
+  applyRegistryPhone: Scalars['Int']['output'];
   assignKeycloakRealmRole: Scalars['Boolean']['output'];
   assignPermissionToRole: RolePermission;
   assignRole: UserRole;
@@ -1219,6 +1386,8 @@ export type Mutation = {
   cancelTreatment: Treatment;
   cancelTreatmentPayment: Treatment;
   cancelVoucherFe: VoucherFe;
+  cancelWhatsappScheduledMessage: Scalars['Boolean']['output'];
+  clearAppointmentLateArrival: AvailabilityAppointment;
   closeTreatment: Treatment;
   completeTaskMessage: Scalars['Boolean']['output'];
   completeTreatment: Treatment;
@@ -1227,6 +1396,7 @@ export type Mutation = {
   createAvailabilityAppointment: AvailabilityAppointment;
   createAvailabilityException: AvailabilityException;
   createAvailabilityTemplate: AvailabilityTemplate;
+  createChair: Chair;
   createDocumentTemplate: DocumentTemplate;
   createEvaluation: PatientEvaluation;
   createException: AvailabilityException;
@@ -1244,8 +1414,8 @@ export type Mutation = {
   createOperator: Operator;
   createOperatorAbsenceType: OperatorAbsenceType;
   createOperatorAbsences: OperatorAbsencesResult;
+  createOperatorAvailability: ExtraAvailabilityResult;
   createOperatorCategory: OperatorCategory;
-  createPathDocument: PathDocument;
   createPatient: Patient;
   /** Crea nuova anamnesi paziente */
   createPatientAnamnesis: PatientAnamnesis;
@@ -1255,10 +1425,12 @@ export type Mutation = {
   createProduct: Product;
   createRole: Role;
   createRoom: Room;
+  createScheduleChange: ScheduleChangeResult;
   createSecretary: Secretary;
   createService: Service;
   createServiceSubcategory: ServiceSubcategory;
   createSickLeave: Array<AvailabilityException>;
+  createSite: Site;
   createTaskMessage: TaskMessageResult;
   createTemplatePattern: Array<TemplatePattern>;
   createTherapeuticPath: TherapeuticPath;
@@ -1275,10 +1447,12 @@ export type Mutation = {
   deleteAppUser: Scalars['Boolean']['output'];
   deleteAvailabilityAppointment: Scalars['Boolean']['output'];
   deleteAvailabilityTemplate: Scalars['Boolean']['output'];
+  deleteChair: Scalars['Boolean']['output'];
   deleteDocumentTemplate: Scalars['Boolean']['output'];
   deleteEvaluation: Scalars['Boolean']['output'];
   deleteEvaluationTest: Scalars['Boolean']['output'];
   deleteException: Scalars['Boolean']['output'];
+  deleteExceptionGroup: AvailabilityRemovalResult;
   deleteExceptionsByDateRange: Scalars['Int']['output'];
   deleteExpiredWhatsappLogs: WhatsappLogManagementResult;
   deleteGeneralSetting: Scalars['Boolean']['output'];
@@ -1292,12 +1466,15 @@ export type Mutation = {
   deleteInstrumentCategory: Scalars['Boolean']['output'];
   deleteItManager: Scalars['Boolean']['output'];
   deleteKeycloakUser: Scalars['Boolean']['output'];
+  deleteNoShowReview: Scalars['Boolean']['output'];
   deleteOperator: DeleteOperatorResult;
   deleteOperatorAbsenceType: Scalars['Boolean']['output'];
   deleteOperatorCategory: Scalars['Boolean']['output'];
-  deletePathDocument: Scalars['Boolean']['output'];
+  deleteOrphanTreatment: Scalars['Boolean']['output'];
+  deleteOrphanTreatments: Array<OrphanDeletionResult>;
   /** Elimina anamnesi paziente */
   deletePatientAnamnesis: Scalars['Boolean']['output'];
+  deletePatientDocument: Scalars['Boolean']['output'];
   deletePatientRelationship: Scalars['Boolean']['output'];
   deletePatternGroup: Scalars['Boolean']['output'];
   deletePrivacyOfficer: Scalars['Boolean']['output'];
@@ -1317,6 +1494,8 @@ export type Mutation = {
   deleteTreatmentInvoiceLine: Scalars['Boolean']['output'];
   deleteWaitingListEntry: Scalars['Boolean']['output'];
   deleteWhatsappLogs: WhatsappLogManagementResult;
+  disconnectMyGoogleCalendar: GoogleCalendarStatus;
+  disconnectOperatorGoogleCalendar: GoogleCalendarStatus;
   dismissBillingAlert: Treatment;
   dismissReturnFromAccountingBanner: Treatment;
   duplicateGymPatternGroup: GymPatternGroup;
@@ -1326,18 +1505,24 @@ export type Mutation = {
   forceCloseTreatment: Treatment;
   generateHolidaysForOperator: Scalars['Int']['output'];
   generateHolidaysForYear: Scalars['Int']['output'];
+  generateOperatorCalendarFeed: OperatorCalendarFeedStatus;
   generateOperatorFeSettlements: Array<OperatorFeSettlement>;
   initializeDefaultSettings: Scalars['Boolean']['output'];
   issueVoucherFe: VoucherFe;
   linkKeycloakUser: AppUser;
+  linkWhatsappConversationPatient: WhatsappConversation;
+  makeAppointmentRecurring: AvailabilityAppointment;
   markAppointmentAsNoShow: AvailabilityAppointment;
   markAppointmentAttended: AvailabilityAppointment;
+  markAppointmentLateArrival: AvailabilityAppointment;
   markAppointmentNoShow: AvailabilityAppointment;
   markObjectiveAchieved: EvaluationObjective;
   markScontoFeCashPayment: Treatment;
   markTaskMessageAsRead: Scalars['Boolean']['output'];
   markTreatmentInvoicedByOperator: Treatment;
   markTreatmentInvoicedToPatient: Treatment;
+  markWhatsappConversationRead: WhatsappConversation;
+  openWhatsappConversation: WhatsappConversation;
   patchOperatorFeSettlement: OperatorFeSettlement;
   /** Deprecato: provisioning dei tenant avviene dal TMS, non più da qui. */
   provisionTenantSchema: TenantSchemaStatus;
@@ -1349,12 +1534,15 @@ export type Mutation = {
   recordTreatmentPayment: Treatment;
   removeServiceFromOperator: Scalars['Boolean']['output'];
   removeTreatmentServiceLine: Treatment;
+  renameOperatorGoogleCalendar: GoogleCalendarStatus;
   /** @deprecated Usa reopenTreatmentByOperator o reopenTreatmentBySecretary */
   reopenTreatment: Treatment;
   reopenTreatmentByOperator: Treatment;
   reopenTreatmentBySecretary: Treatment;
+  reorderNotificationChannels: Array<NotificationChannelSetting>;
   reorderWaitingList: Array<WaitingListEntry>;
   requestTreatmentRecall: Treatment;
+  resendMissingNotifications: ResendOutcome;
   resendTreatmentToAccounting: Treatment;
   resetKeycloakPassword: Scalars['Boolean']['output'];
   resetTestEvaluation: EvaluationTest;
@@ -1362,19 +1550,43 @@ export type Mutation = {
   resolveMultipleConflicts: Array<AvailabilityAppointment>;
   restoreFromRecycleBin: Scalars['Boolean']['output'];
   restoreOperator: Operator;
+  resyncOperatorsToAccounting: Scalars['Int']['output'];
   resyncServicesToAccounting: Scalars['Int']['output'];
+  resyncSitesToAccounting: Scalars['Float']['output'];
   retryTreatmentInvoice: Treatment;
+  retryWhatsappChatMessage: WhatsappChatMessage;
   revertAppointmentAttended: AvailabilityAppointment;
+  revokeAllPatientCalendarFeeds: Scalars['Int']['output'];
   revokeKeycloakRealmRole: Scalars['Boolean']['output'];
+  revokeOperatorCalendarFeed: OperatorCalendarFeedStatus;
+  revokePatientCalendarFeed: Scalars['Boolean']['output'];
   revokePermissionFromRole: Scalars['Boolean']['output'];
   revokeRole: Scalars['Boolean']['output'];
+  revokeStalePatientCalendarFeeds: Scalars['Int']['output'];
   sendAppointmentRecap: Scalars['Boolean']['output'];
+  sendAppointmentsRecap: Scalars['Boolean']['output'];
+  sendMyGoogleRenewLink: Scalars['Boolean']['output'];
+  sendOperatorCalendarFeedLink: Scalars['Boolean']['output'];
+  sendOperatorGoogleRenewLink: Scalars['Boolean']['output'];
+  sendPatientCalendarFeedLink: Scalars['Boolean']['output'];
+  sendWhatsappChatMessage: WhatsappChatMessage;
+  setAssignmentRoomOverrides: TemplateAssignment;
+  setDefaultSite: Array<Site>;
   setInstrumentStatus: Instrument;
   setInvoiceLineUseOperatorCategories: InvoiceLineSettings;
+  setMyGoogleAlertChannel: GoogleCalendarStatus;
+  setOperatorCalendarFeedPatientName: OperatorCalendarFeedStatus;
+  setOperatorCalendarFeedPatientPhone: OperatorCalendarFeedStatus;
+  setOperatorGoogleAccountEmail: GoogleCalendarStatus;
+  setOperatorGoogleAlertChannel: GoogleCalendarStatus;
   setPatientPrivacyConsent: Patient;
   setPatternGroupActive: PatternGroup;
   setTreatmentsReadyForBilling: Array<Treatment>;
+  setWhatsappConversationStatus: WhatsappConversation;
+  startMyGoogleCalendarConnect: Scalars['String']['output'];
+  startOperatorGoogleCalendarConnect: Scalars['String']['output'];
   suspendVoucherFe: VoucherFe;
+  syncOperatorGoogleCalendar: GoogleCalendarStatus;
   testWhatsappConnection: Scalars['Boolean']['output'];
   testWhatsappDirect: WhatsappTestResult;
   testWhatsappFullFlow: WhatsappTestResult;
@@ -1383,6 +1595,8 @@ export type Mutation = {
   updateAppUser: AppUser;
   updateAvailabilityAppointment: AvailabilityAppointment;
   updateAvailabilityTemplate: AvailabilityTemplate;
+  updateCalendarSyncSettings: CalendarSyncSetting;
+  updateChair: Chair;
   updateDocumentTemplate: DocumentTemplate;
   updateEvaluation: PatientEvaluation;
   updateException: AvailabilityException;
@@ -1394,6 +1608,7 @@ export type Mutation = {
   updateInstrument: Instrument;
   updateInstrumentCategory: InstrumentCategory;
   updateKeycloakUser: Scalars['Boolean']['output'];
+  updateNotificationChannelSetting: NotificationChannelSetting;
   updateObjectiveProgress: EvaluationObjective;
   updateOperator: Operator;
   updateOperatorAbsenceType: OperatorAbsenceType;
@@ -1402,6 +1617,7 @@ export type Mutation = {
   updateOperatorService: OperatorService;
   /** Aggiorna anamnesi paziente */
   updatePatientAnamnesis: PatientAnamnesis;
+  updatePatientDocument: PatientDocument;
   updatePatientRegistry: Patient;
   updatePatternGroup: PatternGroup;
   updatePatternGroupWithConflicts: PatternGroupUpdateOutput;
@@ -1412,6 +1628,7 @@ export type Mutation = {
   updateRoom: Room;
   updateService: Service;
   updateServiceSubcategory: ServiceSubcategory;
+  updateSite: Site;
   updateTaskMessage: Scalars['Boolean']['output'];
   updateTemplateAssignment: TemplateAssignment;
   updateTemplatePattern: TemplatePattern;
@@ -1426,6 +1643,7 @@ export type Mutation = {
   updateVoucherFeAmount: VoucherFe;
   updateWaitingListEntry: WaitingListEntry;
   upsertGeneralSetting: GeneralSettings;
+  upsertNoShowReview: NoShowReview;
   /** Crea o aggiorna anamnesi paziente */
   upsertPatientAnamnesis: PatientAnamnesis;
   upsertPatientRelationshipExtension: Scalars['Boolean']['output'];
@@ -1460,6 +1678,11 @@ export type MutationAddTreatmentServiceLineArgs = {
 
 export type MutationAnonymizeWhatsappLogsArgs = {
   input: WhatsappBulkLogIdsInput;
+};
+
+
+export type MutationApplyRegistryPhoneArgs = {
+  clientPhone: Scalars['String']['input'];
 };
 
 
@@ -1536,6 +1759,16 @@ export type MutationCancelVoucherFeArgs = {
 };
 
 
+export type MutationCancelWhatsappScheduledMessageArgs = {
+  jobId: Scalars['String']['input'];
+};
+
+
+export type MutationClearAppointmentLateArrivalArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationCloseTreatmentArgs = {
   id: Scalars['ID']['input'];
   input: CloseTreatmentInput;
@@ -1580,6 +1813,13 @@ export type MutationCreateAvailabilityExceptionArgs = {
 
 export type MutationCreateAvailabilityTemplateArgs = {
   input: CreateAvailabilityTemplateInput;
+};
+
+
+export type MutationCreateChairArgs = {
+  color?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  roomId: Scalars['ID']['input'];
 };
 
 
@@ -1697,16 +1937,16 @@ export type MutationCreateOperatorAbsencesArgs = {
 };
 
 
+export type MutationCreateOperatorAvailabilityArgs = {
+  input: CreateOperatorAvailabilityInput;
+};
+
+
 export type MutationCreateOperatorCategoryArgs = {
   description?: InputMaybe<Scalars['String']['input']>;
   invoiceLineDescription?: InputMaybe<Scalars['String']['input']>;
   macroCategory: OperatorMacroCategory;
   name: Scalars['String']['input'];
-};
-
-
-export type MutationCreatePathDocumentArgs = {
-  input: CreateDocumentInput;
 };
 
 
@@ -1758,6 +1998,11 @@ export type MutationCreateRoomArgs = {
 };
 
 
+export type MutationCreateScheduleChangeArgs = {
+  input: CreateScheduleChangeInput;
+};
+
+
 export type MutationCreateSecretaryArgs = {
   input: CreateSecretaryInput;
 };
@@ -1798,6 +2043,12 @@ export type MutationCreateSickLeaveArgs = {
   operatorId: Scalars['ID']['input'];
   reason?: InputMaybe<Scalars['String']['input']>;
   startDate: Scalars['String']['input'];
+};
+
+
+export type MutationCreateSiteArgs = {
+  address?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
 };
 
 
@@ -1882,6 +2133,11 @@ export type MutationDeleteAvailabilityTemplateArgs = {
 };
 
 
+export type MutationDeleteChairArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationDeleteDocumentTemplateArgs = {
   id: Scalars['ID']['input'];
 };
@@ -1900,6 +2156,11 @@ export type MutationDeleteEvaluationTestArgs = {
 
 export type MutationDeleteExceptionArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteExceptionGroupArgs = {
+  sourceGroupId: Scalars['ID']['input'];
 };
 
 
@@ -1966,6 +2227,11 @@ export type MutationDeleteKeycloakUserArgs = {
 };
 
 
+export type MutationDeleteNoShowReviewArgs = {
+  appointmentId: Scalars['ID']['input'];
+};
+
+
 export type MutationDeleteOperatorArgs = {
   id: Scalars['ID']['input'];
 };
@@ -1981,12 +2247,22 @@ export type MutationDeleteOperatorCategoryArgs = {
 };
 
 
-export type MutationDeletePathDocumentArgs = {
+export type MutationDeleteOrphanTreatmentArgs = {
   id: Scalars['ID']['input'];
 };
 
 
+export type MutationDeleteOrphanTreatmentsArgs = {
+  ids: Array<Scalars['ID']['input']>;
+};
+
+
 export type MutationDeletePatientAnamnesisArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeletePatientDocumentArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -2091,6 +2367,11 @@ export type MutationDeleteWhatsappLogsArgs = {
 };
 
 
+export type MutationDisconnectOperatorGoogleCalendarArgs = {
+  operatorId: Scalars['ID']['input'];
+};
+
+
 export type MutationDismissBillingAlertArgs = {
   id: Scalars['ID']['input'];
 };
@@ -2143,6 +2424,11 @@ export type MutationGenerateHolidaysForYearArgs = {
 };
 
 
+export type MutationGenerateOperatorCalendarFeedArgs = {
+  operatorId: Scalars['ID']['input'];
+};
+
+
 export type MutationGenerateOperatorFeSettlementsArgs = {
   input: GenerateOperatorFeSettlementsInput;
 };
@@ -2161,6 +2447,19 @@ export type MutationLinkKeycloakUserArgs = {
 };
 
 
+export type MutationLinkWhatsappConversationPatientArgs = {
+  input: LinkWhatsappConversationPatientInput;
+};
+
+
+export type MutationMakeAppointmentRecurringArgs = {
+  appointmentId: Scalars['ID']['input'];
+  force?: InputMaybe<Scalars['Boolean']['input']>;
+  occurrences?: InputMaybe<Array<RecurringOccurrenceInput>>;
+  repeatConfig: RepeatConfigInput;
+};
+
+
 export type MutationMarkAppointmentAsNoShowArgs = {
   id: Scalars['ID']['input'];
 };
@@ -2168,6 +2467,12 @@ export type MutationMarkAppointmentAsNoShowArgs = {
 
 export type MutationMarkAppointmentAttendedArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationMarkAppointmentLateArrivalArgs = {
+  id: Scalars['ID']['input'];
+  lateMinutes?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -2202,6 +2507,16 @@ export type MutationMarkTreatmentInvoicedByOperatorArgs = {
 export type MutationMarkTreatmentInvoicedToPatientArgs = {
   id: Scalars['ID']['input'];
   invoiceNumber?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationMarkWhatsappConversationReadArgs = {
+  conversationId: Scalars['ID']['input'];
+};
+
+
+export type MutationOpenWhatsappConversationArgs = {
+  input: OpenWhatsappConversationInput;
 };
 
 
@@ -2260,6 +2575,12 @@ export type MutationRemoveTreatmentServiceLineArgs = {
 };
 
 
+export type MutationRenameOperatorGoogleCalendarArgs = {
+  calendarName: Scalars['String']['input'];
+  operatorId: Scalars['ID']['input'];
+};
+
+
 export type MutationReopenTreatmentArgs = {
   id: Scalars['ID']['input'];
 };
@@ -2275,6 +2596,11 @@ export type MutationReopenTreatmentBySecretaryArgs = {
 };
 
 
+export type MutationReorderNotificationChannelsArgs = {
+  order: Array<NotificationChannel>;
+};
+
+
 export type MutationReorderWaitingListArgs = {
   input: ReorderWaitingListInput;
 };
@@ -2283,6 +2609,11 @@ export type MutationReorderWaitingListArgs = {
 export type MutationRequestTreatmentRecallArgs = {
   id: Scalars['ID']['input'];
   reason?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationResendMissingNotificationsArgs = {
+  appointmentIds: Array<Scalars['ID']['input']>;
 };
 
 
@@ -2336,6 +2667,11 @@ export type MutationRetryTreatmentInvoiceArgs = {
 };
 
 
+export type MutationRetryWhatsappChatMessageArgs = {
+  messageId: Scalars['ID']['input'];
+};
+
+
 export type MutationRevertAppointmentAttendedArgs = {
   id: Scalars['ID']['input'];
 };
@@ -2344,6 +2680,16 @@ export type MutationRevertAppointmentAttendedArgs = {
 export type MutationRevokeKeycloakRealmRoleArgs = {
   keycloakUserId: Scalars['ID']['input'];
   roleName: Scalars['String']['input'];
+};
+
+
+export type MutationRevokeOperatorCalendarFeedArgs = {
+  operatorId: Scalars['ID']['input'];
+};
+
+
+export type MutationRevokePatientCalendarFeedArgs = {
+  patientId: Scalars['ID']['input'];
 };
 
 
@@ -2363,6 +2709,53 @@ export type MutationSendAppointmentRecapArgs = {
 };
 
 
+export type MutationSendAppointmentsRecapArgs = {
+  appointmentIds: Array<Scalars['ID']['input']>;
+  patientId: Scalars['ID']['input'];
+};
+
+
+export type MutationSendMyGoogleRenewLinkArgs = {
+  channel: Scalars['String']['input'];
+};
+
+
+export type MutationSendOperatorCalendarFeedLinkArgs = {
+  channel: Scalars['String']['input'];
+  operatorId: Scalars['ID']['input'];
+  recipient: Scalars['String']['input'];
+};
+
+
+export type MutationSendOperatorGoogleRenewLinkArgs = {
+  channel: Scalars['String']['input'];
+  operatorId: Scalars['ID']['input'];
+  recipient: Scalars['String']['input'];
+};
+
+
+export type MutationSendPatientCalendarFeedLinkArgs = {
+  email?: InputMaybe<Scalars['String']['input']>;
+  patientId: Scalars['ID']['input'];
+};
+
+
+export type MutationSendWhatsappChatMessageArgs = {
+  input: SendWhatsappChatMessageInput;
+};
+
+
+export type MutationSetAssignmentRoomOverridesArgs = {
+  assignmentId: Scalars['ID']['input'];
+  overrides: Array<AssignmentRoomOverrideInput>;
+};
+
+
+export type MutationSetDefaultSiteArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationSetInstrumentStatusArgs = {
   id: Scalars['ID']['input'];
   status: InstrumentStatus;
@@ -2371,6 +2764,37 @@ export type MutationSetInstrumentStatusArgs = {
 
 export type MutationSetInvoiceLineUseOperatorCategoriesArgs = {
   useOperatorCategories: Scalars['Boolean']['input'];
+};
+
+
+export type MutationSetMyGoogleAlertChannelArgs = {
+  channel: Scalars['String']['input'];
+  enabled: Scalars['Boolean']['input'];
+};
+
+
+export type MutationSetOperatorCalendarFeedPatientNameArgs = {
+  operatorId: Scalars['ID']['input'];
+  show: Scalars['Boolean']['input'];
+};
+
+
+export type MutationSetOperatorCalendarFeedPatientPhoneArgs = {
+  operatorId: Scalars['ID']['input'];
+  show: Scalars['Boolean']['input'];
+};
+
+
+export type MutationSetOperatorGoogleAccountEmailArgs = {
+  email?: InputMaybe<Scalars['String']['input']>;
+  operatorId: Scalars['ID']['input'];
+};
+
+
+export type MutationSetOperatorGoogleAlertChannelArgs = {
+  channel: Scalars['String']['input'];
+  enabled: Scalars['Boolean']['input'];
+  operatorId: Scalars['ID']['input'];
 };
 
 
@@ -2394,8 +2818,25 @@ export type MutationSetTreatmentsReadyForBillingArgs = {
 };
 
 
+export type MutationSetWhatsappConversationStatusArgs = {
+  conversationId: Scalars['ID']['input'];
+  status: WhatsappConversationStatus;
+};
+
+
+export type MutationStartOperatorGoogleCalendarConnectArgs = {
+  calendarName?: InputMaybe<Scalars['String']['input']>;
+  operatorId: Scalars['ID']['input'];
+};
+
+
 export type MutationSuspendVoucherFeArgs = {
   voucherFeId: Scalars['ID']['input'];
+};
+
+
+export type MutationSyncOperatorGoogleCalendarArgs = {
+  operatorId: Scalars['ID']['input'];
 };
 
 
@@ -2438,6 +2879,21 @@ export type MutationUpdateAvailabilityAppointmentArgs = {
 export type MutationUpdateAvailabilityTemplateArgs = {
   id: Scalars['ID']['input'];
   input: CreateAvailabilityTemplateInput;
+};
+
+
+export type MutationUpdateCalendarSyncSettingsArgs = {
+  keepCalendarOnDisconnect?: InputMaybe<Scalars['Boolean']['input']>;
+  keepPastAppointments?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type MutationUpdateChairArgs = {
+  color?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['ID']['input'];
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  roomId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 
@@ -2532,6 +2988,11 @@ export type MutationUpdateKeycloakUserArgs = {
 };
 
 
+export type MutationUpdateNotificationChannelSettingArgs = {
+  input: NotificationChannelSettingInput;
+};
+
+
 export type MutationUpdateObjectiveProgressArgs = {
   input: UpdateObjectiveProgressInput;
   objectiveId: Scalars['ID']['input'];
@@ -2580,6 +3041,12 @@ export type MutationUpdateOperatorServiceArgs = {
 export type MutationUpdatePatientAnamnesisArgs = {
   id: Scalars['ID']['input'];
   input: UpdatePatientAnamnesisInput;
+};
+
+
+export type MutationUpdatePatientDocumentArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdatePatientDocumentInput;
 };
 
 
@@ -2669,6 +3136,14 @@ export type MutationUpdateServiceSubcategoryArgs = {
 };
 
 
+export type MutationUpdateSiteArgs = {
+  address?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['ID']['input'];
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+};
+
+
 export type MutationUpdateTaskMessageArgs = {
   input: UpdateTaskMessageInput;
   messageId: Scalars['String']['input'];
@@ -2676,9 +3151,11 @@ export type MutationUpdateTaskMessageArgs = {
 
 
 export type MutationUpdateTemplateAssignmentArgs = {
+  chairId?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   isCurrent?: InputMaybe<Scalars['Boolean']['input']>;
   patternStartDate?: InputMaybe<Scalars['String']['input']>;
+  roomId?: InputMaybe<Scalars['String']['input']>;
   validFrom?: InputMaybe<Scalars['String']['input']>;
   validUntil?: InputMaybe<Scalars['String']['input']>;
 };
@@ -2755,6 +3232,11 @@ export type MutationUpsertGeneralSettingArgs = {
 };
 
 
+export type MutationUpsertNoShowReviewArgs = {
+  input: UpsertNoShowReviewInput;
+};
+
+
 export type MutationUpsertPatientAnamnesisArgs = {
   input: UpdatePatientAnamnesisInput;
   subjectId: Scalars['ID']['input'];
@@ -2793,6 +3275,227 @@ export type MyProfile = {
   userType: AppUserType;
 };
 
+/** Ambito degli appuntamenti: studio, palestra o entrambi */
+export enum NoShowContext {
+  All = 'ALL',
+  Gym = 'GYM',
+  Studio = 'STUDIO'
+}
+
+export type NoShowCounts = {
+  __typename?: 'NoShowCounts';
+  cancelledEarly: Scalars['Int']['output'];
+  cancelledLate: Scalars['Int']['output'];
+  cancelledUnknown: Scalars['Int']['output'];
+  lateArrival: Scalars['Int']['output'];
+  noShow: Scalars['Int']['output'];
+  /** Totale di tutti gli eventi, ritardi e disdette early inclusi */
+  total: Scalars['Int']['output'];
+  /** Totale "pesante": no-show + disdette tardive + disdette di preavviso ignoto. Esclude le disdette con preavviso e i ritardi. */
+  unjustified: Scalars['Int']['output'];
+};
+
+/** Decisione dello staff su un'assenza ingiustificata */
+export enum NoShowDecision {
+  Justified = 'JUSTIFIED',
+  Pending = 'PENDING',
+  ToCharge = 'TO_CHARGE',
+  Waived = 'WAIVED'
+}
+
+export type NoShowEvent = {
+  __typename?: 'NoShowEvent';
+  /** Data appuntamento YYYY-MM-DD */
+  appointmentDate: Scalars['String']['output'];
+  appointmentId: Scalars['ID']['output'];
+  appointmentType: AppointmentType;
+  arrivalSource?: Maybe<ArrivalSource>;
+  arrivedAt?: Maybe<Scalars['DateTime']['output']>;
+  bookingStatus: BookingStatus;
+  cancellationHoursNotice?: Maybe<Scalars['Float']['output']>;
+  cancellationReason?: Maybe<Scalars['String']['output']>;
+  cancelledAt?: Maybe<Scalars['DateTime']['output']>;
+  endTime: Scalars['String']['output'];
+  eventType: NoShowEventType;
+  gymRoomName?: Maybe<Scalars['String']['output']>;
+  /** L'appuntamento era stato riassegnato a un sostituto */
+  isSubstitution: Scalars['Boolean']['output'];
+  lateMinutes?: Maybe<Scalars['Int']['output']>;
+  operatorId?: Maybe<Scalars['ID']['output']>;
+  operatorMacroCategory?: Maybe<OperatorMacroCategory>;
+  operatorName?: Maybe<Scalars['String']['output']>;
+  /** Operatore originale, se c'è stata sostituzione */
+  originalOperatorName?: Maybe<Scalars['String']['output']>;
+  patientId?: Maybe<Scalars['ID']['output']>;
+  /** Display name dalla cache locale, fallback su clientName */
+  patientName: Scalars['String']['output'];
+  /** Decisione dello staff, se presa */
+  review?: Maybe<NoShowReview>;
+  /** Servizi prenotati sull'appuntamento */
+  serviceNames: Array<Scalars['String']['output']>;
+  siteId?: Maybe<Scalars['ID']['output']>;
+  siteName?: Maybe<Scalars['String']['output']>;
+  startTime: Scalars['String']['output'];
+  /** Era stato dato per assente e poi si è presentato */
+  wasNoShowReverted: Scalars['Boolean']['output'];
+};
+
+export type NoShowEventPage = {
+  __typename?: 'NoShowEventPage';
+  events: Array<NoShowEvent>;
+  total: Scalars['Int']['output'];
+};
+
+/** Tipologia di assenza/ritardo nella gestione assenze ingiustificate */
+export enum NoShowEventType {
+  CancelledEarly = 'CANCELLED_EARLY',
+  CancelledLate = 'CANCELLED_LATE',
+  CancelledUnknown = 'CANCELLED_UNKNOWN',
+  LateArrival = 'LATE_ARRIVAL',
+  NoShow = 'NO_SHOW'
+}
+
+export type NoShowFilterInput = {
+  /** Studio (operatori/medici), palestra (istruttori) o entrambi. Default ALL. */
+  context?: InputMaybe<NoShowContext>;
+  /** Filtra per esito della valutazione staff. PENDING include gli eventi mai valutati. */
+  decisions?: InputMaybe<Array<NoShowDecision>>;
+  /** Escludi gli eventi già marcati come giustificati. Default true: un'assenza con certificato non deve inquinare il conteggio. */
+  excludeJustified?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Da (YYYY-MM-DD), inclusivo */
+  from?: InputMaybe<Scalars['String']['input']>;
+  /** Includi gli appuntamenti senza paziente collegato (clienti occasionali). Default false. */
+  includeWithoutPatient?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Solo pazienti con almeno N eventi nel periodo (vista ad albero). Default 1. */
+  minEvents?: InputMaybe<Scalars['Int']['input']>;
+  /** Operatori/medici/istruttori di riferimento */
+  operatorIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  /** Un singolo paziente (subjectId) */
+  patientId?: InputMaybe<Scalars['ID']['input']>;
+  /** Ricerca sul nome del paziente */
+  search?: InputMaybe<Scalars['String']['input']>;
+  siteIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  /** A (YYYY-MM-DD), inclusivo */
+  to?: InputMaybe<Scalars['String']['input']>;
+  /** Tipologie da includere. Default: NO_SHOW + CANCELLED_LATE + CANCELLED_UNKNOWN (le assenze che pesano). Le disdette con preavviso vanno chieste esplicitamente. */
+  types?: InputMaybe<Array<NoShowEventType>>;
+};
+
+export type NoShowPagingInput = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type NoShowPatientGroup = {
+  __typename?: 'NoShowPatientGroup';
+  /** Conteggi nel periodo filtrato */
+  counts: NoShowCounts;
+  /** Gli eventi del paziente nel periodo */
+  events: Array<NoShowEvent>;
+  /** Primo evento nel periodo (YYYY-MM-DD) */
+  firstEventDate?: Maybe<Scalars['String']['output']>;
+  /** Ultimo evento nel periodo (YYYY-MM-DD) */
+  lastEventDate?: Maybe<Scalars['String']['output']>;
+  patientId?: Maybe<Scalars['ID']['output']>;
+  patientName: Scalars['String']['output'];
+  /** Eventi ancora da valutare dallo staff */
+  pendingReviews: Scalars['Int']['output'];
+  /** Conteggi negli ultimi N giorni (impostazione noShow.recentWindowDays), indipendenti dal filtro: servono a distinguere "2 in un mese" da "2 in un anno" */
+  recent: NoShowCounts;
+  /** Conteggi negli ultimi 12 mesi scorrevoli, indipendenti dal filtro */
+  rollingYear: NoShowCounts;
+};
+
+export type NoShowPatientPage = {
+  __typename?: 'NoShowPatientPage';
+  groups: Array<NoShowPatientGroup>;
+  /** Pazienti totali che soddisfano il filtro */
+  totalPatients: Scalars['Int']['output'];
+};
+
+export type NoShowReview = {
+  __typename?: 'NoShowReview';
+  appointmentId: Scalars['ID']['output'];
+  chargedAmount?: Maybe<Scalars['Float']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  decidedAt?: Maybe<Scalars['DateTime']['output']>;
+  decidedBy?: Maybe<Scalars['ID']['output']>;
+  decidedByName?: Maybe<Scalars['String']['output']>;
+  decision: NoShowDecision;
+  id: Scalars['ID']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  patientId?: Maybe<Scalars['ID']['output']>;
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type NoShowSummary = {
+  __typename?: 'NoShowSummary';
+  counts: NoShowCounts;
+  justified: Scalars['Int']['output'];
+  lateArrivalToleranceMinutes: Scalars['Int']['output'];
+  lateCancellationHours: Scalars['Int']['output'];
+  /** Pazienti distinti coinvolti nel periodo */
+  patientsInvolved: Scalars['Int']['output'];
+  pendingReviews: Scalars['Int']['output'];
+  recentWindowDays: Scalars['Int']['output'];
+  toCharge: Scalars['Int']['output'];
+  waived: Scalars['Int']['output'];
+};
+
+export enum NotificationCategory {
+  Cancellation = 'CANCELLATION',
+  Confirmation = 'CONFIRMATION',
+  Reminder = 'REMINDER',
+  Reschedule = 'RESCHEDULE'
+}
+
+export enum NotificationChannel {
+  Email = 'EMAIL',
+  Sms = 'SMS',
+  Whatsapp = 'WHATSAPP'
+}
+
+export type NotificationChannelSetting = {
+  __typename?: 'NotificationChannelSetting';
+  categories: Array<NotificationCategory>;
+  channel: NotificationChannel;
+  createdAt: Scalars['DateTime']['output'];
+  emailFromName?: Maybe<Scalars['String']['output']>;
+  enabled: Scalars['Boolean']['output'];
+  id: Scalars['ID']['output'];
+  priority: Scalars['Int']['output'];
+  smsDriver?: Maybe<Scalars['String']['output']>;
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type NotificationChannelSettingInput = {
+  categories?: InputMaybe<Array<NotificationCategory>>;
+  channel: NotificationChannel;
+  emailFromName?: InputMaybe<Scalars['String']['input']>;
+  enabled?: InputMaybe<Scalars['Boolean']['input']>;
+  priority?: InputMaybe<Scalars['Int']['input']>;
+  smsDriver?: InputMaybe<Scalars['String']['input']>;
+};
+
+export enum NotificationIssueKind {
+  CancelledNotNotified = 'CANCELLED_NOT_NOTIFIED',
+  NeverNotified = 'NEVER_NOTIFIED',
+  StaleInfo = 'STALE_INFO',
+  Stuck = 'STUCK'
+}
+
+export type NotificationIssueTotals = {
+  __typename?: 'NotificationIssueTotals';
+  cancelledNotNotified: Scalars['Int']['output'];
+  neverNotified: Scalars['Int']['output'];
+  outsideWindow: Scalars['Int']['output'];
+  patients: Scalars['Int']['output'];
+  staleInfo: Scalars['Int']['output'];
+  stuck: Scalars['Int']['output'];
+  unreachable: Scalars['Int']['output'];
+  unreachableUnpaid: Scalars['Int']['output'];
+};
+
 export type ObjectiveProgressHistory = {
   __typename?: 'ObjectiveProgressHistory';
   createdAt: Scalars['DateTime']['output'];
@@ -2824,6 +3527,12 @@ export type ObjectivesProgress = {
   total: Scalars['Int']['output'];
 };
 
+export type OpenWhatsappConversationInput = {
+  patientId?: InputMaybe<Scalars['ID']['input']>;
+  patientName?: InputMaybe<Scalars['String']['input']>;
+  phone: Scalars['String']['input'];
+};
+
 export type Operator = {
   __typename?: 'Operator';
   appUser?: Maybe<AppUser>;
@@ -2831,6 +3540,12 @@ export type Operator = {
   appointments?: Maybe<Array<AvailabilityAppointment>>;
   availabilityExceptions?: Maybe<Array<AvailabilityException>>;
   availabilityTemplates?: Maybe<Array<AvailabilityTemplate>>;
+  calendarFeedCreatedAt?: Maybe<Scalars['DateTime']['output']>;
+  calendarFeedEnabled: Scalars['Boolean']['output'];
+  calendarFeedLastAccessAt?: Maybe<Scalars['DateTime']['output']>;
+  calendarFeedRevokedAt?: Maybe<Scalars['DateTime']['output']>;
+  calendarFeedShowPatientName: Scalars['Boolean']['output'];
+  calendarFeedShowPatientPhone: Scalars['Boolean']['output'];
   canCollectPayment: Scalars['Boolean']['output'];
   category?: Maybe<OperatorCategory>;
   categoryId?: Maybe<Scalars['String']['output']>;
@@ -2839,6 +3554,9 @@ export type Operator = {
   deletedAt?: Maybe<Scalars['DateTime']['output']>;
   deletedByUserId?: Maybe<Scalars['ID']['output']>;
   email?: Maybe<Scalars['String']['output']>;
+  googleAlertEmail: Scalars['Boolean']['output'];
+  googleAlertLastSentAt?: Maybe<Scalars['DateTime']['output']>;
+  googleAlertWhatsapp: Scalars['Boolean']['output'];
   gymSchedules?: Maybe<Array<GymSchedule>>;
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
@@ -2874,6 +3592,7 @@ export type OperatorAbsencesResult = {
   __typename?: 'OperatorAbsencesResult';
   conflictCount: Scalars['Int']['output'];
   exceptions: Array<AvailabilityException>;
+  removedAvailabilityCount: Scalars['Int']['output'];
   skippedOverlaps: Scalars['Int']['output'];
   sourceGroupId: Scalars['ID']['output'];
 };
@@ -2888,6 +3607,18 @@ export type OperatorAvailabilityV3 = {
   __typename?: 'OperatorAvailabilityV3';
   days: Array<DayAvailabilityV3>;
   operatorId: Scalars['ID']['output'];
+};
+
+export type OperatorCalendarFeedStatus = {
+  __typename?: 'OperatorCalendarFeedStatus';
+  createdAt?: Maybe<Scalars['DateTime']['output']>;
+  enabled: Scalars['Boolean']['output'];
+  feedUrl?: Maybe<Scalars['String']['output']>;
+  lastAccessAt?: Maybe<Scalars['DateTime']['output']>;
+  operatorId: Scalars['ID']['output'];
+  revokedAt?: Maybe<Scalars['DateTime']['output']>;
+  showPatientName: Scalars['Boolean']['output'];
+  showPatientPhone: Scalars['Boolean']['output'];
 };
 
 export type OperatorCategory = {
@@ -2925,7 +3656,6 @@ export type OperatorDependencyCount = {
   waitingList: Scalars['Int']['output'];
 };
 
-/** Macro category defining what an operator can do (use instruments, manage gym, etc.) */
 export type OperatorFeAccountSettings = {
   __typename?: 'OperatorFeAccountSettings';
   cutoffDay: Scalars['Int']['output'];
@@ -3031,6 +3761,7 @@ export type OperatorFeSettlementLine = {
   unitPrice: Scalars['Float']['output'];
 };
 
+/** Macro category defining what an operator can do (use instruments, manage gym, etc.) */
 export enum OperatorMacroCategory {
   Doctor = 'DOCTOR',
   GymInstructor = 'GYM_INSTRUCTOR',
@@ -3055,6 +3786,24 @@ export type OperatorSlotOnDate = {
   startTime: Scalars['String']['output'];
 };
 
+export type OperatorSyncSummary = {
+  __typename?: 'OperatorSyncSummary';
+  declaredEmail?: Maybe<Scalars['String']['output']>;
+  feedEnabled: Scalars['Boolean']['output'];
+  googleConnected: Scalars['Boolean']['output'];
+  googleDaysLeft?: Maybe<Scalars['Int']['output']>;
+  googleEmail?: Maybe<Scalars['String']['output']>;
+  googleNeedsReconnect: Scalars['Boolean']['output'];
+  operatorId: Scalars['ID']['output'];
+};
+
+export type OrphanDeletionResult = {
+  __typename?: 'OrphanDeletionResult';
+  deleted: Scalars['Boolean']['output'];
+  reason?: Maybe<Scalars['String']['output']>;
+  treatmentId: Scalars['ID']['output'];
+};
+
 export type PaginatedPatients = {
   __typename?: 'PaginatedPatients';
   data: Array<Patient>;
@@ -3070,27 +3819,6 @@ export type PatchOperatorFeSettlementInput = {
   paid?: InputMaybe<Scalars['Boolean']['input']>;
   paymentDate?: InputMaybe<Scalars['String']['input']>;
   verified?: InputMaybe<Scalars['Boolean']['input']>;
-};
-
-export type PathDocument = {
-  __typename?: 'PathDocument';
-  category: DocumentCategory;
-  description?: Maybe<Scalars['String']['output']>;
-  /** Name of external doctor (for prescriptions/reports) */
-  externalDoctorName?: Maybe<Scalars['String']['output']>;
-  fileName: Scalars['String']['output'];
-  fileSize: Scalars['Int']['output'];
-  id: Scalars['ID']['output'];
-  mimeType: Scalars['String']['output'];
-  notes?: Maybe<Scalars['String']['output']>;
-  originalFileName?: Maybe<Scalars['String']['output']>;
-  storagePath: Scalars['String']['output'];
-  therapeuticPath: TherapeuticPath;
-  therapeuticPathId: Scalars['ID']['output'];
-  thumbnailPath?: Maybe<Scalars['String']['output']>;
-  type: DocumentType;
-  uploadedAt: Scalars['DateTime']['output'];
-  uploadedBy?: Maybe<Scalars['ID']['output']>;
 };
 
 /** Façade clinica di un subject del registry */
@@ -3135,6 +3863,125 @@ export type PatientAnamnesis = {
   /** Traumi significativi */
   traumi?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTime']['output'];
+};
+
+export type PatientCalendarFeedRow = {
+  __typename?: 'PatientCalendarFeedRow';
+  active: Scalars['Boolean']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  emailSentAt?: Maybe<Scalars['DateTime']['output']>;
+  emailSentTo?: Maybe<Scalars['String']['output']>;
+  exists: Scalars['Boolean']['output'];
+  lastAccessAt?: Maybe<Scalars['DateTime']['output']>;
+  patientId: Scalars['ID']['output'];
+  patientName?: Maybe<Scalars['String']['output']>;
+  revokedAt?: Maybe<Scalars['DateTime']['output']>;
+  revokedBy?: Maybe<Scalars['String']['output']>;
+  subscribedAt?: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type PatientCalendarFeedStatus = {
+  __typename?: 'PatientCalendarFeedStatus';
+  active: Scalars['Boolean']['output'];
+  emailSentAt?: Maybe<Scalars['DateTime']['output']>;
+  emailSentTo?: Maybe<Scalars['String']['output']>;
+  exists: Scalars['Boolean']['output'];
+  lastAccessAt?: Maybe<Scalars['DateTime']['output']>;
+  patientId: Scalars['ID']['output'];
+  revokedAt?: Maybe<Scalars['DateTime']['output']>;
+  revokedBy?: Maybe<Scalars['String']['output']>;
+  subscribedAt?: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type PatientDocument = {
+  __typename?: 'PatientDocument';
+  category: PatientDocumentCategory;
+  contentKind: PatientDocumentKind;
+  deletedAt?: Maybe<Scalars['DateTime']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  /** Medico esterno (per prescrizioni/referti) */
+  externalDoctorName?: Maybe<Scalars['String']['output']>;
+  fileSize: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  mimeType: Scalars['String']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  organizationId?: Maybe<Scalars['ID']['output']>;
+  originalFileName: Scalars['String']['output'];
+  sha256: Scalars['String']['output'];
+  subjectId: Scalars['ID']['output'];
+  therapeuticPath?: Maybe<TherapeuticPath>;
+  therapeuticPathId?: Maybe<Scalars['ID']['output']>;
+  treatment?: Maybe<Treatment>;
+  treatmentId?: Maybe<Scalars['ID']['output']>;
+  updatedAt: Scalars['DateTime']['output'];
+  uploadedAt: Scalars['DateTime']['output'];
+  uploadedBy?: Maybe<Scalars['ID']['output']>;
+};
+
+/** Clinical category of a patient document */
+export enum PatientDocumentCategory {
+  Consent = 'CONSENT',
+  Other = 'OTHER',
+  Prescription = 'PRESCRIPTION',
+  Radiology = 'RADIOLOGY',
+  Report = 'REPORT'
+}
+
+export type PatientDocumentCategoryCount = {
+  __typename?: 'PatientDocumentCategoryCount';
+  category: PatientDocumentCategory;
+  count: Scalars['Int']['output'];
+};
+
+/** Content kind of a patient document (derived from MIME type) */
+export enum PatientDocumentKind {
+  Audio = 'AUDIO',
+  Document = 'DOCUMENT',
+  Image = 'IMAGE',
+  Other = 'OTHER',
+  Pdf = 'PDF',
+  Spreadsheet = 'SPREADSHEET',
+  Video = 'VIDEO'
+}
+
+export type PatientDocumentKindCount = {
+  __typename?: 'PatientDocumentKindCount';
+  count: Scalars['Int']['output'];
+  kind: PatientDocumentKind;
+};
+
+export type PatientDocumentPathCount = {
+  __typename?: 'PatientDocumentPathCount';
+  count: Scalars['Int']['output'];
+  therapeuticPathId: Scalars['ID']['output'];
+};
+
+/** Association level of a patient document (general/path/treatment) */
+export enum PatientDocumentScope {
+  General = 'GENERAL',
+  Path = 'PATH',
+  Treatment = 'TREATMENT'
+}
+
+export type PatientDocumentStats = {
+  __typename?: 'PatientDocumentStats';
+  byCategory: Array<PatientDocumentCategoryCount>;
+  byKind: Array<PatientDocumentKindCount>;
+  byPath: Array<PatientDocumentPathCount>;
+  generalCount: Scalars['Int']['output'];
+  pathCount: Scalars['Int']['output'];
+  total: Scalars['Int']['output'];
+  treatmentCount: Scalars['Int']['output'];
+};
+
+export type PatientDocumentsFilterInput = {
+  category?: InputMaybe<PatientDocumentCategory>;
+  contentKind?: InputMaybe<PatientDocumentKind>;
+  scope?: InputMaybe<PatientDocumentScope>;
+  /** Ricerca su nome file/note/descrizione */
+  search?: InputMaybe<Scalars['String']['input']>;
+  therapeuticPathId?: InputMaybe<Scalars['ID']['input']>;
+  treatmentId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 export type PatientEvaluation = {
@@ -3205,6 +4052,15 @@ export type PatientEvaluation = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type PatientNotificationIssues = {
+  __typename?: 'PatientNotificationIssues';
+  appointments: Array<AppointmentNotificationIssue>;
+  contactState: ContactState;
+  patientId?: Maybe<Scalars['ID']['output']>;
+  patientName?: Maybe<Scalars['String']['output']>;
+  phoneNumber?: Maybe<Scalars['String']['output']>;
+};
+
 export type PatientRelationship = {
   __typename?: 'PatientRelationship';
   /** Flag operativi clinici (contatto emergenza, ritiro autorizzato, ...) */
@@ -3236,6 +4092,7 @@ export type PatternGroupUpdateOutput = {
   conflictsCount: Scalars['Int']['output'];
   hasConflicts: Scalars['Boolean']['output'];
   patternGroup: PatternGroup;
+  removedRoomOverridesCount: Scalars['Int']['output'];
 };
 
 export type PatternInput = {
@@ -3255,6 +4112,31 @@ export enum PaymentMethod {
   Transfer = 'TRANSFER'
 }
 
+export type PendingFeCollectionItem = {
+  __typename?: 'PendingFeCollectionItem';
+  amount: Scalars['Float']['output'];
+  canCollect: Scalars['Boolean']['output'];
+  cannotCollectReason?: Maybe<Scalars['String']['output']>;
+  isGym: Scalars['Boolean']['output'];
+  operatorAppUserId?: Maybe<Scalars['ID']['output']>;
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+  servicesDescription?: Maybe<Scalars['String']['output']>;
+  startedAt: Scalars['String']['output'];
+  status: TreatmentStatus;
+  therapeuticPathName?: Maybe<Scalars['String']['output']>;
+  treatmentId: Scalars['ID']['output'];
+};
+
+export type PendingFeCollections = {
+  __typename?: 'PendingFeCollections';
+  allowAnyOperatorCollect: Scalars['Boolean']['output'];
+  callerIsSecretary: Scalars['Boolean']['output'];
+  count: Scalars['Int']['output'];
+  items: Array<PendingFeCollectionItem>;
+  totalAmount: Scalars['Float']['output'];
+};
+
 export type Permission = {
   __typename?: 'Permission';
   action?: Maybe<Scalars['String']['output']>;
@@ -3264,6 +4146,47 @@ export type Permission = {
   name: Scalars['String']['output'];
   resourceType?: Maybe<Scalars['String']['output']>;
   rolePermissions?: Maybe<Array<RolePermission>>;
+};
+
+export type PermissionDenial = {
+  __typename?: 'PermissionDenial';
+  appUserId?: Maybe<Scalars['ID']['output']>;
+  email?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  keycloakId?: Maybe<Scalars['String']['output']>;
+  occurredAt: Scalars['DateTime']['output'];
+  operation?: Maybe<Scalars['String']['output']>;
+  permission: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
+};
+
+export type PermissionDenialOperation = {
+  __typename?: 'PermissionDenialOperation';
+  count: Scalars['Int']['output'];
+  operation: Scalars['String']['output'];
+};
+
+export type PermissionDenialSummary = {
+  __typename?: 'PermissionDenialSummary';
+  appUserId?: Maybe<Scalars['ID']['output']>;
+  count: Scalars['Int']['output'];
+  email?: Maybe<Scalars['String']['output']>;
+  keycloakId?: Maybe<Scalars['String']['output']>;
+  lastOccurredAt: Scalars['DateTime']['output'];
+  operations: Array<PermissionDenialOperation>;
+  permission: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
+};
+
+export type PhoneNumberIssue = {
+  __typename?: 'PhoneNumberIssue';
+  appointments: Scalars['Int']['output'];
+  clientPhone: Scalars['String']['output'];
+  hasRegistryFallback: Scalars['Boolean']['output'];
+  patientId?: Maybe<Scalars['ID']['output']>;
+  patientName?: Maybe<Scalars['String']['output']>;
+  registryPhone?: Maybe<Scalars['String']['output']>;
+  registryPhoneDirty?: Maybe<Scalars['String']['output']>;
 };
 
 export type PhysiotherapistSlotBatchOutput = {
@@ -3322,6 +4245,7 @@ export type Query = {
   appUserPermissions: Array<Scalars['String']['output']>;
   appUsers: Array<AppUser>;
   archivedOperators: Array<Operator>;
+  assignmentRoomAvailability: RoomAssignmentAvailability;
   availabilityAppointment?: Maybe<AvailabilityAppointment>;
   availabilityAppointments: Array<AvailabilityAppointment>;
   availabilityAppointmentsByOperator: Array<AvailabilityAppointment>;
@@ -3334,6 +4258,11 @@ export type Query = {
   availableSlots: Array<AvailabilitySlot>;
   availableSlotsForRebooking: Array<RebookingSlot>;
   calendarSettings: CalendarSettings;
+  calendarSyncSettings: CalendarSyncSetting;
+  canMarkAttendance: Scalars['Boolean']['output'];
+  chair?: Maybe<Chair>;
+  chairs: Array<Chair>;
+  checkAssignmentRoomConflicts: RoomConflictCheckResult;
   checkDuplicateOperator: Array<Operator>;
   checkSlotAvailability: Scalars['Boolean']['output'];
   conflictStats: ConflictStatsOutput;
@@ -3345,8 +4274,6 @@ export type Query = {
   dlqStatus: DlqStatusGql;
   documentTemplate?: Maybe<DocumentTemplate>;
   documentTemplates: Array<DocumentTemplate>;
-  documentsByPath: Array<PathDocument>;
-  documentsByPathAndCategory: Array<PathDocument>;
   evaluationByPath?: Maybe<PatientEvaluation>;
   examsByEvaluation: Array<EvaluationExam>;
   generalSetting?: Maybe<GeneralSettings>;
@@ -3384,8 +4311,13 @@ export type Query = {
   itManagers: Array<ItManager>;
   keycloakOrgMembers: Array<KeycloakOrgMember>;
   keycloakRealmRoles: Array<KeycloakRealmRoleType>;
+  myGoogleCalendar?: Maybe<GoogleCalendarStatus>;
   myOperator?: Maybe<Operator>;
   myProfile?: Maybe<MyProfile>;
+  noShowByPatient: NoShowPatientPage;
+  noShowEvents: NoShowEventPage;
+  noShowSummary: NoShowSummary;
+  notificationChannelSettings: Array<NotificationChannelSetting>;
   objectiveProgressHistory: Array<ObjectiveProgressHistory>;
   objectivesByEvaluation: Array<EvaluationObjective>;
   objectivesProgress: ObjectivesProgress;
@@ -3394,6 +4326,7 @@ export type Query = {
   operatorAbsenceType?: Maybe<OperatorAbsenceType>;
   operatorAbsenceTypes: Array<OperatorAbsenceType>;
   operatorAvailability: Array<DailyAvailability>;
+  operatorCalendarFeed: OperatorCalendarFeedStatus;
   operatorCategories: Array<OperatorCategory>;
   operatorCategory?: Maybe<OperatorCategory>;
   operatorDependencies: OperatorDependencyCount;
@@ -3402,29 +4335,43 @@ export type Query = {
   operatorFeAnalysis: Array<OperatorFeAnalysis>;
   operatorFeSettlement?: Maybe<OperatorFeSettlement>;
   operatorFeSettlements: Array<OperatorFeSettlement>;
+  operatorGoogleCalendar: GoogleCalendarStatus;
   operatorPatternsOnDate: Array<OperatorSlotOnDate>;
   operatorServices: Array<OperatorService>;
   operators: Array<Operator>;
   operatorsAvailability: Array<OperatorAvailabilityResult>;
   operatorsAvailabilityV3: Array<OperatorAvailabilityV3>;
-  pathDocument?: Maybe<PathDocument>;
+  operatorsSyncSummary: Array<OperatorSyncSummary>;
   patient?: Maybe<Patient>;
   /** Ottiene anamnesi per ID */
   patientAnamnesis?: Maybe<PatientAnamnesis>;
   /** Ottiene anamnesi per subjectId */
   patientAnamnesisBySubject?: Maybe<PatientAnamnesis>;
+  patientCalendarFeed: PatientCalendarFeedStatus;
+  patientCalendarFeeds: Array<PatientCalendarFeedRow>;
+  patientDocument?: Maybe<PatientDocument>;
+  patientDocumentStats: PatientDocumentStats;
+  patientDocuments: Array<PatientDocument>;
   patientEvaluation?: Maybe<PatientEvaluation>;
+  patientPendingFeCollections: PendingFeCollections;
   patternGroup?: Maybe<PatternGroup>;
   patternGroups: Array<PatternGroup>;
+  permissionDenialSummary: Array<PermissionDenialSummary>;
+  permissionDenials: Array<PermissionDenial>;
   permissions: Array<Permission>;
   physiotherapistAvailableSlots: Array<PhysiotherapistSlotOutput>;
   physiotherapistAvailableSlotsBatch: Array<PhysiotherapistSlotBatchOutput>;
+  previewAvailabilityRemovalImpact: Array<AvailabilityAppointment>;
+  previewGroupRemovalImpact: Array<AvailabilityAppointment>;
   previewOperatorAbsenceImpact: AbsenceImpactPreview;
+  previewOperatorAvailabilityImpact: AvailabilityImpactPreview;
+  previewScheduleChangeImpact: ScheduleChangeImpactPreview;
   privacyOfficer?: Maybe<PrivacyOfficer>;
   privacyOfficers: Array<PrivacyOfficer>;
   product?: Maybe<Product>;
   products: Array<Product>;
   recurringSeries: Array<AvailabilityAppointment>;
+  recurringSeriesPreview: Array<RecurringOccurrencePreview>;
   recycleBin: Array<RecycleBinItem>;
   recycleBinSettings: RecycleBinSettings;
   revalidateConflictsIfNeeded: ConflictRevalidationResult;
@@ -3432,6 +4379,7 @@ export type Query = {
   roles: Array<Role>;
   room?: Maybe<Room>;
   rooms: Array<Room>;
+  roomsOccupancy: Array<RoomDayOccupancy>;
   searchPatients: PaginatedPatients;
   secretaries: Array<Secretary>;
   secretary?: Maybe<Secretary>;
@@ -3441,6 +4389,7 @@ export type Query = {
   serviceSubcategories: Array<ServiceSubcategory>;
   serviceSubcategory?: Maybe<ServiceSubcategory>;
   services: Array<Service>;
+  sites: Array<Site>;
   taskMessage?: Maybe<TaskMessage>;
   taskMessageCompleted: TaskMessagePage;
   taskMessageInbox: TaskMessagePage;
@@ -3480,12 +4429,19 @@ export type Query = {
   vouchersFeByPatient: Array<VoucherFe>;
   waitingListEntries: Array<WaitingListEntry>;
   waitingListEntry?: Maybe<WaitingListEntry>;
+  whatsappChatAppointmentsRecap: Scalars['String']['output'];
+  whatsappChatMessages: WhatsappChatMessagePage;
+  whatsappChatUnreadCount: Scalars['Int']['output'];
   whatsappConfig?: Maybe<WhatsappTenantConfig>;
+  whatsappConversation: WhatsappConversation;
+  whatsappConversations: Array<WhatsappConversation>;
+  whatsappDiagnostics: WhatsappDiagnostics;
   whatsappExpiredLogs: WhatsappMessageLogPage;
   whatsappMessageLog?: Maybe<WhatsappMessageLog>;
   whatsappMessageLogs: WhatsappMessageLogPage;
   whatsappMessageLogsByAppointment: Array<WhatsappMessageLog>;
   whatsappRetentionStats: WhatsappRetentionStats;
+  whatsappScheduledMessages: Array<WhatsappScheduledMessage>;
   whatsappTemplate?: Maybe<WhatsappMessageTemplate>;
   whatsappTemplates: Array<WhatsappMessageTemplate>;
 };
@@ -3523,6 +4479,12 @@ export type QueryAppUsersArgs = {
 };
 
 
+export type QueryAssignmentRoomAvailabilityArgs = {
+  excludeAssignmentId?: InputMaybe<Scalars['ID']['input']>;
+  input: AssignTemplateToOperatorInput;
+};
+
+
 export type QueryAvailabilityAppointmentArgs = {
   id: Scalars['ID']['input'];
 };
@@ -3536,7 +4498,7 @@ export type QueryAvailabilityAppointmentsArgs = {
 
 
 export type QueryAvailabilityAppointmentsByOperatorArgs = {
-  endDate: Scalars['String']['input'];
+  endDate?: InputMaybe<Scalars['String']['input']>;
   operatorId: Scalars['ID']['input'];
   startDate: Scalars['String']['input'];
 };
@@ -3596,6 +4558,23 @@ export type QueryAvailableSlotsForRebookingArgs = {
 };
 
 
+export type QueryChairArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryChairsArgs = {
+  onlyActive?: InputMaybe<Scalars['Boolean']['input']>;
+  roomId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryCheckAssignmentRoomConflictsArgs = {
+  excludeAssignmentId?: InputMaybe<Scalars['ID']['input']>;
+  input: AssignTemplateToOperatorInput;
+};
+
+
 export type QueryCheckDuplicateOperatorArgs = {
   name: Scalars['String']['input'];
   surname?: InputMaybe<Scalars['String']['input']>;
@@ -3641,17 +4620,6 @@ export type QueryDocumentTemplateArgs = {
 
 export type QueryDocumentTemplatesArgs = {
   type?: InputMaybe<DocumentTemplateType>;
-};
-
-
-export type QueryDocumentsByPathArgs = {
-  pathId: Scalars['ID']['input'];
-};
-
-
-export type QueryDocumentsByPathAndCategoryArgs = {
-  category: DocumentCategory;
-  pathId: Scalars['ID']['input'];
 };
 
 
@@ -3820,6 +4788,23 @@ export type QueryItManagerArgs = {
 };
 
 
+export type QueryNoShowByPatientArgs = {
+  filter?: InputMaybe<NoShowFilterInput>;
+  paging?: InputMaybe<NoShowPagingInput>;
+};
+
+
+export type QueryNoShowEventsArgs = {
+  filter?: InputMaybe<NoShowFilterInput>;
+  paging?: InputMaybe<NoShowPagingInput>;
+};
+
+
+export type QueryNoShowSummaryArgs = {
+  filter?: InputMaybe<NoShowFilterInput>;
+};
+
+
 export type QueryObjectiveProgressHistoryArgs = {
   objectiveId: Scalars['ID']['input'];
 };
@@ -3862,6 +4847,11 @@ export type QueryOperatorAvailabilityArgs = {
 };
 
 
+export type QueryOperatorCalendarFeedArgs = {
+  operatorId: Scalars['ID']['input'];
+};
+
+
 export type QueryOperatorCategoriesArgs = {
   macroCategory?: InputMaybe<OperatorMacroCategory>;
 };
@@ -3901,6 +4891,11 @@ export type QueryOperatorFeSettlementsArgs = {
 };
 
 
+export type QueryOperatorGoogleCalendarArgs = {
+  operatorId: Scalars['ID']['input'];
+};
+
+
 export type QueryOperatorPatternsOnDateArgs = {
   date: Scalars['String']['input'];
   operatorId: Scalars['ID']['input'];
@@ -3933,11 +4928,6 @@ export type QueryOperatorsAvailabilityV3Args = {
 };
 
 
-export type QueryPathDocumentArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type QueryPatientArgs = {
   id: Scalars['ID']['input'];
 };
@@ -3953,13 +4943,50 @@ export type QueryPatientAnamnesisBySubjectArgs = {
 };
 
 
+export type QueryPatientCalendarFeedArgs = {
+  patientId: Scalars['ID']['input'];
+};
+
+
+export type QueryPatientDocumentArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryPatientDocumentStatsArgs = {
+  subjectId: Scalars['ID']['input'];
+};
+
+
+export type QueryPatientDocumentsArgs = {
+  filter?: InputMaybe<PatientDocumentsFilterInput>;
+  subjectId: Scalars['ID']['input'];
+};
+
+
 export type QueryPatientEvaluationArgs = {
   id: Scalars['ID']['input'];
 };
 
 
+export type QueryPatientPendingFeCollectionsArgs = {
+  patientId: Scalars['ID']['input'];
+};
+
+
 export type QueryPatternGroupArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type QueryPermissionDenialSummaryArgs = {
+  days?: Scalars['Int']['input'];
+};
+
+
+export type QueryPermissionDenialsArgs = {
+  days?: Scalars['Int']['input'];
+  limit?: Scalars['Int']['input'];
 };
 
 
@@ -3977,12 +5004,32 @@ export type QueryPhysiotherapistAvailableSlotsBatchArgs = {
 };
 
 
+export type QueryPreviewAvailabilityRemovalImpactArgs = {
+  exceptionIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type QueryPreviewGroupRemovalImpactArgs = {
+  sourceGroupId: Scalars['ID']['input'];
+};
+
+
 export type QueryPreviewOperatorAbsenceImpactArgs = {
   dateFrom: Scalars['String']['input'];
   dateTo: Scalars['String']['input'];
   endTime?: InputMaybe<Scalars['String']['input']>;
   operatorIds: Array<Scalars['ID']['input']>;
   startTime?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryPreviewOperatorAvailabilityImpactArgs = {
+  input: CreateOperatorAvailabilityInput;
+};
+
+
+export type QueryPreviewScheduleChangeImpactArgs = {
+  input: CreateScheduleChangeInput;
 };
 
 
@@ -4006,6 +5053,11 @@ export type QueryRecurringSeriesArgs = {
 };
 
 
+export type QueryRecurringSeriesPreviewArgs = {
+  input: RecurringSeriesPreviewInput;
+};
+
+
 export type QueryRecycleBinArgs = {
   filter?: InputMaybe<RecycleBinFilterInput>;
 };
@@ -4023,6 +5075,12 @@ export type QueryRoomArgs = {
 
 export type QueryRoomsArgs = {
   onlyActive?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type QueryRoomsOccupancyArgs = {
+  endDate: Scalars['String']['input'];
+  startDate: Scalars['String']['input'];
 };
 
 
@@ -4059,6 +5117,11 @@ export type QueryServiceSubcategoryArgs = {
 
 export type QueryServicesArgs = {
   macroCategory?: InputMaybe<OperatorMacroCategory>;
+  onlyActive?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type QuerySitesArgs = {
   onlyActive?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
@@ -4210,6 +5273,7 @@ export type QueryTreatmentsForSecretaryArgs = {
   readyForBilling?: InputMaybe<Scalars['Boolean']['input']>;
   scontoFE?: InputMaybe<Scalars['Boolean']['input']>;
   statuses?: InputMaybe<Array<TreatmentStatus>>;
+  withoutAppointment?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 
@@ -4222,6 +5286,7 @@ export type QueryTreatmentsForSecretaryCountArgs = {
   readyForBilling?: InputMaybe<Scalars['Boolean']['input']>;
   scontoFE?: InputMaybe<Scalars['Boolean']['input']>;
   statuses?: InputMaybe<Array<TreatmentStatus>>;
+  withoutAppointment?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 
@@ -4268,6 +5333,33 @@ export type QueryWaitingListEntryArgs = {
 };
 
 
+export type QueryWhatsappChatAppointmentsRecapArgs = {
+  conversationId: Scalars['ID']['input'];
+};
+
+
+export type QueryWhatsappChatMessagesArgs = {
+  conversationId: Scalars['ID']['input'];
+  limit?: Scalars['Int']['input'];
+  page?: Scalars['Int']['input'];
+};
+
+
+export type QueryWhatsappConversationArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryWhatsappConversationsArgs = {
+  filters?: InputMaybe<WhatsappConversationFilterInput>;
+};
+
+
+export type QueryWhatsappDiagnosticsArgs = {
+  windowDays?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type QueryWhatsappExpiredLogsArgs = {
   limit?: Scalars['Int']['input'];
   page?: Scalars['Int']['input'];
@@ -4291,6 +5383,11 @@ export type QueryWhatsappMessageLogsByAppointmentArgs = {
 
 export type QueryWhatsappTemplateArgs = {
   type: WhatsappTemplateType;
+};
+
+
+export type QueryWhatsappTemplatesArgs = {
+  channel?: InputMaybe<NotificationChannel>;
 };
 
 export type RebookingSlot = {
@@ -4343,11 +5440,40 @@ export type RecurringOccurrenceConflict = {
   type: Scalars['String']['output'];
 };
 
+export type RecurringOccurrenceInput = {
+  appointmentId?: InputMaybe<Scalars['ID']['input']>;
+  date: Scalars['String']['input'];
+  endTime: Scalars['String']['input'];
+  gymRoomId?: InputMaybe<Scalars['ID']['input']>;
+  operatorId?: InputMaybe<Scalars['ID']['input']>;
+  startTime: Scalars['String']['input'];
+};
+
+export type RecurringOccurrencePreview = {
+  __typename?: 'RecurringOccurrencePreview';
+  appointmentId?: Maybe<Scalars['ID']['output']>;
+  conflict?: Maybe<RecurringOccurrenceConflict>;
+  date: Scalars['String']['output'];
+  endTime: Scalars['String']['output'];
+  startTime: Scalars['String']['output'];
+};
+
 export type RecurringSeriesOperationResult = {
   __typename?: 'RecurringSeriesOperationResult';
   affectedCount: Scalars['Int']['output'];
   applied: Scalars['Boolean']['output'];
   conflicts: Array<RecurringOccurrenceConflict>;
+};
+
+export type RecurringSeriesPreviewInput = {
+  endTime: Scalars['String']['input'];
+  excludeAppointmentId?: InputMaybe<Scalars['ID']['input']>;
+  gymRoomId?: InputMaybe<Scalars['ID']['input']>;
+  operatorId?: InputMaybe<Scalars['ID']['input']>;
+  patientId?: InputMaybe<Scalars['ID']['input']>;
+  repeatConfig: RepeatConfigInput;
+  startDate: Scalars['String']['input'];
+  startTime: Scalars['String']['input'];
 };
 
 /** Scope delle operazioni bulk su serie ricorrenti: solo corrente, corrente+successivi, intera serie, intervallo di date */
@@ -4367,6 +5493,7 @@ export enum RecurringType {
 
 /** Tipo di entità nel cestino */
 export enum RecycleBinEntityType {
+  PatientDocument = 'PATIENT_DOCUMENT',
   PatientEvaluation = 'PATIENT_EVALUATION',
   TherapeuticPath = 'THERAPEUTIC_PATH',
   Treatment = 'TREATMENT'
@@ -4527,6 +5654,10 @@ export type ReorderWaitingListInput = {
 export type RepeatConfigInput = {
   endType: RecurringEndType;
   interval: Scalars['Int']['input'];
+  /** Solo per type=MONTHLY: per data del mese (default) o per giorno della settimana */
+  monthlyMode?: InputMaybe<MonthlyMode>;
+  /** Fasce mensili (es. primo lunedì + ultimo mercoledì) quando monthlyMode = DAY_OF_WEEK */
+  monthlyRules?: InputMaybe<Array<MonthlyRuleInput>>;
   /** Numero di occorrenze (se endType = AFTER) */
   occurrences?: InputMaybe<Scalars['Int']['input']>;
   /** Giorni della settimana (0=Dom, 1=Lun, ..., 6=Sab) per ricorrenza settimanale */
@@ -4534,6 +5665,14 @@ export type RepeatConfigInput = {
   type: RecurringType;
   /** Data di fine (se endType = UNTIL) */
   untilDate?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type ResendOutcome = {
+  __typename?: 'ResendOutcome';
+  dispatched: Scalars['Int']['output'];
+  errors: Array<Scalars['String']['output']>;
+  requested: Scalars['Int']['output'];
+  skipped: Scalars['Int']['output'];
 };
 
 export type ResetKeycloakPasswordInput = {
@@ -4565,12 +5704,75 @@ export type RolePermission = {
 export type Room = {
   __typename?: 'Room';
   capacity: Scalars['Int']['output'];
+  chairs?: Maybe<Array<Chair>>;
   color?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
   name: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
+};
+
+export type RoomAbsenceBand = {
+  __typename?: 'RoomAbsenceBand';
+  endTime: Scalars['String']['output'];
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
+  startTime: Scalars['String']['output'];
+};
+
+export type RoomAssignmentAvailability = {
+  __typename?: 'RoomAssignmentAvailability';
+  rooms: Array<RoomAvailabilityInfo>;
+};
+
+export type RoomAvailabilityInfo = {
+  __typename?: 'RoomAvailabilityInfo';
+  busy: Array<RoomBandBusyInfo>;
+  capacity: Scalars['Int']['output'];
+  chairs: Array<ChairAvailabilityInfo>;
+  full: Scalars['Boolean']['output'];
+  fullyFree: Scalars['Boolean']['output'];
+  roomId: Scalars['ID']['output'];
+  roomName: Scalars['String']['output'];
+  sharing: Scalars['Boolean']['output'];
+  unavailableReason?: Maybe<Scalars['String']['output']>;
+};
+
+export type RoomBandBusyInfo = {
+  __typename?: 'RoomBandBusyInfo';
+  busyChairIds: Array<Scalars['ID']['output']>;
+  dayInPattern: Scalars['Int']['output'];
+  endTime: Scalars['String']['output'];
+  freeSeats: Scalars['Int']['output'];
+  occupantNames: Array<Scalars['String']['output']>;
+  startTime: Scalars['String']['output'];
+};
+
+export type RoomConflictCheckResult = {
+  __typename?: 'RoomConflictCheckResult';
+  blocking: Array<Scalars['String']['output']>;
+  warnings: Array<Scalars['String']['output']>;
+};
+
+export type RoomDayOccupancy = {
+  __typename?: 'RoomDayOccupancy';
+  absences: Array<RoomAbsenceBand>;
+  bands: Array<RoomOccupancyBand>;
+  date: Scalars['String']['output'];
+  roomId: Scalars['ID']['output'];
+};
+
+export type RoomOccupancyBand = {
+  __typename?: 'RoomOccupancyBand';
+  chairId?: Maybe<Scalars['ID']['output']>;
+  chairName?: Maybe<Scalars['String']['output']>;
+  endTime: Scalars['String']['output'];
+  operatorColor?: Maybe<Scalars['String']['output']>;
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+  startTime: Scalars['String']['output'];
 };
 
 export type SaleCompletedResult = {
@@ -4584,6 +5786,38 @@ export type SaleProductLineInput = {
   productId: Scalars['ID']['input'];
   quantity: Scalars['Float']['input'];
   unitPriceOverride?: InputMaybe<Scalars['Float']['input']>;
+};
+
+export type ScheduleChangeImpactPreview = {
+  __typename?: 'ScheduleChangeImpactPreview';
+  blockers: Array<AvailabilityBlocker>;
+  conflicts: Array<AvailabilityAppointment>;
+  creatableCount: Scalars['Int']['output'];
+  days: Array<ScheduleChangePreviewDay>;
+};
+
+export type ScheduleChangePreviewDay = {
+  __typename?: 'ScheduleChangePreviewDay';
+  currentWindows: Array<Scalars['String']['output']>;
+  date: Scalars['String']['output'];
+  gainedWindows: Array<Scalars['String']['output']>;
+  lostWindows: Array<Scalars['String']['output']>;
+  operatorId: Scalars['ID']['output'];
+  operatorName: Scalars['String']['output'];
+};
+
+export type ScheduleChangeResult = {
+  __typename?: 'ScheduleChangeResult';
+  blockers: Array<AvailabilityBlocker>;
+  conflictCount: Scalars['Int']['output'];
+  createdCount: Scalars['Int']['output'];
+  exceptions: Array<AvailabilityException>;
+  sourceGroupId: Scalars['ID']['output'];
+};
+
+export type ScheduleWindowInput = {
+  endTime: Scalars['String']['input'];
+  startTime: Scalars['String']['input'];
 };
 
 /** Input per ricerca paziente (proxy a registry global-search) */
@@ -4610,6 +5844,11 @@ export type Secretary = {
   department?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   updatedAt: Scalars['DateTime']['output'];
+};
+
+export type SendWhatsappChatMessageInput = {
+  conversationId: Scalars['ID']['input'];
+  text: Scalars['String']['input'];
 };
 
 export type Service = {
@@ -4695,6 +5934,7 @@ export type Site = {
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
+  isDefault: Scalars['Boolean']['output'];
   name: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
 };
@@ -4703,6 +5943,8 @@ export type TaskMessage = {
   __typename?: 'TaskMessage';
   availableFrom?: Maybe<Scalars['DateTime']['output']>;
   completedAt?: Maybe<Scalars['DateTime']['output']>;
+  completedByUser?: Maybe<AppUser>;
+  completedByUserId?: Maybe<Scalars['String']['output']>;
   content: Scalars['String']['output'];
   correlationId?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
@@ -4710,8 +5952,11 @@ export type TaskMessage = {
   gatewayMessageId: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   readAt?: Maybe<Scalars['DateTime']['output']>;
+  readByUser?: Maybe<AppUser>;
+  readByUserId?: Maybe<Scalars['String']['output']>;
+  recipientGroup?: Maybe<TaskMessageRecipientGroup>;
   recipientUser?: Maybe<AppUser>;
-  recipientUserId: Scalars['String']['output'];
+  recipientUserId?: Maybe<Scalars['String']['output']>;
   senderUser?: Maybe<AppUser>;
   senderUserId: Scalars['String']['output'];
   status: TaskMessageStatus;
@@ -4724,6 +5969,11 @@ export type TaskMessagePage = {
   items: Array<TaskMessage>;
   total: Scalars['Int']['output'];
 };
+
+/** Gruppo destinatario di un task message (membri = utenti attivi con quel user_type) */
+export enum TaskMessageRecipientGroup {
+  Secretary = 'SECRETARY'
+}
 
 export type TaskMessageResult = {
   __typename?: 'TaskMessageResult';
@@ -4742,6 +5992,8 @@ export enum TaskMessageStatus {
 
 export type TemplateAssignment = {
   __typename?: 'TemplateAssignment';
+  chair?: Maybe<Chair>;
+  chairId?: Maybe<Scalars['ID']['output']>;
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
   isCurrent: Scalars['Boolean']['output'];
@@ -4750,10 +6002,28 @@ export type TemplateAssignment = {
   patternGroup: PatternGroup;
   patternGroupId: Scalars['ID']['output'];
   patternStartDate: Scalars['DateTime']['output'];
+  room?: Maybe<Room>;
+  roomId?: Maybe<Scalars['ID']['output']>;
+  roomOverrides?: Maybe<Array<TemplateAssignmentRoomOverride>>;
   updatedAt: Scalars['DateTime']['output'];
   validFrom: Scalars['DateTime']['output'];
   validUntil?: Maybe<Scalars['DateTime']['output']>;
   version: Scalars['Int']['output'];
+};
+
+export type TemplateAssignmentRoomOverride = {
+  __typename?: 'TemplateAssignmentRoomOverride';
+  assignmentId: Scalars['ID']['output'];
+  chair?: Maybe<Chair>;
+  chairId?: Maybe<Scalars['ID']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  dayInPattern: Scalars['Int']['output'];
+  endTime?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  room?: Maybe<Room>;
+  roomId: Scalars['ID']['output'];
+  startTime?: Maybe<Scalars['String']['output']>;
+  updatedAt: Scalars['DateTime']['output'];
 };
 
 export type TemplatePattern = {
@@ -4827,7 +6097,6 @@ export type TherapeuticPath = {
   deletedAt?: Maybe<Scalars['DateTime']['output']>;
   deletedByUserId?: Maybe<Scalars['ID']['output']>;
   diagnosis?: Maybe<Scalars['String']['output']>;
-  documents?: Maybe<Array<PathDocument>>;
   externalDoctorName?: Maybe<Scalars['String']['output']>;
   externalPrescriptionRef?: Maybe<Scalars['String']['output']>;
   icdCode?: Maybe<Scalars['String']['output']>;
@@ -4867,6 +6136,8 @@ export type Treatment = {
   accountingDocumentId?: Maybe<Scalars['ID']['output']>;
   accountingDocumentTreatmentCount?: Maybe<Scalars['Int']['output']>;
   accountingDocumentType?: Maybe<Scalars['String']['output']>;
+  accountingExternalRefDate?: Maybe<Scalars['String']['output']>;
+  accountingExternalRefNumber?: Maybe<Scalars['String']['output']>;
   accountingInvoiceIssuedAt?: Maybe<Scalars['DateTime']['output']>;
   accountingInvoiceUrl?: Maybe<Scalars['String']['output']>;
   accountingRefundReason?: Maybe<Scalars['String']['output']>;
@@ -4889,6 +6160,7 @@ export type Treatment = {
   closedAt?: Maybe<Scalars['DateTime']['output']>;
   closedByUserId?: Maybe<Scalars['ID']['output']>;
   collectedBy?: Maybe<Scalars['ID']['output']>;
+  collectedByName?: Maybe<Scalars['String']['output']>;
   completedAt?: Maybe<Scalars['DateTime']['output']>;
   createdAt: Scalars['DateTime']['output'];
   deletedAt?: Maybe<Scalars['DateTime']['output']>;
@@ -4917,8 +6189,10 @@ export type Treatment = {
   patientId?: Maybe<Scalars['ID']['output']>;
   patientInvoiceNumber?: Maybe<Scalars['String']['output']>;
   patientNotes?: Maybe<Scalars['String']['output']>;
+  paymentCollectorRole?: Maybe<Scalars['String']['output']>;
   paymentId?: Maybe<Scalars['ID']['output']>;
   paymentMethod?: Maybe<PaymentMethod>;
+  paymentRecordedByUserId?: Maybe<Scalars['ID']['output']>;
   paymentRecordedSource?: Maybe<Scalars['String']['output']>;
   price: Scalars['Float']['output'];
   readyForBilling: Scalars['Boolean']['output'];
@@ -5073,6 +6347,8 @@ export type UpdateAvailabilityAppointmentInput = {
   endTime?: InputMaybe<Scalars['String']['input']>;
   /** Forza il salvataggio anche fuori dalla disponibilità dell'operatore (conferma esplicita dell'utente) */
   forceOutsideAvailability?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Sposta la prenotazione palestra in un'altra sala */
+  gymRoomId?: InputMaybe<Scalars['ID']['input']>;
   instrumentOrderMatters?: InputMaybe<Scalars['Boolean']['input']>;
   instruments?: InputMaybe<Array<AppointmentInstrumentInput>>;
   /** Appuntamento non retribuito (pausa pranzo, rappresentante, etc.) */
@@ -5221,6 +6497,13 @@ export type UpdatePatientAnamnesisInput = {
   traumi?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type UpdatePatientDocumentInput = {
+  category?: InputMaybe<PatientDocumentCategory>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  externalDoctorName?: InputMaybe<Scalars['String']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type UpdatePatternGroupInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
@@ -5234,18 +6517,21 @@ export type UpdateRecurringSeriesInput = {
   clientName?: InputMaybe<Scalars['String']['input']>;
   clientPhone?: InputMaybe<Scalars['String']['input']>;
   endTime: Scalars['String']['input'];
+  gymRoomId?: InputMaybe<Scalars['ID']['input']>;
   includeCurrent?: InputMaybe<Scalars['Boolean']['input']>;
   instrumentOrderMatters?: InputMaybe<Scalars['Boolean']['input']>;
   instruments?: InputMaybe<Array<AppointmentInstrumentInput>>;
   newDate?: InputMaybe<Scalars['String']['input']>;
   nonRetribuito?: InputMaybe<Scalars['Boolean']['input']>;
   notes?: InputMaybe<Scalars['String']['input']>;
+  occurrenceOverrides?: InputMaybe<Array<RecurringOccurrenceInput>>;
   operatorId?: InputMaybe<Scalars['ID']['input']>;
   patientId?: InputMaybe<Scalars['ID']['input']>;
   rangeFrom?: InputMaybe<Scalars['String']['input']>;
   rangeTo?: InputMaybe<Scalars['String']['input']>;
   scope: RecurringSeriesScope;
   services?: InputMaybe<Array<ServiceInputItem>>;
+  skipAppointmentIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   startTime: Scalars['String']['input'];
 };
 
@@ -5362,6 +6648,14 @@ export type UpdateWaitingListEntryInput = {
   status?: InputMaybe<WaitingListStatus>;
 };
 
+export type UpsertNoShowReviewInput = {
+  appointmentId: Scalars['ID']['input'];
+  /** Importo addebitato, se deciso */
+  chargedAmount?: InputMaybe<Scalars['Float']['input']>;
+  decision: NoShowDecision;
+  notes?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type UpsertRelationshipExtensionInput = {
   isAuthorizedPickup?: InputMaybe<Scalars['Boolean']['input']>;
   isCaregiverDuringVisits?: InputMaybe<Scalars['Boolean']['input']>;
@@ -5430,14 +6724,97 @@ export type WhatsappBulkLogIdsInput = {
   logIds: Array<Scalars['String']['input']>;
 };
 
+/** Verso del messaggio di chat: in arrivo dal paziente o in uscita dallo studio */
+export enum WhatsappChatDirection {
+  Inbound = 'INBOUND',
+  Outbound = 'OUTBOUND'
+}
+
+export type WhatsappChatMessage = {
+  __typename?: 'WhatsappChatMessage';
+  anonymizedAt?: Maybe<Scalars['DateTime']['output']>;
+  body?: Maybe<Scalars['String']['output']>;
+  conversationId: Scalars['ID']['output'];
+  correlationId?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  deliveredAt?: Maybe<Scalars['DateTime']['output']>;
+  direction: WhatsappChatDirection;
+  errorMessage?: Maybe<Scalars['String']['output']>;
+  evolutionMessageId?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  isAnonymized: Scalars['Boolean']['output'];
+  mediaType?: Maybe<Scalars['String']['output']>;
+  readAt?: Maybe<Scalars['DateTime']['output']>;
+  senderName?: Maybe<Scalars['String']['output']>;
+  senderUserId?: Maybe<Scalars['String']['output']>;
+  sentAt?: Maybe<Scalars['DateTime']['output']>;
+  status: WhatsappMessageStatus;
+};
+
+export type WhatsappChatMessagePage = {
+  __typename?: 'WhatsappChatMessagePage';
+  items: Array<WhatsappChatMessage>;
+  limit: Scalars['Int']['output'];
+  page: Scalars['Int']['output'];
+  total: Scalars['Int']['output'];
+};
+
 export type WhatsappConfigInput = {
   apiKey?: InputMaybe<Scalars['String']['input']>;
+  evolutionApiKey?: InputMaybe<Scalars['String']['input']>;
   gatewayUrl: Scalars['String']['input'];
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  patientCalendarFeedEnabled?: InputMaybe<Scalars['Boolean']['input']>;
+  recapBufferSeconds?: InputMaybe<Scalars['Int']['input']>;
+  reminderEarlyPolicy?: InputMaybe<WhatsappReminderEarlyPolicy>;
+  reminderWindowEnabled?: InputMaybe<Scalars['Boolean']['input']>;
+  reminderWindowEnd?: InputMaybe<Scalars['String']['input']>;
+  reminderWindowStart?: InputMaybe<Scalars['String']['input']>;
   retentionDays?: InputMaybe<Scalars['Int']['input']>;
   sendCancelNotification?: InputMaybe<Scalars['Boolean']['input']>;
+  sendUpdateNotification?: InputMaybe<Scalars['Boolean']['input']>;
   tenantApiId: Scalars['String']['input'];
   webhookSecret?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type WhatsappConversation = {
+  __typename?: 'WhatsappConversation';
+  contactName?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  lastMessageAt?: Maybe<Scalars['DateTime']['output']>;
+  lastMessageDirection?: Maybe<WhatsappChatDirection>;
+  lastMessagePreview?: Maybe<Scalars['String']['output']>;
+  patientId?: Maybe<Scalars['ID']['output']>;
+  patientName?: Maybe<Scalars['String']['output']>;
+  phoneNumber: Scalars['String']['output'];
+  status: WhatsappConversationStatus;
+  unreadCount: Scalars['Int']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type WhatsappConversationFilterInput = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  search?: InputMaybe<Scalars['String']['input']>;
+  status?: InputMaybe<WhatsappConversationStatus>;
+  unreadOnly?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+/** Stato della conversazione: aperta, archiviata o bloccata */
+export enum WhatsappConversationStatus {
+  Archived = 'ARCHIVED',
+  Blocked = 'BLOCKED',
+  Open = 'OPEN'
+}
+
+export type WhatsappDiagnostics = {
+  __typename?: 'WhatsappDiagnostics';
+  generatedAt: Scalars['DateTime']['output'];
+  groups: Array<PatientNotificationIssues>;
+  phoneIssues: Array<PhoneNumberIssue>;
+  totals: NotificationIssueTotals;
+  uncoveredCategories: Array<Scalars['String']['output']>;
+  windowDays: Scalars['Int']['output'];
 };
 
 export type WhatsappLogFilterInput = {
@@ -5459,6 +6836,7 @@ export type WhatsappLogManagementResult = {
 
 export type WhatsappMessageLog = {
   __typename?: 'WhatsappMessageLog';
+  announcedFor?: Maybe<Scalars['DateTime']['output']>;
   anonymizedAt?: Maybe<Scalars['DateTime']['output']>;
   appointmentId?: Maybe<Scalars['ID']['output']>;
   appointmentIds?: Maybe<Array<Scalars['String']['output']>>;
@@ -5475,7 +6853,6 @@ export type WhatsappMessageLog = {
   patientName?: Maybe<Scalars['String']['output']>;
   phoneNumber: Scalars['String']['output'];
   readAt?: Maybe<Scalars['DateTime']['output']>;
-  sentAt?: Maybe<Scalars['DateTime']['output']>;
   status: WhatsappMessageStatus;
   updatedAt: Scalars['DateTime']['output'];
 };
@@ -5494,16 +6871,19 @@ export enum WhatsappMessageStatus {
   Failed = 'FAILED',
   Pending = 'PENDING',
   Read = 'READ',
+  Received = 'RECEIVED',
   Sent = 'SENT'
 }
 
 export type WhatsappMessageTemplate = {
   __typename?: 'WhatsappMessageTemplate';
   bodyTemplate: Scalars['String']['output'];
+  channel: NotificationChannel;
   createdAt: Scalars['DateTime']['output'];
   footerTemplate?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
+  subjectTemplate?: Maybe<Scalars['String']['output']>;
   templateType: WhatsappTemplateType;
   updatedAt: Scalars['DateTime']['output'];
 };
@@ -5511,9 +6891,19 @@ export type WhatsappMessageTemplate = {
 /** Tipo di messaggio WhatsApp */
 export enum WhatsappMessageType {
   Cancellation = 'CANCELLATION',
+  CancellationMulti = 'CANCELLATION_MULTI',
   RecapMulti = 'RECAP_MULTI',
   RecapSingle = 'RECAP_SINGLE',
-  Reminder_24H = 'REMINDER_24H'
+  Reminder_24H = 'REMINDER_24H',
+  Update = 'UPDATE',
+  UpdateMulti = 'UPDATE_MULTI'
+}
+
+/** Collocazione del promemoria per gli appuntamenti che iniziano prima della fine della fascia di invio */
+export enum WhatsappReminderEarlyPolicy {
+  Exact_24H = 'EXACT_24H',
+  ForceWindow = 'FORCE_WINDOW',
+  ShiftPreviousDay = 'SHIFT_PREVIOUS_DAY'
 }
 
 export type WhatsappRetentionStats = {
@@ -5525,19 +6915,39 @@ export type WhatsappRetentionStats = {
   totalLogs: Scalars['Int']['output'];
 };
 
+export type WhatsappScheduledMessage = {
+  __typename?: 'WhatsappScheduledMessage';
+  appointmentIds: Array<Scalars['String']['output']>;
+  bufferedCount?: Maybe<Scalars['Int']['output']>;
+  content?: Maybe<Scalars['String']['output']>;
+  jobId: Scalars['String']['output'];
+  patientName?: Maybe<Scalars['String']['output']>;
+  phone: Scalars['String']['output'];
+  scheduledFor: Scalars['DateTime']['output'];
+  state: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+};
+
 export type WhatsappTemplateInput = {
   bodyTemplate: Scalars['String']['input'];
+  channel?: InputMaybe<NotificationChannel>;
   footerTemplate?: InputMaybe<Scalars['String']['input']>;
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  subjectTemplate?: InputMaybe<Scalars['String']['input']>;
   templateType: WhatsappTemplateType;
 };
 
 /** Tipo di template messaggio WhatsApp */
 export enum WhatsappTemplateType {
+  CalendarInviteEmail = 'CALENDAR_INVITE_EMAIL',
   Cancellation = 'CANCELLATION',
+  CancellationMulti = 'CANCELLATION_MULTI',
   RecapMulti = 'RECAP_MULTI',
   RecapSingle = 'RECAP_SINGLE',
-  Reminder_24H = 'REMINDER_24H'
+  Reminder_24H = 'REMINDER_24H',
+  Reminder_48H = 'REMINDER_48H',
+  Update = 'UPDATE',
+  UpdateMulti = 'UPDATE_MULTI'
 }
 
 export type WhatsappTenantConfig = {
@@ -5547,8 +6957,15 @@ export type WhatsappTenantConfig = {
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
   maskedApiKey?: Maybe<Scalars['String']['output']>;
+  patientCalendarFeedEnabled: Scalars['Boolean']['output'];
+  recapBufferSeconds: Scalars['Int']['output'];
+  reminderEarlyPolicy: WhatsappReminderEarlyPolicy;
+  reminderWindowEnabled: Scalars['Boolean']['output'];
+  reminderWindowEnd: Scalars['String']['output'];
+  reminderWindowStart: Scalars['String']['output'];
   retentionDays: Scalars['Int']['output'];
   sendCancelNotification: Scalars['Boolean']['output'];
+  sendUpdateNotification: Scalars['Boolean']['output'];
   tenantApiId: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
 };
@@ -5559,49 +6976,6 @@ export type WhatsappTestResult = {
   message?: Maybe<Scalars['String']['output']>;
   success: Scalars['Boolean']['output'];
 };
-
-export type AbsenceExceptionFieldsFragment = { __typename?: 'AvailabilityException', id: string, operatorId: string, exceptionDate: string, exceptionType: ExceptionType, startTime?: string | null, endTime?: string | null, reason?: string | null, absenceTypeId?: string | null, sourceGroupId?: string | null, createdAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory } | null, absenceTypeSnapshot?: { __typename?: 'AbsenceTypeSnapshot', id: string, name: string, description?: string | null } | null };
-
-export type GetOperatorAbsencesQueryVariables = Exact<{
-  operatorId?: InputMaybe<Scalars['ID']['input']>;
-  startDate?: InputMaybe<Scalars['String']['input']>;
-  endDate?: InputMaybe<Scalars['String']['input']>;
-}>;
-
-
-export type GetOperatorAbsencesQuery = { __typename?: 'Query', availabilityExceptions: Array<{ __typename?: 'AvailabilityException', id: string, operatorId: string, exceptionDate: string, exceptionType: ExceptionType, startTime?: string | null, endTime?: string | null, reason?: string | null, absenceTypeId?: string | null, sourceGroupId?: string | null, createdAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory } | null, absenceTypeSnapshot?: { __typename?: 'AbsenceTypeSnapshot', id: string, name: string, description?: string | null } | null }> };
-
-export type PreviewOperatorAbsenceImpactQueryVariables = Exact<{
-  operatorIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
-  dateFrom: Scalars['String']['input'];
-  dateTo: Scalars['String']['input'];
-  startTime?: InputMaybe<Scalars['String']['input']>;
-  endTime?: InputMaybe<Scalars['String']['input']>;
-}>;
-
-
-export type PreviewOperatorAbsenceImpactQuery = { __typename?: 'Query', previewOperatorAbsenceImpact: { __typename?: 'AbsenceImpactPreview', conflicts: Array<{ __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string, clientName: string, patientId?: string | null, bookingStatus: BookingStatus, operatorId?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null }>, attendedWithoutTreatment: Array<{ __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string, clientName: string, patientId?: string | null, bookingStatus: BookingStatus, operatorId?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null }> } };
-
-export type CreateOperatorAbsencesMutationVariables = Exact<{
-  input: CreateOperatorAbsencesInput;
-}>;
-
-
-export type CreateOperatorAbsencesMutation = { __typename?: 'Mutation', createOperatorAbsences: { __typename?: 'OperatorAbsencesResult', conflictCount: number, skippedOverlaps: number, sourceGroupId: string, exceptions: Array<{ __typename?: 'AvailabilityException', id: string, operatorId: string, exceptionDate: string, exceptionType: ExceptionType, startTime?: string | null, endTime?: string | null, reason?: string | null, absenceTypeId?: string | null, sourceGroupId?: string | null, createdAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory } | null, absenceTypeSnapshot?: { __typename?: 'AbsenceTypeSnapshot', id: string, name: string, description?: string | null } | null }> } };
-
-export type DeleteAbsenceMutationVariables = Exact<{
-  id: Scalars['ID']['input'];
-}>;
-
-
-export type DeleteAbsenceMutation = { __typename?: 'Mutation', deleteException: boolean };
-
-export type DeleteAbsenceGroupMutationVariables = Exact<{
-  sourceGroupId: Scalars['ID']['input'];
-}>;
-
-
-export type DeleteAbsenceGroupMutation = { __typename?: 'Mutation', deleteAbsenceGroup: number };
 
 export type DocumentTemplateFieldsFragment = { __typename?: 'DocumentTemplate', id: string, name: string, type: DocumentTemplateType, content: any, pageSettings?: any | null, isDefault: boolean, createdAt: any, updatedAt: any };
 
@@ -5653,7 +7027,69 @@ export type TreatmentForAttendanceCertificateQueryVariables = Exact<{
 }>;
 
 
-export type TreatmentForAttendanceCertificateQuery = { __typename?: 'Query', treatment?: { __typename?: 'Treatment', id: string, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, professionalTitle?: string | null, professionalRegistration?: string | null, taxCode?: string | null, vatNumber?: string | null } | null, site: { __typename?: 'Site', id: string, name: string, address?: string | null }, patient?: { __typename?: 'Patient', id: string, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, birthDate?: string | null, birthPlace?: string | null } | null } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, service: { __typename?: 'Service', id: string, name: string } }> | null } | null };
+export type TreatmentForAttendanceCertificateQuery = { __typename?: 'Query', treatment?: { __typename?: 'Treatment', id: string, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, professionalTitle?: string | null, professionalRegistration?: string | null, taxCode?: string | null, vatNumber?: string | null } | null, site: { __typename?: 'Site', id: string, name: string, address?: string | null }, patient?: { __typename?: 'Patient', id: string, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, birthDate?: string | null, birthPlace?: string | null } | null } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, service: { __typename?: 'Service', id: string, name: string, description?: string | null } }> | null } | null };
+
+export type NoShowCountsFieldsFragment = { __typename?: 'NoShowCounts', noShow: number, cancelledLate: number, cancelledEarly: number, cancelledUnknown: number, lateArrival: number, unjustified: number, total: number };
+
+export type NoShowEventFieldsFragment = { __typename?: 'NoShowEvent', appointmentId: string, patientId?: string | null, patientName: string, eventType: NoShowEventType, bookingStatus: BookingStatus, appointmentDate: string, startTime: string, endTime: string, appointmentType: AppointmentType, gymRoomName?: string | null, siteId?: string | null, siteName?: string | null, operatorId?: string | null, operatorName?: string | null, operatorMacroCategory?: OperatorMacroCategory | null, isSubstitution: boolean, originalOperatorName?: string | null, cancelledAt?: any | null, cancellationHoursNotice?: number | null, cancellationReason?: string | null, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, wasNoShowReverted: boolean, serviceNames: Array<string>, review?: { __typename?: 'NoShowReview', id: string, appointmentId: string, decision: NoShowDecision, notes?: string | null, chargedAmount?: number | null, decidedByName?: string | null, decidedAt?: any | null } | null };
+
+export type NoShowSummaryQueryVariables = Exact<{
+  filter?: InputMaybe<NoShowFilterInput>;
+}>;
+
+
+export type NoShowSummaryQuery = { __typename?: 'Query', noShowSummary: { __typename?: 'NoShowSummary', patientsInvolved: number, pendingReviews: number, toCharge: number, waived: number, justified: number, lateCancellationHours: number, lateArrivalToleranceMinutes: number, recentWindowDays: number, counts: { __typename?: 'NoShowCounts', noShow: number, cancelledLate: number, cancelledEarly: number, cancelledUnknown: number, lateArrival: number, unjustified: number, total: number } } };
+
+export type NoShowByPatientQueryVariables = Exact<{
+  filter?: InputMaybe<NoShowFilterInput>;
+  paging?: InputMaybe<NoShowPagingInput>;
+}>;
+
+
+export type NoShowByPatientQuery = { __typename?: 'Query', noShowByPatient: { __typename?: 'NoShowPatientPage', totalPatients: number, groups: Array<{ __typename?: 'NoShowPatientGroup', patientId?: string | null, patientName: string, firstEventDate?: string | null, lastEventDate?: string | null, pendingReviews: number, counts: { __typename?: 'NoShowCounts', noShow: number, cancelledLate: number, cancelledEarly: number, cancelledUnknown: number, lateArrival: number, unjustified: number, total: number }, recent: { __typename?: 'NoShowCounts', noShow: number, cancelledLate: number, cancelledEarly: number, cancelledUnknown: number, lateArrival: number, unjustified: number, total: number }, rollingYear: { __typename?: 'NoShowCounts', noShow: number, cancelledLate: number, cancelledEarly: number, cancelledUnknown: number, lateArrival: number, unjustified: number, total: number }, events: Array<{ __typename?: 'NoShowEvent', appointmentId: string, patientId?: string | null, patientName: string, eventType: NoShowEventType, bookingStatus: BookingStatus, appointmentDate: string, startTime: string, endTime: string, appointmentType: AppointmentType, gymRoomName?: string | null, siteId?: string | null, siteName?: string | null, operatorId?: string | null, operatorName?: string | null, operatorMacroCategory?: OperatorMacroCategory | null, isSubstitution: boolean, originalOperatorName?: string | null, cancelledAt?: any | null, cancellationHoursNotice?: number | null, cancellationReason?: string | null, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, wasNoShowReverted: boolean, serviceNames: Array<string>, review?: { __typename?: 'NoShowReview', id: string, appointmentId: string, decision: NoShowDecision, notes?: string | null, chargedAmount?: number | null, decidedByName?: string | null, decidedAt?: any | null } | null }> }> } };
+
+export type NoShowEventsQueryVariables = Exact<{
+  filter?: InputMaybe<NoShowFilterInput>;
+  paging?: InputMaybe<NoShowPagingInput>;
+}>;
+
+
+export type NoShowEventsQuery = { __typename?: 'Query', noShowEvents: { __typename?: 'NoShowEventPage', total: number, events: Array<{ __typename?: 'NoShowEvent', appointmentId: string, patientId?: string | null, patientName: string, eventType: NoShowEventType, bookingStatus: BookingStatus, appointmentDate: string, startTime: string, endTime: string, appointmentType: AppointmentType, gymRoomName?: string | null, siteId?: string | null, siteName?: string | null, operatorId?: string | null, operatorName?: string | null, operatorMacroCategory?: OperatorMacroCategory | null, isSubstitution: boolean, originalOperatorName?: string | null, cancelledAt?: any | null, cancellationHoursNotice?: number | null, cancellationReason?: string | null, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, wasNoShowReverted: boolean, serviceNames: Array<string>, review?: { __typename?: 'NoShowReview', id: string, appointmentId: string, decision: NoShowDecision, notes?: string | null, chargedAmount?: number | null, decidedByName?: string | null, decidedAt?: any | null } | null }> } };
+
+export type UpsertNoShowReviewMutationVariables = Exact<{
+  input: UpsertNoShowReviewInput;
+}>;
+
+
+export type UpsertNoShowReviewMutation = { __typename?: 'Mutation', upsertNoShowReview: { __typename?: 'NoShowReview', id: string, appointmentId: string, decision: NoShowDecision, notes?: string | null, chargedAmount?: number | null, decidedByName?: string | null, decidedAt?: any | null } };
+
+export type DeleteNoShowReviewMutationVariables = Exact<{
+  appointmentId: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteNoShowReviewMutation = { __typename?: 'Mutation', deleteNoShowReview: boolean };
+
+export type NotificationChannelSettingFieldsFragment = { __typename?: 'NotificationChannelSetting', id: string, channel: NotificationChannel, enabled: boolean, categories: Array<NotificationCategory>, priority: number, smsDriver?: string | null, emailFromName?: string | null };
+
+export type NotificationChannelSettingsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type NotificationChannelSettingsQuery = { __typename?: 'Query', notificationChannelSettings: Array<{ __typename?: 'NotificationChannelSetting', id: string, channel: NotificationChannel, enabled: boolean, categories: Array<NotificationCategory>, priority: number, smsDriver?: string | null, emailFromName?: string | null }> };
+
+export type UpdateNotificationChannelSettingMutationVariables = Exact<{
+  input: NotificationChannelSettingInput;
+}>;
+
+
+export type UpdateNotificationChannelSettingMutation = { __typename?: 'Mutation', updateNotificationChannelSetting: { __typename?: 'NotificationChannelSetting', id: string, channel: NotificationChannel, enabled: boolean, categories: Array<NotificationCategory>, priority: number, smsDriver?: string | null, emailFromName?: string | null } };
+
+export type ReorderNotificationChannelsMutationVariables = Exact<{
+  order: Array<NotificationChannel> | NotificationChannel;
+}>;
+
+
+export type ReorderNotificationChannelsMutation = { __typename?: 'Mutation', reorderNotificationChannels: Array<{ __typename?: 'NotificationChannelSetting', id: string, channel: NotificationChannel, enabled: boolean, categories: Array<NotificationCategory>, priority: number, smsDriver?: string | null, emailFromName?: string | null }> };
 
 export type OperatorFeSettlementLineFieldsFragment = { __typename?: 'OperatorFeSettlementLine', id: string, treatmentId: string, treatmentServiceId: string, executionDate: string, description: string, serviceName?: string | null, patientName?: string | null, unitPrice: number, studioExtraAmount: number, baseAmount: number, percentage: number, compensationAmount: number, studioShareAmount: number, state: string, isCustomPrice: boolean };
 
@@ -5732,6 +7168,13 @@ export type GetMyAppointmentsQueryVariables = Exact<{
 
 export type GetMyAppointmentsQuery = { __typename?: 'Query', availabilityAppointmentsByOperator: Array<{ __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, notes?: string | null, patientId?: string | null, clientName: string, clientPhone?: string | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number } | null }> };
 
+export type PatientPendingFeCollectionsQueryVariables = Exact<{
+  patientId: Scalars['ID']['input'];
+}>;
+
+
+export type PatientPendingFeCollectionsQuery = { __typename?: 'Query', patientPendingFeCollections: { __typename?: 'PendingFeCollections', count: number, totalAmount: number, allowAnyOperatorCollect: boolean, callerIsSecretary: boolean, items: Array<{ __typename?: 'PendingFeCollectionItem', treatmentId: string, startedAt: string, status: TreatmentStatus, operatorId: string, operatorName: string, operatorAppUserId?: string | null, isGym: boolean, amount: number, servicesDescription?: string | null, therapeuticPathName?: string | null, canCollect: boolean, cannotCollectReason?: string | null }> } };
+
 export type ProductFieldsFragment = { __typename?: 'Product', id: string, productCode: string, name: string, description?: string | null, defaultPrice: number, category?: string | null, isActive: boolean, createdByUserId?: string | null, createdAt: any, updatedAt: any };
 
 export type GetProductsQueryVariables = Exact<{
@@ -5787,9 +7230,9 @@ export type RecordProductSaleMutationVariables = Exact<{
 
 export type RecordProductSaleMutation = { __typename?: 'Mutation', recordProductSale: { __typename?: 'SaleCompletedResult', saleId: string, publishedAt: any, totalAmount: number } };
 
-export type TreatmentBillingFieldsFragment = { __typename?: 'Treatment', billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null };
+export type TreatmentBillingFieldsFragment = { __typename?: 'Treatment', billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null };
 
-export type TreatmentDetailsFragment = { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null };
+export type TreatmentDetailsFragment = { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null };
 
 export type TreatmentsForSecretaryQueryVariables = Exact<{
   patientId?: InputMaybe<Scalars['ID']['input']>;
@@ -5800,12 +7243,13 @@ export type TreatmentsForSecretaryQueryVariables = Exact<{
   readyForBilling?: InputMaybe<Scalars['Boolean']['input']>;
   isInvoicedToPatient?: InputMaybe<Scalars['Boolean']['input']>;
   scontoFE?: InputMaybe<Scalars['Boolean']['input']>;
+  withoutAppointment?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
 }>;
 
 
-export type TreatmentsForSecretaryQuery = { __typename?: 'Query', treatmentsForSecretary: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null }> };
+export type TreatmentsForSecretaryQuery = { __typename?: 'Query', treatmentsForSecretary: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null }> };
 
 export type TreatmentsForSecretaryCountQueryVariables = Exact<{
   patientId?: InputMaybe<Scalars['ID']['input']>;
@@ -5816,6 +7260,7 @@ export type TreatmentsForSecretaryCountQueryVariables = Exact<{
   readyForBilling?: InputMaybe<Scalars['Boolean']['input']>;
   isInvoicedToPatient?: InputMaybe<Scalars['Boolean']['input']>;
   scontoFE?: InputMaybe<Scalars['Boolean']['input']>;
+  withoutAppointment?: InputMaybe<Scalars['Boolean']['input']>;
 }>;
 
 
@@ -5831,14 +7276,14 @@ export type TreatmentsForOperatorQueryVariables = Exact<{
 }>;
 
 
-export type TreatmentsForOperatorQuery = { __typename?: 'Query', treatmentsForOperator: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null }> };
+export type TreatmentsForOperatorQuery = { __typename?: 'Query', treatmentsForOperator: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null }> };
 
 export type UpdateTreatmentBySecretaryMutationVariables = Exact<{
   input: UpdateTreatmentBySecretaryInput;
 }>;
 
 
-export type UpdateTreatmentBySecretaryMutation = { __typename?: 'Mutation', updateTreatmentBySecretary: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type UpdateTreatmentBySecretaryMutation = { __typename?: 'Mutation', updateTreatmentBySecretary: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type SetTreatmentsReadyForBillingMutationVariables = Exact<{
   ids: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
@@ -5854,7 +7299,7 @@ export type TreatmentByIdQueryVariables = Exact<{
 }>;
 
 
-export type TreatmentByIdQuery = { __typename?: 'Query', treatment?: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } | null };
+export type TreatmentByIdQuery = { __typename?: 'Query', treatment?: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } | null };
 
 export type CancelTreatmentBillingMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -5862,14 +7307,14 @@ export type CancelTreatmentBillingMutationVariables = Exact<{
 }>;
 
 
-export type CancelTreatmentBillingMutation = { __typename?: 'Mutation', cancelTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type CancelTreatmentBillingMutation = { __typename?: 'Mutation', cancelTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type DismissBillingAlertMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type DismissBillingAlertMutation = { __typename?: 'Mutation', dismissBillingAlert: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type DismissBillingAlertMutation = { __typename?: 'Mutation', dismissBillingAlert: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type RequestTreatmentRecallMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -5877,21 +7322,21 @@ export type RequestTreatmentRecallMutationVariables = Exact<{
 }>;
 
 
-export type RequestTreatmentRecallMutation = { __typename?: 'Mutation', requestTreatmentRecall: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type RequestTreatmentRecallMutation = { __typename?: 'Mutation', requestTreatmentRecall: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type ResendTreatmentToAccountingMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ResendTreatmentToAccountingMutation = { __typename?: 'Mutation', resendTreatmentToAccounting: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type ResendTreatmentToAccountingMutation = { __typename?: 'Mutation', resendTreatmentToAccounting: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type RetryTreatmentInvoiceMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type RetryTreatmentInvoiceMutation = { __typename?: 'Mutation', retryTreatmentInvoice: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type RetryTreatmentInvoiceMutation = { __typename?: 'Mutation', retryTreatmentInvoice: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type MarkScontoFeCashPaymentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -5899,14 +7344,14 @@ export type MarkScontoFeCashPaymentMutationVariables = Exact<{
 }>;
 
 
-export type MarkScontoFeCashPaymentMutation = { __typename?: 'Mutation', markScontoFeCashPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type MarkScontoFeCashPaymentMutation = { __typename?: 'Mutation', markScontoFeCashPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type CancelTreatmentPaymentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type CancelTreatmentPaymentMutation = { __typename?: 'Mutation', cancelTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type CancelTreatmentPaymentMutation = { __typename?: 'Mutation', cancelTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type AddTreatmentServiceLineMutationVariables = Exact<{
   treatmentId: Scalars['ID']['input'];
@@ -5917,7 +7362,7 @@ export type AddTreatmentServiceLineMutationVariables = Exact<{
 }>;
 
 
-export type AddTreatmentServiceLineMutation = { __typename?: 'Mutation', addTreatmentServiceLine: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type AddTreatmentServiceLineMutation = { __typename?: 'Mutation', addTreatmentServiceLine: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type UpdateTreatmentServiceExecutorMutationVariables = Exact<{
   treatmentServiceId: Scalars['ID']['input'];
@@ -5932,14 +7377,14 @@ export type RemoveTreatmentServiceLineMutationVariables = Exact<{
 }>;
 
 
-export type RemoveTreatmentServiceLineMutation = { __typename?: 'Mutation', removeTreatmentServiceLine: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type RemoveTreatmentServiceLineMutation = { __typename?: 'Mutation', removeTreatmentServiceLine: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type DismissReturnFromAccountingBannerMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type DismissReturnFromAccountingBannerMutation = { __typename?: 'Mutation', dismissReturnFromAccountingBanner: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type DismissReturnFromAccountingBannerMutation = { __typename?: 'Mutation', dismissReturnFromAccountingBanner: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type UpdateTreatmentServiceInvoiceDescriptionMutationVariables = Exact<{
   input: UpdateTreatmentServiceInvoiceDescriptionInput;
@@ -5970,6 +7415,20 @@ export type DeleteTreatmentInvoiceLineMutationVariables = Exact<{
 
 export type DeleteTreatmentInvoiceLineMutation = { __typename?: 'Mutation', deleteTreatmentInvoiceLine: boolean };
 
+export type DeleteOrphanTreatmentMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteOrphanTreatmentMutation = { __typename?: 'Mutation', deleteOrphanTreatment: boolean };
+
+export type DeleteOrphanTreatmentsMutationVariables = Exact<{
+  ids: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
+}>;
+
+
+export type DeleteOrphanTreatmentsMutation = { __typename?: 'Mutation', deleteOrphanTreatments: Array<{ __typename?: 'OrphanDeletionResult', treatmentId: string, deleted: boolean, reason?: string | null }> };
+
 export type RecordTreatmentPaymentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
   input: RecordPaymentInput;
@@ -5977,7 +7436,7 @@ export type RecordTreatmentPaymentMutationVariables = Exact<{
 }>;
 
 
-export type RecordTreatmentPaymentMutation = { __typename?: 'Mutation', recordTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type RecordTreatmentPaymentMutation = { __typename?: 'Mutation', recordTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type CloseTreatmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -5985,14 +7444,14 @@ export type CloseTreatmentMutationVariables = Exact<{
 }>;
 
 
-export type CloseTreatmentMutation = { __typename?: 'Mutation', closeTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type CloseTreatmentMutation = { __typename?: 'Mutation', closeTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type ReopenTreatmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ReopenTreatmentMutation = { __typename?: 'Mutation', reopenTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type ReopenTreatmentMutation = { __typename?: 'Mutation', reopenTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type ForceCloseTreatmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -6000,7 +7459,7 @@ export type ForceCloseTreatmentMutationVariables = Exact<{
 }>;
 
 
-export type ForceCloseTreatmentMutation = { __typename?: 'Mutation', forceCloseTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
+export type ForceCloseTreatmentMutation = { __typename?: 'Mutation', forceCloseTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, status: TreatmentStatus, forcedClosure: boolean, scontoFE: boolean, price: number, accountingTotalAmount?: number | null, accountingTreatmentLinesAmount?: number | null, accountingDocumentTreatmentCount?: number | null, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, readyForBilling: boolean, readyForBillingAt?: any | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, startedAt: any, completedAt?: any | null, closedAt?: any | null, createdAt: any, updatedAt: any, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingDocumentId?: string | null, accountingExternalRefNumber?: string | null, accountingExternalRefDate?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, billingHoldReasonCode?: string | null, billingHoldReason?: string | null, billingHoldReasonAt?: any | null, recallRequestId?: string | null, recallRequestedAt?: any | null, lastRecallRejectionMessage?: string | null, lastRecallRejectionAt?: any | null, returnedFromAccountingReason?: string | null, returnedFromAccountingAt?: any | null, returnedFromAccountingByEmail?: string | null, returnedFromAccountingDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, macroCategory: OperatorMacroCategory, professionalRegistration?: string | null, canCollectPayment: boolean, color?: string | null, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null } | null } | null, appointment?: { __typename?: 'AvailabilityAppointment', id: string, appointmentDate: string, startTime: string, endTime: string } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, invoiceLineDescription?: string | null, invoiceLineDescriptionAuto?: string | null, executorOperatorId?: string | null, executorOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, wasUsed: boolean, instrument?: { __typename?: 'Instrument', id: string, name: string } | null }> | null, invoiceLines?: Array<{ __typename?: 'TreatmentInvoiceLine', id: string, treatmentId: string, description: string, amount: number, createdBy?: string | null, createdAt: any, updatedAt: any }> | null } };
 
 export type VoucherFeFieldsFragment = { __typename?: 'VoucherFe', id: string, code: string, patientId: string, initialAmount: number, residualAmount: number, status: string, expiryDate?: string | null, notes?: string | null, createdAt: any };
 
@@ -6089,7 +7548,7 @@ export type CreateAvailabilityAppointmentMutationVariables = Exact<{
 }>;
 
 
-export type CreateAvailabilityAppointmentMutation = { __typename?: 'Mutation', createAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type CreateAvailabilityAppointmentMutation = { __typename?: 'Mutation', createAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type UpdateAvailabilityAppointmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -6097,7 +7556,7 @@ export type UpdateAvailabilityAppointmentMutationVariables = Exact<{
 }>;
 
 
-export type UpdateAvailabilityAppointmentMutation = { __typename?: 'Mutation', updateAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type UpdateAvailabilityAppointmentMutation = { __typename?: 'Mutation', updateAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type CancelAvailabilityAppointmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -6105,7 +7564,7 @@ export type CancelAvailabilityAppointmentMutationVariables = Exact<{
 }>;
 
 
-export type CancelAvailabilityAppointmentMutation = { __typename?: 'Mutation', cancelAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type CancelAvailabilityAppointmentMutation = { __typename?: 'Mutation', cancelAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type DeleteAvailabilityAppointmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -6119,14 +7578,14 @@ export type ConfirmAvailabilityAppointmentMutationVariables = Exact<{
 }>;
 
 
-export type ConfirmAvailabilityAppointmentMutation = { __typename?: 'Mutation', confirmAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type ConfirmAvailabilityAppointmentMutation = { __typename?: 'Mutation', confirmAvailabilityAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type MarkAppointmentAsNoShowMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type MarkAppointmentAsNoShowMutation = { __typename?: 'Mutation', markAppointmentAsNoShow: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type MarkAppointmentAsNoShowMutation = { __typename?: 'Mutation', markAppointmentAsNoShow: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type CancelAppointmentWithNoticeMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -6135,21 +7594,36 @@ export type CancelAppointmentWithNoticeMutationVariables = Exact<{
 }>;
 
 
-export type CancelAppointmentWithNoticeMutation = { __typename?: 'Mutation', cancelAppointmentWithNotice: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type CancelAppointmentWithNoticeMutation = { __typename?: 'Mutation', cancelAppointmentWithNotice: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type MarkAppointmentAttendedMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type MarkAppointmentAttendedMutation = { __typename?: 'Mutation', markAppointmentAttended: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type MarkAppointmentAttendedMutation = { __typename?: 'Mutation', markAppointmentAttended: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+
+export type MarkAppointmentLateArrivalMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  lateMinutes?: InputMaybe<Scalars['Int']['input']>;
+}>;
+
+
+export type MarkAppointmentLateArrivalMutation = { __typename?: 'Mutation', markAppointmentLateArrival: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+
+export type ClearAppointmentLateArrivalMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type ClearAppointmentLateArrivalMutation = { __typename?: 'Mutation', clearAppointmentLateArrival: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type RevertAppointmentAttendedMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type RevertAppointmentAttendedMutation = { __typename?: 'Mutation', revertAppointmentAttended: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type RevertAppointmentAttendedMutation = { __typename?: 'Mutation', revertAppointmentAttended: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type SendAppointmentRecapMutationVariables = Exact<{
   appointmentId: Scalars['ID']['input'];
@@ -6157,6 +7631,24 @@ export type SendAppointmentRecapMutationVariables = Exact<{
 
 
 export type SendAppointmentRecapMutation = { __typename?: 'Mutation', sendAppointmentRecap: boolean };
+
+export type SendAppointmentsRecapMutationVariables = Exact<{
+  patientId: Scalars['ID']['input'];
+  appointmentIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
+}>;
+
+
+export type SendAppointmentsRecapMutation = { __typename?: 'Mutation', sendAppointmentsRecap: boolean };
+
+export type MakeAppointmentRecurringMutationVariables = Exact<{
+  appointmentId: Scalars['ID']['input'];
+  repeatConfig: RepeatConfigInput;
+  force?: InputMaybe<Scalars['Boolean']['input']>;
+  occurrences?: InputMaybe<Array<RecurringOccurrenceInput> | RecurringOccurrenceInput>;
+}>;
+
+
+export type MakeAppointmentRecurringMutation = { __typename?: 'Mutation', makeAppointmentRecurring: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type CancelRecurringSeriesMutationVariables = Exact<{
   appointmentId: Scalars['ID']['input'];
@@ -6195,23 +7687,23 @@ export type UpdateRecurringSeriesMutationVariables = Exact<{
 
 export type UpdateRecurringSeriesMutation = { __typename?: 'Mutation', updateRecurringSeries: { __typename?: 'RecurringSeriesOperationResult', applied: boolean, affectedCount: number, conflicts: Array<{ __typename?: 'RecurringOccurrenceConflict', appointmentId?: string | null, date: string, startTime: string, endTime: string, type: string, reason: string, conflictingStartTime?: string | null, conflictingEndTime?: string | null }> } };
 
-export type AvailabilityAppointmentFieldsFragment = { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null };
+export type AvailabilityAppointmentFieldsFragment = { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null };
 
 export type GetAvailabilityAppointmentQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetAvailabilityAppointmentQuery = { __typename?: 'Query', availabilityAppointment?: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } | null };
+export type GetAvailabilityAppointmentQuery = { __typename?: 'Query', availabilityAppointment?: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } | null };
 
 export type GetAvailabilityAppointmentsByOperatorQueryVariables = Exact<{
   operatorId: Scalars['ID']['input'];
   startDate: Scalars['String']['input'];
-  endDate: Scalars['String']['input'];
+  endDate?: InputMaybe<Scalars['String']['input']>;
 }>;
 
 
-export type GetAvailabilityAppointmentsByOperatorQuery = { __typename?: 'Query', availabilityAppointmentsByOperator: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetAvailabilityAppointmentsByOperatorQuery = { __typename?: 'Query', availabilityAppointmentsByOperator: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type GetAvailabilityAppointmentsQueryVariables = Exact<{
   startDate: Scalars['String']['input'];
@@ -6220,7 +7712,7 @@ export type GetAvailabilityAppointmentsQueryVariables = Exact<{
 }>;
 
 
-export type GetAvailabilityAppointmentsQuery = { __typename?: 'Query', availabilityAppointments: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetAvailabilityAppointmentsQuery = { __typename?: 'Query', availabilityAppointments: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type GetAvailabilityAppointmentsByPatientQueryVariables = Exact<{
   patientId: Scalars['ID']['input'];
@@ -6228,14 +7720,14 @@ export type GetAvailabilityAppointmentsByPatientQueryVariables = Exact<{
 }>;
 
 
-export type GetAvailabilityAppointmentsByPatientQuery = { __typename?: 'Query', availabilityAppointmentsByPatient: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetAvailabilityAppointmentsByPatientQuery = { __typename?: 'Query', availabilityAppointmentsByPatient: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type GetRecurringSeriesQueryVariables = Exact<{
   recurringGroupId: Scalars['ID']['input'];
 }>;
 
 
-export type GetRecurringSeriesQuery = { __typename?: 'Query', recurringSeries: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetRecurringSeriesQuery = { __typename?: 'Query', recurringSeries: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, cancellationReason?: string | null, cancelledAt?: any | null, cancelledBy?: string | null, cancellationHoursNotice?: number | null, operatorNotes?: string | null, wasNoShowReverted: boolean, arrivedAt?: any | null, lateMinutes?: number | null, arrivalSource?: ArrivalSource | null, instrumentOrderMatters: boolean, nonRetribuito: boolean, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, service?: { __typename?: 'Service', id: string, name: string } | null, instruments?: Array<{ __typename?: 'AppointmentInstrument', id: string, instrumentId: string, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null, instrument: { __typename?: 'Instrument', id: string, name: string, color?: string | null, category: { __typename?: 'InstrumentCategory', id: string, name: string } } }> | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type IsInstrumentAvailableQueryVariables = Exact<{
   instrumentId: Scalars['ID']['input'];
@@ -6248,6 +7740,18 @@ export type IsInstrumentAvailableQueryVariables = Exact<{
 
 
 export type IsInstrumentAvailableQuery = { __typename?: 'Query', isInstrumentAvailable: boolean };
+
+export type RecurringSeriesPreviewQueryVariables = Exact<{
+  input: RecurringSeriesPreviewInput;
+}>;
+
+
+export type RecurringSeriesPreviewQuery = { __typename?: 'Query', recurringSeriesPreview: Array<{ __typename?: 'RecurringOccurrencePreview', appointmentId?: string | null, date: string, startTime: string, endTime: string, conflict?: { __typename?: 'RecurringOccurrenceConflict', type: string, reason: string, conflictingStartTime?: string | null, conflictingEndTime?: string | null } | null }> };
+
+export type CanMarkAttendanceQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type CanMarkAttendanceQuery = { __typename?: 'Query', canMarkAttendance: boolean };
 
 export type GetAvailableSlotsQueryVariables = Exact<{
   date: Scalars['String']['input'];
@@ -6370,7 +7874,7 @@ export type GetGroupExceptionsQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type GetGroupExceptionsQuery = { __typename?: 'Query', groupExceptions: Array<{ __typename?: 'GroupException', id: string, name: string, exceptionDate: string, exceptionType: string, appliesToAll: boolean, reason?: string | null, createdAt: any, exceptions?: Array<{ __typename?: 'AvailabilityException', id: string, operatorId: string, exceptionDate: string, exceptionType: ExceptionType, startTime?: string | null, endTime?: string | null, reason?: string | null }> | null }> };
 
-export type GymAppointmentFieldsFragment = { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null };
+export type GymAppointmentFieldsFragment = { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null };
 
 export type GymSlotInfoFieldsFragment = { __typename?: 'GymSlotInfo', startTime: string, endTime: string, currentCount: number, maxCapacity: number, isAvailable: boolean, isClosed: boolean, operator?: { __typename?: 'GymSlotOperatorInfo', id: string, name: string, surname?: string | null, color?: string | null } | null };
 
@@ -6380,7 +7884,7 @@ export type GetGymRoomAppointmentsQueryVariables = Exact<{
 }>;
 
 
-export type GetGymRoomAppointmentsQuery = { __typename?: 'Query', gymRoomAppointments: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetGymRoomAppointmentsQuery = { __typename?: 'Query', gymRoomAppointments: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type GetGymRoomsAppointmentsQueryVariables = Exact<{
   gymRoomIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
@@ -6389,7 +7893,7 @@ export type GetGymRoomsAppointmentsQueryVariables = Exact<{
 }>;
 
 
-export type GetGymRoomsAppointmentsQuery = { __typename?: 'Query', gymRoomsAppointments: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetGymRoomsAppointmentsQuery = { __typename?: 'Query', gymRoomsAppointments: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type GetGymRoomAvailableSlotsQueryVariables = Exact<{
   gymRoomId: Scalars['ID']['input'];
@@ -6413,14 +7917,14 @@ export type CreateGymAppointmentMutationVariables = Exact<{
 }>;
 
 
-export type CreateGymAppointmentMutation = { __typename?: 'Mutation', createGymAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
+export type CreateGymAppointmentMutation = { __typename?: 'Mutation', createGymAppointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null } };
 
 export type CreateGymAppointmentWithReportMutationVariables = Exact<{
   input: CreateGymAppointmentInput;
 }>;
 
 
-export type CreateGymAppointmentWithReportMutation = { __typename?: 'Mutation', createGymAppointmentWithReport: { __typename?: 'GymAppointmentCreationResult', createdCount: number, skippedCount: number, appointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }, conflicts: Array<{ __typename?: 'RecurringOccurrenceConflict', date: string, startTime: string, endTime: string, type: string, reason: string, conflictingStartTime?: string | null, conflictingEndTime?: string | null }> } };
+export type CreateGymAppointmentWithReportMutation = { __typename?: 'Mutation', createGymAppointmentWithReport: { __typename?: 'GymAppointmentCreationResult', createdCount: number, skippedCount: number, appointment: { __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }, conflicts: Array<{ __typename?: 'RecurringOccurrenceConflict', date: string, startTime: string, endTime: string, type: string, reason: string, conflictingStartTime?: string | null, conflictingEndTime?: string | null }> } };
 
 export type CreateGymExceptionMutationVariables = Exact<{
   input: CreateGymExceptionInput;
@@ -6612,7 +8116,7 @@ export type GetInstructorAppointmentsQueryVariables = Exact<{
 }>;
 
 
-export type GetInstructorAppointmentsQuery = { __typename?: 'Query', availabilityAppointmentsByOperator: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
+export type GetInstructorAppointmentsQuery = { __typename?: 'Query', availabilityAppointmentsByOperator: Array<{ __typename?: 'AvailabilityAppointment', id: string, operatorId?: string | null, gymRoomId?: string | null, serviceId?: string | null, clientName: string, clientEmail?: string | null, clientPhone?: string | null, patientId?: string | null, appointmentDate: string, startTime: string, endTime: string, bookingStatus: BookingStatus, treatmentStatus?: TreatmentStatus | null, hasConflict: boolean, conflictReason?: ConflictReason | null, conflictDetectedAt?: any | null, notes?: string | null, participantCount: number, maxParticipants?: number | null, isRecurring: boolean, recurringGroupId?: string | null, isMaster: boolean, masterAppointmentId?: string | null, repeatConfig?: any | null, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, color?: string | null } | null, gymRoom?: { __typename?: 'GymRoom', id: string, name: string, color?: string | null, maxCapacity: number } | null, service?: { __typename?: 'Service', id: string, name: string } | null, appointmentServices?: Array<{ __typename?: 'AppointmentService', id: string, serviceId: string, customDuration?: number | null, customPrice?: number | null, orderPosition: number, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null }> };
 
 export type CreateInstrumentMutationVariables = Exact<{
   categoryId: Scalars['ID']['input'];
@@ -6895,6 +8399,38 @@ export type GetOperatorsAvailabilityQueryVariables = Exact<{
 
 export type GetOperatorsAvailabilityQuery = { __typename?: 'Query', operatorsAvailability: Array<{ __typename?: 'OperatorAvailabilityResult', operatorId: string, availability: Array<{ __typename?: 'DailyAvailability', date: string, hasAvailability: boolean, slots: Array<{ __typename?: 'AvailabilitySlot', operatorId: string, date: string, startTime: string, endTime: string, totalCapacity: number, bookedCapacity: number, availableCapacity: number, isAvailable: boolean, source?: string | null, sourceId?: string | null }> }> }> };
 
+export type PatientDocumentFieldsFragment = { __typename?: 'PatientDocument', id: string, subjectId: string, organizationId?: string | null, therapeuticPathId?: string | null, treatmentId?: string | null, category: PatientDocumentCategory, contentKind: PatientDocumentKind, originalFileName: string, mimeType: string, fileSize: string, sha256: string, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any, updatedAt: any };
+
+export type GetPatientDocumentsQueryVariables = Exact<{
+  subjectId: Scalars['ID']['input'];
+  filter?: InputMaybe<PatientDocumentsFilterInput>;
+}>;
+
+
+export type GetPatientDocumentsQuery = { __typename?: 'Query', patientDocuments: Array<{ __typename?: 'PatientDocument', id: string, subjectId: string, organizationId?: string | null, therapeuticPathId?: string | null, treatmentId?: string | null, category: PatientDocumentCategory, contentKind: PatientDocumentKind, originalFileName: string, mimeType: string, fileSize: string, sha256: string, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any, updatedAt: any }> };
+
+export type GetPatientDocumentStatsQueryVariables = Exact<{
+  subjectId: Scalars['ID']['input'];
+}>;
+
+
+export type GetPatientDocumentStatsQuery = { __typename?: 'Query', patientDocumentStats: { __typename?: 'PatientDocumentStats', total: number, generalCount: number, pathCount: number, treatmentCount: number, byCategory: Array<{ __typename?: 'PatientDocumentCategoryCount', category: PatientDocumentCategory, count: number }>, byKind: Array<{ __typename?: 'PatientDocumentKindCount', kind: PatientDocumentKind, count: number }>, byPath: Array<{ __typename?: 'PatientDocumentPathCount', therapeuticPathId: string, count: number }> } };
+
+export type UpdatePatientDocumentMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  input: UpdatePatientDocumentInput;
+}>;
+
+
+export type UpdatePatientDocumentMutation = { __typename?: 'Mutation', updatePatientDocument: { __typename?: 'PatientDocument', id: string, subjectId: string, organizationId?: string | null, therapeuticPathId?: string | null, treatmentId?: string | null, category: PatientDocumentCategory, contentKind: PatientDocumentKind, originalFileName: string, mimeType: string, fileSize: string, sha256: string, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any, updatedAt: any } };
+
+export type DeletePatientDocumentMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeletePatientDocumentMutation = { __typename?: 'Mutation', deletePatientDocument: boolean };
+
 export type CreateEvaluationMutationVariables = Exact<{
   input: CreateEvaluationInput;
 }>;
@@ -7106,6 +8642,75 @@ export type UpdateRecycleBinSettingsMutationVariables = Exact<{
 
 
 export type UpdateRecycleBinSettingsMutation = { __typename?: 'Mutation', updateRecycleBinSettings: { __typename?: 'RecycleBinSettings', id: string, retentionDays?: number | null, updatedAt: any, updatedByUserId?: string | null } };
+
+export type GetRoomsQueryVariables = Exact<{
+  onlyActive?: InputMaybe<Scalars['Boolean']['input']>;
+}>;
+
+
+export type GetRoomsQuery = { __typename?: 'Query', rooms: Array<{ __typename?: 'Room', id: string, name: string, capacity: number, color?: string | null, isActive: boolean, createdAt: any, updatedAt: any, chairs?: Array<{ __typename?: 'Chair', id: string, roomId: string, name: string, color?: string | null, isActive: boolean }> | null }> };
+
+export type CreateRoomMutationVariables = Exact<{
+  name: Scalars['String']['input'];
+  capacity?: InputMaybe<Scalars['Int']['input']>;
+  color?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type CreateRoomMutation = { __typename?: 'Mutation', createRoom: { __typename?: 'Room', id: string, name: string, capacity: number, color?: string | null, isActive: boolean } };
+
+export type UpdateRoomMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
+  capacity?: InputMaybe<Scalars['Int']['input']>;
+  color?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+}>;
+
+
+export type UpdateRoomMutation = { __typename?: 'Mutation', updateRoom: { __typename?: 'Room', id: string, name: string, capacity: number, color?: string | null, isActive: boolean } };
+
+export type DeleteRoomMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteRoomMutation = { __typename?: 'Mutation', deleteRoom: boolean };
+
+export type GetChairsQueryVariables = Exact<{
+  roomId?: InputMaybe<Scalars['ID']['input']>;
+  onlyActive?: InputMaybe<Scalars['Boolean']['input']>;
+}>;
+
+
+export type GetChairsQuery = { __typename?: 'Query', chairs: Array<{ __typename?: 'Chair', id: string, roomId: string, name: string, color?: string | null, isActive: boolean, room?: { __typename?: 'Room', id: string, name: string } | null }> };
+
+export type CreateChairMutationVariables = Exact<{
+  roomId: Scalars['ID']['input'];
+  name: Scalars['String']['input'];
+  color?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type CreateChairMutation = { __typename?: 'Mutation', createChair: { __typename?: 'Chair', id: string, roomId: string, name: string, color?: string | null, isActive: boolean } };
+
+export type UpdateChairMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
+  color?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  roomId?: InputMaybe<Scalars['ID']['input']>;
+}>;
+
+
+export type UpdateChairMutation = { __typename?: 'Mutation', updateChair: { __typename?: 'Chair', id: string, roomId: string, name: string, color?: string | null, isActive: boolean } };
+
+export type DeleteChairMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteChairMutation = { __typename?: 'Mutation', deleteChair: boolean };
 
 export type ServiceInvoicePrefixesQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -7437,7 +9042,7 @@ export type AssignTemplateToOperatorMutationVariables = Exact<{
 }>;
 
 
-export type AssignTemplateToOperatorMutation = { __typename?: 'Mutation', assignTemplateToOperator: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
+export type AssignTemplateToOperatorMutation = { __typename?: 'Mutation', assignTemplateToOperator: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
 
 export type UpdateTemplateAssignmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7445,17 +9050,19 @@ export type UpdateTemplateAssignmentMutationVariables = Exact<{
   validUntil?: InputMaybe<Scalars['String']['input']>;
   patternStartDate?: InputMaybe<Scalars['String']['input']>;
   isCurrent?: InputMaybe<Scalars['Boolean']['input']>;
+  roomId?: InputMaybe<Scalars['String']['input']>;
+  chairId?: InputMaybe<Scalars['String']['input']>;
 }>;
 
 
-export type UpdateTemplateAssignmentMutation = { __typename?: 'Mutation', updateTemplateAssignment: { __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, dayInPattern: number, startTime: string, endTime: string }> | null } } };
+export type UpdateTemplateAssignmentMutation = { __typename?: 'Mutation', updateTemplateAssignment: { __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, dayInPattern: number, startTime: string, endTime: string }> | null } } };
 
 export type DeactivateTemplateAssignmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type DeactivateTemplateAssignmentMutation = { __typename?: 'Mutation', deactivateTemplateAssignment: { __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any } };
+export type DeactivateTemplateAssignmentMutation = { __typename?: 'Mutation', deactivateTemplateAssignment: { __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null } };
 
 export type DeleteTemplateAssignmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7470,6 +9077,38 @@ export type DeactivateAllTemplateAssignmentsForOperatorMutationVariables = Exact
 
 
 export type DeactivateAllTemplateAssignmentsForOperatorMutation = { __typename?: 'Mutation', deactivateAllTemplateAssignmentsForOperator: boolean };
+
+export type SetAssignmentRoomOverridesMutationVariables = Exact<{
+  assignmentId: Scalars['ID']['input'];
+  overrides: Array<AssignmentRoomOverrideInput> | AssignmentRoomOverrideInput;
+}>;
+
+
+export type SetAssignmentRoomOverridesMutation = { __typename?: 'Mutation', setAssignmentRoomOverrides: { __typename?: 'TemplateAssignment', id: string, roomId?: string | null, chairId?: string | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null } };
+
+export type CheckAssignmentRoomConflictsQueryVariables = Exact<{
+  input: AssignTemplateToOperatorInput;
+  excludeAssignmentId?: InputMaybe<Scalars['ID']['input']>;
+}>;
+
+
+export type CheckAssignmentRoomConflictsQuery = { __typename?: 'Query', checkAssignmentRoomConflicts: { __typename?: 'RoomConflictCheckResult', blocking: Array<string>, warnings: Array<string> } };
+
+export type AssignmentRoomAvailabilityQueryVariables = Exact<{
+  input: AssignTemplateToOperatorInput;
+  excludeAssignmentId?: InputMaybe<Scalars['ID']['input']>;
+}>;
+
+
+export type AssignmentRoomAvailabilityQuery = { __typename?: 'Query', assignmentRoomAvailability: { __typename?: 'RoomAssignmentAvailability', rooms: Array<{ __typename?: 'RoomAvailabilityInfo', roomId: string, roomName: string, capacity: number, fullyFree: boolean, sharing: boolean, full: boolean, unavailableReason?: string | null, busy: Array<{ __typename?: 'RoomBandBusyInfo', dayInPattern: number, startTime: string, endTime: string, freeSeats: number, occupantNames: Array<string>, busyChairIds: Array<string> }>, chairs: Array<{ __typename?: 'ChairAvailabilityInfo', chairId: string, name: string, fullyFree: boolean, firstConflict?: string | null }> }> } };
+
+export type UpdatePatternGroupWithConflictsMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  input: UpdatePatternGroupInput;
+}>;
+
+
+export type UpdatePatternGroupWithConflictsMutation = { __typename?: 'Mutation', updatePatternGroupWithConflicts: { __typename?: 'PatternGroupUpdateOutput', hasConflicts: boolean, conflictsCount: number, removedRoomOverridesCount: number, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, dayInPattern: number, startTime: string, endTime: string }> | null } } };
 
 export type GetAvailabilityTemplatesQueryVariables = Exact<{
   operatorId: Scalars['ID']['input'];
@@ -7502,14 +9141,14 @@ export type GetTemplateAssignmentsQueryVariables = Exact<{
 }>;
 
 
-export type GetTemplateAssignmentsQuery = { __typename?: 'Query', templateAssignments: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
+export type GetTemplateAssignmentsQuery = { __typename?: 'Query', templateAssignments: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
 
 export type GetTemplateAssignmentQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTemplateAssignmentQuery = { __typename?: 'Query', templateAssignment?: { __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } } | null };
+export type GetTemplateAssignmentQuery = { __typename?: 'Query', templateAssignment?: { __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } } | null };
 
 export type GetTemplateAssignmentsByOperatorQueryVariables = Exact<{
   operatorId: Scalars['ID']['input'];
@@ -7517,7 +9156,7 @@ export type GetTemplateAssignmentsByOperatorQueryVariables = Exact<{
 }>;
 
 
-export type GetTemplateAssignmentsByOperatorQuery = { __typename?: 'Query', templateAssignmentsByOperator: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
+export type GetTemplateAssignmentsByOperatorQuery = { __typename?: 'Query', templateAssignmentsByOperator: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
 
 export type GetCurrentTemplateAssignmentsQueryVariables = Exact<{
   operatorId: Scalars['ID']['input'];
@@ -7525,14 +9164,14 @@ export type GetCurrentTemplateAssignmentsQueryVariables = Exact<{
 }>;
 
 
-export type GetCurrentTemplateAssignmentsQuery = { __typename?: 'Query', currentTemplateAssignments: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, createdAt: any, updatedAt: any, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
+export type GetCurrentTemplateAssignmentsQuery = { __typename?: 'Query', currentTemplateAssignments: Array<{ __typename?: 'TemplateAssignment', id: string, operatorId: string, patternGroupId: string, patternStartDate: any, validFrom: any, validUntil?: any | null, version: number, isCurrent: boolean, roomId?: string | null, chairId?: string | null, createdAt: any, updatedAt: any, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null, roomOverrides?: Array<{ __typename?: 'TemplateAssignmentRoomOverride', id: string, dayInPattern: number, startTime?: string | null, endTime?: string | null, roomId: string, chairId?: string | null, room?: { __typename?: 'Room', id: string, name: string } | null, chair?: { __typename?: 'Chair', id: string, name: string } | null }> | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null } | null, patternGroup: { __typename?: 'PatternGroup', id: string, name: string, description?: string | null, patternDuration: number, isActive: boolean, patterns?: Array<{ __typename?: 'TemplatePattern', id: string, name: string, description?: string | null, dayInPattern: number, startTime: string, endTime: string }> | null } }> };
 
 export type CreateTherapeuticPathMutationVariables = Exact<{
   input: CreateTherapeuticPathInput;
 }>;
 
 
-export type CreateTherapeuticPathMutation = { __typename?: 'Mutation', createTherapeuticPath: { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null } };
+export type CreateTherapeuticPathMutation = { __typename?: 'Mutation', createTherapeuticPath: { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null } };
 
 export type UpdateTherapeuticPathMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7540,7 +9179,7 @@ export type UpdateTherapeuticPathMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTherapeuticPathMutation = { __typename?: 'Mutation', updateTherapeuticPath: { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null } };
+export type UpdateTherapeuticPathMutation = { __typename?: 'Mutation', updateTherapeuticPath: { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null } };
 
 export type DeleteTherapeuticPathMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7571,60 +9210,44 @@ export type DeletePatientEvaluationMutationVariables = Exact<{
 
 export type DeletePatientEvaluationMutation = { __typename?: 'Mutation', deleteEvaluation: boolean };
 
-export type CreatePathDocumentMutationVariables = Exact<{
-  input: CreateDocumentInput;
-}>;
-
-
-export type CreatePathDocumentMutation = { __typename?: 'Mutation', createPathDocument: { __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any } };
-
-export type DeletePathDocumentMutationVariables = Exact<{
-  id: Scalars['ID']['input'];
-}>;
-
-
-export type DeletePathDocumentMutation = { __typename?: 'Mutation', deletePathDocument: boolean };
-
-export type PathDocumentFieldsFragment = { __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any };
-
 export type TherapeuticPathFieldsFragment = { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null };
 
-export type TherapeuticPathWithRelationsFieldsFragment = { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null };
+export type TherapeuticPathWithRelationsFieldsFragment = { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null };
 
 export type GetTherapeuticPathQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTherapeuticPathQuery = { __typename?: 'Query', therapeuticPath?: { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null } | null };
+export type GetTherapeuticPathQuery = { __typename?: 'Query', therapeuticPath?: { __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null } | null };
 
 export type GetTherapeuticPathsByPatientQueryVariables = Exact<{
   patientId: Scalars['ID']['input'];
 }>;
 
 
-export type GetTherapeuticPathsByPatientQuery = { __typename?: 'Query', therapeuticPathsByPatient: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
+export type GetTherapeuticPathsByPatientQuery = { __typename?: 'Query', therapeuticPathsByPatient: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
 
 export type GetActiveTherapeuticPathsByPatientQueryVariables = Exact<{
   patientId: Scalars['ID']['input'];
 }>;
 
 
-export type GetActiveTherapeuticPathsByPatientQuery = { __typename?: 'Query', activeTherapeuticPathsByPatient: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
+export type GetActiveTherapeuticPathsByPatientQuery = { __typename?: 'Query', activeTherapeuticPathsByPatient: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
 
 export type GetTherapeuticPathsByOperatorQueryVariables = Exact<{
   operatorId: Scalars['ID']['input'];
 }>;
 
 
-export type GetTherapeuticPathsByOperatorQuery = { __typename?: 'Query', therapeuticPathsByOperator: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
+export type GetTherapeuticPathsByOperatorQuery = { __typename?: 'Query', therapeuticPathsByOperator: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
 
 export type GetTherapeuticPathsByPatientsQueryVariables = Exact<{
   patientIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
 }>;
 
 
-export type GetTherapeuticPathsByPatientsQuery = { __typename?: 'Query', therapeuticPathsByPatients: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, documents?: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
+export type GetTherapeuticPathsByPatientsQuery = { __typename?: 'Query', therapeuticPathsByPatients: Array<{ __typename?: 'TherapeuticPath', id: string, patientId: string, primaryOperatorId: string, name: string, diagnosis?: string | null, icdCode?: string | null, status: TherapeuticPathStatus, externalDoctorName?: string | null, externalPrescriptionRef?: string | null, notes?: string | null, createdAt: any, updatedAt: any, closedAt?: any | null, primaryOperator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, appUserId?: string | null } | null }> };
 
 export type GetPatientEvaluationForPathQueryVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7640,28 +9263,6 @@ export type GetEvaluationByPathScopeQueryVariables = Exact<{
 
 export type GetEvaluationByPathScopeQuery = { __typename?: 'Query', evaluationByPath?: { __typename?: 'PatientEvaluation', id: string, therapeuticPathId: string, operatorId: string, professione?: string | null, sportPraticati?: Array<string> | null, bmi?: number | null, motivoConsulto?: string | null, esordioSintomi?: string | null, statoAttualeSintomi?: string | null, fattoriAllevianti?: Array<string> | null, fattoriAggravanti?: Array<string> | null, andamentoDolore?: string | null, osservazione?: string | null, palpazione?: string | null, movimentoPassivo?: string | null, movimentoAttivo?: string | null, forzaMuscolare?: string | null, equilibrio?: string | null, esameNeurologico?: string | null, limitazioniAttivita?: string | null, fattoriPrognosticiPositivi?: string | null, fattoriPrognosticiNegativi?: string | null, strategieCoping?: string | null, diagnosiFisioterapica?: string | null, interventiProposti?: Array<string> | null, frequenzaSedute?: string | null, outcome?: string | null, criticita?: Array<string> | null, createdAt: any, updatedAt: any, bodyMapMarkers?: Array<{ __typename?: 'BodyMapMarker', id: string, x: number, y: number, note?: string | null }> | null, operator: { __typename?: 'Operator', id: string, name: string, surname?: string | null } } | null };
 
-export type GetPathDocumentQueryVariables = Exact<{
-  id: Scalars['ID']['input'];
-}>;
-
-
-export type GetPathDocumentQuery = { __typename?: 'Query', pathDocument?: { __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any } | null };
-
-export type GetDocumentsByPathQueryVariables = Exact<{
-  pathId: Scalars['ID']['input'];
-}>;
-
-
-export type GetDocumentsByPathQuery = { __typename?: 'Query', documentsByPath: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> };
-
-export type GetDocumentsByPathAndCategoryQueryVariables = Exact<{
-  pathId: Scalars['ID']['input'];
-  category: DocumentCategory;
-}>;
-
-
-export type GetDocumentsByPathAndCategoryQuery = { __typename?: 'Query', documentsByPathAndCategory: Array<{ __typename?: 'PathDocument', id: string, therapeuticPathId: string, type: DocumentType, category: DocumentCategory, fileName: string, originalFileName?: string | null, mimeType: string, fileSize: number, storagePath: string, thumbnailPath?: string | null, externalDoctorName?: string | null, notes?: string | null, description?: string | null, uploadedBy?: string | null, uploadedAt: any }> };
-
 export type CreateTreatmentMutationVariables = Exact<{
   appointmentId: Scalars['ID']['input'];
   therapeuticPathId: Scalars['ID']['input'];
@@ -7669,7 +9270,7 @@ export type CreateTreatmentMutationVariables = Exact<{
 }>;
 
 
-export type CreateTreatmentMutation = { __typename?: 'Mutation', createTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type CreateTreatmentMutation = { __typename?: 'Mutation', createTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type CompleteTreatmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7677,7 +9278,7 @@ export type CompleteTreatmentMutationVariables = Exact<{
 }>;
 
 
-export type CompleteTreatmentMutation = { __typename?: 'Mutation', completeTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type CompleteTreatmentMutation = { __typename?: 'Mutation', completeTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type CloseTreatmentLegacyMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7685,28 +9286,28 @@ export type CloseTreatmentLegacyMutationVariables = Exact<{
 }>;
 
 
-export type CloseTreatmentLegacyMutation = { __typename?: 'Mutation', closeTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type CloseTreatmentLegacyMutation = { __typename?: 'Mutation', closeTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type ReopenTreatmentLegacyMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ReopenTreatmentLegacyMutation = { __typename?: 'Mutation', reopenTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type ReopenTreatmentLegacyMutation = { __typename?: 'Mutation', reopenTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type ReopenTreatmentByOperatorMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ReopenTreatmentByOperatorMutation = { __typename?: 'Mutation', reopenTreatmentByOperator: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type ReopenTreatmentByOperatorMutation = { __typename?: 'Mutation', reopenTreatmentByOperator: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type ReopenTreatmentBySecretaryMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ReopenTreatmentBySecretaryMutation = { __typename?: 'Mutation', reopenTreatmentBySecretary: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type ReopenTreatmentBySecretaryMutation = { __typename?: 'Mutation', reopenTreatmentBySecretary: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type ForceCloseTreatmentLegacyMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7714,7 +9315,7 @@ export type ForceCloseTreatmentLegacyMutationVariables = Exact<{
 }>;
 
 
-export type ForceCloseTreatmentLegacyMutation = { __typename?: 'Mutation', forceCloseTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type ForceCloseTreatmentLegacyMutation = { __typename?: 'Mutation', forceCloseTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type RecordTreatmentPaymentLegacyMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7723,14 +9324,14 @@ export type RecordTreatmentPaymentLegacyMutationVariables = Exact<{
 }>;
 
 
-export type RecordTreatmentPaymentLegacyMutation = { __typename?: 'Mutation', recordTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type RecordTreatmentPaymentLegacyMutation = { __typename?: 'Mutation', recordTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type CancelTreatmentPaymentLegacyMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type CancelTreatmentPaymentLegacyMutation = { __typename?: 'Mutation', cancelTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type CancelTreatmentPaymentLegacyMutation = { __typename?: 'Mutation', cancelTreatmentPayment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type MarkTreatmentInvoicedToPatientMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7738,7 +9339,7 @@ export type MarkTreatmentInvoicedToPatientMutationVariables = Exact<{
 }>;
 
 
-export type MarkTreatmentInvoicedToPatientMutation = { __typename?: 'Mutation', markTreatmentInvoicedToPatient: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type MarkTreatmentInvoicedToPatientMutation = { __typename?: 'Mutation', markTreatmentInvoicedToPatient: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type MarkTreatmentInvoicedByOperatorMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7746,7 +9347,7 @@ export type MarkTreatmentInvoicedByOperatorMutationVariables = Exact<{
 }>;
 
 
-export type MarkTreatmentInvoicedByOperatorMutation = { __typename?: 'Mutation', markTreatmentInvoicedByOperator: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type MarkTreatmentInvoicedByOperatorMutation = { __typename?: 'Mutation', markTreatmentInvoicedByOperator: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type UpdateTreatmentInstrumentsMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7754,14 +9355,14 @@ export type UpdateTreatmentInstrumentsMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTreatmentInstrumentsMutation = { __typename?: 'Mutation', updateTreatmentInstruments: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type UpdateTreatmentInstrumentsMutation = { __typename?: 'Mutation', updateTreatmentInstruments: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type UpdateTreatmentMutationVariables = Exact<{
   input: UpdateTreatmentInput;
 }>;
 
 
-export type UpdateTreatmentMutation = { __typename?: 'Mutation', updateTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
+export type UpdateTreatmentMutation = { __typename?: 'Mutation', updateTreatment: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } };
 
 export type DeleteTreatmentMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7770,30 +9371,30 @@ export type DeleteTreatmentMutationVariables = Exact<{
 
 export type DeleteTreatmentMutation = { __typename?: 'Mutation', deleteTreatment: boolean };
 
-export type TreatmentFieldsFragment = { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any };
+export type TreatmentFieldsFragment = { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any };
 
-export type TreatmentWithRelationsFieldsFragment = { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } };
+export type TreatmentWithRelationsFieldsFragment = { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } };
 
 export type GetTreatmentQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTreatmentQuery = { __typename?: 'Query', treatment?: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } | null };
+export type GetTreatmentQuery = { __typename?: 'Query', treatment?: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } | null };
 
 export type GetTreatmentByAppointmentQueryVariables = Exact<{
   appointmentId: Scalars['ID']['input'];
 }>;
 
 
-export type GetTreatmentByAppointmentQuery = { __typename?: 'Query', treatmentByAppointment?: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } | null };
+export type GetTreatmentByAppointmentQuery = { __typename?: 'Query', treatmentByAppointment?: { __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } } | null };
 
 export type GetTreatmentsByAppointmentsQueryVariables = Exact<{
   appointmentIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
 }>;
 
 
-export type GetTreatmentsByAppointmentsQuery = { __typename?: 'Query', treatmentsByAppointments: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsByAppointmentsQuery = { __typename?: 'Query', treatmentsByAppointments: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsByOperatorQueryVariables = Exact<{
   operatorId: Scalars['ID']['input'];
@@ -7801,7 +9402,7 @@ export type GetTreatmentsByOperatorQueryVariables = Exact<{
 }>;
 
 
-export type GetTreatmentsByOperatorQuery = { __typename?: 'Query', treatmentsByOperator: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsByOperatorQuery = { __typename?: 'Query', treatmentsByOperator: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsByOperatorsQueryVariables = Exact<{
   operatorIds: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
@@ -7811,12 +9412,12 @@ export type GetTreatmentsByOperatorsQueryVariables = Exact<{
 }>;
 
 
-export type GetTreatmentsByOperatorsQuery = { __typename?: 'Query', treatmentsByOperators: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsByOperatorsQuery = { __typename?: 'Query', treatmentsByOperators: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsPendingClosureQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetTreatmentsPendingClosureQuery = { __typename?: 'Query', treatmentsPendingClosure: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsPendingClosureQuery = { __typename?: 'Query', treatmentsPendingClosure: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsByPatientQueryVariables = Exact<{
   patientId: Scalars['ID']['input'];
@@ -7825,7 +9426,7 @@ export type GetTreatmentsByPatientQueryVariables = Exact<{
 }>;
 
 
-export type GetTreatmentsByPatientQuery = { __typename?: 'Query', treatmentsByPatient: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsByPatientQuery = { __typename?: 'Query', treatmentsByPatient: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsNotInvoicedToPatientQueryVariables = Exact<{
   dateFrom?: InputMaybe<Scalars['String']['input']>;
@@ -7833,7 +9434,7 @@ export type GetTreatmentsNotInvoicedToPatientQueryVariables = Exact<{
 }>;
 
 
-export type GetTreatmentsNotInvoicedToPatientQuery = { __typename?: 'Query', treatmentsNotInvoicedToPatient: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsNotInvoicedToPatientQuery = { __typename?: 'Query', treatmentsNotInvoicedToPatient: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsNotInvoicedByOperatorQueryVariables = Exact<{
   operatorId?: InputMaybe<Scalars['ID']['input']>;
@@ -7842,14 +9443,14 @@ export type GetTreatmentsNotInvoicedByOperatorQueryVariables = Exact<{
 }>;
 
 
-export type GetTreatmentsNotInvoicedByOperatorQuery = { __typename?: 'Query', treatmentsNotInvoicedByOperator: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsNotInvoicedByOperatorQuery = { __typename?: 'Query', treatmentsNotInvoicedByOperator: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type GetTreatmentsByTherapeuticPathQueryVariables = Exact<{
   therapeuticPathId: Scalars['ID']['input'];
 }>;
 
 
-export type GetTreatmentsByTherapeuticPathQuery = { __typename?: 'Query', treatmentsByTherapeuticPath: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
+export type GetTreatmentsByTherapeuticPathQuery = { __typename?: 'Query', treatmentsByTherapeuticPath: Array<{ __typename?: 'Treatment', id: string, appointmentId?: string | null, operatorId: string, patientId?: string | null, serviceId?: string | null, therapeuticPathId: string, scontoFE: boolean, status: TreatmentStatus, isTest: boolean, forcedClosure: boolean, startedAt: any, completedAt?: any | null, closedAt?: any | null, clinicalNotes?: string | null, secretaryNotes?: string | null, operatorNotes?: string | null, patientNotes?: string | null, painLevel?: number | null, painBefore?: number | null, painAfter?: number | null, rescheduleRequested?: boolean | null, reschedulingType?: string | null, suggestInDays?: number | null, suggestDateRangeStart?: string | null, suggestDateRangeEnd?: string | null, reschedulingNotes?: string | null, price: number, isPaid: boolean, paymentMethod?: PaymentMethod | null, paidAt?: any | null, collectedBy?: string | null, collectedByName?: string | null, isInvoicedToPatient: boolean, invoicedToPatientAt?: any | null, patientInvoiceNumber?: string | null, isInvoicedByOperator: boolean, invoicedByOperatorAt?: any | null, operatorInvoiceNumber?: string | null, billingStatus: TreatmentBillingStatus, amendmentRevision: number, accountingBillableEventId?: string | null, accountingInvoiceUrl?: string | null, accountingInvoiceIssuedAt?: any | null, accountingDocumentType?: string | null, accountingCreditNoteNumber?: string | null, accountingCreditNoteIssuedAt?: any | null, accountingRefundReason?: string | null, billingAlertMessage?: string | null, billingAlertAt?: any | null, billingAlertDismissedAt?: any | null, cancelledAt?: any | null, cancelledByUserId?: string | null, cancellationReason?: string | null, createdAt: any, updatedAt: any, appointment?: { __typename?: 'AvailabilityAppointment', id: string, startTime: string, endTime: string, bookingStatus: BookingStatus } | null, operator?: { __typename?: 'Operator', id: string, name: string, surname?: string | null, email?: string | null, royaltyPercentage: number, appUserId?: string | null } | null, patient?: { __typename?: 'Patient', id: string, displayName?: string | null, subject?: { __typename?: 'RegistrySubject', id: string, firstName?: string | null, lastName?: string | null, taxCode?: string | null, primaryEmail?: string | null, primaryPhone?: string | null, contacts: Array<{ __typename?: 'RegistryContact', id: string, contactType: string, value: string, isPrimary: boolean }> } | null } | null, service?: { __typename?: 'Service', id: string, name: string, defaultDuration: number, defaultPrice: number } | null, treatmentServices?: Array<{ __typename?: 'TreatmentService', id: string, serviceId: string, price?: number | null, duration?: number | null, orderPosition: number, isCustomPrice: boolean, service: { __typename?: 'Service', id: string, name: string, defaultPrice: number, discountFE?: number | null, defaultDuration: number } }> | null, instruments?: Array<{ __typename?: 'TreatmentInstrument', id: string, instrumentId: string, instrumentCategoryId?: string | null, wasUsed: boolean, startOffsetMinutes: number, endOffsetMinutes: number, orderPosition?: number | null }> | null, therapeuticPath: { __typename?: 'TherapeuticPath', id: string, name: string, status: TherapeuticPathStatus, diagnosis?: string | null } }> };
 
 export type CreateWaitingListEntryMutationVariables = Exact<{
   input: CreateWaitingListEntryInput;

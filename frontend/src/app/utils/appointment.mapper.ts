@@ -26,6 +26,7 @@ export function mapAvailabilityAppointmentToAppointment(aa: AvailabilityAppointm
     treatmentStatus: aa.treatmentStatus?.toLowerCase() as TreatmentStatus | undefined,
     hasConflict: aa.hasConflict || false,
     conflictReason: aa.conflictReason?.toLowerCase() as ConflictReason | undefined,
+    conflictDetectedAt: aa.conflictDetectedAt ?? undefined,
 
     // Strumenti
     instruments: mapInstruments(aa.instruments),

@@ -5,6 +5,7 @@ import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 import { UserRole } from './entities/user-role.entity';
 import { RolePermission } from './entities/role-permission.entity';
+import { PermissionDenial } from './entities/permission-denial.entity';
 import { Secretary } from './entities/secretary.entity';
 import { PrivacyOfficer } from './entities/privacy-officer.entity';
 import { ItManager } from './entities/it-manager.entity';
@@ -12,6 +13,7 @@ import { Operator } from '../availability/entities/operator.entity';
 // Services
 import { AppUserService } from './services/app-user.service';
 import { RoleService } from './services/role.service';
+import { PermissionDenialService } from './services/permission-denial.service';
 import { UserLinkingService } from './services/user-linking.service';
 import { KeycloakAdminService } from './services/keycloak-admin.service';
 import { SecretaryService } from './services/secretary.service';
@@ -20,6 +22,7 @@ import { ItManagerService } from './services/it-manager.service';
 // Resolvers
 import { AppUserResolver } from './resolvers/app-user.resolver';
 import { RoleResolver } from './resolvers/role.resolver';
+import { PermissionDenialResolver } from './resolvers/permission-denial.resolver';
 import { SecretaryResolver } from './resolvers/secretary.resolver';
 import { PrivacyOfficerResolver } from './resolvers/privacy-officer.resolver';
 import { ItManagerResolver } from './resolvers/it-manager.resolver';
@@ -33,6 +36,7 @@ import { AuthorizationGuard } from './guards/authorization.guard';
     // Services
     AppUserService,
     RoleService,
+    PermissionDenialService,
     UserLinkingService,
     KeycloakAdminService,
     SecretaryService,
@@ -41,6 +45,7 @@ import { AuthorizationGuard } from './guards/authorization.guard';
     // Resolvers
     AppUserResolver,
     RoleResolver,
+    PermissionDenialResolver,
     SecretaryResolver,
     PrivacyOfficerResolver,
     ItManagerResolver,
@@ -49,6 +54,7 @@ import { AuthorizationGuard } from './guards/authorization.guard';
   exports: [
     AppUserService,
     RoleService,
+    PermissionDenialService,
     UserLinkingService,
     KeycloakAdminService,
     SecretaryService,

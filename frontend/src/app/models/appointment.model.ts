@@ -20,6 +20,24 @@ export type ConflictReason = 'template_change' | 'operator_sick' | 'operator_vac
 export type RecurringType = 'daily' | 'weekly' | 'monthly';
 export type RecurringEndType = 'never' | 'after' | 'until';
 
+/**
+ * Modalità di ricorrenza mensile.
+ * - 'day_of_month': stesso giorno del mese (il 15 di ogni mese). Default.
+ * - 'day_of_week': per posizione nella settimana, descritta da monthlyRules
+ *   (es. "il primo mercoledì", "l'ultimo lunedì").
+ */
+export type MonthlyMode = 'day_of_month' | 'day_of_week';
+
+/**
+ * Una fascia mensile: "il <ordinal> <weekday> del mese".
+ * ordinal 1..4 = prima..quarta occorrenza, -1 = ultima (nei mesi con cinque
+ * occorrenze del giorno NON coincide con la quarta).
+ */
+export interface MonthlyRule {
+  ordinal: 1 | 2 | 3 | 4 | -1;
+  weekday: number;  // 0=Dom, 1=Lun, ..., 6=Sab
+}
+
 export interface RepeatConfig {
   enabled?: boolean;  // Solo per UI, non salvato
   type: RecurringType;
@@ -28,6 +46,10 @@ export interface RepeatConfig {
   endType: RecurringEndType;
   occurrences?: number;
   untilDate?: string;
+  /** Solo per type='monthly'. */
+  monthlyMode?: MonthlyMode;
+  /** Fasce mensili quando monthlyMode = 'day_of_week'. */
+  monthlyRules?: MonthlyRule[];
 }
 
 /**
@@ -115,6 +137,8 @@ export interface Appointment {
   treatmentStatus?: TreatmentStatus;
   hasConflict?: boolean;
   conflictReason?: ConflictReason;
+  /** Quando il conflitto è stato rilevato: mostrato nei riepiloghi. */
+  conflictDetectedAt?: string;
 
   // Strumenti
   instruments?: AppointmentInstrument[];

@@ -58,6 +58,14 @@
           </p>
         </div>
 
+        <!-- Da dove riceve l'agenda, e cosa gli manca in scheda. Nella card
+             perché "chi è coperto e chi no" si guarda su tutti insieme. -->
+        <app-operator-sync-badges
+          [summary]="syncSummary[operator.id] || null"
+          [hasEmail]="!!operator.email"
+          [hasPhone]="!!operator.phone">
+        </app-operator-sync-badges>
+
         <div class="operator-services" *ngIf="operatorServices[operator.id]">
           <p><strong>Servizi assegnati:</strong></p>
           <div class="service-chips">
@@ -273,6 +281,36 @@
           <small class="form-text">
             Se disattivato, l'operatore non potrà incassare dai propri trattamenti (la segreteria può sempre). Per gli istruttori di palestra viene disattivato di default.
           </small>
+        </div>
+
+        <!-- Feed ICS: solo in modifica. In creazione l'operatore non ha
+             ancora un id a cui agganciare il link. -->
+        <div class="form-group" *ngIf="isEditMode && editingOperatorId">
+          <app-calendar-sync-section>
+            <!-- Parte comune: cosa esce dal gestionale. Decisione unica, vale
+                 per entrambi i modi, e per questo sta sopra e fuori da tutti
+                 e due. -->
+            <app-operator-external-privacy syncCommon [operatorId]="editingOperatorId">
+            </app-operator-external-privacy>
+
+            <!-- Impostazioni dello studio, non di questa persona: valgono per
+                 tutti gli operatori. Stanno nella parte comune perché la
+                 domanda "cosa resta nel calendario" precede quella su quale
+                 canale lo porta. -->
+            <app-calendar-sync-settings syncCommon></app-calendar-sync-settings>
+
+            <app-operator-calendar-feed syncIcs
+                                        [operatorId]="editingOperatorId"
+                                        [operatorPhone]="editingOperator.phone || null"
+                                        [operatorEmail]="editingOperator.email || null">
+            </app-operator-calendar-feed>
+
+            <!-- Google affianca il feed ICS, non lo sostituisce: l'ICS copre
+                 iOS e Outlook e regge anche quando l'autorizzazione Google
+                 scade. -->
+            <app-operator-google-calendar syncGoogle [operatorId]="editingOperatorId">
+            </app-operator-google-calendar>
+          </app-calendar-sync-section>
         </div>
       </div>
 

@@ -20,7 +20,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatRadioModule } from '@angular/material/radio';
-import { CalendarOperator, SearchFilters } from '../../models/calendar-v2.model';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+  CalendarOperator, SearchFilters,
+  DEFAULT_SEARCH_FILTERS, DEFAULT_SLOT_SEARCH_ENABLED,
+} from '../../models/calendar-v2.model';
 import {
   Treatment, PaymentMethod,
   getTreatmentStatusLabel, getTreatmentStatusColor, getPaymentMethodLabel,
@@ -37,7 +41,7 @@ import { WhatsappConversation } from '../../../whatsapp-chat/models/whatsapp-cha
     CommonModule, FormsModule,
     MatCheckboxModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatDividerModule,
-    MatExpansionModule, MatRadioModule,
+    MatExpansionModule, MatRadioModule, MatTooltipModule,
     ParkedChatsPanelComponent,
   ],
   template: `
@@ -106,11 +110,25 @@ import { WhatsappConversation } from '../../../whatsapp-chat/models/whatsapp-cha
             </mat-expansion-panel-header>
 
             <div class="search-filters">
-              <!-- Toggle master -->
-              <mat-checkbox [(ngModel)]="slotSearchEnabled"
-                            (ngModelChange)="slotSearchToggle.emit($event)">
-                Mostra slot disponibili
-              </mat-checkbox>
+              <!-- Riga toggle master + reset. Il reset riporta i filtri come
+                   al primo caricamento della pagina; e' disabilitato quando
+                   sono gia' ai default, cosi' non c'e' un pulsante che non fa
+                   niente. -->
+              <div class="search-header-row">
+                <mat-checkbox [(ngModel)]="slotSearchEnabled"
+                              (ngModelChange)="slotSearchToggle.emit($event)">
+                  Mostra slot disponibili
+                </mat-checkbox>
+
+                <button mat-icon-button type="button"
+                        class="reset-filters-btn"
+                        [disabled]="filtersAreDefault"
+                        (click)="resetFilters()"
+                        matTooltip="Ripristina i filtri iniziali"
+                        aria-label="Ripristina i filtri di ricerca">
+                  <mat-icon>restart_alt</mat-icon>
+                </button>
+              </div>
 
               <!-- Durata -->
               <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
@@ -262,8 +280,11 @@ import { WhatsappConversation } from '../../../whatsapp-chat/models/whatsapp-cha
                   }
                 </div>
 
-                <!-- Popup dettagli (solo se selezionato E status operator_completed) -->
-                @if (isTreatmentSelected(t) && isOperatorCompleted(t)) {
+                <!-- Popup dettagli: trattamenti completati dall'operatore E
+                     gia' chiusi dalla segreteria. La chiusura non cancella le
+                     indicazioni per la riprogrammazione: servono ancora a chi
+                     al telefono deve fissare la seduta successiva. -->
+                @if (isTreatmentSelected(t) && hasSecretaryDetails(t)) {
                   <div class="treatment-details-popup" (click)="$event.stopPropagation()">
                     <div class="popup-title">Dettagli per la Segreteria</div>
 
@@ -311,7 +332,7 @@ import { WhatsappConversation } from '../../../whatsapp-chat/models/whatsapp-cha
                       <span class="row-value">
                         @if (t.isPaid) {
                           <span class="badge badge-paid">
-                            {{ isCollectedByOperator(t) ? 'Incassato dall\\'operatore' : 'Incassato dalla segreteria' }}
+                            {{ collectedByLabel(t) }}
                           </span>
                           @if (t.paymentMethod) {
                             <span class="payment-method">({{ getPaymentMethodLabelForTreatment(t.paymentMethod) }})</span>
@@ -505,6 +526,28 @@ import { WhatsappConversation } from '../../../whatsapp-chat/models/whatsapp-cha
     }
 
     .search-filters mat-checkbox { font-size: 0.8rem; }
+
+    /* Toggle master a sinistra, reset a destra sulla stessa riga. */
+    .search-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+
+    .reset-filters-btn {
+      flex: 0 0 auto;
+      width: 32px;
+      height: 32px;
+      line-height: 32px;
+      color: #64748b;
+    }
+
+    .reset-filters-btn mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
 
     .filter-group {
       padding-left: 4px;
@@ -704,17 +747,36 @@ export class CalendarV2SidebarComponent {
    * "Mostra slot disponibili": abilitato di default (richiesta calendario v3).
    * L'utente può comunque disattivarlo manualmente.
    */
-  slotSearchEnabled = true;
+  slotSearchEnabled = DEFAULT_SLOT_SEARCH_ENABLED;
 
-  filters: SearchFilters = {
-    duration: 45,
-    withInstrument: false,
-    instrumentCount: 1,
-    instrumentPosition: 'first',
-    instrumentOrderMatters: false,
-    instrumentCategoryId: null,
-    instrument2CategoryId: null,
-  };
+  filters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS };
+
+  /**
+   * Vero quando filtri e toggle sono nello stato di primo caricamento: il
+   * pulsante di reset si spegne, invece di restare acceso senza avere nulla
+   * da ripristinare.
+   */
+  get filtersAreDefault(): boolean {
+    if (this.slotSearchEnabled !== DEFAULT_SLOT_SEARCH_ENABLED) return false;
+    return (Object.keys(DEFAULT_SEARCH_FILTERS) as (keyof SearchFilters)[]).every(
+      key => this.filters[key] === DEFAULT_SEARCH_FILTERS[key],
+    );
+  }
+
+  /**
+   * Riporta la ricerca disponibilita' allo stato iniziale della pagina.
+   * Rimette anche il toggle "Mostra slot disponibili", che fa parte di cio'
+   * che l'utente vede al primo caricamento, e notifica entrambi i canali
+   * (filtri e toggle) perche' il calendario ricalcoli gli slot.
+   */
+  resetFilters(): void {
+    this.filters = { ...DEFAULT_SEARCH_FILTERS };
+    if (this.slotSearchEnabled !== DEFAULT_SLOT_SEARCH_ENABLED) {
+      this.slotSearchEnabled = DEFAULT_SLOT_SEARCH_ENABLED;
+      this.slotSearchToggle.emit(DEFAULT_SLOT_SEARCH_ENABLED);
+    }
+    this.emitFilters();
+  }
 
   /**
    * Operatori effettivamente mostrabili: esclude gli istruttori palestra
@@ -898,9 +960,17 @@ export class CalendarV2SidebarComponent {
     return this.selectedTreatmentForDetails?.id === treatment.id;
   }
 
-  /** I dettagli estesi sono pensati per i trattamenti completati dall'operatore. */
-  isOperatorCompleted(treatment: Treatment): boolean {
-    return (treatment.status || '').toLowerCase() === 'operator_completed';
+  /**
+   * Su quali trattamenti si apre il riquadro "Dettagli per la Segreteria".
+   *
+   * Vale da quando l'operatore ha finito (`operator_completed`) e continua a
+   * valere dopo la chiusura (`closed`): il trattamento chiuso e' proprio
+   * quello su cui la segreteria richiama il paziente, e prima le note e la
+   * riprogrammazione sparivano nel momento esatto in cui servivano.
+   */
+  hasSecretaryDetails(treatment: Treatment): boolean {
+    const status = (treatment.status || '').toLowerCase();
+    return status === 'operator_completed' || status === 'closed';
   }
 
   hasReschedulingInfo(treatment: Treatment): boolean {
@@ -912,9 +982,16 @@ export class CalendarV2SidebarComponent {
     );
   }
 
-  isCollectedByOperator(treatment: Treatment): boolean {
-    if (!treatment.isPaid) return false;
-    return treatment.collectedBy === treatment.operatorId;
+  /**
+   * Etichetta dell'incasso: nome di chi l'ha registrato (`collectedByName`,
+   * risolto dal backend). Il vecchio confronto `collectedBy === operatorId`
+   * non regge più: dal 27/08/2026 `collectedBy` è sempre un AppUser.id.
+   */
+  collectedByLabel(treatment: Treatment): string {
+    if (!treatment.isPaid) return '';
+    return treatment.collectedByName
+      ? `Incassato da ${treatment.collectedByName}`
+      : 'Incassato';
   }
 
   /** Chiude il popup quando si clicca fuori da una card trattamento. */

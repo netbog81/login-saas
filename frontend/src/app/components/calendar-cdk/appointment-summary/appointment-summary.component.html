@@ -80,6 +80,46 @@
 
   <!-- Content -->
   <div class="summary-content">
+    <!-- Conflitto di disponibilità: in cima, prima di tutto il resto. È
+         l'unica cosa in questo riquadro che richiede una decisione, e chi
+         apre il riepilogo di un appuntamento segnalato lo apre per quella. -->
+    <app-conflict-banner
+      [conflict]="conflictInfo"
+      [compact]="true"
+      moveTooltip="Cerca uno slot libero dell'operatore e spostalo lì"
+      (action)="onConflictAction($event)">
+    </app-conflict-banner>
+
+    <!-- Assenza: sopra tutto il resto, come il conflitto. Chi apre il
+         riepilogo di un no-show lo apre per una di queste due cose, e
+         nessuna delle due si ricava dai pulsanti in alto: "Modifica"
+         porterebbe dentro la scheda appuntamento, e per prenotare un altro
+         paziente bisognerebbe indovinare dove cliccare nella cella. -->
+    <div class="no-show-box" *ngIf="isNoShow">
+      <div class="no-show-head">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <line x1="17" y1="8" x2="22" y2="13"></line>
+          <line x1="22" y1="8" x2="17" y2="13"></line>
+        </svg>
+        <span>Paziente non presentato — la fascia è di nuovo libera</span>
+      </div>
+      <div class="no-show-actions">
+        <button class="no-show-btn primary"
+                (click)="onMarkAttended()"
+                title="Il paziente è arrivato dopo tutto: toglie l'assenza e la scala dai conteggi no show">
+          Paziente arrivato
+        </button>
+        <button class="no-show-btn"
+                (click)="onBookSlot()"
+                title="Prenota un altro paziente in questa fascia">
+          Prenota in questa fascia
+        </button>
+      </div>
+    </div>
+
     <!-- Patient/Title -->
     <div class="info-section">
       <div class="info-label">Paziente</div>

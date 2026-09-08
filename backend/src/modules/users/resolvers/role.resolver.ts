@@ -1,10 +1,12 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
 import { Role } from '../entities/role.entity';
 import { Permission } from '../entities/permission.entity';
 import { UserRole } from '../entities/user-role.entity';
 import { RolePermission } from '../entities/role-permission.entity';
 import { RoleService } from '../services/role.service';
 import { AssignRoleInput } from '../dto/link-keycloak-user.input';
+import { AuthorizationGuard, RequirePermissions } from '../guards/authorization.guard';
 
 @Resolver(() => Role)
 export class RoleResolver {
@@ -32,6 +34,8 @@ export class RoleResolver {
     return this.roleService.getUserRoles(appUserId);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Role)
   async createRole(
     @Args('name') name: string,
@@ -40,21 +44,29 @@ export class RoleResolver {
     return this.roleService.createRole(name, description);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async deleteRole(@Args('id', { type: () => ID }) id: string): Promise<boolean> {
     return this.roleService.deleteRole(id);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => UserRole)
   async assignRole(@Args('input') input: AssignRoleInput): Promise<UserRole> {
     return this.roleService.assignRoleToUser(input.appUserId, input.roleId);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async revokeRole(@Args('input') input: AssignRoleInput): Promise<boolean> {
     return this.roleService.revokeRoleFromUser(input.appUserId, input.roleId);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => RolePermission)
   async assignPermissionToRole(
     @Args('roleId', { type: () => ID }) roleId: string,
@@ -63,6 +75,8 @@ export class RoleResolver {
     return this.roleService.assignPermissionToRole(roleId, permissionId);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async revokePermissionFromRole(
     @Args('roleId', { type: () => ID }) roleId: string,

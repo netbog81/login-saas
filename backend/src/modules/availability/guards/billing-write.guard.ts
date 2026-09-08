@@ -28,17 +28,25 @@ import { GqlExecutionContext } from '@nestjs/graphql';
  *   @Mutation(() => Treatment)
  *   async cancelTreatment(...) { ... }
  */
+/**
+ * Ruoli che operano "da segreteria": abilitati alle azioni di fatturazione e,
+ * più in generale, a incassare qualsiasi trattamento (anche gli sconto FE di
+ * qualunque operatore). Fonte unica: la usano BillingWriteGuard,
+ * TreatmentResolver e PendingFeCollectionsResolver.
+ */
+export const BILLING_SECRETARY_ROLES = [
+  'segreteria',
+  'admin',
+  'amministratore',
+  'superadmin',
+];
+
 @Injectable()
 export class BillingWriteGuard implements CanActivate {
   private readonly logger = new Logger(BillingWriteGuard.name);
 
   /** Ruoli abilitati alle azioni di fatturazione. */
-  private static readonly BILLING_ROLES = [
-    'segreteria',
-    'admin',
-    'amministratore',
-    'superadmin',
-  ];
+  private static readonly BILLING_ROLES = BILLING_SECRETARY_ROLES;
 
   canActivate(context: ExecutionContext): boolean {
     const ctx = GqlExecutionContext.create(context);

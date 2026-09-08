@@ -30,6 +30,7 @@ import { TreatmentService } from '../../../services/treatment.service';
 import { Operator } from '../../../graphql/generated/types';
 
 import { StatsCardComponent } from '../components/dashboard/stats-card/stats-card.component';
+import { GoogleTokenMonitorContainer } from '../../operator-google-calendar/containers/google-token-monitor.container';
 import { QuickActionsComponent } from '../components/dashboard/quick-actions/quick-actions.component';
 import { OperatorWorkspaceStateService } from '../services/operator-workspace-state.service';
 import { TrattamentiContainer } from '../../trattamenti/containers/trattamenti.container';
@@ -49,6 +50,7 @@ import {
   standalone: true,
   imports: [
     CommonModule,
+    GoogleTokenMonitorContainer,
     MatTabsModule,
     MatIconModule,
     StatsCardComponent,
@@ -69,6 +71,14 @@ import {
           }
         </p>
       </header>
+
+      <!-- Stato del collegamento con Google: compare solo per chi lo usa,
+           e solo quando c'è qualcosa da sapere. Sta in alto perché quando
+           serve è la cosa più urgente della schermata: un calendario fermo
+           non si nota da solo. -->
+      @if (selectedOperator) {
+        <app-google-token-monitor [operatorId]="selectedOperator.id"></app-google-token-monitor>
+      }
 
       <!-- Error banner -->
       @if (uiState.error) {

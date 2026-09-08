@@ -23,11 +23,27 @@ import {
   UpdateOperatorInput,
 } from '../../../graphql/generated/types';
 import { getMacroCategoryLabel } from '../../../graphql/types';
+import { OperatorCalendarFeedContainer } from '../../../features/operator-calendar-feed/containers/operator-calendar-feed.container';
+import { OperatorGoogleCalendarContainer } from '../../../features/operator-google-calendar/containers/operator-google-calendar.container';
+import { OperatorExternalPrivacyContainer } from '../../../features/operator-calendar-feed/containers/operator-external-privacy.container';
+import { CalendarSyncSectionComponent } from '../../../features/operator-calendar-sync/components/calendar-sync-section/calendar-sync-section.component';
+import { CalendarSyncSettingsContainer } from '../../../features/operator-calendar-sync/containers/calendar-sync-settings.container';
+import { OperatorSyncBadgesComponent } from '../../../features/operator-google-calendar/components/operator-sync-badges/operator-sync-badges.component';
+import { OperatorGoogleCalendarService } from '../../../features/operator-google-calendar/services/operator-google-calendar.service';
+import { OperatorSyncSummary } from '../../../features/operator-google-calendar/models/operator-google-calendar.model';
 
 @Component({
   selector: 'app-operator-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, OverlayModule, CdkMenuModule],
+  imports: [
+    CommonModule, FormsModule, OverlayModule, CdkMenuModule,
+    OperatorCalendarFeedContainer,
+    OperatorGoogleCalendarContainer,
+    OperatorExternalPrivacyContainer,
+    CalendarSyncSectionComponent,
+    CalendarSyncSettingsContainer,
+    OperatorSyncBadgesComponent,
+  ],
   templateUrl: './operator-management.component.html',
   styleUrls: ['./operator-management.component.scss'],
 })
@@ -77,6 +93,14 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
   showServiceAssignment = false;
   selectedServices: string[] = [];
   operatorServices: { [operatorId: string]: Service[] } = {};
+
+  /**
+   * Stato di sincronizzazione per operatore, indicizzato per id.
+   *
+   * Caricato una volta sola per tutto l'elenco: una chiamata per card avrebbe
+   * significato venti richieste per mostrare tre pastiglie.
+   */
+  syncSummary: { [operatorId: string]: OperatorSyncSummary } = {};
 
   // Service filters for modal
   allSubcategories: ServiceSubcategory[] = [];
@@ -129,7 +153,8 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
     private operatorCategoryService: OperatorCategoryService,
     private serviceService: ServiceService,
     private serviceSubcategoryService: ServiceSubcategoryService,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    private googleCalendarService: OperatorGoogleCalendarService,
   ) {}
 
   ngOnInit() {
@@ -185,6 +210,7 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
 
   loadOperators() {
     this.availabilityState.loadOperators();
+    this.loadSyncSummary();
   }
 
   loadCategories() {
@@ -751,5 +777,23 @@ export class OperatorManagementComponent implements OnInit, OnDestroy {
       }
     }
     this.overlayMouseDownTarget = null;
+  }
+
+  /**
+   * Stato di sincronizzazione di tutti gli operatori.
+   *
+   * Un errore qui non si mostra: le pastiglie sono un di piu' informativo, e
+   * un banner rosso sull'elenco degli operatori farebbe pensare a un problema
+   * degli operatori.
+   */
+  private loadSyncSummary(): void {
+    this.googleCalendarService.getSyncSummary().subscribe({
+      next: (rows) => {
+        const map: { [operatorId: string]: OperatorSyncSummary } = {};
+        for (const row of rows) map[row.operatorId] = row;
+        this.ngZone.run(() => { this.syncSummary = map; });
+      },
+      error: () => undefined,
+    });
   }
 }

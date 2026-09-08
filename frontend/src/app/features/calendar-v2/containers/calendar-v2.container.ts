@@ -36,7 +36,7 @@ import { GymGridComponent, GymRoom } from '../components/gym-grid/gym-grid.compo
 
 // Dialog Material esistenti (riuso dal v1)
 import { MatDialog } from '@angular/material/dialog';
-import { EventMatDialogComponent, EventMatDialogData, EventMatDialogResult } from '../../../shared/components/event-mat-dialog';
+import { EventMatDialogComponent, EventMatDialogData, EventMatDialogResult, wireAttendanceActions } from '../../../shared/components/event-mat-dialog';
 import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogData, GymAppointmentMatDialogResult } from '../../../shared/components/gym-appointment-mat-dialog';
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
@@ -981,6 +981,11 @@ export class CalendarV2Container implements OnInit, OnDestroy {
       data: dialogData,
     });
 
+    // Azioni di presenza col dialog aperto (vedi wireAttendanceActions).
+    wireAttendanceActions(dialogRef, this.appointmentService, () =>
+      this.reloadCurrentView(),
+    );
+
     dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(async (result: EventMatDialogResult | undefined) => {
       if (!result || result.action === 'cancel') return;
 
@@ -1009,7 +1014,7 @@ export class CalendarV2Container implements OnInit, OnDestroy {
         );
       } else if (result.action === 'cancel-with-notice' && result.appointmentId) {
         await this.handleStatusAction(
-          () => this.appointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria', 'secretary'),
+          () => this.appointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria'),
           'disdire l\'appuntamento',
         );
       }

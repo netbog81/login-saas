@@ -77,8 +77,8 @@ export const MARK_APPOINTMENT_AS_NO_SHOW = gql`
  */
 export const CANCEL_APPOINTMENT_WITH_NOTICE = gql`
   ${AVAILABILITY_APPOINTMENT_FIELDS}
-  mutation CancelAppointmentWithNotice($id: ID!, $reason: String!, $cancelledBy: ID!) {
-    cancelAppointmentWithNotice(id: $id, reason: $reason, cancelledBy: $cancelledBy) {
+  mutation CancelAppointmentWithNotice($id: ID!, $reason: String!) {
+    cancelAppointmentWithNotice(id: $id, reason: $reason) {
       ...AvailabilityAppointmentFields
     }
   }
@@ -168,11 +168,13 @@ export const MAKE_APPOINTMENT_RECURRING = gql`
     $appointmentId: ID!
     $repeatConfig: RepeatConfigInput!
     $force: Boolean
+    $occurrences: [RecurringOccurrenceInput!]
   ) {
     makeAppointmentRecurring(
       appointmentId: $appointmentId
       repeatConfig: $repeatConfig
       force: $force
+      occurrences: $occurrences
     ) {
       ...AvailabilityAppointmentFields
     }

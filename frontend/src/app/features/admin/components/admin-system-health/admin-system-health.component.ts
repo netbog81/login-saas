@@ -19,7 +19,9 @@ import { DlqMonitorClientService, DlqStatus } from './dlq-monitor.service';
 /**
  * Sessione 7 — Widget admin "Stato sistema messaggistica".
  *
- * Mostra healthy/non-healthy aggregato delle DLQ accounting↔clinico.
+ * Mostra healthy/non-healthy aggregato delle code di servizio: dead-letter
+ * (fallimenti dei consumer) e non instradate (eventi pubblicati senza un
+ * binding che li raccolga, trattenuti dagli alternate exchange).
  * Polling lento (30s) — è un health check, non un real-time stream.
  * Click su refresh manuale ricarica subito.
  */
@@ -63,7 +65,7 @@ import { DlqMonitorClientService, DlqStatus } from './dlq-monitor.service';
           <div class="status-text">
             <strong>{{ status.healthy ? 'Sistema sano' : 'Problemi rilevati' }}</strong>
             <span class="muted">
-              {{ status.totalMessages }} messaggi in DLQ totali
+              {{ status.totalMessages }} messaggi fermi in coda
               · letto alle {{ status.checkedAt | date:'HH:mm:ss' }}
             </span>
           </div>
@@ -72,7 +74,7 @@ import { DlqMonitorClientService, DlqStatus } from './dlq-monitor.service';
         <table class="queues-table">
           <thead>
             <tr>
-              <th>Coda DLQ</th>
+              <th>Coda</th>
               <th>Messaggi pendenti</th>
               <th>Stato</th>
             </tr>
@@ -98,10 +100,14 @@ import { DlqMonitorClientService, DlqStatus } from './dlq-monitor.service';
         </table>
 
         <p class="hint" *ngIf="!status.healthy">
-          Messaggi nelle DLQ indicano fallimenti del consumer accounting o clinico
-          (es. incident post-rotation OpenBao, registry 401, DB irraggiungibile).
-          Verifica i log dei backend e consulta RabbitMQ Management UI per maggiori
-          dettagli sui messaggi non processati.
+          Le code <code>.dlq</code> raccolgono gli eventi che il consumer non è
+          riuscito a processare (es. incident post-rotation OpenBao, registry 401,
+          DB irraggiungibile): vanno esaminati e rigiocati.
+          Le code <code>.unrouted</code> raccolgono gli eventi pubblicati con una
+          routing key che nessuna coda lega — tipicamente un produttore deployato
+          prima del suo consumatore, o un binding dimenticato. Lì i messaggi sono
+          <strong>salvi</strong>: prima si crea il binding mancante, poi si
+          rigiocano, e solo allora si svuota la coda.
         </p>
       </div>
     </div>

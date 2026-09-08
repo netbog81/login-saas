@@ -74,3 +74,31 @@ export class GymAppointmentCreationResult {
   @Field(() => [RecurringOccurrenceConflict])
   conflicts: RecurringOccurrenceConflict[];
 }
+
+/**
+ * Una occorrenza del piano di una serie ricorrente, come la vede l'anteprima:
+ * quando cadrebbe e, se c'è, il conflitto che la riguarda.
+ *
+ * L'anteprima non scrive niente: serve a far decidere all'utente occorrenza
+ * per occorrenza (conferma / sposta / salta) PRIMA che la serie esista, invece
+ * di bloccare tutto con un messaggio e lasciarlo senza strumenti.
+ */
+@ObjectType()
+export class RecurringOccurrencePreview {
+  /** Popolato solo per le serie già esistenti (modifica), non in creazione. */
+  @Field(() => ID, { nullable: true })
+  appointmentId?: string;
+
+  @Field()
+  date: string; // YYYY-MM-DD
+
+  @Field()
+  startTime: string; // HH:mm
+
+  @Field()
+  endTime: string; // HH:mm
+
+  /** Assente = occorrenza pulita, nessuna decisione richiesta. */
+  @Field(() => RecurringOccurrenceConflict, { nullable: true })
+  conflict?: RecurringOccurrenceConflict;
+}

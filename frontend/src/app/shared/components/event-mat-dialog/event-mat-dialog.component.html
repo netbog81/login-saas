@@ -1,8 +1,32 @@
-<h2 mat-dialog-title>
-  {{ isEditMode ? 'Modifica Appuntamento' : 'Nuovo Appuntamento' }}
+<!-- Barra del titolo trascinabile: stesso pattern delle altre finestre del
+     gestionale (Trattamenti, Gestisci Appuntamenti, Scheda Paziente). Il drag
+     agisce sul pane dell'overlay via cdkDragRootElement; il ridimensionamento
+     e' il resize nativo del browser, abilitato in styles.scss sulla classe
+     .event-mat-dialog-pane. -->
+<h2 mat-dialog-title
+    class="dialog-title-bar"
+    cdkDrag
+    cdkDragRootElement=".event-mat-dialog-pane"
+    appRememberedWindow="appuntamento"
+    rememberedWindowPane=".event-mat-dialog-pane"
+    cdkDragBoundary=".cdk-overlay-container">
+  <mat-icon class="drag-handle-icon">drag_indicator</mat-icon>
+  <span class="dialog-title-text">
+    {{ isEditMode ? 'Modifica Appuntamento' : 'Nuovo Appuntamento' }}
+  </span>
 </h2>
 
 <mat-dialog-content>
+  <!-- Conflitto di disponibilità: fuori dal form e in cima a tutto. Chi apre
+       un appuntamento segnalato deve vedere subito perché lo è, prima di
+       mettere mano ai campi. -->
+  <app-conflict-banner
+    [conflict]="conflictInfo"
+    [readOnly]="readOnly || resolvingConflict"
+    moveTooltip="Cerca uno slot libero dell'operatore e spostalo lì"
+    (action)="onConflictAction($event)">
+  </app-conflict-banner>
+
   <form [formGroup]="form">
     <!-- Row 1: Data e Operatore -->
     <div class="form-row">
@@ -189,82 +213,20 @@
     </div>
 
     <!-- Ricorrenza: in creazione, oppure in modifica di un singolo attivo
-         (per trasformarlo in serie: lui resta la prima occorrenza) -->
-    <div class="recurring-section" *ngIf="!isEditMode || canMakeRecurring">
-      <mat-slide-toggle [(ngModel)]="repeatEnabled" [ngModelOptions]="{standalone: true}" (change)="onRepeatToggle()">
-        <mat-icon>repeat</mat-icon>
-        {{ isEditMode ? 'Rendi ricorrente' : 'Appuntamento ricorrente' }}
-      </mat-slide-toggle>
-
-      <div class="recurring-hint" *ngIf="isEditMode && repeatEnabled">
-        Questo appuntamento diventa la prima occorrenza della serie: le
-        successive verranno create al salvataggio, con gli stessi servizi e
-        strumenti.
-      </div>
-
-      <div class="recurring-config" *ngIf="repeatEnabled">
-        <div class="form-row">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>Ripeti</mat-label>
-            <mat-select [(ngModel)]="repeatConfig.type" [ngModelOptions]="{standalone: true}">
-              <mat-option value="daily">Ogni giorno</mat-option>
-              <mat-option value="weekly">Ogni settimana</mat-option>
-              <mat-option value="monthly">Ogni mese</mat-option>
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="interval-field">
-            <mat-label>Intervallo</mat-label>
-            <input matInput type="number" [(ngModel)]="repeatConfig.interval" [ngModelOptions]="{standalone: true}" min="1" max="12">
-            <span matTextSuffix>{{ getIntervalLabel() }}</span>
-          </mat-form-field>
-        </div>
-
-        <!-- Giorni della settimana (solo per weekly) -->
-        <div class="weekday-selector" *ngIf="repeatConfig.type === 'weekly'">
-          <label>Giorni della settimana</label>
-          <div class="weekday-buttons">
-            <button mat-mini-fab
-                    *ngFor="let day of weekdays; let i = index"
-                    [color]="isDaySelected(i) ? 'primary' : ''"
-                    (click)="toggleDay(i)"
-                    type="button">
-              {{ day }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Fine ricorrenza: opzioni "Dopo N volte" e "Fino al" sulla stessa riga -->
-        <div class="end-config">
-          <label>Termina</label>
-          <mat-radio-group [(ngModel)]="repeatConfig.endType" [ngModelOptions]="{standalone: true}" class="end-options-inline">
-            <div class="end-option">
-              <mat-radio-button value="after">Dopo</mat-radio-button>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="occurrences-field">
-                <input matInput type="number" [(ngModel)]="repeatConfig.occurrences" [ngModelOptions]="{standalone: true}"
-                       [disabled]="repeatConfig.endType !== 'after'" min="1" max="52">
-              </mat-form-field>
-              <span>volte</span>
-            </div>
-            <div class="end-option">
-              <mat-radio-button value="until">Fino al</mat-radio-button>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="until-field">
-                <input matInput [matDatepicker]="untilPicker" [(ngModel)]="repeatUntilDate" [ngModelOptions]="{standalone: true}"
-                       (dateChange)="onRepeatUntilChange($event.value)"
-                       [disabled]="repeatConfig.endType !== 'until'">
-                <mat-datepicker-toggle matIconSuffix [for]="untilPicker" [disabled]="repeatConfig.endType !== 'until'"></mat-datepicker-toggle>
-                <mat-datepicker #untilPicker></mat-datepicker>
-              </mat-form-field>
-            </div>
-          </mat-radio-group>
-        </div>
-
-        <div class="recurring-preview" *ngIf="getOccurrencesPreview()">
-          <mat-icon>info</mat-icon>
-          <span>{{ getOccurrencesPreview() }}</span>
-        </div>
-      </div>
-    </div>
+         (per trasformarlo in serie: lui resta la prima occorrenza).
+         L'editor è lo stesso del dialog palestra: la regola di ripetizione
+         non ha nulla di specifico dell'una o dell'altra vista. -->
+    <app-recurrence-editor
+      *ngIf="!isEditMode || canMakeRecurring"
+      [(enabled)]="repeatEnabled"
+      [(config)]="repeatConfig"
+      [baseDate]="form.get('date')?.value || null"
+      [disabled]="readOnly"
+      [toggleLabel]="isEditMode ? 'Rendi ricorrente' : 'Appuntamento ricorrente'"
+      [hint]="isEditMode
+        ? 'Questo appuntamento diventa la prima occorrenza della serie: le successive verranno create al salvataggio, con gli stessi servizi e strumenti.'
+        : null">
+    </app-recurrence-editor>
 
     <!-- Note -->
     <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
@@ -287,39 +249,71 @@
         Il paziente non si è presentato. Evento tracciato.
       </p>
 
-      <!-- Caso ritardatario: paziente segnato non presentato che poi arriva.
-           Permette di correggere lo stato (riapre il trattamento se annullato). -->
-      <div class="status-buttons" *ngIf="!readOnly && bookingStatus === 'no_show' && canMarkAttended">
-        <button mat-flat-button color="primary" type="button" (click)="onMarkAttended()">
-          <mat-icon>check</mat-icon>
-          Paziente Arrivato (in ritardo)
-        </button>
-      </div>
       <p class="status-description" *ngIf="bookingStatus === 'cancelled_early' || bookingStatus === 'cancelled_late'">
         L'appuntamento è stato disdetto.
       </p>
 
-      <div class="status-buttons" *ngIf="!readOnly && canRevertAttended">
-        <button mat-stroked-button color="warn" (click)="onRevertAttended()" type="button">
-          <mat-icon>undo</mat-icon>
-          Annulla Presentato
+      <!-- Azioni di stato. La scheda NON si chiude piu' quando si clicca: si
+           possono incatenare piu' correzioni di seguito e il badge qui sopra
+           si aggiorna da solo. Ogni pulsante ha la sua condizione, cosi'
+           "Non Presentato" resta a portata anche quando l'appuntamento e'
+           gia' segnato presentato dall'automatismo. -->
+      <div class="status-buttons" *ngIf="!readOnly">
+        <!-- Caso ritardatario: segnato assente e poi arrivato. Corregge lo
+             stato, riapre il trattamento annullato e toglie l'assenza dal
+             conteggio (resta tracciata come arrivo in ritardo). -->
+        <button mat-flat-button color="primary" type="button"
+                *ngIf="bookingStatus === 'no_show' && canMarkAttended"
+                [disabled]="statusActionPending"
+                (click)="onMarkAttended()">
+          <mat-icon>check</mat-icon>
+          Paziente Arrivato (in ritardo)
         </button>
-      </div>
 
-      <div class="status-buttons" *ngIf="!readOnly && canShowStatusActions">
-        <button mat-flat-button color="primary" *ngIf="canMarkAttended" type="button" (click)="onMarkAttended()">
+        <button mat-flat-button color="primary" type="button"
+                *ngIf="canShowStatusActions && canMarkAttended"
+                [disabled]="statusActionPending"
+                (click)="onMarkAttended()">
           <mat-icon>check</mat-icon>
           Paziente Arrivato
         </button>
-        <button mat-stroked-button color="warn" *ngIf="canMarkNoShow" type="button" (click)="onMarkNoShow()">
+
+        <button mat-flat-button color="warn" type="button"
+                *ngIf="canMarkNoShow"
+                [disabled]="statusActionPending"
+                matTooltip="Registra l'assenza: conta nelle statistiche No Show. Si può togliere in qualsiasi momento con «Paziente Arrivato»."
+                (click)="onMarkNoShow()">
           <mat-icon>person_off</mat-icon>
           Non Presentato
         </button>
-        <button mat-stroked-button *ngIf="canCancel" type="button" (click)="onCancelWithNotice()">
+
+        <!-- Diverso dal no-show: riporta a "confermato" senza registrare
+             nessuna assenza. Serve a disfare un "presentato" messo per
+             sbaglio su un paziente che deve ancora arrivare. -->
+        <button mat-stroked-button type="button"
+                *ngIf="canRevertAttended"
+                [disabled]="statusActionPending"
+                matTooltip="Torna a «Confermato» senza registrare alcuna assenza"
+                (click)="onRevertAttended()">
+          <mat-icon>undo</mat-icon>
+          Annulla Presentato
+        </button>
+
+        <button mat-stroked-button type="button"
+                *ngIf="canCancel"
+                [disabled]="statusActionPending"
+                (click)="onCancelWithNotice()">
           <mat-icon>event_busy</mat-icon>
           Disdici
         </button>
+
+        <mat-spinner diameter="20" *ngIf="statusActionPending"></mat-spinner>
       </div>
+
+      <p class="status-error" *ngIf="statusActionError">
+        <mat-icon color="warn">error_outline</mat-icon>
+        {{ statusActionError }}
+      </p>
 
       <div class="late-warning" *ngIf="isLateCancellation && canCancel">
         <mat-icon color="warn">warning</mat-icon>

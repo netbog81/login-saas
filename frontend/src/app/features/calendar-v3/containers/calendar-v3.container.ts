@@ -52,8 +52,16 @@ import { GymSlotSummaryV3Component, GymSlotSummaryV3Action } from '../components
 
 // Dialog Material esistenti
 import { MatDialog } from '@angular/material/dialog';
-import { EventMatDialogComponent, EventMatDialogData, EventMatDialogResult } from '../../../shared/components/event-mat-dialog';
+import { EventMatDialogComponent, EventMatDialogData, EventMatDialogResult, wireAttendanceActions } from '../../../shared/components/event-mat-dialog';
 import { RecurringConflictsDialogComponent } from '../../../shared/components/recurring-scope-panel/recurring-conflicts-dialog.component';
+import {
+  RecurringOccurrencePreview, ResolvedOccurrenceInput,
+} from '../models/recurring-resolution.model';
+// Solo i tipi: il componente arriva col dynamic import, così il riquadro di
+// risoluzione non pesa sul bundle di chi non crea mai serie ricorrenti.
+import type {
+  RecurringResolutionDialogData, RecurringResolutionDialogResult,
+} from './recurring-resolution-dialog.container';
 import { GymAppointmentMatDialogComponent, GymAppointmentMatDialogData, GymAppointmentMatDialogResult } from '../../../shared/components/gym-appointment-mat-dialog';
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
@@ -76,6 +84,11 @@ import {
   SummaryAction,
 } from '../../../components/calendar-cdk/appointment-summary/appointment-summary.component';
 import { WhatsappChatStateService } from '../../whatsapp-chat/services/whatsapp-chat-state.service';
+import { ConflictService } from '../../conflicts/services/conflict.service';
+import {
+  ConflictResolutionAction,
+  ConflictResolutionResult,
+} from '../../conflicts/models/conflict.model';
 import { PermissionsService } from '../../../core/services/permissions.service';
 import { OidcAuthService } from '../../../core/auth/oidc-auth.service';
 import { OperatorWorkspaceStateService } from '../../operators-new/services/operator-workspace-state.service';
@@ -314,6 +327,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private router = inject(Router);
   private operatorWorkspaceState = inject(OperatorWorkspaceStateService);
   private instructorWorkspaceState = inject(InstructorWorkspaceStateService);
+  private conflictService = inject(ConflictService);
   /** Stato del flusso copia/incolla appuntamento (pubblico: usato nel template). */
   clipboard = inject(AppointmentClipboardService);
   /** Chat WhatsApp: pannello "Chat in corso" in sidebar e apertura riquadri. */
@@ -968,6 +982,59 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     }).catch(() => { this.appuntamentiOpening = false; });
   }
 
+  /**
+   * Spostamento guidato di un appuntamento in conflitto (vista operatori).
+   *
+   * Riusa il dialog Appuntamenti già precaricato sul paziente e sull'
+   * appuntamento: è lo stesso pannello che la pagina conflitti apre col
+   * pulsante "sposta", con la ricerca slot per operatore e la possibilità di
+   * riassegnare a un collega. Non serve un secondo pannello che faccia le
+   * stesse cose in un posto diverso.
+   *
+   * Senza paziente collegato (fasce non retribuite) il pannello non ha su
+   * cosa aprirsi: si ricade sulla riprogrammazione manuale del dialog
+   * conflitto, che non ha bisogno di anagrafica.
+   */
+  private openGuidedMove(appointment: Appointment): void {
+    if (!appointment.patientId) {
+      this.snackBar.open(
+        'Appuntamento senza paziente collegato: usa "Gestisci" per riprogrammarlo a mano.',
+        'OK',
+        { duration: 5000 },
+      );
+      return;
+    }
+
+    import('./appuntamenti-dialog.container').then((m) => {
+      const ref = this.dialog.open(m.AppuntamentiDialogContainer, {
+        width: '1150px',
+        maxWidth: '97vw',
+        height: '82vh',
+        maxHeight: '92vh',
+        hasBackdrop: false,
+        panelClass: 'appuntamenti-dialog-pane',
+        disableClose: false,
+        autoFocus: false,
+        data: {
+          operators: this.stateService.operators.map((o) => ({
+            id: o.operatorId,
+            name: o.name,
+            macroCategory: o.macroCategory ?? '',
+          })),
+          initialPatientId: appointment.patientId,
+          initialAppointmentId: String(appointment.id),
+          goToCalendar: (appt: any) => this.navigateToAppointment(appt),
+          editAppointment: (appt: any) => this.editAppointmentFromDialog(appt),
+        },
+      });
+      ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(() => {
+        // Lo spostamento azzera il flag conflitto lato backend: basta
+        // ricaricare per veder sparire il triangolo.
+        this.reloadCurrentView();
+      });
+    });
+  }
+
   /** ID dell'appuntamento da evidenziare brevemente sul calendario. */
   highlightedAppointmentId: string | null = null;
 
@@ -1006,15 +1073,26 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       instrumentCategories: this.instrumentCategories,
     };
     const ref = this.dialog.open(EventMatDialogComponent, {
-      width: '600px',
+      width: '520px',
       maxWidth: '95vw',
+      panelClass: 'event-mat-dialog-pane',
       disableClose: false,
       data: dialogData,
     });
+
+    // Aperto dalla finestra "Appuntamenti": senza questa riga i pulsanti di
+    // stato non facevano nulla — il vecchio handler gestiva solo save/delete
+    // e scartava in silenzio 'mark-no-show' & co.
+    let statusChanged = false;
+    wireAttendanceActions(ref, this.appointmentService, () => {
+      statusChanged = true;
+      this.reloadCurrentView();
+    });
+
     const result: EventMatDialogResult | undefined =
       await firstValueFrom(ref.afterClosed());
 
-    if (!result || result.action === 'cancel') return false;
+    if (!result || result.action === 'cancel') return statusChanged;
 
     if (result.action === 'save' && result.appointment) {
       await this.saveAppointment(result);
@@ -1032,7 +1110,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       this.reloadCurrentView();
       return true;
     }
-    return false;
+    return statusChanged;
   }
 
   // ==================== AVAILABILITY GUARD ====================
@@ -1053,6 +1131,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     startTime: string,
     endTime: string,
     excludeRange?: { startTime: string; endTime: string },
+    nonRetribuito = false,
   ): Promise<'proceed' | 'force' | 'cancel'> {
     if (!this.blockOutsideAvailability) return 'proceed';
 
@@ -1061,16 +1140,31 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     );
     if (within) return 'proceed';
 
-    const data: ConfirmMatDialogData = {
-      title: 'Orario fuori disponibilità',
-      message:
-        `L'orario ${startTime} - ${endTime} è fuori dalla disponibilità ` +
-        `dell'operatore.\nVuoi procedere comunque?`,
-      confirmText: 'Procedi comunque',
-      cancelText: 'Annulla',
-      confirmColor: 'warn',
-      icon: 'warning',
-    };
+    // Un non retribuito fuori orario e' spesso voluto (pausa pranzo,
+    // rappresentante): il testo lo dice, cosi' la conferma non sembra un
+    // errore da correggere.
+    const data: ConfirmMatDialogData = nonRetribuito
+      ? {
+          title: 'Fuori dalla disponibilità',
+          message:
+            `L'orario ${startTime} - ${endTime} è fuori dalla disponibilità ` +
+            `dell'operatore.\nPer un appuntamento non retribuito può essere ` +
+            `corretto (pausa, rappresentante, ecc.).\nVuoi inserirlo comunque?`,
+          confirmText: 'Inserisci comunque',
+          cancelText: 'Annulla',
+          confirmColor: 'primary',
+          icon: 'schedule',
+        }
+      : {
+          title: 'Orario fuori disponibilità',
+          message:
+            `L'orario ${startTime} - ${endTime} è fuori dalla disponibilità ` +
+            `dell'operatore.\nVuoi procedere comunque?`,
+          confirmText: 'Procedi comunque',
+          cancelText: 'Annulla',
+          confirmColor: 'warn',
+          icon: 'warning',
+        };
     const confirmed = await firstValueFrom(
       this.dialog.open(ConfirmMatDialogComponent, { width: '440px', data }).afterClosed(),
     );
@@ -1198,6 +1292,16 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   async onPasteOnSlot(slot: PasteTargetSlot): Promise<void> {
     const input = this.clipboard.buildCreateInput(slot);
     if (!input) return;
+
+    // Stesso guard del dialog: incollare fuori disponibilita' chiede conferma
+    // invece di finire in un errore del backend (o, per i non retribuiti,
+    // di passare in silenzio).
+    const guard = await this.checkAvailabilityGuard(
+      input.operatorId, input.appointmentDate, input.startTime, input.endTime,
+      undefined, input.nonRetribuito ?? false,
+    );
+    if (guard === 'cancel') return;
+    input.forceOutsideAvailability = guard === 'force';
 
     // Esci dalla modalita' incollo subito: evita doppi incolli accidentali.
     this.clipboard.clear();
@@ -1656,11 +1760,70 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         slotInfo: event.slotInfo,
         patients: this.patients,
         appointment,
+        // Le sale servono al dialog per proporre destinazioni alternative
+        // quando si sposta o si risolve una serie: le ha già caricate il
+        // container per disegnare la griglia.
+        rooms: this.gymRooms.map((r) => ({ id: r.id, name: r.name, color: r.color })),
       } as GymAppointmentMatDialogData,
     });
 
     dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: GymAppointmentMatDialogResult | undefined) => {
+      // Il dialog chiede lo spostamento guidato: si chiude e lascia il posto
+      // al pannello di ricerca slot palestra.
+      if (result?.requestMove && appointment) {
+        this.openGymMove(appointment);
+        return;
+      }
       if (result?.created) {
+        this.reloadCurrentView();
+      }
+    });
+  }
+
+  /**
+   * Spostamento guidato di una prenotazione palestra: cerca gli slot liberi
+   * attorno alla data attuale, anche nelle altre sale.
+   *
+   * Pannello dedicato e non quello della vista operatori: là l'alternativa a
+   * uno slot occupato è un altro operatore, qui è un altro orario o un'altra
+   * sala, con la capienza residua come criterio.
+   */
+  private async openGymMove(appointment: GymAppointment): Promise<void> {
+    const m = await import(
+      '../../gym-appointments/containers/gym-move-dialog.container'
+    );
+
+    const room = this.gymRooms.find((r) => r.id === appointment.gymRoomId);
+
+    const ref = this.dialog.open(m.GymMoveDialogContainer, {
+      maxWidth: '95vw',
+      autoFocus: false,
+      data: {
+        appointment: {
+          id: String(appointment.id),
+          gymRoomId: appointment.gymRoomId,
+          gymRoomName: room?.name ?? appointment.gymRoom?.name,
+          patientId: appointment.patientId,
+          clientName: appointment.clientName,
+          appointmentDate: String(appointment.appointmentDate).slice(0, 10),
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          isRecurring: appointment.isRecurring,
+          recurringGroupId: appointment.recurringGroupId,
+        },
+        rooms: this.gymRooms.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+      },
+    });
+
+    ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((res) => {
+      if (res?.moved) {
+        // Lo spostamento parziale di una serie resta a schermo più a lungo:
+        // richiede un controllo, non è una conferma da leggere di sfuggita.
+        this.snackBar.open(
+          res.warning ? `Serie spostata. ${res.warning}` : 'Prenotazione spostata.',
+          'OK',
+          { duration: res.warning ? 8000 : 3000 },
+        );
         this.reloadCurrentView();
       }
     });
@@ -1719,6 +1882,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     ref.instance.slotInfo = event.slotInfo;
     ref.instance.date = event.date;
     ref.instance.appointments = this.getAppointmentsForSlot(event);
+    ref.instance.readOnly = this.readOnly;
     ref.instance.action
       .pipe(takeUntil(this.destroy$))
       .subscribe((action) => this.handleGymSummaryAction(action));
@@ -1748,10 +1912,92 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         this.closeGymSummary();
         if (action.appointment) this.confirmDeleteGymAppointment(action.appointment);
         break;
+      case 'conflict-accept':
+        this.closeGymSummary();
+        if (action.appointment) this.acceptGymConflict(action.appointment);
+        break;
+      case 'conflict-move':
+        this.closeGymSummary();
+        if (action.appointment) this.openGymMove(action.appointment);
+        break;
+      case 'conflict-manage':
+        this.closeGymSummary();
+        if (action.appointment) this.openGymConflictResolveDialog(action.appointment);
+        break;
       case 'close':
         this.closeGymSummary();
         break;
     }
+  }
+
+  /** "Accetta" dal riepilogo slot: la prenotazione resta dov'è. */
+  private acceptGymConflict(appointment: GymAppointment): void {
+    this.conflictService
+      .resolveConflict(String(appointment.id), ConflictResolutionAction.Keep)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.snackBar.open('Conflitto accettato: prenotazione confermata.', 'OK', {
+            duration: 3000,
+          });
+          this.reloadCurrentView();
+        },
+        error: (err) => {
+          this.snackBar.open(
+            'Impossibile accettare il conflitto' + (err?.message ? `: ${err.message}` : '.'),
+            'OK',
+            { duration: 5000 },
+          );
+        },
+      });
+  }
+
+  /** Dialog completo di risoluzione per una prenotazione palestra. */
+  private async openGymConflictResolveDialog(appointment: GymAppointment): Promise<void> {
+    const m = await import(
+      '../../conflicts/containers/conflict-resolve-dialog.container'
+    );
+
+    const room = this.gymRooms.find((r) => r.id === appointment.gymRoomId);
+
+    const ref = this.dialog.open(m.ConflictResolveDialogContainer, {
+      autoFocus: false,
+      data: {
+        appointment: {
+          id: String(appointment.id),
+          appointmentDate: appointment.appointmentDate,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          clientName: appointment.clientName,
+          clientPhone: appointment.clientPhone,
+          patientId: appointment.patientId,
+          operatorId: appointment.operatorId,
+          operatorName: appointment.operator
+            ? `${appointment.operator.name} ${appointment.operator.surname || ''}`.trim()
+            : null,
+          operatorColor: appointment.operator?.color,
+          gymRoomId: appointment.gymRoomId,
+          gymRoomName: room?.name ?? appointment.gymRoom?.name,
+          conflictReason: appointment.conflictReason,
+          conflictDetectedAt: appointment.conflictDetectedAt,
+          isRecurring: appointment.isRecurring,
+          recurringGroupId: appointment.recurringGroupId,
+        },
+        origin: 'gym',
+        canMove: true,
+        moveTooltip: "Cerca uno slot libero (anche in un'altra sala) e spostala lì",
+      },
+    });
+
+    ref.afterClosed().pipe(takeUntil(this.destroy$))
+      .subscribe((res: ConflictResolutionResult | undefined) => {
+        if (!res) return;
+        if (res.outcome === 'move') {
+          this.openGymMove(appointment);
+          return;
+        }
+        if (res.outcome === 'resolved') this.reloadCurrentView();
+      });
   }
 
   /** Conferma + elimina una prenotazione palestra. */
@@ -1924,7 +2170,13 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         c => c.operatorId === event.operatorId && c.date === event.date
       );
       if (col) {
+        // I no-show non contano come occupato: la loro fascia e' libera
+        // (il backend la ripropone fra le disponibilita') ed e' esattamente
+        // il caso in cui la segreteria vuole rimettere dentro un altro
+        // paziente. Senza questa esclusione il doppio clic accanto alla
+        // striscia dell'assenza rispondeva "esiste gia' un appuntamento".
         const hasOverlap = col.events.some(e => {
+          if (e.isNoShow) return false;
           return e.originalStartTime < event.endTime && e.originalEndTime > event.startTime;
         });
         if (hasOverlap) {
@@ -2099,9 +2351,144 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       case 'share':
         this.shareAppointment(action.appointment, action.shareMethod);
         break;
+      case 'conflict-accept':
+        this.acceptConflict(action.appointment);
+        break;
+      case 'conflict-move':
+        this.openGuidedMove(action.appointment);
+        break;
+      case 'conflict-manage':
+        this.openConflictResolveDialog(action.appointment);
+        break;
+      case 'mark-attended':
+        this.undoNoShow(action.appointment);
+        break;
+      case 'book-slot':
+        this.bookOverNoShow(action.appointment);
+        break;
       case 'close':
         break;
     }
+  }
+
+  /**
+   * "Paziente arrivato" da un appuntamento segnato assente: il paziente si è
+   * presentato dopo tutto. Il backend riporta lo stato a presentato, degrada
+   * l'evento ad "arrivo in ritardo" — l'assenza esce dai conteggi no show ma
+   * la traccia resta — e riapre l'eventuale trattamento annullato.
+   */
+  private undoNoShow(appointment: Appointment): void {
+    this.appointmentService
+      .markAsAttended(String(appointment.id))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.snackBar.open(
+            'Assenza annullata: il paziente risulta presentato.',
+            'OK',
+            { duration: 3000 },
+          );
+          this.reloadCurrentView();
+        },
+        error: (err) => {
+          this.snackBar.open(
+            err?.graphQLErrors?.[0]?.message ||
+              'Impossibile annullare l\'assenza.',
+            'OK',
+            { duration: 5000 },
+          );
+        },
+      });
+  }
+
+  /**
+   * "Prenota in questa fascia": l'assenza ha liberato lo slot, si apre la
+   * creazione di un nuovo appuntamento già posizionato su operatore, giorno e
+   * orario di quello mancato. L'appuntamento assente resta dov'è, come
+   * promemoria.
+   */
+  private bookOverNoShow(appointment: Appointment): void {
+    this.openEventDialog({
+      defaultDate: appointment.date,
+      defaultStartTime: appointment.startTime,
+      defaultEndTime: appointment.endTime,
+      defaultOperatorId: String(appointment.operatorId ?? ''),
+      users: this.allUsers,
+      patients: this.patients,
+    });
+  }
+
+  /**
+   * "Accetta" dal riquadro di riepilogo: l'appuntamento resta dov'è e la
+   * segnalazione sparisce. È l'esito più frequente — la segreteria sa già che
+   * quell'appuntamento si farà lo stesso — e merita di costare un click.
+   */
+  private acceptConflict(appointment: Appointment): void {
+    this.conflictService
+      .resolveConflict(String(appointment.id), ConflictResolutionAction.Keep)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.snackBar.open('Conflitto accettato: appuntamento confermato.', 'OK', {
+            duration: 3000,
+          });
+          this.reloadCurrentView();
+        },
+        error: (err) => {
+          this.snackBar.open(
+            'Impossibile accettare il conflitto' + (err?.message ? `: ${err.message}` : '.'),
+            'OK',
+            { duration: 5000 },
+          );
+        },
+      });
+  }
+
+  /** Dialog completo di risoluzione per un appuntamento della vista operatori. */
+  private async openConflictResolveDialog(appointment: Appointment): Promise<void> {
+    const m = await import(
+      '../../conflicts/containers/conflict-resolve-dialog.container'
+    );
+
+    const operator = this.stateService.operators.find(
+      (o) => o.operatorId === String(appointment.operatorId),
+    );
+
+    const ref = this.dialog.open(m.ConflictResolveDialogContainer, {
+      autoFocus: false,
+      data: {
+        appointment: {
+          id: String(appointment.id),
+          appointmentDate: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          clientName: appointment.title,
+          clientPhone: appointment.clientPhone,
+          patientId: appointment.patientId,
+          operatorId: appointment.operatorId,
+          operatorName: operator?.name,
+          operatorColor: operator?.color,
+          serviceName: appointment.service?.name,
+          conflictReason: appointment.conflictReason,
+          conflictDetectedAt: appointment.conflictDetectedAt,
+          isRecurring: appointment.isRecurring,
+          recurringGroupId: appointment.recurringGroupId,
+        },
+        origin: 'operators',
+        canMove: !!appointment.patientId,
+        moveTooltip: "Cerca uno slot libero dell'operatore e spostalo lì",
+      },
+    });
+
+    ref.afterClosed().pipe(takeUntil(this.destroy$))
+      .subscribe((res: ConflictResolutionResult | undefined) => {
+        if (!res) return;
+        if (res.outcome === 'move') {
+          this.openGuidedMove(appointment);
+          return;
+        }
+        if (res.outcome === 'resolved') this.reloadCurrentView();
+      });
   }
 
   /**
@@ -2283,11 +2670,18 @@ export class CalendarV3Container implements OnInit, OnDestroy {
   private openEventDialog(data: EventMatDialogData): void {
     const dialogData = { ...data, instrumentCategories: this.instrumentCategories };
     const dialogRef = this.dialog.open(EventMatDialogComponent, {
-      width: '600px',
+      width: '520px',
       maxWidth: '95vw',
+      panelClass: 'event-mat-dialog-pane',
       disableClose: false,
       data: dialogData,
     });
+
+    // Presentato / non presentato / disdici: eseguiti col dialog APERTO, cosi'
+    // la segreteria puo' correggersi senza rifare tutto il percorso.
+    wireAttendanceActions(dialogRef, this.appointmentService, () =>
+      this.reloadCurrentView(),
+    );
 
     dialogRef.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(async (result: EventMatDialogResult | undefined) => {
       if (!result || result.action === 'cancel') return;
@@ -2296,6 +2690,20 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       // incollo con l'appuntamento mostrato.
       if (result.action === 'copy' && result.appointment) {
         this.startPaste(result.appointment);
+        return;
+      }
+
+      // Conflitto risolto dentro il dialog (riprogrammato o cancellato):
+      // basta ricaricare, il flag l'ha già tolto il backend.
+      if (result.action === 'conflict-resolved') {
+        this.reloadCurrentView();
+        return;
+      }
+
+      // Lo spostamento guidato: il dialog si è chiuso apposta per lasciare
+      // spazio al pannello di ricerca slot.
+      if (result.action === 'conflict-move' && result.appointment) {
+        this.openGuidedMove(result.appointment);
         return;
       }
 
@@ -2324,7 +2732,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
         );
       } else if (result.action === 'cancel-with-notice' && result.appointmentId) {
         await this.handleStatusAction(
-          () => this.appointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria', 'secretary'),
+          () => this.appointmentService.cancelWithNotice(result.appointmentId!, 'Annullato da segreteria'),
           'disdire l\'appuntamento',
         );
       }
@@ -2350,26 +2758,47 @@ export class CalendarV3Container implements OnInit, OnDestroy {
     try {
       const isUpdate = apt.id && typeof apt.id === 'string' && apt.id.length > 10;
 
-      // Guard disponibilita': salta per nonRetribuito (pause & co. sono
-      // legittimamente fuori orario). Per gli altri, se fuori disponibilita'
-      // e flag attivo, chiede conferma di forzatura.
-      let force = false;
-      if (!result.nonRetribuito) {
-        // In update: escludi l'intervallo originale dell'appuntamento dal
-        // calcolo, cosi' modificarne l'orario non genera un falso positivo
-        // per lo spazio che gia' occupava.
-        let excludeRange: { startTime: string; endTime: string } | undefined;
-        if (isUpdate) {
-          const posEvent = this.findPositionedEvent(apt.id as string);
-          if (posEvent && posEvent.date === apt.date) {
-            excludeRange = {
-              startTime: posEvent.originalStartTime,
-              endTime: posEvent.originalEndTime,
-            };
-          }
+      // ── Serie ricorrente: anteprima e risoluzione per occorrenza ──
+      // Prima di scrivere si chiede al backend che date genererebbe la regola
+      // e quali sono in conflitto; se ce n'e' anche una, l'utente decide
+      // occorrenza per occorrenza. Ritorna null se ha annullato tutto.
+      let resolvedOccurrences: ResolvedOccurrenceInput[] | undefined;
+      if (result.repeatConfig && apt.operatorId) {
+        const resolved = await this.resolveRecurringSeries(
+          apt.operatorId, apt.date, apt.startTime, apt.endTime,
+          result.repeatConfig,
+          isUpdate ? (apt.id as string) : undefined,
+        );
+        if (resolved === null) return; // serie annullata dall'utente
+        resolvedOccurrences = resolved;
+      }
+
+      // Guard disponibilita': se l'orario e' fuori dalla disponibilita'
+      // dell'operatore e il flag e' attivo, chiede conferma. Vale anche per i
+      // non retribuiti: restano permessi (con testo dedicato), ma non piu' in
+      // silenzio come prima del 19/08/2026.
+      //
+      // Salta quando la serie e' gia' stata risolta occorrenza per occorrenza:
+      // sarebbe chiedere due volte la stessa cosa.
+      //
+      // In update: escludi l'intervallo originale dell'appuntamento dal
+      // calcolo, cosi' modificarne l'orario non genera un falso positivo
+      // per lo spazio che gia' occupava.
+      let excludeRange: { startTime: string; endTime: string } | undefined;
+      if (isUpdate) {
+        const posEvent = this.findPositionedEvent(apt.id as string);
+        if (posEvent && posEvent.date === apt.date) {
+          excludeRange = {
+            startTime: posEvent.originalStartTime,
+            endTime: posEvent.originalEndTime,
+          };
         }
+      }
+      let force = false;
+      if (!resolvedOccurrences) {
         const guard = await this.checkAvailabilityGuard(
           apt.operatorId, apt.date, apt.startTime, apt.endTime, excludeRange,
+          result.nonRetribuito,
         );
         if (guard === 'cancel') return;
         force = guard === 'force';
@@ -2402,6 +2831,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
             apt.id as string,
             result.repeatConfig,
             force,
+            resolvedOccurrences,
           ));
         }
       } else {
@@ -2417,6 +2847,7 @@ export class CalendarV3Container implements OnInit, OnDestroy {
           instrumentOrderMatters: result.instrumentOrderMatters,
           instruments: result.instruments,
           repeatConfig: result.repeatConfig,
+          occurrences: resolvedOccurrences,
           nonRetribuito: result.nonRetribuito,
           forceOutsideAvailability: force,
         }));
@@ -2445,6 +2876,91 @@ export class CalendarV3Container implements OnInit, OnDestroy {
       console.error('[CalendarV3] Save error:', error);
       alert(msg);
     }
+  }
+
+  /**
+   * Chiede al backend il piano della serie e, se qualche occorrenza è in
+   * conflitto, apre il riquadro di risoluzione.
+   *
+   * Ritorna:
+   * - l'elenco delle occorrenze risolte (da passare a create/makeRecurring)
+   * - `undefined` se non c'era niente da risolvere: si procede come sempre
+   * - `null` se l'utente ha annullato l'intera serie
+   *
+   * Perché passare comunque dall'anteprima quando non ci sono conflitti:
+   * l'alternativa sarebbe far rigenerare le date al backend, e allora il
+   * piano che l'utente ha visto e quello che viene scritto potrebbero non
+   * coincidere. Costa una query in più e toglie di mezzo un'intera classe di
+   * "ma io avevo visto un'altra cosa".
+   */
+  private async resolveRecurringSeries(
+    operatorId: string,
+    startDate: string,
+    startTime: string,
+    endTime: string,
+    repeatConfig: unknown,
+    excludeAppointmentId?: string,
+  ): Promise<ResolvedOccurrenceInput[] | undefined | null> {
+    let preview: RecurringOccurrencePreview[];
+    try {
+      preview = await firstValueFrom(this.appointmentService.previewRecurringSeries({
+        operatorId, startDate, startTime, endTime,
+        repeatConfig: repeatConfig as any,
+        excludeAppointmentId,
+      }));
+    } catch (err: any) {
+      // Anteprima non disponibile: si prosegue col flusso storico, che in
+      // caso di conflitti bloccherà con il riepilogo. Meglio del salvataggio
+      // impedito da un problema di rete sull'anteprima.
+      console.warn('[CalendarV3] Anteprima serie non disponibile:', err?.message ?? err);
+      return undefined;
+    }
+
+    if (preview.length === 0) return undefined;
+    const hasConflicts = preview.some(o => !!o.conflict);
+    if (!hasConflicts) {
+      // Nessun conflitto: si manda comunque il piano visto, così le date
+      // scritte sono esattamente quelle calcolate ora.
+      return preview.map(o => ({
+        appointmentId: o.appointmentId,
+        date: o.date,
+        startTime: o.startTime,
+        endTime: o.endTime,
+      }));
+    }
+
+    const m = await import('./recurring-resolution-dialog.container');
+    const ref = this.dialog.open(m.RecurringResolutionDialogContainer, {
+      width: '760px',
+      maxWidth: '96vw',
+      maxHeight: '88vh',
+      autoFocus: false,
+      data: {
+        occurrences: preview,
+        operatorId,
+        operatorName: this.operatorDisplayName(operatorId),
+        operators: this.stateService.operators.map(o => ({
+          id: o.operatorId,
+          name: o.name,
+          macroCategory: o.macroCategory ?? '',
+        })),
+        title: excludeAppointmentId
+          ? 'Serie ricorrente: occorrenze da sistemare'
+          : 'Nuova serie ricorrente: occorrenze da sistemare',
+      } as RecurringResolutionDialogData,
+    });
+
+    const outcome: RecurringResolutionDialogResult | undefined =
+      await firstValueFrom(ref.afterClosed());
+
+    if (!outcome || outcome.action === 'cancel') return null;
+    return outcome.occurrences;
+  }
+
+  /** Nome dell'operatore per i testi del riquadro conflitti. */
+  private operatorDisplayName(operatorId: string): string {
+    return this.stateService.operators.find(o => o.operatorId === operatorId)?.name
+      ?? 'Operatore';
   }
 
   /**

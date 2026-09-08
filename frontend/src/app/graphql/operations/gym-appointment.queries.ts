@@ -18,6 +18,9 @@ export const GYM_APPOINTMENT_FIELDS = gql`
     endTime
     bookingStatus
     treatmentStatus
+    hasConflict
+    conflictReason
+    conflictDetectedAt
     notes
     participantCount
     maxParticipants

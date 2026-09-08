@@ -1,9 +1,18 @@
-# Schema source: file locale `backend/src/schema.gql` rigenerato
-# automaticamente da NestJS (autoSchemaFile in app.module.ts) ad ogni boot.
+# Schema source: file locale `backend/src/schema.gql`.
 # Vantaggio rispetto a HTTP introspection:
 #  - zero dipendenza dal backend in esecuzione per fare codegen
 #  - zero auth (TenantContextMiddleware blocca introspection HTTP senza token)
-#  - schema sempre coerente con l'ultimo boot del backend
+#
+# ATTENZIONE — questo file NON si aggiorna da solo. NestJS lo rigenera a ogni
+# boot (autoSchemaFile in app.module.ts), ma in container NODE_ENV=production
+# lo scrive in /tmp DENTRO il container: effimero, non tocca il repo. Prima
+# della containerizzazione il backend girava in locale e il file si aggiornava
+# da sé; da allora si è congelato in silenzio, accumulando decine di tipi
+# mancanti senza che nessun errore lo segnalasse.
+#
+# Dopo aver toccato entity, DTO o resolver del backend, allinearlo così:
+#   cd backend && npm run schema:sync     # docker cp dal container in esecuzione
+#   cd frontend && npm run codegen
 schema: '../backend/src/schema.gql'
 # Documents in 2 location:
 #  - src/app/graphql/**/*.ts (legacy operations)

@@ -295,10 +295,14 @@ export class CalendarSidebarComponent {
   }
 
   /**
-   * Verifica se il trattamento ha status operator_completed (case-insensitive)
+   * Su quali trattamenti si apre il riquadro dettagli per la segreteria:
+   * completati dall'operatore e anche gia' chiusi (case-insensitive). Il
+   * trattamento chiuso e' quello su cui si richiama il paziente, e le note
+   * per la riprogrammazione devono restare leggibili.
    */
-  isOperatorCompleted(treatment: Treatment): boolean {
-    return treatment.status?.toLowerCase() === 'operator_completed';
+  hasSecretaryDetails(treatment: Treatment): boolean {
+    const status = treatment.status?.toLowerCase();
+    return status === 'operator_completed' || status === 'closed';
   }
 
   /**
@@ -314,12 +318,19 @@ export class CalendarSidebarComponent {
   }
 
   /**
-   * Verifica se il pagamento è stato incassato dall'operatore
-   * Confronta collectedBy con operatorId
+   * Etichetta dell'incasso: il NOME di chi l'ha registrato quando il backend
+   * riesce a risolverlo (`collectedByName`).
+   *
+   * Il vecchio confronto `collectedBy === operatorId` non regge più: dal
+   * 27/08/2026 il backend normalizza `collectedBy` ad AppUser.id (prima ci
+   * finivano indifferentemente Operator.id, sub Keycloak o AppUser.id, e
+   * l'etichetta era esatta solo per gli incassi fatti dal workspace).
    */
-  isCollectedByOperator(treatment: Treatment): boolean {
-    if (!treatment.isPaid) return false;
-    return treatment.collectedBy === treatment.operatorId;
+  collectedByLabel(treatment: Treatment): string {
+    if (!treatment.isPaid) return '';
+    return treatment.collectedByName
+      ? `Incassato da ${treatment.collectedByName}`
+      : 'Incassato';
   }
 
   /**

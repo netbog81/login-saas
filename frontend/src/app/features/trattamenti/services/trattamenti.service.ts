@@ -18,6 +18,7 @@ import {
   AccountingPaymentMethod,
   AccountingVoucher,
   PaymentTenderLine,
+  OrphanDeletionResult,
 } from '../models/trattamento.model';
 import {
   TREATMENTS_FOR_SECRETARY,
@@ -29,6 +30,8 @@ import {
   CREATE_TREATMENT_INVOICE_LINE,
   UPDATE_TREATMENT_INVOICE_LINE,
   DELETE_TREATMENT_INVOICE_LINE,
+  DELETE_ORPHAN_TREATMENT,
+  DELETE_ORPHAN_TREATMENTS,
   RECORD_TREATMENT_PAYMENT,
   CLOSE_TREATMENT,
   REOPEN_TREATMENT,
@@ -149,9 +152,13 @@ export class TrattamentiService extends BaseGraphQLService {
    */
   getForOperator(
     operatorId: string,
-    filters: Omit<TrattamentiFilters, 'operatorId' | 'patientId' | 'readyForBilling' | 'isInvoicedToPatient' | 'scontoFE'> = {},
+    filters: Omit<TrattamentiFilters, 'operatorId' | 'patientId' | 'readyForBilling' | 'isInvoicedToPatient' | 'scontoFE' | 'withoutAppointment'> = {},
   ): Observable<Trattamento[]> {
     const vars = this.sanitizeFilters({ ...filters, operatorId });
+    // La query operatore non dichiara $withoutAppointment: la pulizia degli
+    // orfani è azione di segreteria. Tolto per non spedire una variabile
+    // non dichiarata dall'operazione.
+    delete vars['withoutAppointment'];
     return this.query<{ treatmentsForOperator: Trattamento[] }>(
       TREATMENTS_FOR_OPERATOR,
       vars,
@@ -220,6 +227,34 @@ export class TrattamentiService extends BaseGraphQLService {
       CANCEL_TREATMENT_BILLING,
       { id, reason },
     ).pipe(map(r => flattenPatient(r.cancelTreatment)));
+  }
+
+  /**
+   * Cestina un trattamento ORFANO (appuntamento cancellato dal calendario).
+   *
+   * Un solo round trip: il backend si occupa anche di annullare l'invio ad
+   * accounting se il trattamento era già stato pubblicato (SENT/PENDING),
+   * nella stessa transazione del soft-delete. Rifiuta con un messaggio
+   * leggibile se il trattamento non è orfano, è già fatturato, è stato
+   * pagato con un voucher FE o è già in un conguaglio operatore.
+   */
+  deleteOrphan(id: string): Observable<boolean> {
+    return this.mutate<{ deleteOrphanTreatment: boolean }>(
+      DELETE_ORPHAN_TREATMENT,
+      { id },
+    ).pipe(map(r => r.deleteOrphanTreatment));
+  }
+
+  /**
+   * Pulizia in blocco degli orfani selezionati. Non atomica: torna l'esito
+   * riga per riga così la UI può dire quanti sono stati cestinati e perché
+   * gli altri no.
+   */
+  deleteOrphans(ids: string[]): Observable<OrphanDeletionResult[]> {
+    return this.mutate<{ deleteOrphanTreatments: OrphanDeletionResult[] }>(
+      DELETE_ORPHAN_TREATMENTS,
+      { ids },
+    ).pipe(map(r => r.deleteOrphanTreatments ?? []));
   }
 
   /**
@@ -402,12 +437,19 @@ export class TrattamentiService extends BaseGraphQLService {
     voucherFeId?: string,
     tenderLines?: PaymentTenderLine[],
     replaceExisting?: boolean,
+    /**
+     * 2026-09-04 — Incasso parziale con voucher di anticipo: il trattamento
+     * non risulta pagato, il residuo resta da fatturare.
+     */
+    partial?: boolean,
   ): Observable<Trattamento> {
     return this.mutate<{ recordTreatmentPayment: Trattamento }>(
       RECORD_TREATMENT_PAYMENT,
       {
         id,
-        input: { paymentMethod, collectedBy, amount, voucherFeId, tenderLines, replaceExisting },
+        input: {
+          paymentMethod, collectedBy, amount, voucherFeId, tenderLines, replaceExisting, partial,
+        },
         callerRole,
       },
     ).pipe(map(r => r.recordTreatmentPayment));

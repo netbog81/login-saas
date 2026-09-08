@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
 import { WhatsappWebhookEvent } from '../entities/whatsapp-webhook-event.entity';
 import { WhatsappLogService, UpdateLogExtras } from '../../log/services/whatsapp-log.service';
 import { WhatsappMessageStatus, WhatsappMessageType } from '../../enums/whatsapp-enums';
 import { WhatsappChatService } from '../../chat/services/whatsapp-chat.service';
+import { WhatsappConfigService } from '../../config/services/whatsapp-config.service';
+import { PatientCalendarFeedService } from '../../../availability/services/patient-calendar-feed.service';
 
 import { TenantContextService } from '@curandis/tenant-datasource';
 interface GatewayMetadata {
@@ -25,6 +27,12 @@ export class WhatsappWebhookService {
     private readonly tenantContext: TenantContextService,
     private readonly logService: WhatsappLogService,
     private readonly chatService: WhatsappChatService,
+    private readonly configService: WhatsappConfigService,
+    // Il calendario del paziente vive nel modulo availability, che dipende a
+    // sua volta da questo: forwardRef, e opzionale perché il webhook deve
+    // continuare a funzionare anche se quel modulo non c'è.
+    @Optional() @Inject(forwardRef(() => PatientCalendarFeedService))
+    private readonly patientCalendarFeed?: PatientCalendarFeedService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -97,6 +105,49 @@ export class WhatsappWebhookService {
     return remoteJid.replace(/@s\.whatsapp\.net$/, '');
   }
 
+  /**
+   * Manda al paziente, insieme al recap della prenotazione, il link per
+   * aggiungere i propri appuntamenti al calendario del telefono.
+   *
+   * UNA VOLTA SOLA per paziente: da lì in poi il calendario si aggiorna da sé
+   * a ogni spostamento o disdetta, e mandare di nuovo il link a ogni
+   * prenotazione sarebbe esattamente l'inondazione di posta che si voleva
+   * evitare scegliendo la sottoscrizione invece degli inviti.
+   *
+   * Si aggancia al SENT e non al DISPATCHED: prima che il messaggio parta
+   * davvero non c'è niente a cui accompagnare la mail.
+   *
+   * Fire-and-forget e silenzioso sugli errori: un paziente senza indirizzo in
+   * anagrafica è la normalità, non un guasto, e non deve sporcare i log di
+   * errori né far fallire la riconciliazione del recap.
+   */
+  private maybeSendCalendarInvite(gm: GatewayMetadata, status: WhatsappMessageStatus): void {
+    if (status !== WhatsappMessageStatus.SENT) return;
+    if (!this.patientCalendarFeed || !gm.patientId) return;
+
+    void (async () => {
+      try {
+        const config = await this.configService.getConfig();
+        if (!config?.patientCalendarFeedEnabled) return;
+
+        // La regola su quando è il caso di mandarlo — mai due volte, mai a
+        // chi si è tolto da solo, ma sì a chi era stato tolto da una pulizia
+        // in blocco e ora sta riprenotando — sta nel servizio, che è dove ha
+        // senso leggerla.
+        const outcome = await this.patientCalendarFeed!.sendInviteIfDue(gm.patientId!);
+        if (outcome === 'sent') {
+          this.logger.log(
+            `[WA-WEBHOOK] Link calendario inviato al paziente ${gm.patientId} insieme al recap`,
+          );
+        }
+      } catch (err) {
+        this.logger.debug(
+          `[WA-WEBHOOK] Link calendario non inviato per ${gm.patientId}: ${(err as Error).message}`,
+        );
+      }
+    })();
+  }
+
   private mapGatewayMessageType(payload: any): WhatsappMessageType | undefined {
     const gwType = payload?.gateway_metadata?.message_type;
     switch (gwType) {
@@ -105,6 +156,8 @@ export class WhatsappWebhookService {
       case 'reminder': return WhatsappMessageType.REMINDER_24H;
       case 'cancel_notification': return WhatsappMessageType.CANCELLATION;
       case 'update_notification': return WhatsappMessageType.UPDATE;
+      case 'multiple_update': return WhatsappMessageType.UPDATE_MULTI;
+      case 'multiple_cancel': return WhatsappMessageType.CANCELLATION_MULTI;
       default: return undefined;
     }
   }
@@ -356,6 +409,11 @@ export class WhatsappWebhookService {
 
       case 'single_recap':
       case 'multiple_recap': {
+        // La conferma è arrivata davvero al paziente: è il momento buono per
+        // mandargli anche il link del calendario, se il tenant l'ha acceso e
+        // se non gliel'abbiamo già mandato. Fire-and-forget.
+        this.maybeSendCalendarInvite(gm, newStatus);
+
         // correlationId is NEW (gateway-generated)
         if (!gm.correlationId) break;
 
@@ -390,6 +448,61 @@ export class WhatsappWebhookService {
             messageBody,
             status: newStatus,
           });
+        }
+        break;
+      }
+
+      case 'multiple_update':
+      case 'multiple_cancel': {
+        // Più appuntamenti dello stesso numero finiti in un elenco unico. Il
+        // correlationId è NUOVO, generato dal gateway alla chiusura della
+        // finestra: si crea una riga sola, con dentro tutti gli appuntamenti.
+        const isUpdate = gm.messageType === 'multiple_update';
+        const aggregateType = isUpdate
+          ? WhatsappMessageType.UPDATE_MULTI
+          : WhatsappMessageType.CANCELLATION_MULTI;
+        const perAppointmentType = isUpdate
+          ? WhatsappMessageType.UPDATE
+          : WhatsappMessageType.CANCELLATION;
+
+        if (!gm.correlationId) break;
+
+        const existing = await this.logService.findByCorrelationId(gm.correlationId);
+        if (existing) {
+          const extras: UpdateLogExtras = { evolutionMessageId, messageBody };
+          if (newStatus === WhatsappMessageStatus.DELIVERED) extras.deliveredAt = new Date();
+          if (newStatus === WhatsappMessageStatus.READ) extras.readAt = new Date();
+          await this.logService.updateStatus(gm.correlationId, newStatus, extras);
+          break;
+        }
+
+        let patientName: string | undefined;
+        let patientId: string | undefined = gm.patientId;
+        if (gm.appointmentIds?.length) {
+          const info = await this.logService.findPatientInfoByAppointmentId(gm.appointmentIds[0]);
+          if (info) {
+            patientName = info.patientName;
+            if (!patientId) patientId = info.patientId;
+          }
+        }
+
+        await this.logService.createLog({
+          correlationId: gm.correlationId,
+          appointmentIds: gm.appointmentIds,
+          appointmentId: gm.appointmentIds?.[0],
+          patientId,
+          patientName,
+          phoneNumber: phone || '',
+          messageType: aggregateType,
+          messageBody,
+          status: newStatus,
+        });
+
+        // Le righe dei singoli invii non corrispondono a nessun messaggio:
+        // quei testi sono stati sostituiti dall'elenco. Si annullano solo
+        // quelle del tipo giusto — conferme e promemoria restano.
+        for (const aptId of gm.appointmentIds ?? []) {
+          await this.logService.cancelPendingByAppointmentAndType(aptId, perAppointmentType);
         }
         break;
       }

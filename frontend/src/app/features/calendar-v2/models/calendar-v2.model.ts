@@ -76,6 +76,30 @@ export interface PositionedEvent {
   title: string;
   timeLabel: string;          // "09:00 - 10:00"
   isRecurring: boolean;
+  /**
+   * Conflitto di disponibilità sull'appuntamento, denormalizzato come
+   * `isRecurring`: il chip lo legge a ogni giro di change detection e passare
+   * dall'appuntamento annidato costerebbe un accesso in più per evento su
+   * griglie che ne disegnano centinaia.
+   */
+  hasConflict: boolean;
+  conflictReason?: string;
+  conflictDetectedAt?: string;
+  /**
+   * Paziente non presentato. Denormalizzato come `hasConflict`: il chip lo
+   * legge a ogni giro di change detection e serve a disegnarlo sbiadito con
+   * l'icona della persona barrata. L'appuntamento assente NON sparisce piu'
+   * dal calendario — la fascia resta comunque riproponibile, perche' il
+   * calcolo degli slot liberi lato backend ignora i no-show.
+   */
+  isNoShow: boolean;
+  /**
+   * Appuntamento vivo che si sovrappone a un no-show: la griglia lo fa
+   * partire dopo la striscia dell'assenza, invece di lasciargliela addosso
+   * come un bordo. Cosi' chi ha preso il posto del paziente assente resta
+   * leggibile e cliccabile per intero.
+   */
+  overlapsNoShow: boolean;
   // Per drag & drop
   originalStartTime: string;
   originalEndTime: string;
@@ -194,6 +218,24 @@ export interface SearchFilters {
   instrumentCategoryId: string | null;
   instrument2CategoryId: string | null;
 }
+
+/**
+ * Stato iniziale dei filtri di ricerca disponibilita': e' cio' che l'utente
+ * vede al primo caricamento della pagina ed e' anche il bersaglio del
+ * pulsante "Ripristina filtri" della sidebar.
+ */
+export const DEFAULT_SEARCH_FILTERS: Readonly<SearchFilters> = {
+  duration: 45,
+  withInstrument: false,
+  instrumentCount: 1,
+  instrumentPosition: 'first',
+  instrumentOrderMatters: false,
+  instrumentCategoryId: null,
+  instrument2CategoryId: null,
+};
+
+/** "Mostra slot disponibili" e' acceso di default (richiesta calendario v3). */
+export const DEFAULT_SLOT_SEARCH_ENABLED = true;
 
 export interface AvailableSlotPosition {
   operatorId: string;

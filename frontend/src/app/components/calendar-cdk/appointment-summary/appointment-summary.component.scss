@@ -124,6 +124,66 @@
   padding: 16px;
 }
 
+/* Riquadro assenza: stesso posto e stesso peso visivo del banner conflitto,
+   perché è la stessa cosa — l'unico punto del riepilogo che chiede una
+   decisione, e chi lo apre lo apre per quella. */
+.no-show-box {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  border-left: 3px solid #d32f2f;
+}
+
+.no-show-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b3261e;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+.no-show-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.no-show-btn {
+  flex: 1 1 auto;
+  min-width: 130px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #d0d5dd;
+  background: white;
+  color: #344054;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:hover {
+    background: #f8f9fb;
+    border-color: #98a2b3;
+  }
+
+  &.primary {
+    background: #2e7d32;
+    border-color: #2e7d32;
+    color: white;
+
+    &:hover {
+      background: #276b2b;
+    }
+  }
+}
+
 .info-section {
   margin-bottom: 16px;
 

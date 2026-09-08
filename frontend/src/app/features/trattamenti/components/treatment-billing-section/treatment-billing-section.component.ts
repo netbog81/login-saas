@@ -197,6 +197,25 @@ export class TreatmentBillingSectionComponent {
     this.printInvoice.emit(this.treatment.id);
   }
 
+  /**
+   * 2026-09-03 — Prestazione fatturata su un documento che in Curandis non
+   * esiste: è stata scalata da un voucher "anticipo fattura" che fa capo a
+   * una fattura del gestionale precedente. È fatturata a tutti gli effetti —
+   * manca solo il PDF, e la UI deve dirlo invece di limitarsi a non mostrare
+   * il bottone di stampa.
+   */
+  get isExternallyInvoiced(): boolean {
+    return !!this.treatment.accountingExternalRefNumber && !this.treatment.accountingDocumentId;
+  }
+
+  /** Data del documento esterno in formato italiano, se nota. */
+  get externalRefDateLabel(): string | null {
+    const iso = this.treatment.accountingExternalRefDate;
+    if (!iso) return null;
+    const [y, m, d] = String(iso).slice(0, 10).split('-');
+    return d && m && y ? `${d}/${m}/${y}` : null;
+  }
+
   /** True se ha snapshot nota di credito (REFUNDED / PARTIALLY_REFUNDED / REISSUED). */
   get showCreditNoteData(): boolean {
     return !!this.treatment.accountingCreditNoteNumber;

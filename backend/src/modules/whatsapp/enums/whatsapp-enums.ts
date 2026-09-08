@@ -22,6 +22,14 @@ export enum WhatsappMessageType {
   REMINDER_24H = 'reminder_24h',
   CANCELLATION = 'cancellation',
   UPDATE = 'update',
+  /**
+   * Elenco unico per più appuntamenti spostati o disdetti per lo stesso numero
+   * dentro la finestra di raggruppamento. Chi telefona per riorganizzare la
+   * settimana riceve due messaggi — uno per gli spostati, uno per i disdetti —
+   * invece di uno per appuntamento.
+   */
+  UPDATE_MULTI = 'update_multi',
+  CANCELLATION_MULTI = 'cancellation_multi',
 }
 
 /** Verso di un messaggio di chat rispetto allo studio. */
@@ -69,6 +77,21 @@ export enum WhatsappTemplateType {
   REMINDER_48H = 'REMINDER_48H',
   CANCELLATION = 'CANCELLATION',
   UPDATE = 'UPDATE',
+  /**
+   * Elenco degli appuntamenti spostati insieme. Variabili: `{name}` e
+   * `{appointments}` (le righe le compone il clinico, l'elenco il gateway alla
+   * chiusura della finestra). Se manca o è disattivato il gateway usa un
+   * elenco di ripiego.
+   */
+  UPDATE_MULTI = 'UPDATE_MULTI',
+  /** Come UPDATE_MULTI, per gli appuntamenti disdetti insieme. */
+  CANCELLATION_MULTI = 'CANCELLATION_MULTI',
+  /**
+   * Email con il link per aggiungere i propri appuntamenti al calendario del
+   * telefono. Unico template con un OGGETTO, perché unico che viaggia per
+   * posta. Variabili: `{name}`, `{link}`, `{unsubscribe}`.
+   */
+  CALENDAR_INVITE_EMAIL = 'CALENDAR_INVITE_EMAIL',
 }
 
 registerEnumType(WhatsappMessageStatus, {

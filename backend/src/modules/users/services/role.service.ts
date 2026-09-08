@@ -60,8 +60,32 @@ export class RoleService {
   }
 
   async revokeRoleFromUser(appUserId: string, roleId: string): Promise<boolean> {
+    await this.assertNotLastAdmin(appUserId, roleId);
     const result = await this.userRoleRepo.delete({ appUserId, roleId });
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * L'altra strada per chiudersi fuori: togliere il ruolo all'ultima persona
+   * che, tramite quel ruolo, poteva amministrare i permessi. Stesso fermo
+   * della revoca di un permesso, applicato dal lato utente.
+   */
+  private async assertNotLastAdmin(appUserId: string, roleId: string): Promise<void> {
+    const [{ remaining }] = await this.userRoleRepo.query(`
+      SELECT COUNT(DISTINCT ur.app_user_id)::int AS remaining
+      FROM user_roles ur
+      JOIN role_permissions rp ON rp.role_id = ur.role_id
+      JOIN permissions p ON p.id = rp.permission_id
+      WHERE p.name = ANY($1)
+        AND NOT (ur.app_user_id = $2 AND ur.role_id = $3)
+    `, [RoleService.LOCKOUT_PERMISSIONS, appUserId, roleId]);
+
+    if (remaining === 0) {
+      throw new BadRequestException(
+        'Non si può togliere questo ruolo: è l\'ultima persona che può gestire '
+        + 'utenti e permessi. Dai prima il ruolo a qualcun altro.',
+      );
+    }
   }
 
   async getUserRoles(appUserId: string): Promise<Role[]> {
@@ -95,8 +119,49 @@ export class RoleService {
     return this.rolePermRepo.save(rp);
   }
 
+  /**
+   * Permessi senza i quali non si torna indietro.
+   *
+   * `user_manage` apre la schermata da cui si gestiscono ruoli e permessi:
+   * toglierlo all'ultimo che ce l'ha è l'unica mossa di questa pagina che non
+   * si può annullare dalla pagina stessa. Servirebbe una migration a mano sul
+   * DB del tenant per rimetterlo.
+   */
+  private static readonly LOCKOUT_PERMISSIONS = ['user_manage'];
+
   async revokePermissionFromRole(roleId: string, permissionId: string): Promise<boolean> {
+    await this.assertNoLockout(roleId, permissionId);
     const result = await this.rolePermRepo.delete({ roleId, permissionId });
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Rifiuta la revoca se lascerebbe lo studio senza NESSUN utente in grado di
+   * amministrare i permessi.
+   *
+   * Il controllo è sugli utenti, non sui ruoli: lasciare il permesso a un ruolo
+   * che nessuno ricopre chiude fuori esattamente come toglierlo a tutti.
+   */
+  private async assertNoLockout(roleId: string, permissionId: string): Promise<void> {
+    const permission = await this.permissionRepo.findOne({ where: { id: permissionId } });
+    if (!permission) return;
+    if (!RoleService.LOCKOUT_PERMISSIONS.includes(permission.name)) return;
+
+    const [{ remaining }] = await this.rolePermRepo.query(`
+      SELECT COUNT(DISTINCT ur.app_user_id)::int AS remaining
+      FROM user_roles ur
+      JOIN role_permissions rp ON rp.role_id = ur.role_id
+      JOIN permissions p ON p.id = rp.permission_id
+      WHERE p.id = $1 AND rp.role_id <> $2
+    `, [permissionId, roleId]);
+
+    if (remaining === 0) {
+      throw new BadRequestException(
+        `Non si può togliere "${permission.name}": resterebbe senza nessun utente `
+        + 'in grado di gestire i permessi, e questa schermata diventerebbe '
+        + 'irraggiungibile per tutti. Assegna prima il permesso a un altro ruolo '
+        + 'che qualcuno ricopre.',
+      );
+    }
   }
 }

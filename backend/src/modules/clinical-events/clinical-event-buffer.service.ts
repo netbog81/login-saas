@@ -1,33 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AsyncLocalStorage } from 'async_hooks';
+import { randomUUID } from 'crypto';
 
-import {
-  ClinicalOutboundEventType,
-} from './clinical-events.types';
+import { eventScope, PendingClinicalEvent } from './event-scope';
 
-/**
- * Evento bufferizzato in attesa di publish post-commit.
- *
- * Generato dentro una transazione DB (es. close treatment), accumulato in
- * un buffer per-request, e flushato (= emesso su EventEmitter2) SOLO se la
- * transazione fa commit con successo. Se la tx fa rollback, gli eventi
- * vengono droppati alla fine della request → nessun publish "fantasma".
- */
-export interface PendingClinicalEvent {
-  eventType: ClinicalOutboundEventType;
-  payload: unknown;
-  tenantAlias: string;
-  /** Opzionale: il publisher fa fallback a eventId se assente. */
-  correlationId?: string;
-  /**
-   * Opzionale: forza l'`eventId` dell'envelope al valore passato dal caller
-   * invece di generarlo nel publisher. Usato per `treatment.recall-requested`
-   * dove il service deve conoscere l'eventId PRIMA del publish per salvarlo
-   * come `recallRequestId` sul Treatment (accounting risponde echeggiando
-   * questo valore come `requestId` per correlazione).
-   */
-  eventId?: string;
-}
+export { PendingClinicalEvent } from './event-scope';
 
 /**
  * Buffer per il pattern publish-after-commit lato clinico.
@@ -60,7 +36,12 @@ export interface PendingClinicalEvent {
 @Injectable()
 export class ClinicalEventBuffer {
   private readonly logger = new Logger(ClinicalEventBuffer.name);
-  private readonly storage = new AsyncLocalStorage<{ events: PendingClinicalEvent[] }>();
+  /**
+   * Scope condiviso col `TransactionOutboxSubscriber`: sta in `event-scope.ts`
+   * perché il subscriber è istanziato da TypeORM e non può ricevere questo
+   * service via DI.
+   */
+  private readonly storage = eventScope;
 
   /**
    * Inizializza un nuovo buffer per la durata di `fn`. Ogni entry-point
@@ -90,6 +71,11 @@ export class ClinicalEventBuffer {
           `eventBuffer.runInScope(() => ...). Evento droppato: ${event.eventType}`,
       );
     }
+    // L'eventId si assegna QUI e non al publish: il subscriber lo usa per
+    // scrivere la riga di outbox dentro la transazione, e deve coincidere
+    // con quello che finirà nell'envelope AMQP (è la chiave di idempotenza
+    // del consumer).
+    if (!event.eventId) event.eventId = randomUUID();
     store.events.push(event);
   }
 

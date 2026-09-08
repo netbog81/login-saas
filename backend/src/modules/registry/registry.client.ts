@@ -82,6 +82,26 @@ export class RegistryClient {
     );
   }
 
+  /**
+   * Come `bulkSubjects`, ma con il token del service-account invece che con
+   * quello dell'utente: serve ai flussi che non hanno una richiesta
+   * autenticata alle spalle (feed ICS, cron, consumer).
+   */
+  async bulkSubjectsAsService(
+    ids: string[],
+    tenantAlias: string,
+    requestId?: string,
+  ): Promise<BulkSubjectsResponse> {
+    if (ids.length === 0) return [];
+    const token = await this.serviceTokenService.getToken();
+    return this.bulkSubjects(ids, {
+      rawToken: token,
+      tenantAlias,
+      orgId: null, // service-account: il registry risolve via X-Tenant-Alias
+      requestId: requestId || `s2s-${Date.now()}`,
+    });
+  }
+
   async bulkSubjects(ids: string[], ctx: RegistryRequestContext): Promise<BulkSubjectsResponse> {
     if (ids.length === 0) return [];
     if (ids.length > 200) {

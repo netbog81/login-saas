@@ -13,7 +13,7 @@ import { OidcAuthService } from './core/auth/oidc-auth.service';
 import { TenantResolverService } from './core/auth/tenant-resolver.service';
 import { TaskMessageNotificationService } from './features/task-messages/services/task-message-notification.service';
 import { TaskMessageDialogComponent } from './features/task-messages/containers/task-message-dialog.component';
-import { ConflictService } from './services/conflict.service';
+import { ConflictService } from './features/conflicts/services/conflict.service';
 import { NavigationSettingsService } from './services/navigation-settings.service';
 import { WhatsappChatHostContainer } from './features/whatsapp-chat/containers/whatsapp-chat-host.container';
 import { WhatsappChatStateService } from './features/whatsapp-chat/services/whatsapp-chat-state.service';

@@ -1,6 +1,7 @@
 import { InputType, Field, Int, ID, registerEnumType } from '@nestjs/graphql';
 import { IsNotEmpty, IsString, IsOptional, IsUUID, IsInt, Min, Max, IsArray, ValidateNested, IsBoolean, Matches, IsEmail, MaxLength, IsEnum, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
+import { RecurringOccurrenceInput } from './recurring-occurrence.input';
 
 /**
  * Tipo di ricorrenza
@@ -29,6 +30,46 @@ registerEnumType(RecurringEndType, {
   name: 'RecurringEndType',
   description: 'Modalità di fine ricorrenza'
 });
+
+/**
+ * Come si ripete una ricorrenza mensile.
+ *
+ * - DAY_OF_MONTH: stesso giorno del mese (il 15 di ogni mese). E' il
+ *   comportamento storico e resta il default quando il campo non arriva.
+ * - DAY_OF_WEEK: per posizione nella settimana ("il primo mercoledì",
+ *   "l'ultimo lunedì"), descritta da `monthlyRules`.
+ */
+export enum MonthlyMode {
+  DAY_OF_MONTH = 'day_of_month',
+  DAY_OF_WEEK = 'day_of_week',
+}
+
+registerEnumType(MonthlyMode, {
+  name: 'MonthlyMode',
+  description: 'Modalità di ricorrenza mensile: per data o per giorno della settimana',
+});
+
+/**
+ * Una fascia mensile: "il <ordinal> <weekday> del mese".
+ *
+ * `ordinal` 1..4 = prima..quarta occorrenza del giorno nel mese, -1 = ultima
+ * (che nei mesi con cinque mercoledì NON coincide con la quarta). I nomi
+ * ricalcano BYDAY di RRULE, così la stessa regola potrà essere esportata nel
+ * feed ICS senza tradurla.
+ */
+@InputType()
+export class MonthlyRuleInput {
+  @Field(() => Int, { description: '1..4 = prima..quarta occorrenza nel mese, -1 = ultima' })
+  @IsInt()
+  @IsIn([1, 2, 3, 4, -1], { message: "La posizione nel mese dev'essere 1, 2, 3, 4 oppure -1 (ultima)" })
+  ordinal: number;
+
+  @Field(() => Int, { description: 'Giorno della settimana (0=Dom, 1=Lun, ..., 6=Sab)' })
+  @IsInt()
+  @Min(0, { message: 'Giorno della settimana non valido' })
+  @Max(6, { message: 'Giorno della settimana non valido' })
+  weekday: number;
+}
 
 /**
  * Input per la configurazione della ricorrenza
@@ -68,6 +109,24 @@ export class RepeatConfigInput {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La data di fine deve essere nel formato YYYY-MM-DD' })
   untilDate?: string;
+
+  @Field(() => MonthlyMode, {
+    nullable: true,
+    description: 'Solo per type=MONTHLY: per data del mese (default) o per giorno della settimana',
+  })
+  @IsOptional()
+  @IsEnum(MonthlyMode, { message: 'Modalità di ricorrenza mensile non valida' })
+  monthlyMode?: MonthlyMode;
+
+  @Field(() => [MonthlyRuleInput], {
+    nullable: true,
+    description: 'Fasce mensili (es. primo lunedì + ultimo mercoledì) quando monthlyMode = DAY_OF_WEEK',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MonthlyRuleInput)
+  monthlyRules?: MonthlyRuleInput[];
 }
 
 /**
@@ -213,6 +272,18 @@ export class CreateAvailabilityAppointmentInput {
   @ValidateNested()
   @Type(() => RepeatConfigInput)
   repeatConfig?: RepeatConfigInput;
+
+  @Field(() => [RecurringOccurrenceInput], {
+    nullable: true,
+    description:
+      'Piano risolto nel riquadro conflitti: le occorrenze da creare davvero, ' +
+      'con gli spostamenti gia\' decisi. Quando presente sostituisce la generazione dalle regole.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RecurringOccurrenceInput)
+  occurrences?: RecurringOccurrenceInput[];
 
   @Field({ nullable: true, description: 'Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)' })
   @IsOptional()

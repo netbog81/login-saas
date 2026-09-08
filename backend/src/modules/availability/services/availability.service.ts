@@ -368,7 +368,12 @@ export class AvailabilityService {
     operatorIds: string[],
     startDate: string,
     endDate: string,
-    excludeAppointmentId?: string,
+    /**
+     * Appuntamenti da NON considerare occupati. Accetta anche una lista:
+     * validando una serie ricorrente vanno escluse tutte le sue occorrenze
+     * insieme, altrimenti ciascuna risulterebbe in conflitto con le sorelle.
+     */
+    excludeAppointmentId?: string | string[],
   ): Promise<OperatorAvailabilityV3[]> {
     if (operatorIds.length === 0) return [];
 
@@ -400,9 +405,14 @@ export class AvailabilityService {
     // indicato (es. quello in fase di update): il suo intervallo non deve
     // contare come occupato per se stesso → niente falso positivo quando
     // lo si sposta nello spazio che gia' occupava.
+    const excludedIds = new Set(
+      excludeAppointmentId
+        ? (Array.isArray(excludeAppointmentId) ? excludeAppointmentId : [excludeAppointmentId])
+        : [],
+    );
     const apptsByOpDate = new Map<string, { start: number; end: number; weight: number }[]>();
     for (const apt of appointments) {
-      if (excludeAppointmentId && apt.id === excludeAppointmentId) continue;
+      if (excludedIds.has(apt.id)) continue;
       const dateStr = apt.appointmentDate instanceof Date
         ? apt.appointmentDate.toISOString().split('T')[0]
         : String(apt.appointmentDate).split('T')[0];

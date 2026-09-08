@@ -49,6 +49,14 @@ import { MatIconModule } from '@angular/material/icon';
           <span>In programma</span>
         </a>
         <a mat-tab-link
+           routerLink="diagnostics"
+           routerLinkActive
+           #rla5="routerLinkActive"
+           [active]="rla5.isActive">
+          <mat-icon>healing</mat-icon>
+          <span>Problemi</span>
+        </a>
+        <a mat-tab-link
            routerLink="settings"
            routerLinkActive
            #rla2="routerLinkActive"

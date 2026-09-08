@@ -74,6 +74,20 @@ export class WhatsappMessageLog {
   errorMessage?: string;
 
   @Field({ nullable: true })
+  /**
+   * Data e ora dell'appuntamento come questo messaggio l'ha comunicata.
+   *
+   * Confrontata con l'appuntamento di adesso dice se il paziente ha in mano
+   * un'informazione superata — cioè se è stato spostato senza che nessuno
+   * glielo dicesse. Il log da solo non lo sa: registra che un messaggio è
+   * partito, non cosa diceva.
+   *
+   * Ora del calendario dello studio, senza fuso: è la stessa che il paziente
+   * legge nel messaggio.
+   */
+  @Column('timestamp', { nullable: true })
+  announcedFor?: Date;
+
   @Column('timestamptz', { nullable: true })
   sentAt?: Date;
 

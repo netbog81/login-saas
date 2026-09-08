@@ -3,6 +3,7 @@ import { IsUUID, IsString, IsOptional, IsDateString, Matches, IsBoolean, IsArray
 import { Type } from 'class-transformer';
 import GraphQLJSON from 'graphql-type-json';
 import { ServiceInputItem } from './create-availability-appointment.input';
+import { RecurringOccurrenceInput } from './recurring-occurrence.input';
 
 @InputType()
 export class CreateGymAppointmentInput {
@@ -80,4 +81,20 @@ export class CreateGymAppointmentInput {
   @Field(() => GraphQLJSON, { nullable: true })
   @IsOptional()
   repeatConfig?: any;
+
+  /**
+   * Piano risolto nel riquadro conflitti: le occorrenze da creare davvero,
+   * con spostamenti (anche di sala) già decisi. Quando presente sostituisce
+   * la generazione dalle regole.
+   *
+   * Parità con la creazione standard: senza questo campo, le decisioni prese
+   * occorrenza per occorrenza venivano mostrate all'utente e poi ignorate,
+   * perché il backend rigenerava comunque le date dalla regola.
+   */
+  @Field(() => [RecurringOccurrenceInput], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RecurringOccurrenceInput)
+  occurrences?: RecurringOccurrenceInput[];
 }

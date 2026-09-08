@@ -21,6 +21,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Observable, Subject, combineLatest, forkJoin, of } from 'rxjs';
 import { takeUntil, filter, distinctUntilChanged, switchMap, catchError, map } from 'rxjs/operators';
 
@@ -98,6 +99,7 @@ import { MultiTreatmentDialogData } from '../models/instructor-workspace.model';
               [isAttended]="col.isAttended"
               (startTreatment)="onStartTreatment($event)"
               (openTreatment)="onOpenTreatment($event)"
+              [canMarkAttendance]="canMarkAttendance"
               (markNoShow)="onMarkNoShow($event)"
               (markAttended)="onMarkAttended($event)"
               (markLateArrival)="onMarkLateArrival($event)"
@@ -224,10 +226,34 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
     private appointmentService: AvailabilityAppointmentService,
     private patientService: PatientService,
     private dialog: MatDialog,
+    private snackBar: MatSnackBar,
     private cdr: ChangeDetectorRef,
   ) {}
 
+  /**
+   * L'utente puo' marcare presenze/assenze? Lo decide il backend combinando
+   * ruolo e impostazione `noShow.operatorsCanMark`: qui si chiede una volta
+   * sola all'apertura e si passa ai componenti, che nascondono i pulsanti
+   * invece di farli fallire.
+   */
+  canMarkAttendance = false;
+
   ngOnInit(): void {
+    this.appointmentService
+      .canMarkAttendance()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (allowed) => {
+          this.canMarkAttendance = allowed;
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          // In dubbio non si mostrano azioni che il backend rifiuterebbe.
+          this.canMarkAttendance = false;
+          this.cdr.markForCheck();
+        },
+      });
+
     // Quando operatore cambia, carica appuntamenti di oggi e avvia detector
     combineLatest([
       this.stateService.selectedOperator$.pipe(
@@ -344,14 +370,28 @@ export class InstructorInProgressContainer implements OnInit, OnDestroy {
     this.openMultiTreatmentDialog();
   }
 
+  /**
+   * "Segna non presentato" dalla colonna palestra.
+   *
+   * Chiamava `revertAttended`, che riporta l'appuntamento a "confermato" e
+   * NON registra alcuna assenza: il paziente spariva dai conteggi no-show e
+   * il cron auto-attendance lo rimetteva a "presentato" entro un minuto. La
+   * mutation giusta e' `markAsNoShow`, la stessa che usa la segreteria.
+   */
   onMarkNoShow(appointmentId: string): void {
     this.appointmentService
-      .revertAttended(appointmentId)
+      .markAsNoShow(appointmentId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => this.refreshColumns(),
         error: (err) => {
           console.error('[InProgressContainer] Error marking no-show:', err);
+          this.snackBar.open(
+            err?.graphQLErrors?.[0]?.message ||
+              'Impossibile segnare il paziente come non presentato.',
+            'OK',
+            { duration: 5000 },
+          );
         },
       });
   }

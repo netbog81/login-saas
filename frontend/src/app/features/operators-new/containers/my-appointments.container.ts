@@ -9,12 +9,14 @@ import {
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, of } from 'rxjs';
+import { Observable, Subject, of } from 'rxjs';
 import { takeUntil, catchError, finalize } from 'rxjs/operators';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { MyAppointmentsService } from '../services/my-appointments.service';
+import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { MyAppointment } from '../models/my-appointments.model';
 import {
   MyAppointmentsFilters,
@@ -79,7 +81,11 @@ interface PatientOption {
           [appointments]="filteredAppointments"
           [groups]="groups"
           [groupedView]="viewMode === 'byPatient'"
-          [loading]="loading">
+          [loading]="loading"
+          [canMarkAttendance]="canMarkAttendance"
+          [pendingId]="attendancePendingId"
+          (markNoShow)="onMarkNoShow($event)"
+          (markAttended)="onMarkAttended($event)">
         </app-my-appointments-list>
       </mat-card-content>
     </mat-card>
@@ -128,13 +134,89 @@ export class MyAppointmentsContainer implements OnInit, OnDestroy {
   groups: AppointmentGroup[] = [];
   patientOptions: PatientOption[] = [];
 
+  /**
+   * L'operatore puo' segnare presenze e assenze dalla propria pagina?
+   * Lo decide il backend (`canMarkAttendance`: ruolo + impostazione
+   * `noShow.operatorsCanMark`), non un controllo di ruolo lato client.
+   */
+  canMarkAttendance = false;
+
+  /** Appuntamento con una marcatura in corso: evita doppi click. */
+  attendancePendingId: string | null = null;
+
   private destroy$ = new Subject<void>();
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly ngZone = inject(NgZone);
   private readonly service = inject(MyAppointmentsService);
+  private readonly appointmentService = inject(AvailabilityAppointmentService);
+  private readonly snackBar = inject(MatSnackBar);
 
   ngOnInit(): void {
+    this.appointmentService
+      .canMarkAttendance()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: allowed => this.ngZone.run(() => {
+          this.canMarkAttendance = allowed;
+          this.cdr.markForCheck();
+        }),
+        // In dubbio nessun pulsante: meglio non mostrare un'azione che il
+        // backend rifiuterebbe.
+        error: () => this.ngZone.run(() => {
+          this.canMarkAttendance = false;
+          this.cdr.markForCheck();
+        }),
+      });
     this.loadAppointments();
+  }
+
+  /**
+   * Segna l'assenza. Reversibile: `onMarkAttended` la annulla e il backend
+   * degrada l'evento ad "arrivato in ritardo", cosi' i conteggi no-show
+   * restano corretti anche cambiando idea piu' volte.
+   */
+  onMarkNoShow(appointmentId: string): void {
+    this.runAttendanceChange(
+      appointmentId,
+      this.appointmentService.markAsNoShow(appointmentId),
+      'Paziente segnato come non presentato.',
+    );
+  }
+
+  onMarkAttended(appointmentId: string): void {
+    this.runAttendanceChange(
+      appointmentId,
+      this.appointmentService.markAsAttended(appointmentId),
+      'Assenza annullata: paziente segnato presentato.',
+    );
+  }
+
+  private runAttendanceChange(
+    appointmentId: string,
+    op: Observable<unknown>,
+    okMessage: string,
+  ): void {
+    if (this.attendancePendingId) return;
+    this.attendancePendingId = appointmentId;
+    this.cdr.markForCheck();
+
+    op.pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.ngZone.run(() => {
+        this.attendancePendingId = null;
+        this.snackBar.open(okMessage, 'OK', { duration: 3000 });
+        this.loadAppointments();
+      }),
+      error: (err: any) => this.ngZone.run(() => {
+        this.attendancePendingId = null;
+        this.snackBar.open(
+          err?.graphQLErrors?.[0]?.message ||
+            'Operazione non riuscita. Riprova.',
+          'OK',
+          { duration: 5000 },
+        );
+        this.cdr.markForCheck();
+      }),
+    });
   }
 
   ngOnChanges(): void {

@@ -2,7 +2,6 @@ import { Routes } from '@angular/router';
 import { authGuard, linkedGuard, homeRedirectGuard } from './core/auth/auth.guard';
 import { schemaGuard } from './core/auth/schema.guard';
 import { AvailabilityDashboardComponent } from './components/availability/availability-dashboard/availability-dashboard.component';
-import { ConflictDashboardComponent } from './components/conflict-dashboard/conflict-dashboard.component';
 import { SettingsComponent } from './components/settings/settings.component';
 import { PatientManagementComponent } from './components/patients/patient-management/patient-management.component';
 import { OperatorWorkspaceContainer } from './features/operators-new/containers/operator-workspace.container';
@@ -19,6 +18,7 @@ import { WhatsappMonitorContainer } from './features/whatsapp/containers/whatsap
 import { WhatsappSettingsContainer } from './features/whatsapp/containers/whatsapp-settings.container';
 import { WhatsappScheduledContainer } from './features/whatsapp/containers/whatsapp-scheduled.container';
 import { WhatsappLogManagementContainer } from './features/whatsapp/containers/whatsapp-log-management.container';
+import { WhatsappDiagnosticsContainer } from './features/whatsapp/containers/whatsapp-diagnostics.container';
 import { WhatsappChatInboxContainer } from './features/whatsapp-chat/containers/whatsapp-chat-inbox.container';
 import { InstructorsLayoutComponent } from './features/instructors/layout/instructors-layout.component';
 import { InstructorAppointmentsContainer } from './features/instructors/containers/instructor-appointments.container';
@@ -193,10 +193,14 @@ export const routes: Routes = [
   },
   {
     path: 'conflicts',
-    component: ConflictDashboardComponent,
+    // Lazy: la pagina tira dentro mat-table e il dialog Appuntamenti, che
+    // non servono a chi non apre mai i conflitti.
+    loadComponent: () =>
+      import('./features/conflicts/containers/conflicts-page.container')
+        .then(m => m.ConflictsPageContainer),
     canActivate: [authGuard, linkedGuard, schemaGuard],
     data: { roles: ['segreteria', 'admin', 'amministratore', 'superadmin'] },
-    title: 'Dashboard Conflitti',
+    title: 'Conflitti di disponibilità',
   },
   {
     path: 'settings',
@@ -225,6 +229,7 @@ export const routes: Routes = [
       { path: 'chat', component: WhatsappChatInboxContainer, title: 'Chat WhatsApp' },
       { path: 'monitor', component: WhatsappMonitorContainer, title: 'Monitor Messaggi' },
       { path: 'scheduled', component: WhatsappScheduledContainer, title: 'Messaggi in Programma' },
+      { path: 'diagnostics', component: WhatsappDiagnosticsContainer, title: 'Problemi e risoluzione' },
       { path: 'settings', component: WhatsappSettingsContainer, title: 'Configurazione WhatsApp' },
       { path: 'log-management', component: WhatsappLogManagementContainer, title: 'Gestione Log' },
     ],

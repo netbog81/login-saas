@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { DragDropModule, CdkDrag } from '@angular/cdk/drag-drop';
+import { RememberedWindowDirective } from '../../../shared/directives/remembered-window.directive';
 import { ViewChild } from '@angular/core';
 import { TrattamentiContainer } from './trattamenti.container';
 import { TrattamentiFilters, TrattamentiViewMode } from '../models/trattamento.model';
@@ -35,6 +36,7 @@ export interface TrattamentiDialogData {
     MatIconModule,
     MatTooltipModule,
     DragDropModule,
+    RememberedWindowDirective,
     TrattamentiContainer,
   ],
   template: `
@@ -46,6 +48,8 @@ export interface TrattamentiDialogData {
            cdkDrag
            #titleDrag="cdkDrag"
            cdkDragRootElement=".trattamenti-dialog-pane"
+           appRememberedWindow="trattamenti"
+           rememberedWindowPane=".trattamenti-dialog-pane"
            cdkDragBoundary=".cdk-overlay-container"
            (dblclick)="toggleMinimized()">
         <div class="title-left">

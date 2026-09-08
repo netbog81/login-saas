@@ -16,6 +16,7 @@ import { GymExceptionService } from './gym-exception.service';
 import { AvailabilityService } from './availability.service';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
+import { EventsService } from '../../events/events.service';
 
 const SETTINGS_KEY = 'conflicts.lastRevalidationAt';
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 ore
@@ -67,6 +68,7 @@ export class ConflictRevalidationService {
     private gymExceptionService: GymExceptionService,
     private settingsService: GeneralSettingsService,
     private availabilityService: AvailabilityService,
+    private eventsService: EventsService,
   ){}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -263,7 +265,21 @@ export class ConflictRevalidationService {
       );
     }
 
-    return { resolved: resolved + toResolve.length, detected };
+    const totalResolved = resolved + toResolve.length;
+
+    // La revalidazione è l'unico punto in cui i flag cambiano SENZA che
+    // l'utente abbia fatto una mutation: gira dentro una query. Senza questa
+    // emissione i triangoli comparirebbero (o sparirebbero) solo sul client
+    // che ha innescato la revalidazione, e tutti gli altri calendari aperti
+    // resterebbero indietro fino al refresh successivo.
+    if (totalResolved > 0 || detected > 0) {
+      this.eventsService.emit({
+        type: 'appointment_changed',
+        timestamp: new Date(),
+      });
+    }
+
+    return { resolved: totalResolved, detected };
   }
 
   /** Normalizza una data (Date o stringa ISO) in 'YYYY-MM-DD'. */

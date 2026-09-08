@@ -30,6 +30,7 @@ const GET_WHATSAPP_CONFIG = gql`
       sendCancelNotification
       sendUpdateNotification
       recapBufferSeconds
+      patientCalendarFeedEnabled
       reminderWindowEnabled
       reminderWindowStart
       reminderWindowEnd
@@ -46,8 +47,10 @@ const GET_WHATSAPP_TEMPLATES = gql`
     whatsappTemplates {
       id
       templateType
+      channel
       bodyTemplate
       footerTemplate
+      subjectTemplate
       isActive
       createdAt
       updatedAt
@@ -60,8 +63,10 @@ const GET_WHATSAPP_TEMPLATE = gql`
     whatsappTemplate(type: $type) {
       id
       templateType
+      channel
       bodyTemplate
       footerTemplate
+      subjectTemplate
       isActive
       updatedAt
     }
@@ -219,6 +224,7 @@ const UPSERT_WHATSAPP_CONFIG = gql`
       sendCancelNotification
       sendUpdateNotification
       recapBufferSeconds
+      patientCalendarFeedEnabled
       reminderWindowEnabled
       reminderWindowStart
       reminderWindowEnd
@@ -271,8 +277,10 @@ const UPSERT_WHATSAPP_TEMPLATE = gql`
     upsertWhatsappTemplate(input: $input) {
       id
       templateType
+      channel
       bodyTemplate
       footerTemplate
+      subjectTemplate
       isActive
       updatedAt
     }

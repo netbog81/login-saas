@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { In, IsNull, Not, EntityManager, SelectQueryBuilder } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
@@ -20,8 +20,45 @@ import { ClinicalEventBuffer } from '../../clinical-events/clinical-event-buffer
 import { flushBufferedEvents } from '../../clinical-events/clinical-event-buffer.helpers';
 import { TreatmentEventMapper } from '../../clinical-events/mappers/treatment-event.mapper';
 import { VoucherFeService } from './voucher-fe.service';
+import { VoucherFeUsage } from '../entities/voucher-fe-usage.entity';
+import { OperatorFeSettlementLine } from '../../operator-fe-accounts/entities/operator-fe-settlement-line.entity';
+import { OperatorFeSettlement } from '../../operator-fe-accounts/entities/operator-fe-settlement.entity';
+import { PendingFeCollectionsService } from './pending-fe-collections.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
 import { AppUser } from '../../users/entities/app-user.entity';
+
+/**
+ * Motivo registrato su `cancellationReason` quando si cestina un trattamento
+ * orfano già inviato ad accounting: finisce anche nel payload
+ * `treatment.cancelled`, quindi deve spiegarsi da solo lato contabilità.
+ */
+const ORPHAN_DELETION_REASON =
+  'Trattamento orfano: appuntamento cancellato dal calendario, trattamento eliminato dalla segreteria';
+
+/** Data in formato italiano per i messaggi d'errore mostrati all'utente. */
+function itDate(value: string | Date | null | undefined): string {
+  if (!value) return '—';
+  // Le colonne `date` (periodFrom/periodTo) tornano da pg come 'YYYY-MM-DD':
+  // riformattate a mano, senza passare da Date, che le interpreterebbe come
+  // mezzanotte UTC e potrebbe spostarle di un giorno.
+  if (typeof value === 'string') {
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const gg = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${gg}/${mm}/${d.getFullYear()}`;
+}
+
+/** Esito per singolo id di `deleteOrphanTreatments`. */
+export interface OrphanDeletionOutcome {
+  treatmentId: string;
+  deleted: boolean;
+  /** Motivo del blocco, già formulato per l'utente. Null se cestinato. */
+  reason: string | null;
+}
 
 // ==================== INPUT INTERFACES ====================
 
@@ -67,6 +104,18 @@ export interface RecordPaymentInput {
    * rifiuta una nuova registrazione.
    */
   replaceExisting?: boolean;
+  /**
+   * 2026-09-04 — Incasso PARZIALE: copre solo una parte del trattamento, il
+   * resto verrà fatturato.
+   *
+   * Nasce per il voucher "anticipo fattura": il credito copre 30 dei 55, i
+   * 25 restanti si fatturano e si incassano dopo. Il trattamento NON risulta
+   * pagato adesso — lo diventa quando arriva l'incasso della fattura del
+   * residuo, comunicato da accounting. Senza questo flag la somma delle
+   * righe deve coincidere col totale e `isPaid` va a true: registrare 30 su
+   * 55 avrebbe dichiarato saldato un trattamento con 25 ancora da incassare.
+   */
+  partial?: boolean;
 }
 
 export interface TreatmentInstrumentInput {
@@ -126,6 +175,7 @@ export class TreatmentService {
     private readonly eventEmitter: EventEmitter2,
     private readonly treatmentEventMapper: TreatmentEventMapper,
     private readonly voucherFeService: VoucherFeService,
+    private readonly pendingFeService: PendingFeCollectionsService,
   ) {}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -449,6 +499,9 @@ export class TreatmentService {
         treatment.paymentMethod = null as any;
         treatment.paidAt = null as any;
         treatment.collectedBy = null as any;
+        treatment.paymentRecordedByUserId = null as any;
+        treatment.paymentCollectorRole = null as any;
+        treatment.paymentTenderLines = null;
       }
 
       // Aggiorna relazioni se specificate
@@ -936,6 +989,56 @@ export class TreatmentService {
   }
 
   /**
+   * Normalizza `collectedBy` a un `AppUser.id`, l'unica chiave con cui il
+   * nome di chi ha incassato è risolvibile (e con cui accounting risale al
+   * `sub` Keycloak).
+   *
+   * Serve perché i client hanno storicamente mandato tre cose diverse nello
+   * stesso campo: l'AppUser.id, il `sub` Keycloak (pagina Trattamenti, che
+   * usa `auth.currentUser().userId`) e l'Operator.id (workspace operatore e
+   * dialog di modifica). Senza normalizzazione l'incasso resta anonimo.
+   *
+   * Un operatore incassa SEMPRE a proprio nome: non può attribuire l'incasso
+   * a un collega. La segreteria può, se il client lo specifica.
+   */
+  private async resolveCollectedByAppUserId(
+    raw: string | undefined | null,
+    actorAppUserId: string | null | undefined,
+    callerRole: 'operator' | 'secretary',
+  ): Promise<string | null> {
+    if (callerRole === 'operator' && actorAppUserId) {
+      return actorAppUserId;
+    }
+
+    const candidate = (raw ?? '').trim();
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate);
+    if (!isUuid) {
+      return actorAppUserId ?? null;
+    }
+
+    const appUserRepo = this.dataSource.getRepository(AppUser);
+    const byId = await appUserRepo.findOne({
+      where: { id: candidate },
+      select: { id: true },
+    });
+    if (byId) return byId.id;
+
+    const byKeycloak = await appUserRepo.findOne({
+      where: { keycloakId: candidate },
+      select: { id: true },
+    });
+    if (byKeycloak) return byKeycloak.id;
+
+    const operator = await this.dataSource
+      .getRepository(Operator)
+      .findOne({ where: { id: candidate } });
+    if (operator?.appUserId) return operator.appUserId;
+
+    return actorAppUserId ?? null;
+  }
+
+  /**
    * Registra il pagamento del paziente.
    *
    * @param callerRole - ruolo derivato server-side dal resolver (JWT).
@@ -944,11 +1047,16 @@ export class TreatmentService {
    *   'secretary' (default): la segreteria può sempre incassare, in
    *     qualsiasi stato del trattamento (anche CLOSED/SENT/PENDING/INVOICED:
    *     l'incasso post-chiusura è un caso d'uso legittimo).
+   * @param actorAppUserId - AppUser di chi sta incassando, risolto dal JWT nel
+   *   resolver. Su un trattamento sconto FE decide sia il permesso (proprio
+   *   trattamento o impostazione "tutti possono incassare sconto FE") sia
+   *   l'attribuzione dell'incasso.
    */
   async recordPayment(
     id: string,
     input: RecordPaymentInput,
     callerRole: 'operator' | 'secretary' = 'secretary',
+    actorAppUserId?: string | null,
   ): Promise<Treatment> {
     const treatment = await this.findById(id);
 
@@ -968,9 +1076,29 @@ export class TreatmentService {
     // pagamento già registrato (storno voucher_fe precedente + ri-registrazione).
     // La modifica di righe/prezzi resta congelata altrove (updateBySecretary).
 
-    if (callerRole === 'operator') {
+    if (treatment.scontoFE) {
+      // Sconto FE: l'incasso resta tutto nel clinico e l'autorizzazione è di
+      // CHI incassa (canCollectPayment sulla sua scheda + trattamento proprio
+      // oppure impostazione "tutti possono incassare sconto FE").
+      const denyReason = await this.pendingFeService.denyReasonForCollect(treatment, {
+        appUserId: actorAppUserId ?? null,
+        isSecretary: callerRole === 'secretary',
+      });
+      if (denyReason) {
+        throw new ForbiddenException(denyReason);
+      }
+    } else if (callerRole === 'operator') {
       await this.assertTreatmentOperatorCanCollect(treatment);
     }
+
+    // Chi ha incassato, normalizzato ad AppUser.id (vedi
+    // resolveCollectedByAppUserId): è il dato che alimenta il nome mostrato
+    // in UI e l'attribuzione verso accounting.
+    const collectedByAppUserId = await this.resolveCollectedByAppUserId(
+      input.collectedBy,
+      actorAppUserId,
+      callerRole,
+    );
 
     const tenantAlias = this.tenantContext.getTenantAlias();
     const correlationId = this.tenantContext.getContext()?.requestId;
@@ -990,7 +1118,7 @@ export class TreatmentService {
         await this.voucherFeService.reverseConsumptionsForTreatment(
           manager,
           id,
-          input.collectedBy,
+          collectedByAppUserId ?? undefined,
         );
       }
 
@@ -1003,16 +1131,142 @@ export class TreatmentService {
       // l'`amount` incassato può essere parziale/diverso e va tracciato a parte
       // (nel PaymentAllocation lato accounting, non sul treatment). Sovrascrivere
       // il price corromperebbe il totale del trattamento.
+      // 2026-09-03 — Righe di tender normalizzate QUI, prima dell'update, per
+      // poterle salvare sul trattamento: `paymentMethod` è una stringa sola e
+      // non dice quale buono è stato usato. Serve quando l'incasso avviene
+      // prima dell'invio a fatturazione, perché in quel caso il pagamento
+      // viaggia dentro `treatment.closed` e senza queste righe la contabilità
+      // non saprebbe che c'è un voucher da scalare.
+      const normalizedTenderLines =
+        input.tenderLines && input.tenderLines.length > 0
+          ? input.tenderLines
+          : input.voucherFeId
+          ? [{ kind: 'voucher_fe', voucherFeId: input.voucherFeId, amount }]
+          : [{ kind: 'method', paymentMethodId: input.paymentMethod, amount }];
+      const tenderLinesSnapshot = normalizedTenderLines.map((l) => ({
+        kind: l.kind,
+        paymentMethodId: l.kind === 'method' ? l.paymentMethodId ?? null : null,
+        voucherId: l.kind === 'voucher' ? l.voucherId ?? null : null,
+        voucherFeId: l.kind === 'voucher_fe' ? l.voucherFeId ?? null : null,
+        amount: Number(l.amount).toFixed(2),
+      }));
+
+      // 2026-09-04 — Incasso parziale: si accetta solo dove ha un seguito.
+      //
+      // Il senso è "questa quota è coperta, il resto lo fatturo": vale per il
+      // voucher "anticipo fattura", il cui credito è già stato fatturato e
+      // incassato altrove, e la cui quota residua diventa una riga di
+      // documento. Un acconto in contanti non è la stessa cosa — quello
+      // andrebbe documentato, non lasciato a metà su un trattamento — e per
+      // ora resta fuori.
+      const tenderSum = normalizedTenderLines.reduce(
+        (acc, l) => acc + (Number(l.amount) || 0),
+        0,
+      );
+
+      // 2026-09-04 — Un solo voucher di anticipo per trattamento.
+      //
+      // Non è una scelta di qui: in contabilità la copertura da anticipo vive
+      // su una colonna sola (`advanceVoucherId`), e un secondo buono diverso
+      // viene rifiutato. Quel rifiuto però avviene dentro un best-effort che
+      // non deve far perdere la prestazione: veniva solo loggato, e chi aveva
+      // registrato due buoni si ritrovava il primo scalato, il secondo no, e
+      // nessun avviso. Meglio dirlo qui, dove si sta ancora scegliendo.
+      const distinctVouchers = new Set(
+        normalizedTenderLines
+          .filter((l) => l.kind === 'voucher' && l.voucherId)
+          .map((l) => l.voucherId!),
+      );
+      if (distinctVouchers.size > 1) {
+        throw new BadRequestException(
+          'Su uno stesso trattamento si può usare un solo voucher di anticipo fattura. '
+          + 'Usane uno per questo trattamento, oppure copri gli altri trattamenti con '
+          + 'il secondo buono.',
+        );
+      }
+      const treatmentTotal = Number(treatment.accountingTotalAmount ?? treatment.price ?? 0);
+      if (input.partial) {
+        if (treatment.scontoFE) {
+          throw new BadRequestException(
+            'L\'incasso parziale non è previsto sui trattamenti con sconto FE: '
+            + 'quell\'incasso resta nel clinico e non genera nessuna fattura per il residuo.',
+          );
+        }
+        if (treatment.isInvoicedToPatient) {
+          throw new BadRequestException(
+            `Il trattamento è già fatturato (n. ${treatment.patientInvoiceNumber ?? '—'}): `
+            + 'non c\'è nessun residuo da fatturare. Usa il voucher come metodo di '
+            + 'pagamento sul documento, dalla Contabilità.',
+          );
+        }
+        if (!normalizedTenderLines.every((l) => l.kind === 'voucher')) {
+          throw new BadRequestException(
+            'L\'incasso parziale è ammesso solo con voucher di anticipo fattura: '
+            + 'il residuo va fatturato, e per le altre forme di pagamento serve un documento.',
+          );
+        }
+        if (tenderSum <= 0) {
+          throw new BadRequestException('L\'incasso parziale deve avere un importo maggiore di zero.');
+        }
+        if (treatmentTotal > 0 && tenderSum >= treatmentTotal - 0.01) {
+          throw new BadRequestException(
+            `L'importo (€ ${tenderSum.toFixed(2)}) copre l'intero trattamento `
+            + `(€ ${treatmentTotal.toFixed(2)}): registralo come incasso normale, non parziale.`,
+          );
+        }
+        // 2026-09-04 — Un secondo incasso parziale non si somma al primo, e
+        // nemmeno lo si corregge in loco: si annulla e si rifà.
+        //
+        // Il motivo è nel modo in cui i due moduli si parlano. Il clinico
+        // manda SEMPRE l'elenco completo delle righe, mentre la contabilità
+        // le applica in modo incrementale: rimandando una riga già applicata
+        // scalerebbe quel buono una seconda volta. Per gli incassi a saldo la
+        // correzione è protetta perché esiste una `PaymentAllocation` da cui
+        // stornare i consumi precedenti — un parziale invece non ne crea
+        // nessuna, e non c'è niente su cui appoggiare lo storno.
+        //
+        // Annullare l'incasso passa invece per `treatment.payment-cancelled`,
+        // che in contabilità rilascia le coperture (e si rifiuta se nel
+        // frattempo il residuo è stato fatturato). Due clic, nessun rischio.
+        const alreadyPartial = (treatment.paymentTenderLines ?? []).length > 0;
+        if (alreadyPartial) {
+          throw new BadRequestException(
+            'Su questo trattamento è già registrato un incasso parziale. Annullalo e '
+            + 'registralo di nuovo con TUTTE le righe insieme: aggiungerne un secondo '
+            + 'scalerebbe due volte il buono già usato.',
+          );
+        }
+        if (input.replaceExisting) {
+          throw new BadRequestException(
+            'La correzione non è prevista sugli incassi parziali: annulla l\'incasso e '
+            + 'registralo di nuovo con le righe corrette.',
+          );
+        }
+      }
+
       const updateQb = manager
         .createQueryBuilder()
         .update(Treatment)
         .set({
-          isPaid: true,
-          paymentMethod: input.paymentMethod,
-          paidAt: now,
-          collectedBy: input.collectedBy,
+          // Parziale: il trattamento NON è pagato. Restano le righe di
+          // tender — che dicono quanto è già coperto e da quale buono, e
+          // sono ciò che la contabilità legge per scalarlo — più i campi di
+          // audit. `isPaid` arriverà con l'incasso della fattura del residuo.
+          ...(input.partial
+            ? {}
+            : {
+                isPaid: true,
+                paymentMethod: input.paymentMethod,
+                paidAt: now,
+                collectedBy: collectedByAppUserId as string,
+              }),
           paymentId,
           paymentRecordedSource: 'clinical',
+          paymentTenderLines: tenderLinesSnapshot,
+          // Audit (migration 1831): chi ha materialmente registrato e con
+          // quale ruolo, indipendentemente da chi l'incasso è attribuito.
+          paymentRecordedByUserId: (actorAppUserId ?? null) as string,
+          paymentCollectorRole: callerRole,
         })
         .returning('*');
       if (input.replaceExisting) {
@@ -1038,6 +1292,12 @@ export class TreatmentService {
       const isMultiInvoice =
         (fresh!.accountingDocumentTreatmentCount ?? 1) > 1 &&
         !!fresh!.accountingDocumentId;
+      if (isMultiInvoice && input.partial) {
+        throw new BadRequestException(
+          `La fattura ${fresh!.patientInvoiceNumber ?? ''} copre più trattamenti: `
+          + 'si incassa a saldo intero del documento, non a quote parziali.',
+        );
+      }
       if (isMultiInvoice) {
         const docTotal = Number(fresh!.accountingTotalAmount ?? 0);
         if (docTotal > 0 && Math.abs(Number(amount) - docTotal) > 0.01) {
@@ -1060,9 +1320,12 @@ export class TreatmentService {
               isPaid: true,
               paymentMethod: input.paymentMethod,
               paidAt: now,
-              collectedBy: input.collectedBy,
+              collectedBy: collectedByAppUserId as string,
               paymentId,
               paymentRecordedSource: 'clinical',
+              paymentTenderLines: tenderLinesSnapshot,
+              paymentRecordedByUserId: (actorAppUserId ?? null) as string,
+              paymentCollectorRole: callerRole,
             })
             .returning('id');
           if (input.replaceExisting) {
@@ -1086,17 +1349,16 @@ export class TreatmentService {
 
       // Normalizza le righe di tender. Se non fornite, ricava una riga singola
       // dal `paymentMethod` legacy (retro-compat "Fattura e incassa").
-      const amountStr = Number(amount).toFixed(2);
-      const tenderLines =
-        input.tenderLines && input.tenderLines.length > 0
-          ? input.tenderLines
-          : input.voucherFeId
-          ? [{ kind: 'voucher_fe', voucherFeId: input.voucherFeId, amount }]
-          : [{ kind: 'method', paymentMethodId: input.paymentMethod, amount }];
-
-      // Validazione somma = totale (tolleranza centesimi).
+      const tenderLines = normalizedTenderLines;
       const sum = tenderLines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
-      if (Math.abs(sum - Number(amount)) > 0.01) {
+      // Parziale: l'importo dell'incasso è la somma delle righe, non il
+      // totale del trattamento — è quello che si comunica alla contabilità.
+      const effectiveAmount = input.partial ? sum : Number(amount);
+      const amountStr = effectiveAmount.toFixed(2);
+
+      // Validazione somma = totale (tolleranza centesimi). Nel parziale la
+      // relazione è già stata verificata sopra (0 < somma < totale).
+      if (!input.partial && Math.abs(sum - Number(amount)) > 0.01) {
         throw new BadRequestException(
           `La somma delle righe di pagamento (€ ${sum.toFixed(2)}) non coincide con il totale (€ ${amountStr}).`,
         );
@@ -1115,7 +1377,7 @@ export class TreatmentService {
             voucherFeId: line.voucherFeId,
             amount: Number(line.amount),
             treatmentId: id,
-            createdByUserId: input.collectedBy,
+            createdByUserId: collectedByAppUserId ?? undefined,
           });
         }
       }
@@ -1137,9 +1399,9 @@ export class TreatmentService {
         }
         const subMap = await this.batchLookupKeycloakSubsForCancel(
           manager,
-          [input.collectedBy],
+          collectedByAppUserId ? [collectedByAppUserId] : [],
         );
-        const collectedByKeycloakSub = subMap.get(input.collectedBy) ?? null;
+        const collectedByKeycloakSub = (collectedByAppUserId ? subMap.get(collectedByAppUserId) : null) ?? null;
 
         // Mappa le righe verso il payload evento (escludendo voucher_fe, che è
         // puramente clinico e non va mai verso accounting).
@@ -1157,7 +1419,9 @@ export class TreatmentService {
           payload: {
             treatmentId: id,
             paymentId,
-            isPaid: true as const,
+            // Parziale: la contabilità deve scalare il voucher e lasciare il
+            // residuo da fatturare, non registrare un incasso a saldo.
+            isPaid: !input.partial,
             paidAt: now.toISOString(),
             totalAmount: amountStr,
             tenderLines: eventTenderLines,
@@ -1229,11 +1493,27 @@ export class TreatmentService {
     if (!treatment) {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
     }
-    if (!treatment.isPaid) {
+    // 2026-09-04 — Anche un incasso PARZIALE si annulla da qui: non rende il
+    // trattamento pagato, ma ha scalato un voucher di anticipo in contabilità
+    // e va poterlo disfare. `treatment.payment-cancelled` fa tornare il
+    // credito sul buono (a meno che il residuo sia già stato fatturato: in
+    // quel caso la contabilità rifiuta e lo segnala).
+    const hasPartial = !treatment.isPaid && (treatment.paymentTenderLines ?? []).length > 0;
+    if (!treatment.isPaid && !hasPartial) {
       throw new BadRequestException('Nessun pagamento da annullare per questo trattamento.');
     }
 
-    if (callerRole === 'operator') {
+    if (treatment.scontoFE) {
+      // Stessa regola della registrazione: chi può incassare uno sconto FE
+      // può anche correggerlo (vedi PendingFeCollectionsService).
+      const denyReason = await this.pendingFeService.denyReasonForCollect(treatment, {
+        appUserId: actorUserId ?? null,
+        isSecretary: callerRole === 'secretary',
+      });
+      if (denyReason) {
+        throw new ForbiddenException(denyReason);
+      }
+    } else if (callerRole === 'operator') {
       await this.assertTreatmentOperatorCanCollect(treatment);
     }
 
@@ -1275,6 +1555,9 @@ export class TreatmentService {
         collectedBy: null as any,
         paymentId: null as any,
         paymentRecordedSource: null as any,
+        paymentRecordedByUserId: null as any,
+        paymentCollectorRole: null as any,
+        paymentTenderLines: null,
       });
 
       // Il pagamento era già stato comunicato ad accounting → annullalo anche là.
@@ -1362,6 +1645,7 @@ export class TreatmentService {
           replaceExisting: treatment.isPaid,
         },
         'secretary',
+        actorUserId ?? null,
       );
     }
 
@@ -1384,6 +1668,9 @@ export class TreatmentService {
           collectedBy: null as any,
           paymentId: null as any,
           paymentRecordedSource: null as any,
+          paymentRecordedByUserId: null as any,
+          paymentCollectorRole: null as any,
+          paymentTenderLines: null,
         })
         .where('id = :id', { id })
         .execute();
@@ -1882,42 +2169,7 @@ export class TreatmentService {
     const operatorId = treatment.operatorId;
 
     await this.dataSource.transaction(async manager => {
-      const now = new Date();
-
-      await manager
-        .createQueryBuilder()
-        .update(TreatmentInstrument)
-        .set({ deletedAt: now, deletedByUserId: deletedByUserId ?? null })
-        .where('"treatmentId" = :id AND "deletedAt" IS NULL', { id })
-        .execute();
-
-      await manager
-        .createQueryBuilder()
-        .update(TreatmentServiceEntity)
-        .set({ deletedAt: now, deletedByUserId: deletedByUserId ?? null } as any)
-        .where('"treatmentId" = :id AND "deletedAt" IS NULL', { id })
-        .execute()
-        .catch(() => {
-          /* la colonna deletedAt su treatment_services potrebbe non essere
-             stata aggiunta se si decide di non softdeletare anche i servizi.
-             Non bloccare la transazione su questo. */
-        });
-
-      await manager
-        .createQueryBuilder()
-        .update(Treatment)
-        .set({
-          deletedAt: now,
-          deletedByUserId: deletedByUserId ?? null,
-        } as any)
-        .where('id = :id', { id })
-        .execute();
-
-      // NB: l'appuntamento NON viene più soft-deletato insieme al trattamento.
-      // L'appuntamento è un'entità indipendente (esiste in calendario a
-      // prescindere dal trattamento, e con l'auto-start possono nascere
-      // trattamenti che non "possiedono" l'appuntamento). Cestinare un
-      // trattamento non deve far sparire l'appuntamento dal calendario.
+      await this.applySoftDelete(manager, id, deletedByUserId);
     });
 
     this.eventsService.emit({
@@ -1928,6 +2180,302 @@ export class TreatmentService {
     });
 
     return true;
+  }
+
+  /**
+   * Marca `deletedAt` sul trattamento e sui suoi figli, dentro la transazione
+   * del chiamante. Estratta da `delete()` per essere riusata da
+   * `deleteOrphanTreatment()`, che deve poter annullare l'invio a
+   * fatturazione e cestinare nella STESSA transazione.
+   *
+   * Non emette eventi: SSE e flush del buffer restano responsabilità del
+   * chiamante, dopo il commit.
+   */
+  private async applySoftDelete(
+    manager: EntityManager,
+    id: string,
+    deletedByUserId?: string,
+  ): Promise<void> {
+    const now = new Date();
+
+    await manager
+      .createQueryBuilder()
+      .update(TreatmentInstrument)
+      .set({ deletedAt: now, deletedByUserId: deletedByUserId ?? null })
+      .where('"treatmentId" = :id AND "deletedAt" IS NULL', { id })
+      .execute();
+
+    await manager
+      .createQueryBuilder()
+      .update(TreatmentServiceEntity)
+      .set({ deletedAt: now, deletedByUserId: deletedByUserId ?? null } as any)
+      .where('"treatmentId" = :id AND "deletedAt" IS NULL', { id })
+      .execute()
+      .catch(() => {
+        /* la colonna deletedAt su treatment_services potrebbe non essere
+           stata aggiunta se si decide di non softdeletare anche i servizi.
+           Non bloccare la transazione su questo. */
+      });
+
+    await manager
+      .createQueryBuilder()
+      .update(Treatment)
+      .set({
+        deletedAt: now,
+        deletedByUserId: deletedByUserId ?? null,
+      } as any)
+      .where('id = :id', { id })
+      .execute();
+
+    // NB: l'appuntamento NON viene più soft-deletato insieme al trattamento.
+    // L'appuntamento è un'entità indipendente (esiste in calendario a
+    // prescindere dal trattamento, e con l'auto-start possono nascere
+    // trattamenti che non "possiedono" l'appuntamento). Cestinare un
+    // trattamento non deve far sparire l'appuntamento dal calendario.
+  }
+
+  // ==================== TRATTAMENTI ORFANI ====================
+
+  /**
+   * Cestina un trattamento ORFANO: un trattamento il cui appuntamento è
+   * stato cancellato dal calendario.
+   *
+   * Dopo la migration 1798 la FK `treatments.appointmentId` è ON DELETE SET
+   * NULL: cancellare un appuntamento non porta più via il trattamento (era
+   * CASCADE, e si perdevano anche trattamenti fatturati). Il rovescio della
+   * medaglia è che restano in lista trattamenti senza data/ora di
+   * riferimento, tipicamente residui di prove. Questa mutation è il modo
+   * per farne pulizia in sicurezza.
+   *
+   * Fa TUTTO in una sola transazione, così non può restare uno stato
+   * intermedio (annullato ad accounting ma non cestinato):
+   *   1. verifica che sia davvero orfano (nessun appuntamento vivo);
+   *   2. verifica che sia cancellabile (vedi blocchi sotto);
+   *   3. se è già stato pubblicato ad accounting (SENT/PENDING) applica
+   *      l'auto-recall, che accoda `treatment.cancelled` → accounting
+   *      cancella il billable e non resta appeso in "Da fatturare";
+   *   4. soft-delete del trattamento e dei figli (recuperabile dal cestino).
+   *
+   * Blocchi (BadRequestException, messaggio mostrato in UI):
+   *   - non orfano → si cancella l'appuntamento dal calendario;
+   *   - billingStatus post-INVOICED → serve nota di credito da accounting;
+   *   - pagamento a voucher FE attivo → il residuo del voucher non verrebbe
+   *     ripristinato (`delete()` non storna i consumi) e il buono resterebbe
+   *     bruciato per una prestazione che non esiste più;
+   *   - già incluso in una riga di conguaglio operatore → le righe di
+   *     `operator_fe_settlement_lines` sono snapshot immutabili con importi
+   *     propri: il totale del conguaglio non si ricalcolerebbe.
+   *
+   * NB: `isPaid` resta true sul record cestinato. Non falsa nessun conteggio
+   * vivo (Conti FE e Incassi FE da riscuotere escludono i soft-deletati) ed è
+   * voluto: un ripristino dal cestino deve restituire il record com'era.
+   */
+  async deleteOrphanTreatment(
+    id: string,
+    deletedByUserId: string,
+  ): Promise<boolean> {
+    const tenantAlias = this.tenantContext.getTenantAlias();
+    const correlationId = this.tenantContext.getContext()?.requestId;
+
+    const operatorId = await this.dataSource.transaction(async manager => {
+      // Caricato SENZA la relazione `appointment`: `applyAutoRecall` fa
+      // `save()` su questa istanza e, con la relazione caricata a null su un
+      // appuntamento solo cestinato, TypeORM azzererebbe anche la FK —
+      // scollegando per sempre un appuntamento che era solo nel cestino.
+      const treatment = await manager.getRepository(Treatment).findOne({
+        where: { id },
+      });
+      if (!treatment) {
+        throw new NotFoundException(`Trattamento ${id} non trovato`);
+      }
+
+      // Orfano = nessun appuntamento VIVO. Copre entrambi i modi in cui
+      // succede: FK azzerata dalla cancellazione dal calendario (migration
+      // 1798) e appuntamento solo soft-deletato (`count` esclude i cestinati).
+      const hasLiveAppointment = treatment.appointmentId
+        ? (await manager.getRepository(AvailabilityAppointment).count({
+            where: { id: treatment.appointmentId },
+          })) > 0
+        : false;
+
+      await this.assertOrphanDeletable(manager, treatment, hasLiveAppointment);
+
+      // Se accounting lo conosce già, prima lo annulliamo lì.
+      if (
+        treatment.billingStatus === TreatmentBillingStatus.SENT ||
+        treatment.billingStatus === TreatmentBillingStatus.PENDING
+      ) {
+        await this.applyAutoRecall(manager, treatment, {
+          cancelledByUserId: deletedByUserId,
+          reason: ORPHAN_DELETION_REASON,
+          tenantAlias,
+          correlationId,
+        });
+      }
+
+      await this.applySoftDelete(manager, id, deletedByUserId);
+
+      return treatment.operatorId;
+    });
+
+    // `treatment.cancelled` parte solo dopo il commit: se la transazione
+    // fallisse, accounting non deve aver ricevuto nulla.
+    flushBufferedEvents(this.eventBuffer, this.eventEmitter);
+
+    this.eventsService.emit({
+      type: 'treatment_deleted',
+      treatmentId: id,
+      operatorId,
+      timestamp: new Date(),
+    });
+
+    return true;
+  }
+
+  /**
+   * Versione multipla di `deleteOrphanTreatment`, per la pulizia in blocco
+   * dalla lista trattamenti.
+   *
+   * Ogni id ha la sua transazione: un trattamento bloccato (voucher,
+   * conguaglio, già fatturato) non fa fallire gli altri. Il risultato dice
+   * riga per riga com'è andata, così la UI può mostrare quanti sono stati
+   * cestinati e perché gli altri no.
+   */
+  async deleteOrphanTreatments(
+    ids: string[],
+    deletedByUserId: string,
+  ): Promise<OrphanDeletionOutcome[]> {
+    const outcomes: OrphanDeletionOutcome[] = [];
+
+    for (const id of ids) {
+      try {
+        await this.deleteOrphanTreatment(id, deletedByUserId);
+        outcomes.push({ treatmentId: id, deleted: true, reason: null });
+      } catch (err) {
+        // Il buffer eventi è condiviso da tutta la request: se la
+        // transazione di QUESTO id ha fatto rollback dopo aver accodato
+        // `treatment.cancelled`, l'evento è ancora lì e il flush del
+        // prossimo id lo pubblicherebbe — annullando in accounting un
+        // trattamento che nel clinico è rimasto intatto. Lo scartiamo qui.
+        // (Il pattern publish-after-commit assume una transazione per
+        // request; questo è il caso in cui l'assunzione non vale.)
+        this.eventBuffer.drain();
+
+        const reason =
+          err instanceof BadRequestException || err instanceof NotFoundException
+            ? err.message
+            : 'Errore imprevisto durante la cancellazione.';
+        if (!(err instanceof BadRequestException) && !(err instanceof NotFoundException)) {
+          this.logger.error(
+            `deleteOrphanTreatments: errore su ${id}: ${(err as Error)?.message}`,
+            (err as Error)?.stack,
+          );
+        }
+        outcomes.push({ treatmentId: id, deleted: false, reason });
+      }
+    }
+
+    return outcomes;
+  }
+
+  /**
+   * Vincoli di cancellabilità di un trattamento orfano. Lancia
+   * BadRequestException con un messaggio già pronto per l'utente.
+   */
+  private async assertOrphanDeletable(
+    manager: EntityManager,
+    treatment: Treatment,
+    hasLiveAppointment: boolean,
+  ): Promise<void> {
+    if (hasLiveAppointment) {
+      throw new BadRequestException(
+        'Il trattamento ha ancora un appuntamento in calendario: non è orfano. ' +
+          "Per eliminarlo, cancella prima l'appuntamento.",
+      );
+    }
+
+    const blockedBillingStatuses = [
+      TreatmentBillingStatus.INVOICED,
+      TreatmentBillingStatus.REISSUED,
+      TreatmentBillingStatus.REFUNDED,
+      TreatmentBillingStatus.PARTIALLY_REFUNDED,
+    ];
+    if (blockedBillingStatuses.includes(treatment.billingStatus)) {
+      throw new BadRequestException(
+        `Trattamento già fatturato (${treatment.billingStatus}). ` +
+          "Per eliminarlo contatta l'amministrazione: serve emettere una nota di credito.",
+      );
+    }
+
+    // Voucher FE: consumi non ancora stornati. `delete()` non chiama
+    // reverseConsumptionsForTreatment, quindi il residuo resterebbe bruciato.
+    const voucherRows = await manager
+      .getRepository(VoucherFeUsage)
+      .createQueryBuilder('u')
+      .select(
+        `COALESCE(SUM(CASE WHEN u.type = 'consumption' THEN u.amount ELSE 0 END), 0)
+         - COALESCE(SUM(CASE WHEN u.type = 'reversal' THEN u.amount ELSE 0 END), 0)`,
+        'net',
+      )
+      .where('u."treatmentId" = :id', { id: treatment.id })
+      .getRawOne<{ net: string }>();
+    const netVoucher = Number(voucherRows?.net ?? 0);
+    if (netVoucher > 0) {
+      throw new BadRequestException(
+        `Il trattamento è stato pagato con un voucher FE (€ ${netVoucher.toFixed(2)}). ` +
+          'Annulla prima il pagamento dal dettaglio, così il residuo torna sul buono, ' +
+          'poi elimina il trattamento.',
+      );
+    }
+
+    // Conteggi FE: le righe sono snapshot immutabili con importi propri, il
+    // totale del conteggio non si ricalcola da solo. Il messaggio deve dire
+    // ESATTAMENTE quale conteggio e dove trovarlo: la riga può essere il
+    // residuo di uno stato che non esiste più (es. il trattamento non è più
+    // sconto FE), quindi dalla lista trattamenti non è deducibile.
+    const settlement = await manager
+      .getRepository(OperatorFeSettlementLine)
+      .createQueryBuilder('l')
+      .innerJoin(
+        OperatorFeSettlement,
+        's',
+        's.id = l."settlementId"',
+      )
+      .select([
+        's."operatorName" AS "operatorName"',
+        's."periodFrom" AS "periodFrom"',
+        's."periodTo" AS "periodTo"',
+        's."createdAt" AS "createdAt"',
+        's."paidAt" AS "paidAt"',
+      ])
+      .where('l."treatmentId" = :id', { id: treatment.id })
+      .limit(1)
+      .getRawOne<{
+        operatorName: string;
+        periodFrom: string | Date;
+        periodTo: string | Date;
+        createdAt: Date;
+        paidAt: Date | null;
+      }>();
+
+    if (settlement) {
+      const periodo = `${itDate(settlement.periodFrom)}–${itDate(settlement.periodTo)}`;
+      const generato = itDate(settlement.createdAt);
+      if (settlement.paidAt) {
+        throw new BadRequestException(
+          `Il trattamento è incluso nel conteggio FE di ${settlement.operatorName} ` +
+            `per il periodo ${periodo}, GIÀ PAGATO il ${itDate(settlement.paidAt)}. ` +
+            'Un compenso liquidato non va cancellato: se il trattamento è sbagliato, ' +
+            "correggi il conteggio con l'amministrazione.",
+        );
+      }
+      throw new BadRequestException(
+        `Il trattamento è incluso nel conteggio FE di ${settlement.operatorName} ` +
+          `per il periodo ${periodo}, generato il ${generato} e non ancora pagato. ` +
+          'Eliminalo da Statistiche → Conti FE → «Conteggi FE salvati» ' +
+          '(seleziona il conteggio e usa «Elimina selezionati»), poi riprova.',
+      );
+    }
   }
 
   /**
@@ -2173,6 +2721,9 @@ export class TreatmentService {
         treatment.collectedBy = null as any;
         treatment.paymentId = null as any;
         treatment.paymentRecordedSource = null as any;
+        treatment.paymentRecordedByUserId = null as any;
+        treatment.paymentCollectorRole = null as any;
+        treatment.paymentTenderLines = null;
         this.logger.log(
           `Toggle scontoFE OFF su treatment ${input.id}: incasso clinico azzerato (reincassare con metodi accounting).`,
         );
@@ -2907,6 +3458,16 @@ export class TreatmentService {
             t.billingStatus === TreatmentBillingStatus.READY_FOR_BILLING
           ) {
             t.billingStatus = TreatmentBillingStatus.SENT;
+            // 2026-09-02 — Qui comincia un ciclo di fatturazione nuovo: gli
+            // esiti del precedente non lo riguardano. Senza questa pulizia
+            // il pannello continuava a mostrare l'annullamento dell'invio e
+            // il richiamo rifiutato di ore prima accanto allo stato
+            // corrente, come se fossero appena successi.
+            t.cancelledAt = null as any;
+            t.cancelledByUserId = null as any;
+            t.cancellationReason = null as any;
+            t.lastRecallRejectionMessage = null as any;
+            t.lastRecallRejectionAt = null as any;
           }
         } else {
           // Unset: torna a NOT_READY. (Vincoli sopra hanno escluso stati post-publish.)
@@ -3462,6 +4023,13 @@ export class TreatmentService {
     if (filters.scontoFE !== undefined) {
       qb.andWhere('t.scontoFE = :scontoFE', { scontoFE: filters.scontoFE });
     }
+    // Trattamenti ORFANI: l'appuntamento di riferimento non c'è più (FK
+    // messa a NULL dalla migration 1798 quando si cancella l'appuntamento),
+    // quindi in lista compaiono senza ora. Filtro pensato per la pulizia in
+    // blocco dalla pagina Trattamenti.
+    if (filters.withoutAppointment === true) {
+      qb.andWhere('t.appointmentId IS NULL');
+    }
   }
 }
 
@@ -3474,6 +4042,8 @@ export interface TreatmentListingFilters {
   readyForBilling?: boolean;
   isInvoicedToPatient?: boolean;
   scontoFE?: boolean;
+  /** Solo trattamenti orfani (appuntamento cancellato → appointmentId NULL). */
+  withoutAppointment?: boolean;
   limit?: number;
   offset?: number;
 }

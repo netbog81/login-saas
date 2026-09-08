@@ -110,6 +110,7 @@ export const GET_TREATMENT_FOR_CERTIFICATE = gql`
         service {
           id
           name
+          description
         }
       }
     }

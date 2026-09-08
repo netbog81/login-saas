@@ -1,4 +1,5 @@
 import { registerEnumType, InputType, Field, ID } from '@nestjs/graphql';
+import { RecurringOccurrenceInput } from './recurring-occurrence.input';
 import { AppointmentInstrumentInput, ServiceInputItem } from './create-availability-appointment.input';
 
 export enum RecurringSeriesScope {
@@ -87,6 +88,18 @@ export class UpdateRecurringSeriesInput {
   @Field(() => ID, { nullable: true })
   operatorId?: string;
 
+  /**
+   * Sposta le occorrenze palestra in un'altra sala.
+   *
+   * È l'asse alternativo della palestra, come `operatorId` lo è per le serie
+   * standard: l'istruttore non si sceglie — lo assegna il template della sala
+   * di destinazione, fascia per fascia — quindi quello che si cambia è la
+   * sala. Ogni occorrenza viene validata contro chiusure, istruttore
+   * assegnato e capienza della sala NUOVA, alla propria data.
+   */
+  @Field(() => ID, { nullable: true })
+  gymRoomId?: string;
+
   @Field(() => ID, { nullable: true })
   patientId?: string;
 
@@ -113,4 +126,19 @@ export class UpdateRecurringSeriesInput {
 
   @Field(() => [AppointmentInstrumentInput], { nullable: true })
   instruments?: AppointmentInstrumentInput[];
+
+  /**
+   * Occorrenze da NON toccare, decise nel riquadro conflitti: restano dove
+   * sono invece di bloccare l'intera modifica.
+   */
+  @Field(() => [ID], { nullable: true })
+  skipAppointmentIds?: string[];
+
+  /**
+   * Destinazione decisa a mano per singole occorrenze (data, orario e
+   * all'occorrenza operatore diverso dal resto della serie). Sovrascrive lo
+   * spostamento uniforme solo per quelle indicate.
+   */
+  @Field(() => [RecurringOccurrenceInput], { nullable: true })
+  occurrenceOverrides?: RecurringOccurrenceInput[];
 }

@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createOpenbaoService, OpenbaoBaseService } from '@curandis/openbao-core';
@@ -156,7 +157,7 @@ async function bootstrap() {
     throw error;
   }
 
-  const app = await NestFactory.create(
+  const app = await NestFactory.create<NestExpressApplication>(
     AppModule.forRootAsync({ openbaoService }),
     // rawBody: true → Nest bufferizza il corpo grezzo in `req.rawBody`.
     // Necessario per validare la firma HMAC dei webhook gateway (WhatsApp e
@@ -168,6 +169,24 @@ async function bootstrap() {
     // impostato il webhook_secret e la validazione è diventata attiva).
     { rawBody: true },
   );
+
+  // I webhook di Evolution che portano un allegato — un PDF, una foto —
+  // superano i 100 kB di default di body-parser: il messaggio veniva respinto
+  // con `PayloadTooLargeError` prima ancora di essere letto, e in chat non
+  // arrivava niente. Nessun errore visibile da nessuna parte: il gateway
+  // riprovava, falliva uguale, e il messaggio del paziente spariva.
+  //
+  // Il file NON viaggia dentro il payload (c'è un URL), quindi la dimensione
+  // vera resta di pochi kB: sono l'anteprima e gli hash espansi a numeri —
+  // trentadue chiavi JSON al posto di quarantaquattro caratteri — a gonfiarlo.
+  // Il piu' grosso registrato e' 119 kB; 2 MB lasciano venti volte il margine
+  // senza aprire la porta a corpi arbitrari.
+  //
+  // `useBodyParser` e non un `express.json()` a mano: quest'ultimo
+  // sostituirebbe il parser di Nest e con lui la bufferizzazione di
+  // `req.rawBody`, su cui si regge la verifica HMAC delle firme dei webhook.
+  app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { limit: '2mb', extended: true });
 
   // EventEmitter per eventi di rotazione credenziali (gestiti da tenant-datasource)
   const eventEmitter = app.get(EventEmitter2);

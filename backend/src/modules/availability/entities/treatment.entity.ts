@@ -190,6 +190,24 @@ export class Treatment {
   accountingTreatmentLinesAmount?: number;
 
   /**
+   * 2026-09-04 — Quota della prestazione già coperta da un voucher "anticipo
+   * fattura": fatturata e incassata con l'anticipo, quindi FUORI dal
+   * documento corrente.
+   *
+   * Serve a distinguere due numeri che prima si sovrapponevano:
+   *  - `accountingTotalAmount` = quanto totalizza il documento corrente, cioè
+   *    quanto resta da incassare;
+   *  - questa colonna = quanto era già stato pagato con l'anticipo.
+   * Il valore della prestazione è la loro somma. Senza, una seduta da 55 €
+   * con 35 coperti compariva in elenco come "20 €".
+   *
+   * NULL = nessun anticipo, oppure producer accounting precedente.
+   */
+  @Field(() => Float, { nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  accountingAdvanceCoveredAmount?: number;
+
+  /**
    * Quanti treatment clinici distinti copre il documento corrente (1 =
    * fattura singola). > 1 ⇒ la UI mostra l'icona "fattura cumulativa" e
    * l'incasso avviene a saldo intero documento su tutti i treatment insieme.
@@ -238,6 +256,82 @@ export class Treatment {
   @Field({ nullable: true })
   @Column({ name: 'paymentRecordedSource', length: 20, nullable: true })
   paymentRecordedSource?: string;
+
+  /**
+   * 2026-09-04 — Come è stato pagato, in una riga leggibile.
+   *
+   * `paymentMethod` è un enum di cinque valori e non basta: un incasso
+   * coperto da un voucher "anticipo fattura" ci finiva dentro come "altro",
+   * e a video restava un pagamento senza nome. Qui viene fuori il nome vero
+   * della cosa usata, che per i buoni lo conosce solo la contabilità e ce lo
+   * manda nell'evento.
+   *
+   * Calcolato, non salvato: le righe di tender sono la fonte, il metodo il
+   * ripiego.
+   */
+  @Field({ nullable: true })
+  get paymentMethodLabel(): string | null {
+    const lines = this.paymentTenderLines ?? [];
+    const labelled = lines.filter((l) => !!l.label);
+    if (labelled.length > 0) {
+      return labelled.map((l) => l.label).join(' + ');
+    }
+    return this.paymentMethod ?? null;
+  }
+
+  /**
+   * AppUser che ha REGISTRATO l'operazione a sistema, sempre risolto dal JWT.
+   * Distinto da `collectedBy`, che dice a chi l'incasso è ATTRIBUITO: quando
+   * la segreteria spunta "incassato dall'operatore" i due differiscono, ed è
+   * l'unico modo per sapere chi ha materialmente fatto l'operazione.
+   * Vedi migration 1831000000000.
+   */
+  @Field(() => ID, { nullable: true })
+  @Column('uuid', { name: 'paymentRecordedByUserId', nullable: true })
+  paymentRecordedByUserId?: string;
+
+  /**
+   * Ruolo con cui è stato registrato l'incasso: 'operator' | 'secretary'.
+   * Snapshot al momento dell'incasso (derivato server-side dai ruoli
+   * Keycloak): i ruoli cambiano nel tempo e chi è insieme operatore e
+   * amministratore sarebbe altrimenti indistinguibile nelle statistiche.
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'paymentCollectorRole', length: 20, nullable: true })
+  paymentCollectorRole?: string;
+
+  /**
+   * 2026-09-03 — Come è stato composto l'incasso: le righe di tender così
+   * come sono arrivate (metodo, buono FE, buono della contabilità), ciascuna
+   * col suo importo.
+   *
+   * `paymentMethod` tiene una stringa sola e non basta per un incasso misto,
+   * né dice QUALE buono è stato usato. Serve soprattutto quando l'incasso è
+   * registrato prima dell'invio a fatturazione: in quel caso il pagamento
+   * viaggia dentro `treatment.closed`, e senza queste righe la contabilità
+   * non saprebbe che c'è un voucher da scalare.
+   *
+   * Snapshot, non entità: si scrive all'incasso e si rilegge intero.
+   */
+  @Column('jsonb', { name: 'paymentTenderLines', nullable: true })
+  // NB: non esposto in GraphQL (jsonb libero). Per la UI c'è
+  // `paymentMethodLabel`, che ne ricava una riga leggibile.
+
+  paymentTenderLines?: Array<{
+    kind: string;
+    paymentMethodId?: string | null;
+    voucherId?: string | null;
+    voucherFeId?: string | null;
+    amount: string;
+    /**
+     * 2026-09-04 — Etichetta leggibile della riga (es. "Voucher anticipo
+     * fattura n. 11"). La scrive chi conosce il nome della cosa usata: la
+     * contabilità per i buoni di anticipo, che il clinico non ha in anagrafe.
+     * Colonna jsonb: campo additivo, le righe storiche semplicemente non
+     * ce l'hanno.
+     */
+    label?: string | null;
+  }> | null;
 
   // ==================== PATIENT INVOICE ====================
 
@@ -365,6 +459,26 @@ export class Treatment {
   @Field({ nullable: true })
   @Column('text', { name: 'accountingInvoiceUrl', nullable: true })
   accountingInvoiceUrl?: string;
+
+  /**
+   * 2026-09-03 — Numero della fattura ESTERNA (gestionale precedente) su cui
+   * la prestazione risulta fatturata. Valorizzato al posto di
+   * `accountingDocumentId` quando la prestazione è stata coperta da un
+   * voucher "anticipo fattura" che fa riferimento a un documento non
+   * presente in Curandis.
+   *
+   * Il trattamento è fatturato a tutti gli effetti — cambia solo che non c'è
+   * un PDF da scaricare, e la UI lo dichiara invece di lasciare un bottone
+   * che fallirebbe.
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'accountingExternalRefNumber', length: 50, nullable: true })
+  accountingExternalRefNumber?: string;
+
+  /** Data del documento esterno. Nullable: di certe fatture vecchie si sa solo il numero. */
+  @Field({ nullable: true })
+  @Column('date', { name: 'accountingExternalRefDate', nullable: true })
+  accountingExternalRefDate?: string;
 
   /** Timestamp di emissione del documento fiscale. */
   @Field({ nullable: true })

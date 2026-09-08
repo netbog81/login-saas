@@ -1,5 +1,6 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { WhatsappMessageTemplate } from '../entities/whatsapp-message-template.entity';
+import { NotificationChannel } from '../../notifications/entities/notification-channel-setting.entity';
 import { WhatsappTemplateService } from '../services/whatsapp-template.service';
 import { WhatsappTemplateInput } from '../dto/whatsapp-template.input';
 import { WhatsappTemplateType } from '../../enums/whatsapp-enums';
@@ -10,9 +11,16 @@ export class WhatsappTemplateResolver {
     private readonly templateService: WhatsappTemplateService,
   ) {}
 
+  /**
+   * Senza `channel` torna TUTTI i testi, di ogni canale: la schermata li
+   * raggruppa da sé. Il filtro serve a chi ne vuole uno solo.
+   */
   @Query(() => [WhatsappMessageTemplate], { name: 'whatsappTemplates' })
-  async getTemplates(): Promise<WhatsappMessageTemplate[]> {
-    return this.templateService.findAll();
+  async getTemplates(
+    @Args('channel', { type: () => NotificationChannel, nullable: true })
+    channel?: NotificationChannel,
+  ): Promise<WhatsappMessageTemplate[]> {
+    return this.templateService.findAll(channel);
   }
 
   @Query(() => WhatsappMessageTemplate, {

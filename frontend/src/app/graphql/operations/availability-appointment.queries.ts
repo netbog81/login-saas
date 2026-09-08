@@ -19,6 +19,7 @@ export const AVAILABILITY_APPOINTMENT_FIELDS = gql`
     treatmentStatus
     hasConflict
     conflictReason
+    conflictDetectedAt
     notes
     cancellationReason
     cancelledAt
@@ -101,7 +102,8 @@ export const GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR = gql`
   query GetAvailabilityAppointmentsByOperator(
     $operatorId: ID!
     $startDate: String!
-    $endDate: String!
+    # Facoltativa: omessa vale "da startDate in poi", senza limite.
+    $endDate: String
   ) {
     availabilityAppointmentsByOperator(
       operatorId: $operatorId
@@ -177,5 +179,39 @@ export const IS_INSTRUMENT_AVAILABLE = gql`
       endOffsetMinutes: $endOffsetMinutes
       excludeAppointmentId: $excludeAppointmentId
     )
+  }
+`;
+
+/**
+ * Query: piano di una serie ricorrente PRIMA di crearla — le date che
+ * verrebbero generate, ciascuna con l'eventuale conflitto.
+ *
+ * Non scrive niente: alimenta il riquadro in cui l'utente decide occorrenza
+ * per occorrenza se confermare, spostare o saltare.
+ */
+export const RECURRING_SERIES_PREVIEW = gql`
+  query RecurringSeriesPreview($input: RecurringSeriesPreviewInput!) {
+    recurringSeriesPreview(input: $input) {
+      appointmentId
+      date
+      startTime
+      endTime
+      conflict {
+        type
+        reason
+        conflictingStartTime
+        conflictingEndTime
+      }
+    }
+  }
+`;
+
+/**
+ * L'utente collegato puo' marcare presenze/assenze?
+ * Il backend combina ruolo e impostazione `noShow.operatorsCanMark`.
+ */
+export const CAN_MARK_ATTENDANCE = gql`
+  query CanMarkAttendance {
+    canMarkAttendance
   }
 `;

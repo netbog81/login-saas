@@ -317,17 +317,45 @@ export class TreatmentEventMapper {
     treatment: Treatment,
     subMap: Map<string, string | null>,
   ): TreatmentPayment | undefined {
-    if (!treatment.isPaid) {
+    // 2026-09-04 — Un incasso PARZIALE non rende pagato il trattamento, ma
+    // deve comunque arrivare in contabilità: sono le righe di tender a dire
+    // che c'è un voucher di anticipo da scalare, e senza di esse il credito
+    // non calerebbe mai e il residuo verrebbe fatturato per intero.
+    const partialLines = (treatment.paymentTenderLines ?? []).filter(
+      (l) => l.kind !== 'voucher_fe',
+    );
+    if (!treatment.isPaid && partialLines.length === 0) {
       // payment opzionale: se non c'è pagamento registrato, omettiamo
       // l'oggetto. Accounting genera comunque billable PENDING.
       return undefined;
     }
+    const partialAmount = partialLines.reduce(
+      (acc, l) => acc + (Number(l.amount) || 0),
+      0,
+    );
     return {
-      isPaid: true,
+      isPaid: treatment.isPaid,
       paidAt: treatment.paidAt ? treatment.paidAt.toISOString() : null,
       paymentMethod: treatment.paymentMethod ?? null,
-      amount: this.toDecimalString(treatment.price ?? 0),
+      // Pagato: il totale del trattamento. Parziale: solo la quota coperta.
+      amount: treatment.isPaid
+        ? this.toDecimalString(treatment.price ?? 0)
+        : partialAmount.toFixed(2),
       collectedByUserId: this.resolveSub(subMap, treatment.collectedBy ?? null),
+      // 2026-09-03 — Come è composto l'incasso, non solo con che metodo.
+      // Senza queste righe la contabilità non sa che c'è un buono da scalare
+      // quando l'incasso è stato registrato PRIMA dell'invio a fatturazione
+      // (in quel caso `treatment.payment-recorded` non parte: il pagamento
+      // viaggia solo qui dentro). I buoni FE restano fuori: sono interni al
+      // clinico e la contabilità non li conosce.
+      tenderLines: (treatment.paymentTenderLines ?? [])
+        .filter((l) => l.kind !== 'voucher_fe')
+        .map((l) => ({
+          kind: l.kind === 'voucher' ? ('voucher' as const) : ('method' as const),
+          paymentMethodId: l.kind === 'method' ? l.paymentMethodId ?? null : null,
+          voucherId: l.kind === 'voucher' ? l.voucherId ?? null : null,
+          amount: l.amount,
+        })),
     };
   }
 

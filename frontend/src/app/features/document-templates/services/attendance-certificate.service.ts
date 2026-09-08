@@ -50,7 +50,9 @@ interface TreatmentForCertificate {
       birthPlace?: string | null;
     } | null;
   } | null;
-  treatmentServices?: Array<{ service?: { name: string } | null }> | null;
+  treatmentServices?: Array<{
+    service?: { name: string; description?: string | null } | null;
+  }> | null;
 }
 
 /**
@@ -102,9 +104,23 @@ export class AttendanceCertificateService extends BaseGraphQLService {
   private buildMergeData(t: TreatmentForCertificate): MergeFieldData {
     const subject = t.patient?.subject;
     const op = t.operator;
-    const services = (t.treatmentServices ?? [])
-      .map((ts) => ts.service?.name)
-      .filter((n): n is string => !!n)
+    const catalogServices = (t.treatmentServices ?? [])
+      .map((ts) => ts.service)
+      .filter((s): s is { name: string; description?: string | null } => !!s);
+
+    const services = catalogServices
+      .map((s) => s.name)
+      .filter((n) => !!n)
+      .join(', ');
+
+    // Descrizione estesa del servizio a catalogo: sul certificato è quasi
+    // sempre quella che si vuole leggere ("Prestazione sanitaria di
+    // Tecarterapia" invece della sigla "TECAR"). Se un servizio non ce l'ha
+    // si ripiega sul nome: meglio una sigla che un buco in un documento
+    // consegnato al paziente.
+    const servicesDescription = catalogServices
+      .map((s) => (s.description || '').trim() || s.name)
+      .filter((d) => !!d)
       .join(', ');
 
     const patientFullName = [subject?.firstName, subject?.lastName]
@@ -124,6 +140,7 @@ export class AttendanceCertificateService extends BaseGraphQLService {
       'visita.oraInizio': this.formatTime(t.appointment?.startTime),
       'visita.oraFine': this.formatTime(t.appointment?.endTime),
       'visita.prestazioni': services,
+      'visita.prestazioniDescrizione': servicesDescription,
 
       'professionista.nomeCompleto': operatorFullName,
       'professionista.titolo': op?.professionalTitle,

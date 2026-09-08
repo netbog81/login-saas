@@ -12,6 +12,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   TrattamentiFilters,
   TrattamentiViewMode,
@@ -19,6 +20,9 @@ import {
   TreatmentBillingStatus,
 } from '../../models/trattamento.model';
 import { BILLING_STATUS_LABELS } from '../treatment-billing-section/treatment-billing-section.component';
+import {
+  DateRangePreset, resolveDateRangePreset, toIsoDate,
+} from '../../../../shared/utils/date-range-presets';
 
 interface OperatorOption {
   id: string;
@@ -59,6 +63,7 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
     MatIconModule,
     MatButtonModule,
     MatCheckboxModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="filters-wrapper">
@@ -144,9 +149,9 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
 
         <!-- Bottoni rapidi di selezione intervallo -->
         <div class="quick-dates">
-          <button mat-stroked-button type="button" (click)="setToday()">Oggi</button>
-          <button mat-stroked-button type="button" (click)="setThisWeek()">Settimana</button>
-          <button mat-stroked-button type="button" (click)="setThisMonth()">Mese</button>
+          <button mat-stroked-button type="button" (click)="setPreset('today')">Oggi</button>
+          <button mat-stroked-button type="button" (click)="setPreset('thisWeek')">Settimana</button>
+          <button mat-stroked-button type="button" (click)="setPreset('thisMonth')">Mese</button>
           <button mat-stroked-button type="button" (click)="setLastMonths(2)">Ultimi 2 mesi</button>
           <button mat-stroked-button type="button" (click)="setLastMonths(3)">Ultimi 3 mesi</button>
           <!-- "Tutti i trattamenti": azzera l'intervallo date per mostrare lo
@@ -232,6 +237,17 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
               <mat-option [value]="false">No</mat-option>
             </mat-select>
           </mat-form-field>
+
+          <!-- Trattamenti orfani: l'appuntamento è stato cancellato dal
+               calendario, quindi la riga in lista non ha ora. Filtro pensato
+               per selezionarli in blocco e ripulirli. -->
+          <mat-checkbox
+            class="orphan-toggle"
+            [checked]="filters.withoutAppointment === true"
+            (change)="withoutAppointmentChange.emit($event.checked ? true : null)"
+            matTooltip="Mostra solo i trattamenti il cui appuntamento è stato cancellato dal calendario (in lista compaiono senza ora)">
+            Solo senza appuntamento
+          </mat-checkbox>
         </div>
       }
 
@@ -249,6 +265,12 @@ const STATUS_LABELS: Record<TreatmentStatus, string> = {
       flex-direction: column;
       gap: 12px;
       padding: 12px 0;
+    }
+    .orphan-toggle {
+      /* Allineato al baseline dei mat-form-field della stessa riga, che
+         portano il padding del subscript wrapper. */
+      margin-bottom: 22px;
+      white-space: nowrap;
     }
     .filters-row {
       display: flex;
@@ -300,6 +322,8 @@ export class TrattamentiFiltersComponent {
   @Output() readyForBillingChange = new EventEmitter<boolean | null>();
   @Output() isInvoicedChange = new EventEmitter<boolean | null>();
   @Output() scontoFEChange = new EventEmitter<boolean | null>();
+  /** Solo trattamenti orfani (appuntamento cancellato). null = nessun filtro. */
+  @Output() withoutAppointmentChange = new EventEmitter<boolean | null>();
   @Output() viewModeChange = new EventEmitter<TrattamentiViewMode>();
   /** Azzera l'intervallo date (dal/al = null): storico completo paziente. */
   @Output() clearDates = new EventEmitter<void>();
@@ -361,19 +385,13 @@ export class TrattamentiFiltersComponent {
   }
 
   onDateFromChange(date: Date | null): void {
-    this.dateFromChange.emit(date ? this.toIsoDate(date) : null);
+    this.dateFromChange.emit(date ? toIsoDate(date) : null);
   }
 
   onDateToChange(date: Date | null): void {
-    this.dateToChange.emit(date ? this.toIsoDate(date) : null);
+    this.dateToChange.emit(date ? toIsoDate(date) : null);
   }
 
-  private toIsoDate(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
 
   // ==================== RICERCA PAZIENTE ====================
 
@@ -414,38 +432,21 @@ export class TrattamentiFiltersComponent {
 
   // ==================== BOTTONI RAPIDI DATA ====================
 
-  /** Oggi: dal === al === oggi. */
-  setToday(): void {
-    const now = new Date();
-    const iso = this.toIsoDate(now);
-    this.dateRangeChange.emit({ from: iso, to: iso });
+  /**
+   * Periodi rapidi. Il calcolo sta in `shared/utils/date-range-presets`,
+   * condiviso con la finestra Gestisci Appuntamenti: due copie della stessa
+   * aritmetica su settimane e mesi sono due occasioni di divergere.
+   */
+  setPreset(preset: DateRangePreset): void {
+    this.dateRangeChange.emit(resolveDateRangePreset(preset));
   }
 
-  /** Questa settimana: lunedì → domenica della settimana corrente. */
-  setThisWeek(): void {
-    const now = new Date();
-    const dow = now.getDay(); // 0=Dom..6=Sab
-    const diffToMonday = dow === 0 ? -6 : 1 - dow;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diffToMonday);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    this.dateRangeChange.emit({ from: this.toIsoDate(monday), to: this.toIsoDate(sunday) });
-  }
-
-  /** Questo mese: primo → ultimo giorno del mese corrente. */
-  setThisMonth(): void {
-    const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    this.dateRangeChange.emit({ from: this.toIsoDate(first), to: this.toIsoDate(last) });
-  }
-
-  /** Ultimi N mesi: da (oggi - N mesi) a oggi. */
+  /** Ultimi N mesi: da (oggi - N mesi) a oggi. Specifico dei trattamenti,
+   *  che guardano indietro mentre gli appuntamenti guardano avanti. */
   setLastMonths(months: number): void {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth() - months, now.getDate());
-    this.dateRangeChange.emit({ from: this.toIsoDate(from), to: this.toIsoDate(now) });
+    this.dateRangeChange.emit({ from: toIsoDate(from), to: toIsoDate(now) });
   }
 
   /**

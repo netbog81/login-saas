@@ -37,6 +37,18 @@ export class AppUser {
   @Column({ length: 50, nullable: true })
   phone?: string;
 
+  /**
+   * Indirizzo Google dichiarato per questo utente.
+   *
+   * Serve al collegamento con Google Calendar: propone l'account giusto in
+   * fase di consenso e permette di verificare che chi autorizza sia chi ci si
+   * aspetta. Distinto da `email`, che è il recapito di lavoro e spesso non
+   * coincide con l'account Google personale.
+   */
+  @Field({ nullable: true })
+  @Column({ name: 'google_account_email', length: 255, nullable: true })
+  googleAccountEmail?: string;
+
   @Field(() => AppUserType)
   @Column({
     name: 'user_type',

@@ -1,10 +1,12 @@
 import { Resolver, Query, Mutation, Args, ID, ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
+import { UseInterceptors } from '@nestjs/common';
 import { validate as isUuid } from 'uuid';
 import { AppointmentConflictService, ConflictStats } from '../services/appointment-conflict.service';
 import { ConflictRevalidationService } from '../services/conflict-revalidation.service';
 import { AvailabilityAppointment, ConflictReason } from '../entities/availability-appointment.entity';
 import { GraphQLJSONObject } from 'graphql-type-json';
 import { CurrentUser, CurrentUserContext } from '../../users/decorators/current-user.decorator';
+import { AppointmentChangedInterceptor } from '../mutation-event.interceptors';
 
 /**
  * Enum per azioni di risoluzione conflitto
@@ -63,7 +65,21 @@ export class ConflictRevalidationResult {
   detected: number;
 }
 
+/**
+ * Risoluzione conflitti: le mutation emettono `appointment_changed` come
+ * qualunque altra modifica di appuntamento.
+ *
+ * Perché serve: risolvere un conflitto cambia quello che i calendari devono
+ * mostrare — il triangolo sparisce, e con "riprogramma"/"cancella" cambia
+ * anche la posizione o lo stato dell'appuntamento. Senza questo interceptor
+ * la segreteria che risolve dalla pagina conflitti lascia tutti gli altri
+ * calendari aperti con un badge fantasma fino al refresh manuale.
+ *
+ * L'interceptor filtra da sé le sole mutation root andate a buon fine: le
+ * query di questo resolver (elenco, statistiche, revalidazione) non emettono.
+ */
 @Resolver()
+@UseInterceptors(AppointmentChangedInterceptor)
 export class AppointmentConflictResolver {
   constructor(
     private readonly conflictService: AppointmentConflictService,

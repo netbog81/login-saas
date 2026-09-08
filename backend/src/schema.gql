@@ -5,6 +5,7 @@
 type AbsenceImpactPreview {
   attendedWithoutTreatment: [AvailabilityAppointment!]!
   conflicts: [AvailabilityAppointment!]!
+  removedAvailabilityCount: Int!
 }
 
 type AbsenceTypeSnapshot {
@@ -25,6 +26,7 @@ type AppUser {
   attributes: JSONObject
   createdAt: DateTime!
   email: String
+  googleAccountEmail: String
   id: ID!
   isActive: Boolean!
   keycloakId: String
@@ -65,6 +67,19 @@ input AppointmentInstrumentInput {
   startOffsetMinutes: Int!
 }
 
+type AppointmentNotificationIssue {
+  announcedFor: String
+  appointmentDate: String!
+  appointmentId: ID!
+  bookedAt: String!
+  cancelledAt: String
+  kind: NotificationIssueKind!
+  lastMessageAt: DateTime
+  lastMessageStatus: String
+  startTime: String!
+  unreachable: Boolean!
+}
+
 type AppointmentService {
   appointmentId: ID!
   createdAt: DateTime!
@@ -92,27 +107,60 @@ enum AppointmentType {
   STANDARD
 }
 
+"""Come è stato registrato l'arrivo del paziente"""
+enum ArrivalSource {
+  MANUAL_OPERATOR
+  MANUAL_SECRETARY
+  NO_SHOW_REVERT
+  WAITING_ROOM
+}
+
 input AssignRoleInput {
   appUserId: ID!
   roleId: ID!
 }
 
 input AssignTemplateToOperatorInput {
+  chairId: ID
   operatorId: ID!
+  overrides: [AssignmentRoomOverrideInput!]
   patternGroupId: ID!
   patternStartDate: String!
+  roomId: ID
+  truncatePrevious: Boolean
   validFrom: String!
   validUntil: String
+}
+
+input AssignmentRoomOverrideInput {
+  chairId: ID
+  dayInPattern: Int!
+  endTime: String
+  roomId: ID!
+  startTime: String
 }
 
 type AttendanceStats {
   """Cancellazioni per anno solare. Formato: { "2026": 3, "2025": 1 }"""
   cancellationsByYear: JSON!
 
+  """
+  Ritardi per anno solare (era no-show, poi presentato). Formato: { "2026": 1 }
+  """
+  lateArrivalsByYear: JSON!
+
   """No-show per anno solare. Formato: { "2026": 2, "2025": 0 }"""
   noShowsByYear: JSON!
   totalCancellations: Int!
+  totalLateArrivals: Int!
   totalNoShows: Int!
+}
+
+type AvailabilityAlreadyCovered {
+  date: String!
+  operatorId: ID!
+  operatorName: String!
+  windows: [String!]!
 }
 
 type AvailabilityAppointment {
@@ -120,12 +168,17 @@ type AvailabilityAppointment {
   appointmentDate: String!
   appointmentServices: [AppointmentService!]
   appointmentType: AppointmentType!
+  arrivalMarkedBy: ID
+  arrivalSource: ArrivalSource
+  arrivedAt: DateTime
   autoStatusChanged: Boolean!
   bookingStatus: BookingStatus!
   cancellationHoursNotice: Float
   cancellationReason: String
   cancelledAt: DateTime
   cancelledBy: ID
+  chair: Chair
+  chairId: ID
   clientEmail: String
   clientName: String!
   clientPhone: String
@@ -147,6 +200,7 @@ type AvailabilityAppointment {
   isMaster: Boolean!
   isRecurring: Boolean!
   isSubstitution: Boolean!
+  lateMinutes: Int
   masterAppointmentId: ID
   maxParticipants: Int
   nonRetribuito: Boolean!
@@ -160,6 +214,8 @@ type AvailabilityAppointment {
   patientId: ID
   recurringGroupId: ID
   repeatConfig: JSON
+  room: Room
+  roomId: ID
   service: Service
   serviceId: ID @deprecated(reason: "Usa appointmentServices invece")
   site: Site!
@@ -171,6 +227,14 @@ type AvailabilityAppointment {
   treatmentStartedAt: DateTime
   treatmentStatus: TreatmentStatus
   updatedAt: DateTime!
+  wasNoShowReverted: Boolean!
+}
+
+type AvailabilityBlocker {
+  date: String!
+  operatorId: ID!
+  operatorName: String!
+  reason: String!
 }
 
 type AvailabilityException {
@@ -190,6 +254,17 @@ type AvailabilityException {
   reason: String
   sourceGroupId: ID
   startTime: String
+}
+
+type AvailabilityImpactPreview {
+  alreadyCovered: [AvailabilityAlreadyCovered!]!
+  blockers: [AvailabilityBlocker!]!
+  creatableCount: Int!
+}
+
+type AvailabilityRemovalResult {
+  conflictCount: Int!
+  deleted: Int!
 }
 
 type AvailabilitySlot {
@@ -268,6 +343,7 @@ type BulkDeleteOperatorFeSettlementsResult {
 }
 
 type CalendarSettings {
+  appointmentClickAction: String!
   blockAppointmentsOutsideAvailability: Boolean!
   defaultOperatorCategory: String!
   defaultView: String!
@@ -279,6 +355,32 @@ type CalendarSettings {
   showWorkingHoursOnly: Boolean!
   slotDuration: Int!
   startHour: Int!
+}
+
+type CalendarSyncSetting {
+  createdAt: DateTime!
+  id: ID!
+  keepCalendarOnDisconnect: Boolean!
+  keepPastAppointments: Boolean!
+  updatedAt: DateTime!
+}
+
+type Chair {
+  color: String
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  room: Room
+  roomId: ID!
+  updatedAt: DateTime!
+}
+
+type ChairAvailabilityInfo {
+  chairId: ID!
+  firstConflict: String
+  fullyFree: Boolean!
+  name: String!
 }
 
 input CheckPhysiotherapistAvailabilityInput {
@@ -315,6 +417,7 @@ input CompleteTreatmentInput {
 
 """Reason for availability conflict"""
 enum ConflictReason {
+  AVAILABILITY_REMOVED
   OPERATOR_SICK
   OPERATOR_UNAVAILABLE
   OPERATOR_VACATION
@@ -330,6 +433,7 @@ enum ConflictResolutionAction {
 }
 
 type ConflictRevalidationResult {
+  detected: Int!
   resolved: Int!
   skipped: Boolean!
 }
@@ -338,6 +442,13 @@ type ConflictStatsOutput {
   byOperator: [OperatorConflictCount!]!
   byReason: JSONObject!
   totalConflicts: Int!
+}
+
+enum ContactState {
+  INVALID
+  NO_CONTACT
+  UNKNOWN
+  USABLE
 }
 
 input CreateAppUserInput {
@@ -366,6 +477,11 @@ input CreateAvailabilityAppointmentInput {
   """Appuntamento non retribuito (pausa pranzo, rappresentante, etc.)"""
   nonRetribuito: Boolean
   notes: String
+
+  """
+  Piano risolto nel riquadro conflitti: le occorrenze da creare davvero, con gli spostamenti gia' decisi. Quando presente sostituisce la generazione dalle regole.
+  """
+  occurrences: [RecurringOccurrenceInput!]
   operatorId: ID!
   patientId: ID
 
@@ -389,22 +505,6 @@ input CreateAvailabilityTemplateInput {
   startTime: String!
   validFrom: String!
   validUntil: String
-}
-
-input CreateDocumentInput {
-  category: DocumentCategory!
-  description: String
-  externalDoctorName: String
-  fileName: String!
-  fileSize: Int!
-  mimeType: String!
-  notes: String
-  originalFileName: String
-  storagePath: String!
-  therapeuticPathId: ID!
-  thumbnailPath: String
-  type: DocumentType!
-  uploadedBy: ID
 }
 
 input CreateDocumentTemplateInput {
@@ -458,6 +558,7 @@ input CreateGymAppointmentInput {
   gymRoomId: ID!
   isRecurring: Boolean
   notes: String
+  occurrences: [RecurringOccurrenceInput!]
   patientId: ID
   repeatConfig: JSON
   serviceId: ID
@@ -529,6 +630,17 @@ input CreateOperatorAbsencesInput {
   operatorIds: [ID!]!
   reason: String
   startTime: String
+  weekdays: [Int!]
+}
+
+input CreateOperatorAvailabilityInput {
+  dateFrom: String!
+  dateTo: String!
+  endTime: String!
+  operatorIds: [ID!]!
+  reason: String
+  startTime: String!
+  weekdays: [Int!]
 }
 
 input CreateOperatorInput {
@@ -658,6 +770,15 @@ input CreateRegistryIndividualInput {
   vatNumber: String
 }
 
+input CreateScheduleChangeInput {
+  dateFrom: String!
+  dateTo: String!
+  operatorIds: [ID!]!
+  reason: String
+  weekdays: [Int!]
+  windows: [ScheduleWindowInput!]!
+}
+
 input CreateSecretaryInput {
   canManageAppointments: Boolean = false
   canManageBilling: Boolean = false
@@ -671,7 +792,8 @@ input CreateSecretaryInput {
 input CreateTaskMessageInput {
   availableFrom: DateTime
   content: String!
-  recipientUserId: String!
+  recipientGroup: TaskMessageRecipientGroup
+  recipientUserId: String
 }
 
 input CreateTemplatePatternInput {
@@ -752,15 +874,6 @@ type DlqStatusGql {
   totalMessages: Float!
 }
 
-"""Category of attached document"""
-enum DocumentCategory {
-  CONSENT
-  OTHER
-  PRESCRIPTION
-  RADIOLOGY
-  REPORT
-}
-
 type DocumentTemplate {
   content: JSON!
   createdAt: DateTime!
@@ -776,14 +889,6 @@ type DocumentTemplate {
 enum DocumentTemplateType {
   ATTENDANCE_CERTIFICATE
   SETTLEMENT_FE
-}
-
-"""Type of attached document"""
-enum DocumentType {
-  IMAGE
-  OTHER
-  PDF
-  VIDEO
 }
 
 type EvaluationExam {
@@ -902,12 +1007,21 @@ input EvaluationTestInput {
 
 """Type of availability exception"""
 enum ExceptionType {
+  EXTRA
   HOLIDAY
   MODIFIED
   PERSONAL_LEAVE
   SICK
   UNAVAILABLE
   VACATION
+}
+
+type ExtraAvailabilityResult {
+  alreadyCovered: [AvailabilityAlreadyCovered!]!
+  blockers: [AvailabilityBlocker!]!
+  createdCount: Int!
+  exceptions: [AvailabilityException!]!
+  sourceGroupId: ID!
 }
 
 type GeneralSettings {
@@ -918,6 +1032,45 @@ type GeneralSettings {
   updatedAt: DateTime!
   value: JSON!
   valueType: String!
+}
+
+input GenerateOperatorFeSettlementsInput {
+  from: String!
+  includeOpen: Boolean! = false
+  includeUnpaid: Boolean! = false
+  operatorAppUserIds: [ID!]!
+  to: String!
+}
+
+"""Stato del collegamento a Google Calendar"""
+enum GoogleCalendarConnectionStatus {
+  ACTIVE
+  ERROR
+  EXPIRED
+  REVOKED
+}
+
+type GoogleCalendarStatus {
+  alertEmail: Boolean!
+  alertWhatsapp: Boolean!
+  calendarName: String
+  canConnect: Boolean!
+  connected: Boolean!
+  connectedAt: DateTime
+  daysLeft: Int
+  declaredEmail: String
+  expiresAt: DateTime
+  expiringSoon: Boolean!
+  googleEmail: String
+  lastErrorMessage: String
+  lastSyncAt: DateTime
+  needsReconnect: Boolean!
+  operatorEmail: String
+  operatorId: ID!
+  operatorPhone: String
+  status: GoogleCalendarConnectionStatus
+  suggestedCalendarName: String!
+  testingMode: Boolean!
 }
 
 type GroupException {
@@ -973,14 +1126,6 @@ type GymExceptionSubstitute {
   startTime: String!
   substituteOperator: Operator
   substituteOperatorId: ID
-}
-
-input GenerateOperatorFeSettlementsInput {
-  from: String!
-  includeOpen: Boolean! = false
-  includeUnpaid: Boolean! = false
-  operatorAppUserIds: [ID!]!
-  to: String!
 }
 
 input GymExceptionSubstituteInput {
@@ -1206,8 +1351,28 @@ input LinkKeycloakUserInput {
   keycloakUserId: String!
 }
 
+input LinkWhatsappConversationPatientInput {
+  conversationId: ID!
+  patientId: ID
+  patientName: String
+}
+
 input MarkObjectiveAchievedInput {
   raggiunto: Boolean!
+}
+
+"""Modalità di ricorrenza mensile: per data o per giorno della settimana"""
+enum MonthlyMode {
+  DAY_OF_MONTH
+  DAY_OF_WEEK
+}
+
+input MonthlyRuleInput {
+  """1..4 = prima..quarta occorrenza nel mese, -1 = ultima"""
+  ordinal: Int!
+
+  """Giorno della settimana (0=Dom, 1=Lun, ..., 6=Sab)"""
+  weekday: Int!
 }
 
 type Mutation {
@@ -1216,6 +1381,7 @@ type Mutation {
   addTreatmentServiceLine(description: String, executorOperatorId: ID, price: Float, serviceId: ID!, treatmentId: ID!): Treatment!
   anonymizeExpiredWhatsappLogs: WhatsappLogManagementResult!
   anonymizeWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
+  applyRegistryPhone(clientPhone: String!): Int!
   assignKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
   assignPermissionToRole(permissionId: ID!, roleId: ID!): RolePermission!
   assignRole(input: AssignRoleInput!): UserRole!
@@ -1228,6 +1394,8 @@ type Mutation {
   cancelTreatment(id: ID!, reason: String!): Treatment!
   cancelTreatmentPayment(id: ID!): Treatment!
   cancelVoucherFe(voucherFeId: ID!): VoucherFe!
+  cancelWhatsappScheduledMessage(jobId: String!): Boolean!
+  clearAppointmentLateArrival(id: ID!): AvailabilityAppointment!
   closeTreatment(id: ID!, input: CloseTreatmentInput!): Treatment!
   completeTaskMessage(messageId: String!): Boolean!
   completeTreatment(id: ID!, input: CompleteTreatmentInput!): Treatment!
@@ -1236,6 +1404,7 @@ type Mutation {
   createAvailabilityAppointment(input: CreateAvailabilityAppointmentInput!): AvailabilityAppointment!
   createAvailabilityException(date: String!, endTime: String, operatorId: ID!, reason: String, startTime: String, type: String!): AvailabilityException!
   createAvailabilityTemplate(input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  createChair(color: String, name: String!, roomId: ID!): Chair!
   createDocumentTemplate(input: CreateDocumentTemplateInput!): DocumentTemplate!
   createEvaluation(input: CreateEvaluationInput!): PatientEvaluation!
   createException(endTime: String, exceptionDate: String!, exceptionType: ExceptionType!, operatorId: ID!, reason: String, startTime: String): AvailabilityException!
@@ -1253,8 +1422,8 @@ type Mutation {
   createOperator(input: CreateOperatorInput!): Operator!
   createOperatorAbsenceType(input: CreateOperatorAbsenceTypeInput!): OperatorAbsenceType!
   createOperatorAbsences(input: CreateOperatorAbsencesInput!): OperatorAbsencesResult!
+  createOperatorAvailability(input: CreateOperatorAvailabilityInput!): ExtraAvailabilityResult!
   createOperatorCategory(description: String, invoiceLineDescription: String, macroCategory: OperatorMacroCategory!, name: String!): OperatorCategory!
-  createPathDocument(input: CreateDocumentInput!): PathDocument!
   createPatient(input: CreatePatientInput!): Patient!
 
   """Crea nuova anamnesi paziente"""
@@ -1265,10 +1434,12 @@ type Mutation {
   createProduct(category: String, defaultPrice: Float!, description: String, isActive: Boolean = true, name: String!, productCode: String!): Product!
   createRole(description: String, name: String!): Role!
   createRoom(capacity: Int, color: String, name: String!): Room!
+  createScheduleChange(input: CreateScheduleChangeInput!): ScheduleChangeResult!
   createSecretary(input: CreateSecretaryInput!): Secretary!
   createService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int!, defaultPrice: Float, description: String, discountFE: Float, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String!, preferredDuration: Int, serviceCode: String!, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
   createServiceSubcategory(description: String, invoiceLineDescription: String, macroCategory: OperatorMacroCategory!, name: String!): ServiceSubcategory!
   createSickLeave(endDate: String!, operatorId: ID!, reason: String, startDate: String!): [AvailabilityException!]!
+  createSite(address: String, name: String!): Site!
   createTaskMessage(input: CreateTaskMessageInput!): TaskMessageResult!
   createTemplatePattern(input: CreateTemplatePatternInput!): [TemplatePattern!]!
   createTherapeuticPath(input: CreateTherapeuticPathInput!): TherapeuticPath!
@@ -1285,10 +1456,12 @@ type Mutation {
   deleteAppUser(id: ID!): Boolean!
   deleteAvailabilityAppointment(id: ID!): Boolean!
   deleteAvailabilityTemplate(id: ID!): Boolean!
+  deleteChair(id: ID!): Boolean!
   deleteDocumentTemplate(id: ID!): Boolean!
   deleteEvaluation(id: ID!): Boolean!
   deleteEvaluationTest(evaluationId: ID!, testId: ID!): Boolean!
   deleteException(id: ID!): Boolean!
+  deleteExceptionGroup(sourceGroupId: ID!): AvailabilityRemovalResult!
   deleteExceptionsByDateRange(endDate: String!, exceptionType: ExceptionType, operatorId: ID!, startDate: String!): Int!
   deleteExpiredWhatsappLogs: WhatsappLogManagementResult!
   deleteGeneralSetting(key: String!): Boolean!
@@ -1302,13 +1475,16 @@ type Mutation {
   deleteInstrumentCategory(id: ID!): Boolean!
   deleteItManager(id: ID!): Boolean!
   deleteKeycloakUser(keycloakUserId: ID!): Boolean!
+  deleteNoShowReview(appointmentId: ID!): Boolean!
   deleteOperator(id: ID!): DeleteOperatorResult!
   deleteOperatorAbsenceType(id: ID!): Boolean!
   deleteOperatorCategory(id: ID!): Boolean!
-  deletePathDocument(id: ID!): Boolean!
+  deleteOrphanTreatment(id: ID!): Boolean!
+  deleteOrphanTreatments(ids: [ID!]!): [OrphanDeletionResult!]!
 
   """Elimina anamnesi paziente"""
   deletePatientAnamnesis(id: ID!): Boolean!
+  deletePatientDocument(id: ID!): Boolean!
   deletePatientRelationship(relationshipId: ID!): Boolean!
   deletePatternGroup(id: ID!): Boolean!
   deletePrivacyOfficer(id: ID!): Boolean!
@@ -1328,6 +1504,8 @@ type Mutation {
   deleteTreatmentInvoiceLine(id: ID!): Boolean!
   deleteWaitingListEntry(id: ID!): Boolean!
   deleteWhatsappLogs(input: WhatsappBulkLogIdsInput!): WhatsappLogManagementResult!
+  disconnectMyGoogleCalendar: GoogleCalendarStatus!
+  disconnectOperatorGoogleCalendar(operatorId: ID!): GoogleCalendarStatus!
   dismissBillingAlert(id: ID!): Treatment!
   dismissReturnFromAccountingBanner(id: ID!): Treatment!
   duplicateGymPatternGroup(id: ID!, newName: String!): GymPatternGroup!
@@ -1337,18 +1515,24 @@ type Mutation {
   forceCloseTreatment(id: ID!, secretaryNotes: String): Treatment!
   generateHolidaysForOperator(operatorId: ID!, year: Int!): Int!
   generateHolidaysForYear(year: Int!): Int!
+  generateOperatorCalendarFeed(operatorId: ID!): OperatorCalendarFeedStatus!
   generateOperatorFeSettlements(input: GenerateOperatorFeSettlementsInput!): [OperatorFeSettlement!]!
   initializeDefaultSettings: Boolean!
   issueVoucherFe(expiryDate: String, initialAmount: Float!, notes: String, patientId: ID!): VoucherFe!
   linkKeycloakUser(input: LinkKeycloakUserInput!): AppUser!
+  linkWhatsappConversationPatient(input: LinkWhatsappConversationPatientInput!): WhatsappConversation!
+  makeAppointmentRecurring(appointmentId: ID!, force: Boolean, occurrences: [RecurringOccurrenceInput!], repeatConfig: RepeatConfigInput!): AvailabilityAppointment!
   markAppointmentAsNoShow(id: ID!): AvailabilityAppointment!
   markAppointmentAttended(id: ID!): AvailabilityAppointment!
+  markAppointmentLateArrival(id: ID!, lateMinutes: Int): AvailabilityAppointment!
   markAppointmentNoShow(id: ID!): AvailabilityAppointment!
   markObjectiveAchieved(input: MarkObjectiveAchievedInput!, objectiveId: ID!): EvaluationObjective!
   markScontoFeCashPayment(id: ID!, paid: Boolean!): Treatment!
   markTaskMessageAsRead(messageId: String!): Boolean!
   markTreatmentInvoicedByOperator(id: ID!, invoiceNumber: String): Treatment!
   markTreatmentInvoicedToPatient(id: ID!, invoiceNumber: String): Treatment!
+  markWhatsappConversationRead(conversationId: ID!): WhatsappConversation!
+  openWhatsappConversation(input: OpenWhatsappConversationInput!): WhatsappConversation!
   patchOperatorFeSettlement(id: ID!, input: PatchOperatorFeSettlementInput!): OperatorFeSettlement!
 
   """Deprecato: provisioning dei tenant avviene dal TMS, non più da qui."""
@@ -1361,12 +1545,14 @@ type Mutation {
   recordTreatmentPayment(callerRole: TreatmentCallerRole, id: ID!, input: RecordPaymentInput!): Treatment!
   removeServiceFromOperator(operatorId: ID!, serviceId: ID!): Boolean!
   removeTreatmentServiceLine(treatmentServiceId: ID!): Treatment!
-  updateTreatmentServiceExecutor(executorOperatorId: ID, treatmentServiceId: ID!): TreatmentService!
+  renameOperatorGoogleCalendar(calendarName: String!, operatorId: ID!): GoogleCalendarStatus!
   reopenTreatment(id: ID!): Treatment! @deprecated(reason: "Usa reopenTreatmentByOperator o reopenTreatmentBySecretary")
   reopenTreatmentByOperator(id: ID!): Treatment!
   reopenTreatmentBySecretary(id: ID!): Treatment!
+  reorderNotificationChannels(order: [NotificationChannel!]!): [NotificationChannelSetting!]!
   reorderWaitingList(input: ReorderWaitingListInput!): [WaitingListEntry!]!
   requestTreatmentRecall(id: ID!, reason: String): Treatment!
+  resendMissingNotifications(appointmentIds: [ID!]!): ResendOutcome!
   resendTreatmentToAccounting(id: ID!): Treatment!
   resetKeycloakPassword(input: ResetKeycloakPasswordInput!): Boolean!
   resetTestEvaluation(testId: ID!): EvaluationTest!
@@ -1374,19 +1560,43 @@ type Mutation {
   resolveMultipleConflicts(action: ConflictResolutionAction!, appointmentIds: [ID!]!, notes: String, resolvedBy: ID!): [AvailabilityAppointment!]!
   restoreFromRecycleBin(entityType: RecycleBinEntityType!, id: ID!): Boolean!
   restoreOperator(id: ID!): Operator!
+  resyncOperatorsToAccounting: Int!
   resyncServicesToAccounting: Int!
+  resyncSitesToAccounting: Float!
   retryTreatmentInvoice(id: ID!): Treatment!
+  retryWhatsappChatMessage(messageId: ID!): WhatsappChatMessage!
   revertAppointmentAttended(id: ID!): AvailabilityAppointment!
+  revokeAllPatientCalendarFeeds: Int!
   revokeKeycloakRealmRole(keycloakUserId: ID!, roleName: String!): Boolean!
+  revokeOperatorCalendarFeed(operatorId: ID!): OperatorCalendarFeedStatus!
+  revokePatientCalendarFeed(patientId: ID!): Boolean!
   revokePermissionFromRole(permissionId: ID!, roleId: ID!): Boolean!
   revokeRole(input: AssignRoleInput!): Boolean!
+  revokeStalePatientCalendarFeeds: Int!
   sendAppointmentRecap(appointmentId: ID!): Boolean!
+  sendAppointmentsRecap(appointmentIds: [ID!]!, patientId: ID!): Boolean!
+  sendMyGoogleRenewLink(channel: String!): Boolean!
+  sendOperatorCalendarFeedLink(channel: String!, operatorId: ID!, recipient: String!): Boolean!
+  sendOperatorGoogleRenewLink(channel: String!, operatorId: ID!, recipient: String!): Boolean!
+  sendPatientCalendarFeedLink(email: String, patientId: ID!): Boolean!
+  sendWhatsappChatMessage(input: SendWhatsappChatMessageInput!): WhatsappChatMessage!
+  setAssignmentRoomOverrides(assignmentId: ID!, overrides: [AssignmentRoomOverrideInput!]!): TemplateAssignment!
+  setDefaultSite(id: ID!): [Site!]!
   setInstrumentStatus(id: ID!, status: InstrumentStatus!): Instrument!
   setInvoiceLineUseOperatorCategories(useOperatorCategories: Boolean!): InvoiceLineSettings!
+  setMyGoogleAlertChannel(channel: String!, enabled: Boolean!): GoogleCalendarStatus!
+  setOperatorCalendarFeedPatientName(operatorId: ID!, show: Boolean!): OperatorCalendarFeedStatus!
+  setOperatorCalendarFeedPatientPhone(operatorId: ID!, show: Boolean!): OperatorCalendarFeedStatus!
+  setOperatorGoogleAccountEmail(email: String, operatorId: ID!): GoogleCalendarStatus!
+  setOperatorGoogleAlertChannel(channel: String!, enabled: Boolean!, operatorId: ID!): GoogleCalendarStatus!
   setPatientPrivacyConsent(documentRef: String, given: Boolean!, id: ID!): Patient!
   setPatternGroupActive(id: ID!, isActive: Boolean!): PatternGroup!
   setTreatmentsReadyForBilling(ids: [ID!]!, immediateInvoice: Boolean = false, ready: Boolean!): [Treatment!]!
+  setWhatsappConversationStatus(conversationId: ID!, status: WhatsappConversationStatus!): WhatsappConversation!
+  startMyGoogleCalendarConnect: String!
+  startOperatorGoogleCalendarConnect(calendarName: String, operatorId: ID!): String!
   suspendVoucherFe(voucherFeId: ID!): VoucherFe!
+  syncOperatorGoogleCalendar(operatorId: ID!): GoogleCalendarStatus!
   testWhatsappConnection: Boolean!
   testWhatsappDirect(message: String, name: String!, phone: String!): WhatsappTestResult!
   testWhatsappFullFlow(name: String!, phone: String!): WhatsappTestResult!
@@ -1395,6 +1605,8 @@ type Mutation {
   updateAppUser(id: ID!, input: UpdateAppUserInput!): AppUser!
   updateAvailabilityAppointment(id: ID!, input: UpdateAvailabilityAppointmentInput!): AvailabilityAppointment!
   updateAvailabilityTemplate(id: ID!, input: CreateAvailabilityTemplateInput!): AvailabilityTemplate!
+  updateCalendarSyncSettings(keepCalendarOnDisconnect: Boolean, keepPastAppointments: Boolean): CalendarSyncSetting!
+  updateChair(color: String, id: ID!, isActive: Boolean, name: String, roomId: ID): Chair!
   updateDocumentTemplate(id: ID!, input: UpdateDocumentTemplateInput!): DocumentTemplate!
   updateEvaluation(id: ID!, input: UpdateEvaluationInput!): PatientEvaluation!
   updateException(endTime: String, exceptionType: ExceptionType, id: ID!, reason: String, startTime: String): AvailabilityException!
@@ -1406,6 +1618,7 @@ type Mutation {
   updateInstrument(brand: String, categoryId: ID, color: String, id: ID!, isActive: Boolean, model: String, name: String, status: InstrumentStatus, technicalData: JSON, verificationExpiry: DateTime): Instrument!
   updateInstrumentCategory(description: String, id: ID!, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String): InstrumentCategory!
   updateKeycloakUser(input: UpdateKeycloakUserInput!): Boolean!
+  updateNotificationChannelSetting(input: NotificationChannelSettingInput!): NotificationChannelSetting!
   updateObjectiveProgress(input: UpdateObjectiveProgressInput!, objectiveId: ID!, operatorId: ID!, pathId: ID!): EvaluationObjective!
   updateOperator(id: ID!, input: UpdateOperatorInput!): Operator!
   updateOperatorAbsenceType(id: ID!, input: UpdateOperatorAbsenceTypeInput!): OperatorAbsenceType!
@@ -1415,6 +1628,7 @@ type Mutation {
 
   """Aggiorna anamnesi paziente"""
   updatePatientAnamnesis(id: ID!, input: UpdatePatientAnamnesisInput!): PatientAnamnesis!
+  updatePatientDocument(id: ID!, input: UpdatePatientDocumentInput!): PatientDocument!
   updatePatientRegistry(id: ID!, input: UpdateRegistryIndividualInput!): Patient!
   updatePatternGroup(id: ID!, input: UpdatePatternGroupInput!): PatternGroup!
   updatePatternGroupWithConflicts(id: ID!, input: UpdatePatternGroupInput!, markConflicts: Boolean! = true): PatternGroupUpdateOutput!
@@ -1425,8 +1639,9 @@ type Mutation {
   updateRoom(capacity: Int, color: String, id: ID!, isActive: Boolean, name: String): Room!
   updateService(bufferTimeAfter: Int, bufferTimeBefore: Int, color: String, defaultDuration: Int, defaultPrice: Float, description: String, discountFE: Float, id: ID!, instrumentOrderMatters: Boolean, isActive: Boolean, macroCategory: OperatorMacroCategory, name: String, preferredDuration: Int, serviceCode: String, serviceFee: Float, serviceFeeFE: Float, studioExtra: Float, studioExtraFE: Float, subcategoryId: ID): Service!
   updateServiceSubcategory(description: String, id: ID!, invoiceLineDescription: String, isActive: Boolean, name: String): ServiceSubcategory!
+  updateSite(address: String, id: ID!, isActive: Boolean, name: String): Site!
   updateTaskMessage(input: UpdateTaskMessageInput!, messageId: String!): Boolean!
-  updateTemplateAssignment(id: ID!, isCurrent: Boolean, patternStartDate: String, validFrom: String, validUntil: String): TemplateAssignment!
+  updateTemplateAssignment(chairId: String, id: ID!, isCurrent: Boolean, patternStartDate: String, roomId: String, validFrom: String, validUntil: String): TemplateAssignment!
   updateTemplatePattern(id: ID!, input: CreateTemplatePatternInput!): TemplatePattern!
   updateTestResult(input: UpdateTestResultInput!, testId: ID!): EvaluationTest!
   updateTherapeuticPath(id: ID!, input: UpdateTherapeuticPathInput!): TherapeuticPath!
@@ -1434,10 +1649,12 @@ type Mutation {
   updateTreatmentBySecretary(input: UpdateTreatmentBySecretaryInput!): Treatment!
   updateTreatmentInstruments(id: ID!, instruments: [TreatmentInstrumentInput!]!): Treatment!
   updateTreatmentInvoiceLine(input: UpdateTreatmentInvoiceLineInput!): TreatmentInvoiceLine!
+  updateTreatmentServiceExecutor(executorOperatorId: ID, treatmentServiceId: ID!): TreatmentService!
   updateTreatmentServiceInvoiceDescription(input: UpdateTreatmentServiceInvoiceDescriptionInput!): TreatmentService!
   updateVoucherFeAmount(amount: Float!, voucherFeId: ID!): VoucherFe!
   updateWaitingListEntry(id: ID!, input: UpdateWaitingListEntryInput!): WaitingListEntry!
   upsertGeneralSetting(category: String, description: String, key: String!, value: JSON!, valueType: String): GeneralSettings!
+  upsertNoShowReview(input: UpsertNoShowReviewInput!): NoShowReview!
 
   """Crea o aggiorna anamnesi paziente"""
   upsertPatientAnamnesis(input: UpdatePatientAnamnesisInput!, subjectId: ID!): PatientAnamnesis!
@@ -1453,6 +1670,260 @@ type MyProfile {
   operatorId: ID
   permissions: [String!]!
   userType: AppUserType!
+}
+
+"""Ambito degli appuntamenti: studio, palestra o entrambi"""
+enum NoShowContext {
+  ALL
+  GYM
+  STUDIO
+}
+
+type NoShowCounts {
+  cancelledEarly: Int!
+  cancelledLate: Int!
+  cancelledUnknown: Int!
+  lateArrival: Int!
+  noShow: Int!
+
+  """Totale di tutti gli eventi, ritardi e disdette early inclusi"""
+  total: Int!
+
+  """
+  Totale "pesante": no-show + disdette tardive + disdette di preavviso ignoto. Esclude le disdette con preavviso e i ritardi.
+  """
+  unjustified: Int!
+}
+
+"""Decisione dello staff su un'assenza ingiustificata"""
+enum NoShowDecision {
+  JUSTIFIED
+  PENDING
+  TO_CHARGE
+  WAIVED
+}
+
+type NoShowEvent {
+  """Data appuntamento YYYY-MM-DD"""
+  appointmentDate: String!
+  appointmentId: ID!
+  appointmentType: AppointmentType!
+  arrivalSource: ArrivalSource
+  arrivedAt: DateTime
+  bookingStatus: BookingStatus!
+  cancellationHoursNotice: Float
+  cancellationReason: String
+  cancelledAt: DateTime
+  endTime: String!
+  eventType: NoShowEventType!
+  gymRoomName: String
+
+  """L'appuntamento era stato riassegnato a un sostituto"""
+  isSubstitution: Boolean!
+  lateMinutes: Int
+  operatorId: ID
+  operatorMacroCategory: OperatorMacroCategory
+  operatorName: String
+
+  """Operatore originale, se c'è stata sostituzione"""
+  originalOperatorName: String
+  patientId: ID
+
+  """Display name dalla cache locale, fallback su clientName"""
+  patientName: String!
+
+  """Decisione dello staff, se presa"""
+  review: NoShowReview
+
+  """Servizi prenotati sull'appuntamento"""
+  serviceNames: [String!]!
+  siteId: ID
+  siteName: String
+  startTime: String!
+
+  """Era stato dato per assente e poi si è presentato"""
+  wasNoShowReverted: Boolean!
+}
+
+type NoShowEventPage {
+  events: [NoShowEvent!]!
+  total: Int!
+}
+
+"""Tipologia di assenza/ritardo nella gestione assenze ingiustificate"""
+enum NoShowEventType {
+  CANCELLED_EARLY
+  CANCELLED_LATE
+  CANCELLED_UNKNOWN
+  LATE_ARRIVAL
+  NO_SHOW
+}
+
+input NoShowFilterInput {
+  """
+  Studio (operatori/medici), palestra (istruttori) o entrambi. Default ALL.
+  """
+  context: NoShowContext
+
+  """
+  Filtra per esito della valutazione staff. PENDING include gli eventi mai valutati.
+  """
+  decisions: [NoShowDecision!]
+
+  """
+  Escludi gli eventi già marcati come giustificati. Default true: un'assenza con certificato non deve inquinare il conteggio.
+  """
+  excludeJustified: Boolean
+
+  """Da (YYYY-MM-DD), inclusivo"""
+  from: String
+
+  """
+  Includi gli appuntamenti senza paziente collegato (clienti occasionali). Default false.
+  """
+  includeWithoutPatient: Boolean
+
+  """
+  Solo pazienti con almeno N eventi nel periodo (vista ad albero). Default 1.
+  """
+  minEvents: Int
+
+  """Operatori/medici/istruttori di riferimento"""
+  operatorIds: [ID!]
+
+  """Un singolo paziente (subjectId)"""
+  patientId: ID
+
+  """Ricerca sul nome del paziente"""
+  search: String
+  siteIds: [ID!]
+
+  """A (YYYY-MM-DD), inclusivo"""
+  to: String
+
+  """
+  Tipologie da includere. Default: NO_SHOW + CANCELLED_LATE + CANCELLED_UNKNOWN (le assenze che pesano). Le disdette con preavviso vanno chieste esplicitamente.
+  """
+  types: [NoShowEventType!]
+}
+
+input NoShowPagingInput {
+  limit: Int = 50
+  offset: Int = 0
+}
+
+type NoShowPatientGroup {
+  """Conteggi nel periodo filtrato"""
+  counts: NoShowCounts!
+
+  """Gli eventi del paziente nel periodo"""
+  events: [NoShowEvent!]!
+
+  """Primo evento nel periodo (YYYY-MM-DD)"""
+  firstEventDate: String
+
+  """Ultimo evento nel periodo (YYYY-MM-DD)"""
+  lastEventDate: String
+  patientId: ID
+  patientName: String!
+
+  """Eventi ancora da valutare dallo staff"""
+  pendingReviews: Int!
+
+  """
+  Conteggi negli ultimi N giorni (impostazione noShow.recentWindowDays), indipendenti dal filtro: servono a distinguere "2 in un mese" da "2 in un anno"
+  """
+  recent: NoShowCounts!
+
+  """Conteggi negli ultimi 12 mesi scorrevoli, indipendenti dal filtro"""
+  rollingYear: NoShowCounts!
+}
+
+type NoShowPatientPage {
+  groups: [NoShowPatientGroup!]!
+
+  """Pazienti totali che soddisfano il filtro"""
+  totalPatients: Int!
+}
+
+type NoShowReview {
+  appointmentId: ID!
+  chargedAmount: Float
+  createdAt: DateTime!
+  decidedAt: DateTime
+  decidedBy: ID
+  decidedByName: String
+  decision: NoShowDecision!
+  id: ID!
+  notes: String
+  patientId: ID
+  updatedAt: DateTime!
+}
+
+type NoShowSummary {
+  counts: NoShowCounts!
+  justified: Int!
+  lateArrivalToleranceMinutes: Int!
+  lateCancellationHours: Int!
+
+  """Pazienti distinti coinvolti nel periodo"""
+  patientsInvolved: Int!
+  pendingReviews: Int!
+  recentWindowDays: Int!
+  toCharge: Int!
+  waived: Int!
+}
+
+enum NotificationCategory {
+  CANCELLATION
+  CONFIRMATION
+  REMINDER
+  RESCHEDULE
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+type NotificationChannelSetting {
+  categories: [NotificationCategory!]!
+  channel: NotificationChannel!
+  createdAt: DateTime!
+  emailFromName: String
+  enabled: Boolean!
+  id: ID!
+  priority: Int!
+  smsDriver: String
+  updatedAt: DateTime!
+}
+
+input NotificationChannelSettingInput {
+  categories: [NotificationCategory!]
+  channel: NotificationChannel!
+  emailFromName: String
+  enabled: Boolean
+  priority: Int
+  smsDriver: String
+}
+
+enum NotificationIssueKind {
+  CANCELLED_NOT_NOTIFIED
+  NEVER_NOTIFIED
+  STALE_INFO
+  STUCK
+}
+
+type NotificationIssueTotals {
+  cancelledNotNotified: Int!
+  neverNotified: Int!
+  outsideWindow: Int!
+  patients: Int!
+  staleInfo: Int!
+  stuck: Int!
+  unreachable: Int!
+  unreachableUnpaid: Int!
 }
 
 type ObjectiveProgressHistory {
@@ -1488,12 +1959,24 @@ type ObjectivesProgress {
   total: Int!
 }
 
+input OpenWhatsappConversationInput {
+  patientId: ID
+  patientName: String
+  phone: String!
+}
+
 type Operator {
   appUser: AppUser
   appUserId: String
   appointments: [AvailabilityAppointment!]
   availabilityExceptions: [AvailabilityException!]
   availabilityTemplates: [AvailabilityTemplate!]
+  calendarFeedCreatedAt: DateTime
+  calendarFeedEnabled: Boolean!
+  calendarFeedLastAccessAt: DateTime
+  calendarFeedRevokedAt: DateTime
+  calendarFeedShowPatientName: Boolean!
+  calendarFeedShowPatientPhone: Boolean!
   canCollectPayment: Boolean!
   category: OperatorCategory
   categoryId: String
@@ -1502,6 +1985,9 @@ type Operator {
   deletedAt: DateTime
   deletedByUserId: ID
   email: String
+  googleAlertEmail: Boolean!
+  googleAlertLastSentAt: DateTime
+  googleAlertWhatsapp: Boolean!
   gymSchedules: [GymSchedule!]
   id: ID!
   isActive: Boolean!
@@ -1535,6 +2021,7 @@ type OperatorAbsenceType {
 type OperatorAbsencesResult {
   conflictCount: Int!
   exceptions: [AvailabilityException!]!
+  removedAvailabilityCount: Int!
   skippedOverlaps: Int!
   sourceGroupId: ID!
 }
@@ -1547,6 +2034,17 @@ type OperatorAvailabilityResult {
 type OperatorAvailabilityV3 {
   days: [DayAvailabilityV3!]!
   operatorId: ID!
+}
+
+type OperatorCalendarFeedStatus {
+  createdAt: DateTime
+  enabled: Boolean!
+  feedUrl: String
+  lastAccessAt: DateTime
+  operatorId: ID!
+  revokedAt: DateTime
+  showPatientName: Boolean!
+  showPatientPhone: Boolean!
 }
 
 type OperatorCategory {
@@ -1581,9 +2079,6 @@ type OperatorDependencyCount {
   waitingList: Int!
 }
 
-"""
-Macro category defining what an operator can do (use instruments, manage gym, etc.)
-"""
 type OperatorFeAccountSettings {
   cutoffDay: Int!
   periodMode: String!
@@ -1682,6 +2177,9 @@ type OperatorFeSettlementLine {
   unitPrice: Float!
 }
 
+"""
+Macro category defining what an operator can do (use instruments, manage gym, etc.)
+"""
 enum OperatorMacroCategory {
   DOCTOR
   GYM_INSTRUCTOR
@@ -1704,6 +2202,22 @@ type OperatorSlotOnDate {
   startTime: String!
 }
 
+type OperatorSyncSummary {
+  declaredEmail: String
+  feedEnabled: Boolean!
+  googleConnected: Boolean!
+  googleDaysLeft: Int
+  googleEmail: String
+  googleNeedsReconnect: Boolean!
+  operatorId: ID!
+}
+
+type OrphanDeletionResult {
+  deleted: Boolean!
+  reason: String
+  treatmentId: ID!
+}
+
 type PaginatedPatients {
   data: [Patient!]!
   page: Int!
@@ -1712,25 +2226,12 @@ type PaginatedPatients {
   totalPages: Int!
 }
 
-type PathDocument {
-  category: DocumentCategory!
-  description: String
-
-  """Name of external doctor (for prescriptions/reports)"""
-  externalDoctorName: String
-  fileName: String!
-  fileSize: Int!
-  id: ID!
-  mimeType: String!
+input PatchOperatorFeSettlementInput {
+  communicated: Boolean
   notes: String
-  originalFileName: String
-  storagePath: String!
-  therapeuticPath: TherapeuticPath!
-  therapeuticPathId: ID!
-  thumbnailPath: String
-  type: DocumentType!
-  uploadedAt: DateTime!
-  uploadedBy: ID
+  paid: Boolean
+  paymentDate: String
+  verified: Boolean
 }
 
 """Façade clinica di un subject del registry"""
@@ -1783,6 +2284,120 @@ type PatientAnamnesis {
   """Traumi significativi"""
   traumi: String
   updatedAt: DateTime!
+}
+
+type PatientCalendarFeedRow {
+  active: Boolean!
+  createdAt: DateTime!
+  emailSentAt: DateTime
+  emailSentTo: String
+  exists: Boolean!
+  lastAccessAt: DateTime
+  patientId: ID!
+  patientName: String
+  revokedAt: DateTime
+  revokedBy: String
+  subscribedAt: DateTime
+}
+
+type PatientCalendarFeedStatus {
+  active: Boolean!
+  emailSentAt: DateTime
+  emailSentTo: String
+  exists: Boolean!
+  lastAccessAt: DateTime
+  patientId: ID!
+  revokedAt: DateTime
+  revokedBy: String
+  subscribedAt: DateTime
+}
+
+type PatientDocument {
+  category: PatientDocumentCategory!
+  contentKind: PatientDocumentKind!
+  deletedAt: DateTime
+  description: String
+
+  """Medico esterno (per prescrizioni/referti)"""
+  externalDoctorName: String
+  fileSize: String!
+  id: ID!
+  mimeType: String!
+  notes: String
+  organizationId: ID
+  originalFileName: String!
+  sha256: String!
+  subjectId: ID!
+  therapeuticPath: TherapeuticPath
+  therapeuticPathId: ID
+  treatment: Treatment
+  treatmentId: ID
+  updatedAt: DateTime!
+  uploadedAt: DateTime!
+  uploadedBy: ID
+}
+
+"""Clinical category of a patient document"""
+enum PatientDocumentCategory {
+  CONSENT
+  OTHER
+  PRESCRIPTION
+  RADIOLOGY
+  REPORT
+}
+
+type PatientDocumentCategoryCount {
+  category: PatientDocumentCategory!
+  count: Int!
+}
+
+"""Content kind of a patient document (derived from MIME type)"""
+enum PatientDocumentKind {
+  AUDIO
+  DOCUMENT
+  IMAGE
+  OTHER
+  PDF
+  SPREADSHEET
+  VIDEO
+}
+
+type PatientDocumentKindCount {
+  count: Int!
+  kind: PatientDocumentKind!
+}
+
+type PatientDocumentPathCount {
+  count: Int!
+  therapeuticPathId: ID!
+}
+
+"""Association level of a patient document (general/path/treatment)"""
+enum PatientDocumentScope {
+  GENERAL
+  PATH
+  TREATMENT
+}
+
+type PatientDocumentStats {
+  byCategory: [PatientDocumentCategoryCount!]!
+  byKind: [PatientDocumentKindCount!]!
+  byPath: [PatientDocumentPathCount!]!
+  generalCount: Int!
+  pathCount: Int!
+  total: Int!
+  treatmentCount: Int!
+}
+
+input PatientDocumentsFilterInput {
+  category: PatientDocumentCategory
+  contentKind: PatientDocumentKind
+  scope: PatientDocumentScope
+
+  """Ricerca su nome file/note/descrizione"""
+  search: String
+  therapeuticPathId: ID
+  treatmentId: ID
 }
 
 type PatientEvaluation {
@@ -1877,6 +2492,14 @@ type PatientEvaluation {
   updatedAt: DateTime!
 }
 
+type PatientNotificationIssues {
+  appointments: [AppointmentNotificationIssue!]!
+  contactState: ContactState!
+  patientId: ID
+  patientName: String
+  phoneNumber: String
+}
+
 type PatientRelationship {
   """Flag operativi clinici (contatto emergenza, ritiro autorizzato, ...)"""
   extension: ClinicalRelationshipExtension
@@ -1906,14 +2529,7 @@ type PatternGroupUpdateOutput {
   conflictsCount: Int!
   hasConflicts: Boolean!
   patternGroup: PatternGroup!
-}
-
-input PatchOperatorFeSettlementInput {
-  communicated: Boolean
-  notes: String
-  paid: Boolean
-  paymentDate: String
-  verified: Boolean
+  removedRoomOverridesCount: Int!
 }
 
 input PatternInput {
@@ -1933,6 +2549,29 @@ enum PaymentMethod {
   TRANSFER
 }
 
+type PendingFeCollectionItem {
+  amount: Float!
+  canCollect: Boolean!
+  cannotCollectReason: String
+  isGym: Boolean!
+  operatorAppUserId: ID
+  operatorId: ID!
+  operatorName: String!
+  servicesDescription: String
+  startedAt: String!
+  status: TreatmentStatus!
+  therapeuticPathName: String
+  treatmentId: ID!
+}
+
+type PendingFeCollections {
+  allowAnyOperatorCollect: Boolean!
+  callerIsSecretary: Boolean!
+  count: Int!
+  items: [PendingFeCollectionItem!]!
+  totalAmount: Float!
+}
+
 type Permission {
   action: String
   createdAt: DateTime!
@@ -1941,6 +2580,43 @@ type Permission {
   name: String!
   resourceType: String
   rolePermissions: [RolePermission!]
+}
+
+type PermissionDenial {
+  appUserId: ID
+  email: String
+  id: ID!
+  keycloakId: String
+  occurredAt: DateTime!
+  operation: String
+  permission: String!
+  reason: String!
+}
+
+type PermissionDenialOperation {
+  count: Int!
+  operation: String!
+}
+
+type PermissionDenialSummary {
+  appUserId: ID
+  count: Int!
+  email: String
+  keycloakId: String
+  lastOccurredAt: DateTime!
+  operations: [PermissionDenialOperation!]!
+  permission: String!
+  reason: String!
+}
+
+type PhoneNumberIssue {
+  appointments: Int!
+  clientPhone: String!
+  hasRegistryFallback: Boolean!
+  patientId: ID
+  patientName: String
+  registryPhone: String
+  registryPhoneDirty: String
 }
 
 type PhysiotherapistSlotBatchOutput {
@@ -1994,9 +2670,10 @@ type Query {
   appUserPermissions(appUserId: ID!): [String!]!
   appUsers(isActive: Boolean, userType: AppUserType): [AppUser!]!
   archivedOperators: [Operator!]!
+  assignmentRoomAvailability(excludeAssignmentId: ID, input: AssignTemplateToOperatorInput!): RoomAssignmentAvailability!
   availabilityAppointment(id: ID!): AvailabilityAppointment
   availabilityAppointments(endDate: String!, operatorIds: [ID!], startDate: String!): [AvailabilityAppointment!]!
-  availabilityAppointmentsByOperator(endDate: String!, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
+  availabilityAppointmentsByOperator(endDate: String, operatorId: ID!, startDate: String!): [AvailabilityAppointment!]!
   availabilityAppointmentsByPatient(patientId: ID!, startDate: String!): [AvailabilityAppointment!]!
   availabilityException(id: ID!): AvailabilityException
   availabilityExceptions(endDate: String, exceptionType: ExceptionType, operatorId: ID, startDate: String): [AvailabilityException!]!
@@ -2006,6 +2683,11 @@ type Query {
   availableSlots(date: String!, operatorId: ID, serviceId: ID): [AvailabilitySlot!]!
   availableSlotsForRebooking(dates: [String!]!, durationMinutes: Int!, operatorIds: [ID!]!, serviceId: ID): [RebookingSlot!]!
   calendarSettings: CalendarSettings!
+  calendarSyncSettings: CalendarSyncSetting!
+  canMarkAttendance: Boolean!
+  chair(id: ID!): Chair
+  chairs(onlyActive: Boolean = false, roomId: ID): [Chair!]!
+  checkAssignmentRoomConflicts(excludeAssignmentId: ID, input: AssignTemplateToOperatorInput!): RoomConflictCheckResult!
   checkDuplicateOperator(name: String!, surname: String): [Operator!]!
   checkSlotAvailability(date: String!, endTime: String!, operatorId: ID!, startTime: String!): Boolean!
   conflictStats: ConflictStatsOutput!
@@ -2017,8 +2699,6 @@ type Query {
   dlqStatus: DlqStatusGql!
   documentTemplate(id: ID!): DocumentTemplate
   documentTemplates(type: DocumentTemplateType): [DocumentTemplate!]!
-  documentsByPath(pathId: ID!): [PathDocument!]!
-  documentsByPathAndCategory(category: DocumentCategory!, pathId: ID!): [PathDocument!]!
   evaluationByPath(pathId: ID!): PatientEvaluation
   examsByEvaluation(evaluationId: ID!): [EvaluationExam!]!
   generalSetting(key: String!): GeneralSettings
@@ -2057,8 +2737,13 @@ type Query {
   itManagers: [ItManager!]!
   keycloakOrgMembers: [KeycloakOrgMember!]!
   keycloakRealmRoles: [KeycloakRealmRoleType!]!
+  myGoogleCalendar: GoogleCalendarStatus
   myOperator: Operator
   myProfile: MyProfile
+  noShowByPatient(filter: NoShowFilterInput, paging: NoShowPagingInput): NoShowPatientPage!
+  noShowEvents(filter: NoShowFilterInput, paging: NoShowPagingInput): NoShowEventPage!
+  noShowSummary(filter: NoShowFilterInput): NoShowSummary!
+  notificationChannelSettings: [NotificationChannelSetting!]!
   objectiveProgressHistory(objectiveId: ID!): [ObjectiveProgressHistory!]!
   objectivesByEvaluation(evaluationId: ID!): [EvaluationObjective!]!
   objectivesProgress(evaluationId: ID!): ObjectivesProgress!
@@ -2067,6 +2752,7 @@ type Query {
   operatorAbsenceType(id: ID!): OperatorAbsenceType
   operatorAbsenceTypes(onlyActive: Boolean): [OperatorAbsenceType!]!
   operatorAvailability(endDate: String!, operatorId: ID!, startDate: String!): [DailyAvailability!]!
+  operatorCalendarFeed(operatorId: ID!): OperatorCalendarFeedStatus!
   operatorCategories(macroCategory: OperatorMacroCategory): [OperatorCategory!]!
   operatorCategory(id: ID!): OperatorCategory
   operatorDependencies(id: ID!): OperatorDependencyCount!
@@ -2075,12 +2761,13 @@ type Query {
   operatorFeAnalysis(from: String!, operatorAppUserIds: [ID!], to: String!): [OperatorFeAnalysis!]!
   operatorFeSettlement(id: ID!): OperatorFeSettlement
   operatorFeSettlements(operatorAppUserId: ID): [OperatorFeSettlement!]!
+  operatorGoogleCalendar(operatorId: ID!): GoogleCalendarStatus!
   operatorPatternsOnDate(date: String!, operatorId: ID!): [OperatorSlotOnDate!]!
   operatorServices(operatorId: ID!): [OperatorService!]!
   operators(categoryId: ID, macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Operator!]!
   operatorsAvailability(endDate: String!, operatorIds: [ID!]!, startDate: String!): [OperatorAvailabilityResult!]!
   operatorsAvailabilityV3(endDate: String!, operatorIds: [ID!]!, startDate: String!): [OperatorAvailabilityV3!]!
-  pathDocument(id: ID!): PathDocument
+  operatorsSyncSummary: [OperatorSyncSummary!]!
   patient(id: ID!): Patient
 
   """Ottiene anamnesi per ID"""
@@ -2088,18 +2775,31 @@ type Query {
 
   """Ottiene anamnesi per subjectId"""
   patientAnamnesisBySubject(subjectId: ID!): PatientAnamnesis
+  patientCalendarFeed(patientId: ID!): PatientCalendarFeedStatus!
+  patientCalendarFeeds: [PatientCalendarFeedRow!]!
+  patientDocument(id: ID!): PatientDocument
+  patientDocumentStats(subjectId: ID!): PatientDocumentStats!
+  patientDocuments(filter: PatientDocumentsFilterInput, subjectId: ID!): [PatientDocument!]!
   patientEvaluation(id: ID!): PatientEvaluation
+  patientPendingFeCollections(patientId: ID!): PendingFeCollections!
   patternGroup(id: ID!): PatternGroup
   patternGroups: [PatternGroup!]!
+  permissionDenialSummary(days: Int! = 7): [PermissionDenialSummary!]!
+  permissionDenials(days: Int! = 7, limit: Int! = 200): [PermissionDenial!]!
   permissions: [Permission!]!
   physiotherapistAvailableSlots(input: CheckPhysiotherapistAvailabilityInput!): [PhysiotherapistSlotOutput!]!
   physiotherapistAvailableSlotsBatch(customInstrumentSlots: [InstrumentSlotInput!], dates: [String!]!, durationMinutes: Int!, instrumentOrderMatters: Boolean, operatorIds: [ID!]!): [PhysiotherapistSlotBatchOutput!]!
+  previewAvailabilityRemovalImpact(exceptionIds: [ID!]!): [AvailabilityAppointment!]!
+  previewGroupRemovalImpact(sourceGroupId: ID!): [AvailabilityAppointment!]!
   previewOperatorAbsenceImpact(dateFrom: String!, dateTo: String!, endTime: String, operatorIds: [ID!]!, startTime: String): AbsenceImpactPreview!
+  previewOperatorAvailabilityImpact(input: CreateOperatorAvailabilityInput!): AvailabilityImpactPreview!
+  previewScheduleChangeImpact(input: CreateScheduleChangeInput!): ScheduleChangeImpactPreview!
   privacyOfficer(id: ID!): PrivacyOfficer
   privacyOfficers: [PrivacyOfficer!]!
   product(id: ID!): Product
   products(onlyActive: Boolean = false): [Product!]!
   recurringSeries(recurringGroupId: ID!): [AvailabilityAppointment!]!
+  recurringSeriesPreview(input: RecurringSeriesPreviewInput!): [RecurringOccurrencePreview!]!
   recycleBin(filter: RecycleBinFilterInput): [RecycleBinItem!]!
   recycleBinSettings: RecycleBinSettings!
   revalidateConflictsIfNeeded: ConflictRevalidationResult!
@@ -2107,6 +2807,7 @@ type Query {
   roles: [Role!]!
   room(id: ID!): Room
   rooms(onlyActive: Boolean = false): [Room!]!
+  roomsOccupancy(endDate: String!, startDate: String!): [RoomDayOccupancy!]!
   searchPatients(input: SearchPatientInput!): PaginatedPatients!
   secretaries: [Secretary!]!
   secretary(id: ID!): Secretary
@@ -2116,6 +2817,7 @@ type Query {
   serviceSubcategories(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [ServiceSubcategory!]!
   serviceSubcategory(id: ID!): ServiceSubcategory
   services(macroCategory: OperatorMacroCategory, onlyActive: Boolean = false): [Service!]!
+  sites(onlyActive: Boolean = false): [Site!]!
   taskMessage(id: String!): TaskMessage
   taskMessageCompleted(limit: Int! = 20, page: Int! = 1): TaskMessagePage!
   taskMessageInbox(limit: Int! = 20, page: Int! = 1): TaskMessagePage!
@@ -2145,8 +2847,8 @@ type Query {
   treatmentsByPatient(limit: Int, offset: Int, patientId: ID!): [Treatment!]!
   treatmentsByTherapeuticPath(therapeuticPathId: ID!): [Treatment!]!
   treatmentsForOperator(dateFrom: String, dateTo: String, limit: Int, offset: Int, operatorId: ID!, statuses: [TreatmentStatus!]): [Treatment!]!
-  treatmentsForSecretary(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, limit: Int, offset: Int, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!]): [Treatment!]!
-  treatmentsForSecretaryCount(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!]): Int!
+  treatmentsForSecretary(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, limit: Int, offset: Int, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!], withoutAppointment: Boolean): [Treatment!]!
+  treatmentsForSecretaryCount(dateFrom: String, dateTo: String, isInvoicedToPatient: Boolean, operatorId: ID, patientId: ID, readyForBilling: Boolean, scontoFE: Boolean, statuses: [TreatmentStatus!], withoutAppointment: Boolean): Int!
   treatmentsNotInvoicedByOperator(dateFrom: String, dateTo: String, operatorId: ID): [Treatment!]!
   treatmentsNotInvoicedToPatient(dateFrom: String, dateTo: String): [Treatment!]!
   treatmentsPendingClosure: [Treatment!]!
@@ -2156,14 +2858,21 @@ type Query {
   vouchersFeByPatient(patientId: ID!): [VoucherFe!]!
   waitingListEntries(status: WaitingListStatus): [WaitingListEntry!]!
   waitingListEntry(id: ID!): WaitingListEntry
+  whatsappChatAppointmentsRecap(conversationId: ID!): String!
+  whatsappChatMessages(conversationId: ID!, limit: Int! = 50, page: Int! = 1): WhatsappChatMessagePage!
+  whatsappChatUnreadCount: Int!
   whatsappConfig: WhatsappTenantConfig
+  whatsappConversation(id: ID!): WhatsappConversation!
+  whatsappConversations(filters: WhatsappConversationFilterInput): [WhatsappConversation!]!
+  whatsappDiagnostics(windowDays: Int = 7): WhatsappDiagnostics!
   whatsappExpiredLogs(limit: Int! = 50, page: Int! = 1): WhatsappMessageLogPage!
   whatsappMessageLog(id: ID!): WhatsappMessageLog
   whatsappMessageLogs(filters: WhatsappLogFilterInput!): WhatsappMessageLogPage!
   whatsappMessageLogsByAppointment(appointmentId: ID!): [WhatsappMessageLog!]!
   whatsappRetentionStats: WhatsappRetentionStats!
+  whatsappScheduledMessages: [WhatsappScheduledMessage!]!
   whatsappTemplate(type: WhatsappTemplateType!): WhatsappMessageTemplate
-  whatsappTemplates: [WhatsappMessageTemplate!]!
+  whatsappTemplates(channel: NotificationChannel): [WhatsappMessageTemplate!]!
 }
 
 type RebookingSlot {
@@ -2216,10 +2925,38 @@ type RecurringOccurrenceConflict {
   type: String!
 }
 
+input RecurringOccurrenceInput {
+  appointmentId: ID
+  date: String!
+  endTime: String!
+  gymRoomId: ID
+  operatorId: ID
+  startTime: String!
+}
+
+type RecurringOccurrencePreview {
+  appointmentId: ID
+  conflict: RecurringOccurrenceConflict
+  date: String!
+  endTime: String!
+  startTime: String!
+}
+
 type RecurringSeriesOperationResult {
   affectedCount: Int!
   applied: Boolean!
   conflicts: [RecurringOccurrenceConflict!]!
+}
+
+input RecurringSeriesPreviewInput {
+  endTime: String!
+  excludeAppointmentId: ID
+  gymRoomId: ID
+  operatorId: ID
+  patientId: ID
+  repeatConfig: RepeatConfigInput!
+  startDate: String!
+  startTime: String!
 }
 
 """
@@ -2241,6 +2978,7 @@ enum RecurringType {
 
 """Tipo di entità nel cestino"""
 enum RecycleBinEntityType {
+  PATIENT_DOCUMENT
   PATIENT_EVALUATION
   THERAPEUTIC_PATH
   TREATMENT
@@ -2415,6 +3153,16 @@ input RepeatConfigInput {
   endType: RecurringEndType!
   interval: Int!
 
+  """
+  Solo per type=MONTHLY: per data del mese (default) o per giorno della settimana
+  """
+  monthlyMode: MonthlyMode
+
+  """
+  Fasce mensili (es. primo lunedì + ultimo mercoledì) quando monthlyMode = DAY_OF_WEEK
+  """
+  monthlyRules: [MonthlyRuleInput!]
+
   """Numero di occorrenze (se endType = AFTER)"""
   occurrences: Int
 
@@ -2426,6 +3174,13 @@ input RepeatConfigInput {
 
   """Data di fine (se endType = UNTIL)"""
   untilDate: String
+}
+
+type ResendOutcome {
+  dispatched: Int!
+  errors: [String!]!
+  requested: Int!
+  skipped: Int!
 }
 
 input ResetKeycloakPasswordInput {
@@ -2454,12 +3209,68 @@ type RolePermission {
 
 type Room {
   capacity: Int!
+  chairs: [Chair!]
   color: String
   createdAt: DateTime!
   id: ID!
   isActive: Boolean!
   name: String!
   updatedAt: DateTime!
+}
+
+type RoomAbsenceBand {
+  endTime: String!
+  operatorId: ID!
+  operatorName: String!
+  reason: String!
+  startTime: String!
+}
+
+type RoomAssignmentAvailability {
+  rooms: [RoomAvailabilityInfo!]!
+}
+
+type RoomAvailabilityInfo {
+  busy: [RoomBandBusyInfo!]!
+  capacity: Int!
+  chairs: [ChairAvailabilityInfo!]!
+  full: Boolean!
+  fullyFree: Boolean!
+  roomId: ID!
+  roomName: String!
+  sharing: Boolean!
+  unavailableReason: String
+}
+
+type RoomBandBusyInfo {
+  busyChairIds: [ID!]!
+  dayInPattern: Int!
+  endTime: String!
+  freeSeats: Int!
+  occupantNames: [String!]!
+  startTime: String!
+}
+
+type RoomConflictCheckResult {
+  blocking: [String!]!
+  warnings: [String!]!
+}
+
+type RoomDayOccupancy {
+  absences: [RoomAbsenceBand!]!
+  bands: [RoomOccupancyBand!]!
+  date: String!
+  roomId: ID!
+}
+
+type RoomOccupancyBand {
+  chairId: ID
+  chairName: String
+  endTime: String!
+  operatorColor: String
+  operatorId: ID!
+  operatorName: String!
+  startTime: String!
 }
 
 type SaleCompletedResult {
@@ -2472,6 +3283,35 @@ input SaleProductLineInput {
   productId: ID!
   quantity: Float!
   unitPriceOverride: Float
+}
+
+type ScheduleChangeImpactPreview {
+  blockers: [AvailabilityBlocker!]!
+  conflicts: [AvailabilityAppointment!]!
+  creatableCount: Int!
+  days: [ScheduleChangePreviewDay!]!
+}
+
+type ScheduleChangePreviewDay {
+  currentWindows: [String!]!
+  date: String!
+  gainedWindows: [String!]!
+  lostWindows: [String!]!
+  operatorId: ID!
+  operatorName: String!
+}
+
+type ScheduleChangeResult {
+  blockers: [AvailabilityBlocker!]!
+  conflictCount: Int!
+  createdCount: Int!
+  exceptions: [AvailabilityException!]!
+  sourceGroupId: ID!
+}
+
+input ScheduleWindowInput {
+  endTime: String!
+  startTime: String!
 }
 
 """Input per ricerca paziente (proxy a registry global-search)"""
@@ -2500,6 +3340,11 @@ type Secretary {
   department: String
   id: ID!
   updatedAt: DateTime!
+}
+
+input SendWhatsappChatMessageInput {
+  conversationId: ID!
+  text: String!
 }
 
 type Service {
@@ -2582,6 +3427,7 @@ type Site {
   createdAt: DateTime!
   id: ID!
   isActive: Boolean!
+  isDefault: Boolean!
   name: String!
   updatedAt: DateTime!
 }
@@ -2589,6 +3435,8 @@ type Site {
 type TaskMessage {
   availableFrom: DateTime
   completedAt: DateTime
+  completedByUser: AppUser
+  completedByUserId: String
   content: String!
   correlationId: String
   createdAt: DateTime!
@@ -2596,8 +3444,11 @@ type TaskMessage {
   gatewayMessageId: String!
   id: ID!
   readAt: DateTime
+  readByUser: AppUser
+  readByUserId: String
+  recipientGroup: TaskMessageRecipientGroup
   recipientUser: AppUser
-  recipientUserId: String!
+  recipientUserId: String
   senderUser: AppUser
   senderUserId: String!
   status: TaskMessageStatus!
@@ -2608,6 +3459,13 @@ type TaskMessage {
 type TaskMessagePage {
   items: [TaskMessage!]!
   total: Int!
+}
+
+"""
+Gruppo destinatario di un task message (membri = utenti attivi con quel user_type)
+"""
+enum TaskMessageRecipientGroup {
+  SECRETARY
 }
 
 type TaskMessageResult {
@@ -2625,6 +3483,8 @@ enum TaskMessageStatus {
 }
 
 type TemplateAssignment {
+  chair: Chair
+  chairId: ID
   createdAt: DateTime!
   id: ID!
   isCurrent: Boolean!
@@ -2633,10 +3493,27 @@ type TemplateAssignment {
   patternGroup: PatternGroup!
   patternGroupId: ID!
   patternStartDate: DateTime!
+  room: Room
+  roomId: ID
+  roomOverrides: [TemplateAssignmentRoomOverride!]
   updatedAt: DateTime!
   validFrom: DateTime!
   validUntil: DateTime
   version: Int!
+}
+
+type TemplateAssignmentRoomOverride {
+  assignmentId: ID!
+  chair: Chair
+  chairId: ID
+  createdAt: DateTime!
+  dayInPattern: Int!
+  endTime: String
+  id: ID!
+  room: Room
+  roomId: ID!
+  startTime: String
+  updatedAt: DateTime!
 }
 
 type TemplatePattern {
@@ -2708,7 +3585,6 @@ type TherapeuticPath {
   deletedAt: DateTime
   deletedByUserId: ID
   diagnosis: String
-  documents: [PathDocument!]
   externalDoctorName: String
   externalPrescriptionRef: String
   icdCode: String
@@ -2747,6 +3623,8 @@ type Treatment {
   accountingDocumentId: ID
   accountingDocumentTreatmentCount: Int
   accountingDocumentType: String
+  accountingExternalRefDate: String
+  accountingExternalRefNumber: String
   accountingInvoiceIssuedAt: DateTime
   accountingInvoiceUrl: String
   accountingRefundReason: String
@@ -2769,6 +3647,7 @@ type Treatment {
   closedAt: DateTime
   closedByUserId: ID
   collectedBy: ID
+  collectedByName: String
   completedAt: DateTime
   createdAt: DateTime!
   deletedAt: DateTime
@@ -2797,8 +3676,10 @@ type Treatment {
   patientId: ID
   patientInvoiceNumber: String
   patientNotes: String
+  paymentCollectorRole: String
   paymentId: ID
   paymentMethod: PaymentMethod
+  paymentRecordedByUserId: ID
   paymentRecordedSource: String
   price: Float!
   readyForBilling: Boolean!
@@ -2957,6 +3838,9 @@ input UpdateAvailabilityAppointmentInput {
   Forza il salvataggio anche fuori dalla disponibilità dell'operatore (conferma esplicita dell'utente)
   """
   forceOutsideAvailability: Boolean
+
+  """Sposta la prenotazione palestra in un'altra sala"""
+  gymRoomId: ID
   instrumentOrderMatters: Boolean
   instruments: [AppointmentInstrumentInput!]
 
@@ -3119,6 +4003,13 @@ input UpdatePatientAnamnesisInput {
   traumi: String
 }
 
+input UpdatePatientDocumentInput {
+  category: PatientDocumentCategory
+  description: String
+  externalDoctorName: String
+  notes: String
+}
+
 input UpdatePatternGroupInput {
   description: String
   name: String
@@ -3132,18 +4023,21 @@ input UpdateRecurringSeriesInput {
   clientName: String
   clientPhone: String
   endTime: String!
+  gymRoomId: ID
   includeCurrent: Boolean
   instrumentOrderMatters: Boolean
   instruments: [AppointmentInstrumentInput!]
   newDate: String
   nonRetribuito: Boolean
   notes: String
+  occurrenceOverrides: [RecurringOccurrenceInput!]
   operatorId: ID
   patientId: ID
   rangeFrom: String
   rangeTo: String
   scope: RecurringSeriesScope!
   services: [ServiceInputItem!]
+  skipAppointmentIds: [ID!]
   startTime: String!
 }
 
@@ -3266,6 +4160,15 @@ input UpdateWaitingListEntryInput {
   status: WaitingListStatus
 }
 
+input UpsertNoShowReviewInput {
+  appointmentId: ID!
+
+  """Importo addebitato, se deciso"""
+  chargedAmount: Float
+  decision: NoShowDecision!
+  notes: String
+}
+
 input UpsertRelationshipExtensionInput {
   isAuthorizedPickup: Boolean
   isCaregiverDuringVisits: Boolean
@@ -3332,15 +4235,95 @@ input WhatsappBulkLogIdsInput {
   logIds: [String!]!
 }
 
+"""
+Verso del messaggio di chat: in arrivo dal paziente o in uscita dallo studio
+"""
+enum WhatsappChatDirection {
+  INBOUND
+  OUTBOUND
+}
+
+type WhatsappChatMessage {
+  anonymizedAt: DateTime
+  body: String
+  conversationId: ID!
+  correlationId: String
+  createdAt: DateTime!
+  deliveredAt: DateTime
+  direction: WhatsappChatDirection!
+  errorMessage: String
+  evolutionMessageId: String
+  id: ID!
+  isAnonymized: Boolean!
+  mediaType: String
+  readAt: DateTime
+  senderName: String
+  senderUserId: String
+  sentAt: DateTime
+  status: WhatsappMessageStatus!
+}
+
+type WhatsappChatMessagePage {
+  items: [WhatsappChatMessage!]!
+  limit: Int!
+  page: Int!
+  total: Int!
+}
+
 input WhatsappConfigInput {
   apiKey: String
   evolutionApiKey: String
   gatewayUrl: String!
   isActive: Boolean
+  patientCalendarFeedEnabled: Boolean
+  recapBufferSeconds: Int
+  reminderEarlyPolicy: WhatsappReminderEarlyPolicy
+  reminderWindowEnabled: Boolean
+  reminderWindowEnd: String
+  reminderWindowStart: String
   retentionDays: Int
   sendCancelNotification: Boolean
+  sendUpdateNotification: Boolean
   tenantApiId: String!
   webhookSecret: String
+}
+
+type WhatsappConversation {
+  contactName: String
+  createdAt: DateTime!
+  id: ID!
+  lastMessageAt: DateTime
+  lastMessageDirection: WhatsappChatDirection
+  lastMessagePreview: String
+  patientId: ID
+  patientName: String
+  phoneNumber: String!
+  status: WhatsappConversationStatus!
+  unreadCount: Int!
+  updatedAt: DateTime!
+}
+
+input WhatsappConversationFilterInput {
+  limit: Int
+  search: String
+  status: WhatsappConversationStatus
+  unreadOnly: Boolean
+}
+
+"""Stato della conversazione: aperta, archiviata o bloccata"""
+enum WhatsappConversationStatus {
+  ARCHIVED
+  BLOCKED
+  OPEN
+}
+
+type WhatsappDiagnostics {
+  generatedAt: DateTime!
+  groups: [PatientNotificationIssues!]!
+  phoneIssues: [PhoneNumberIssue!]!
+  totals: NotificationIssueTotals!
+  uncoveredCategories: [String!]!
+  windowDays: Int!
 }
 
 input WhatsappLogFilterInput {
@@ -3360,6 +4343,7 @@ type WhatsappLogManagementResult {
 }
 
 type WhatsappMessageLog {
+  announcedFor: DateTime
   anonymizedAt: DateTime
   appointmentId: ID
   appointmentIds: [String!]
@@ -3376,7 +4360,6 @@ type WhatsappMessageLog {
   patientName: String
   phoneNumber: String!
   readAt: DateTime
-  sentAt: DateTime
   status: WhatsappMessageStatus!
   updatedAt: DateTime!
 }
@@ -3394,15 +4377,18 @@ enum WhatsappMessageStatus {
   FAILED
   PENDING
   READ
+  RECEIVED
   SENT
 }
 
 type WhatsappMessageTemplate {
   bodyTemplate: String!
+  channel: NotificationChannel!
   createdAt: DateTime!
   footerTemplate: String
   id: ID!
   isActive: Boolean!
+  subjectTemplate: String
   templateType: WhatsappTemplateType!
   updatedAt: DateTime!
 }
@@ -3410,9 +4396,21 @@ type WhatsappMessageTemplate {
 """Tipo di messaggio WhatsApp"""
 enum WhatsappMessageType {
   CANCELLATION
+  CANCELLATION_MULTI
   RECAP_MULTI
   RECAP_SINGLE
   REMINDER_24H
+  UPDATE
+  UPDATE_MULTI
+}
+
+"""
+Collocazione del promemoria per gli appuntamenti che iniziano prima della fine della fascia di invio
+"""
+enum WhatsappReminderEarlyPolicy {
+  EXACT_24H
+  FORCE_WINDOW
+  SHIFT_PREVIOUS_DAY
 }
 
 type WhatsappRetentionStats {
@@ -3423,19 +4421,38 @@ type WhatsappRetentionStats {
   totalLogs: Int!
 }
 
+type WhatsappScheduledMessage {
+  appointmentIds: [String!]!
+  bufferedCount: Int
+  content: String
+  jobId: String!
+  patientName: String
+  phone: String!
+  scheduledFor: DateTime!
+  state: String!
+  type: String!
+}
+
 input WhatsappTemplateInput {
   bodyTemplate: String!
+  channel: NotificationChannel
   footerTemplate: String
   isActive: Boolean
+  subjectTemplate: String
   templateType: WhatsappTemplateType!
 }
 
 """Tipo di template messaggio WhatsApp"""
 enum WhatsappTemplateType {
+  CALENDAR_INVITE_EMAIL
   CANCELLATION
+  CANCELLATION_MULTI
   RECAP_MULTI
   RECAP_SINGLE
   REMINDER_24H
+  REMINDER_48H
+  UPDATE
+  UPDATE_MULTI
 }
 
 type WhatsappTenantConfig {
@@ -3444,8 +4461,15 @@ type WhatsappTenantConfig {
   id: ID!
   isActive: Boolean!
   maskedApiKey: String
+  patientCalendarFeedEnabled: Boolean!
+  recapBufferSeconds: Int!
+  reminderEarlyPolicy: WhatsappReminderEarlyPolicy!
+  reminderWindowEnabled: Boolean!
+  reminderWindowEnd: String!
+  reminderWindowStart: String!
   retentionDays: Int!
   sendCancelNotification: Boolean!
+  sendUpdateNotification: Boolean!
   tenantApiId: String!
   updatedAt: DateTime!
 }

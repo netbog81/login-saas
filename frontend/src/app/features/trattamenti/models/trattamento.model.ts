@@ -158,6 +158,12 @@ export interface Trattamento {
    */
   accountingTotalAmount?: number | null;
   /**
+   * 2026-09-04 — Quota della prestazione già coperta da un voucher "anticipo
+   * fattura": sta FUORI dal documento corrente, che copre il solo residuo.
+   * Il valore della prestazione è `accountingTreatmentLinesAmount + questa`.
+   */
+  accountingAdvanceCoveredAmount?: number | null;
+  /**
    * Fatture multi-trattamento (2026-07-08): quota di questo trattamento nel
    * documento (somma delle sue righe, senza bollo) e numero di trattamenti
    * coperti dal documento corrente. `accountingDocumentTreatmentCount > 1` ⇒
@@ -167,8 +173,15 @@ export interface Trattamento {
   accountingDocumentTreatmentCount?: number | null;
   isPaid: boolean;
   paymentMethod?: PaymentMethod | null;
+  /**
+   * 2026-09-04 — Come è stato pagato, in chiaro. Per i buoni di anticipo
+   * fattura porta il codice del buono; altrimenti coincide col metodo.
+   */
+  paymentMethodLabel?: string | null;
   paidAt?: string | null;
   collectedBy?: string | null;
+  /** Nome di chi ha registrato l'incasso (risolto dal backend). */
+  collectedByName?: string | null;
 
   readyForBilling: boolean;
   readyForBillingAt?: string | null;
@@ -206,6 +219,15 @@ export interface Trattamento {
   accountingBillableEventId?: string | null;
   /** ID del SalesDocument lato accounting: usato per la stampa on-demand del PDF. */
   accountingDocumentId?: string | null;
+  /**
+   * 2026-09-03 — Numero della fattura ESTERNA (gestionale precedente) su cui
+   * la prestazione risulta fatturata: arriva al posto di
+   * `accountingDocumentId` quando è stata scalata da un voucher "anticipo
+   * fattura" che fa capo a un documento non presente in Curandis. Il
+   * trattamento è fatturato; semplicemente non c'è un PDF da stampare.
+   */
+  accountingExternalRefNumber?: string | null;
+  accountingExternalRefDate?: string | null;
   accountingInvoiceUrl?: string | null;
   accountingInvoiceIssuedAt?: string | null;
   accountingDocumentType?: string | null;
@@ -250,6 +272,16 @@ export interface Trattamento {
   painBefore?: number | null;
   painAfter?: number | null;
 
+  // Riprogrammazione richiesta dall'operatore a fine trattamento: e' quello
+  // che la segreteria deve leggere quando richiama il paziente per fissare
+  // la seduta successiva. `reschedulingType`: 'none' | 'days' | 'range'.
+  rescheduleRequested?: boolean | null;
+  reschedulingType?: string | null;
+  suggestInDays?: number | null;
+  suggestDateRangeStart?: string | null;   // YYYY-MM-DD
+  suggestDateRangeEnd?: string | null;     // YYYY-MM-DD
+  reschedulingNotes?: string | null;
+
   startedAt: string;
   completedAt?: string | null;
   closedAt?: string | null;
@@ -265,6 +297,19 @@ export interface Trattamento {
   treatmentServices: TrattamentoServizio[];
   instruments?: TrattamentoStrumento[];
   invoiceLines?: TrattamentoInvoiceLine[];
+}
+
+// ==================== ORFANI ====================
+
+/**
+ * Esito della cancellazione di UN trattamento orfano nella pulizia in blocco.
+ * `reason` è già formulato per l'utente dal backend (voucher FE attivo, riga
+ * di conguaglio, già fatturato…): la UI lo mostra così com'è.
+ */
+export interface OrphanDeletionResult {
+  treatmentId: string;
+  deleted: boolean;
+  reason: string | null;
 }
 
 // ==================== FILTRI ====================
@@ -285,6 +330,13 @@ export interface TrattamentiFilters {
   readyForBilling?: boolean | null;
   isInvoicedToPatient?: boolean | null;
   scontoFE?: boolean | null;
+  /**
+   * Solo trattamenti ORFANI: l'appuntamento di riferimento è stato
+   * cancellato dal calendario, quindi in lista compaiono senza ora.
+   * Server-side (`appointmentId IS NULL`), così il conteggio e la
+   * paginazione restano coerenti col filtro.
+   */
+  withoutAppointment?: boolean | null;
   limit?: number;
   offset?: number;
 }

@@ -117,6 +117,92 @@ export class Operator {
   @Column({ default: true })
   canCollectPayment: boolean;
 
+  // ==================== FEED ICS (sincronizzazione agenda) ====================
+
+  /**
+   * Segreto del feed .ics dell'operatore: chi conosce l'URL legge l'agenda.
+   *
+   * NON è esposto in GraphQL come campo dell'operatore. L'URL completo si
+   * ottiene dalla mutation dedicata, che lo restituisce una volta a chi ha i
+   * permessi: un token che compare in ogni query operatori finirebbe nella
+   * cache Apollo, nei log e nelle schermate di chiunque apra la gestione
+   * operatori.
+   */
+  @Column({ length: 64, nullable: true })
+  calendarFeedToken?: string;
+
+  /** Feed attivo: revocandolo l'URL smette di rispondere senza perdere lo storico. */
+  @Field()
+  @Column({ default: false })
+  calendarFeedEnabled: boolean;
+
+  /**
+   * Se vero il feed riporta il nome del paziente, altrimenti solo il servizio.
+   *
+   * Sta a false di proposito: il feed viaggia su un URL non autenticato e
+   * finisce dentro il calendario personale dell'operatore (e nei backup del
+   * suo telefono). L'attivazione è una scelta consapevole che la UI fa
+   * confermare dopo aver spiegato cosa comporta.
+   */
+  @Field()
+  @Column({ default: false })
+  calendarFeedShowPatientName: boolean;
+
+  /**
+   * Se vero il feed riporta anche il numero di telefono del paziente.
+   *
+   * Interruttore separato dal nome: il nome dice CHI, il numero permette di
+   * RAGGIUNGERLO. Serve a chiamare il paziente dall'agenda del telefono, ma
+   * chi trovasse il link avrebbe una rubrica di persone legate a uno studio
+   * sanitario. Vale solo per gli appuntamenti futuri, che sono gli unici per
+   * cui una telefonata ha senso.
+   */
+  @Field()
+  @Column({ default: false })
+  calendarFeedShowPatientPhone: boolean;
+
+  @Field({ nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
+  calendarFeedCreatedAt?: Date;
+
+  @Field({ nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
+  calendarFeedRevokedAt?: Date;
+
+  /**
+   * Ultimo accesso al feed. Serve a due domande concrete: "il calendario si
+   * sta davvero aggiornando?" e, in caso di sospetto, "questo link lo sta
+   * scaricando ancora qualcuno dopo che l'ho revocato?".
+   */
+  @Field({ nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
+  calendarFeedLastAccessAt?: Date;
+
+  /**
+   * Avviso di scadenza dell'autorizzazione Google su WhatsApp.
+   *
+   * Spento di default: e' un messaggio in piu' su un canale personale, e chi
+   * lo vuole lo accende. Finche' l'app Google e' in fase di test la scadenza
+   * arriva ogni 7 giorni, quindi per chi usa Google davvero conviene.
+   */
+  @Field()
+  @Column({ default: false })
+  googleAlertWhatsapp: boolean;
+
+  /** Come sopra, per email. Si possono tenere accesi entrambi. */
+  @Field()
+  @Column({ default: false })
+  googleAlertEmail: boolean;
+
+  /**
+   * Ultimo avviso mandato: evita di ripeterlo a ogni giro del controllo.
+   * Si azzera quando l'operatore riautorizza, cosi' il ciclo successivo puo'
+   * avvisarlo di nuovo.
+   */
+  @Field({ nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
+  googleAlertLastSentAt?: Date;
+
   @Field({ nullable: true })
   @Column({ name: 'app_user_id', type: 'uuid', nullable: true })
   appUserId?: string;

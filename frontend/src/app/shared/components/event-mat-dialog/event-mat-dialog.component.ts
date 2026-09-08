@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Inject, ChangeDetectionStrategy, ChangeDetectorRef, inject, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject, ChangeDetectionStrategy, ChangeDetectorRef, EventEmitter, Output, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, FormControl, Validators } from '@angular/forms';
 import { MatDialogRef, MAT_DIALOG_DATA, MatDialogModule, MatDialog } from '@angular/material/dialog';
@@ -7,6 +7,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { DragDropModule } from '@angular/cdk/drag-drop';
+import { RememberedWindowDirective } from '../../directives/remembered-window.directive';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent, MatAutocompleteTrigger } from '@angular/material/autocomplete';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -14,20 +16,24 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatRadioModule } from '@angular/material/radio';
-import { MatDatepickerModule } from '@angular/material/datepicker';
 import { Observable, of, startWith, switchMap, debounceTime, distinctUntilChanged, catchError, firstValueFrom } from 'rxjs';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { PatientService } from '../../../services/patient.service';
 
 import { Patient } from '../../../models/patient.model';
 import { User } from '../../../models/user.model';
-import { Appointment, RepeatConfig, RecurringType, RecurringEndType, BookingStatus } from '../../../models/appointment.model';
+import { Appointment, RepeatConfig, BookingStatus } from '../../../models/appointment.model';
 import { ServiceService } from '../../../services/service.service';
 import { Service, InstrumentCategory } from '../../../graphql/generated/types';
 import { ServiceMultiSelectComponent, SelectableService, SelectedServiceItem } from '../service-multi-select';
 import { RecurringScopePanelComponent, RecurringScopeSelection } from '../recurring-scope-panel/recurring-scope-panel.component';
 import { RecurringConflictsDialogComponent } from '../recurring-scope-panel/recurring-conflicts-dialog.component';
+import { RecurringOccurrenceConflict } from '../../../services/availability-appointment.service';
+import { ResolvedOccurrenceInput } from '../../../features/calendar-v3/models/recurring-resolution.model';
+// Solo i tipi: il riquadro di risoluzione arriva col dynamic import.
+import type {
+  RecurringResolutionDialogData, RecurringResolutionDialogResult,
+} from '../../../features/calendar-v3/containers/recurring-resolution-dialog.container';
 import { NewPatientDialogComponent, NewPatientDialogResult } from '../new-patient-dialog';
 import { tokenizeQuery, matchesAllTokens } from '../../utils/token-match';
 import { WhatsappChatStateService } from '../../../features/whatsapp-chat/services/whatsapp-chat-state.service';
@@ -75,6 +81,26 @@ export interface AppointmentInstrumentData {
 }
 
 /**
+ * Azione sullo stato di presenza richiesta dal dialog SENZA chiuderlo.
+ *
+ * Prima queste azioni chiudevano la scheda (`dialogRef.close({action})`) e il
+ * container eseguiva la mutation. Risultato: per segnare un'assenza la
+ * segreteria doveva riaprire tutto da capo fra un passaggio e l'altro. Ora il
+ * dialog resta aperto, il container esegue la mutation e richiama
+ * `applyBookingStatus()` per aggiornare quello che si vede.
+ */
+export type AttendanceAction =
+  | 'mark-attended'
+  | 'mark-no-show'
+  | 'cancel-with-notice'
+  | 'revert-attended';
+
+export interface AttendanceActionRequest {
+  action: AttendanceAction;
+  appointmentId: string;
+}
+
+/**
  * Risultato restituito dal dialog alla chiusura.
  */
 export interface EventMatDialogResult {
@@ -83,7 +109,14 @@ export interface EventMatDialogResult {
     // 'copy' → l'utente vuole duplicare l'appuntamento: il dialog si chiude e
     // il container avvia il flusso copia/incolla. Gestito solo dal calendario
     // v3; gli altri container lo ignorano (retro-compatibile).
-    | 'copy';
+    | 'copy'
+    // 'conflict-move' → il conflitto si risolve spostando l'appuntamento: il
+    // dialog si chiude e il container apre il proprio pannello di ricerca
+    // slot. Non lo fa il dialog perché la ricerca è diversa fra vista
+    // operatori (per operatore) e palestra (per sala).
+    // 'conflict-resolved' → il conflitto è stato chiuso qui dentro (accetta,
+    // riprogramma, cancella): il container deve solo ricaricare.
+    | 'conflict-move' | 'conflict-resolved';
   appointmentId?: string;
   appointment?: Appointment;
   services?: { serviceId: string; customPrice?: number; customDuration?: number }[];
@@ -92,6 +125,23 @@ export interface EventMatDialogResult {
   repeatConfig?: RepeatConfig;
   nonRetribuito?: boolean;
 }
+
+import {
+  ConflictBannerComponent,
+  ConflictBannerAction,
+} from '../../../features/conflicts/components/conflict-banner/conflict-banner.component';
+import {
+  RecurrenceEditorComponent,
+  DEFAULT_REPEAT_CONFIG,
+  buildRepeatConfigPayload,
+} from '../recurrence-editor';
+import { ConflictService } from '../../../features/conflicts/services/conflict.service';
+import {
+  ConflictInfo,
+  ConflictedAppointment,
+  ConflictResolutionAction,
+  ConflictResolutionResult,
+} from '../../../features/conflicts/models/conflict.model';
 
 @Component({
   selector: 'app-event-mat-dialog',
@@ -114,10 +164,12 @@ export interface EventMatDialogResult {
     MatSlideToggleModule,
     MatCheckboxModule,
     MatButtonToggleModule,
-    MatRadioModule,
-    MatDatepickerModule,
+    DragDropModule,
+    RememberedWindowDirective,
     ServiceMultiSelectComponent,
     RecurringScopePanelComponent,
+    ConflictBannerComponent,
+    RecurrenceEditorComponent,
   ],
   templateUrl: './event-mat-dialog.component.html',
   styleUrls: ['./event-mat-dialog.component.scss']
@@ -154,35 +206,24 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
 
   // Recurring
   repeatEnabled = false;
-  repeatConfig: RepeatConfig = {
-    type: 'weekly',
-    interval: 1,
-    selectedDays: [],
-    endType: 'after',
-    occurrences: 4,
-    untilDate: ''
-  };
-  /** Modello Date per il datepicker "Fino al"; tenuto in sync con repeatConfig.untilDate (string). */
-  repeatUntilDate: Date | null = null;
-
-  /** Aggiorna repeatConfig.untilDate (YYYY-MM-DD) dal datepicker. */
-  onRepeatUntilChange(date: Date | null): void {
-    this.repeatUntilDate = date;
-    if (date) {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      this.repeatConfig.untilDate = `${y}-${m}-${d}`;
-    } else {
-      this.repeatConfig.untilDate = '';
-    }
-  }
-
-  // Weekday labels
-  weekdays = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+  repeatConfig: RepeatConfig = { ...DEFAULT_REPEAT_CONFIG };
 
   isEditMode = false;
   bookingStatus: BookingStatus = 'scheduled';
+
+  /**
+   * Azione di presenza richiesta al container. Il dialog NON si chiude: chi
+   * lo ha aperto si iscrive a questo output (`dialogRef.componentInstance
+   * .attendanceAction`), esegue la mutation e risponde con
+   * `applyBookingStatus()` o `failStatusAction()`.
+   */
+  @Output() attendanceAction = new EventEmitter<AttendanceActionRequest>();
+
+  /** Mutation di stato in volo: i pulsanti restano bloccati fino alla risposta. */
+  statusActionPending = false;
+
+  /** Messaggio d'errore dell'ultima azione di stato, mostrato nel dialog. */
+  statusActionError: string | null = null;
 
   /**
    * In modifica: un appuntamento singolo (non già in serie) e ancora attivo
@@ -202,6 +243,7 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
   futureSeriesCount = 0;
   loadingSeriesInfo = false;
   private recurringAppointmentService = inject(AvailabilityAppointmentService);
+  private conflictService = inject(ConflictService);
   private patientService = inject(PatientService);
   private chatState = inject(WhatsappChatStateService);
   private snackBar = inject(MatSnackBar);
@@ -829,103 +871,11 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
   }
 
   // ==================== RECURRING ====================
-
-  onRepeatToggle(): void {
-    if (!this.repeatEnabled) {
-      this.repeatConfig = {
-        type: 'weekly',
-        interval: 1,
-        selectedDays: [],
-        endType: 'after',
-        occurrences: 4,
-        untilDate: ''
-      };
-    } else {
-      const date = this.form.get('date')?.value;
-      const selectedDate = date ? new Date(date) : new Date();
-      const dayOfWeek = selectedDate.getDay();
-      this.repeatConfig.selectedDays = [dayOfWeek];
-    }
-    this.cdr.markForCheck();
-  }
-
-  isDaySelected(dayIndex: number): boolean {
-    return this.repeatConfig.selectedDays?.includes(dayIndex) || false;
-  }
-
-  toggleDay(dayIndex: number): void {
-    if (!this.repeatConfig.selectedDays) {
-      this.repeatConfig.selectedDays = [];
-    }
-
-    const index = this.repeatConfig.selectedDays.indexOf(dayIndex);
-    if (index === -1) {
-      this.repeatConfig.selectedDays.push(dayIndex);
-      this.repeatConfig.selectedDays.sort();
-    } else {
-      this.repeatConfig.selectedDays.splice(index, 1);
-    }
-    this.cdr.markForCheck();
-  }
-
-  getIntervalLabel(): string {
-    switch (this.repeatConfig.type) {
-      case 'daily': return this.repeatConfig.interval === 1 ? 'giorno' : 'giorni';
-      case 'weekly': return this.repeatConfig.interval === 1 ? 'settimana' : 'settimane';
-      case 'monthly': return this.repeatConfig.interval === 1 ? 'mese' : 'mesi';
-      default: return '';
-    }
-  }
-
-  getOccurrencesPreview(): string {
-    if (!this.repeatEnabled) return '';
-
-    let count = 0;
-    const date = this.form.get('date')?.value;
-
-    switch (this.repeatConfig.endType) {
-      case 'after':
-        count = this.repeatConfig.occurrences || 1;
-        break;
-      case 'until':
-        if (this.repeatConfig.untilDate && date) {
-          const start = new Date(date);
-          const end = new Date(this.repeatConfig.untilDate);
-          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-          switch (this.repeatConfig.type) {
-            case 'daily':
-              count = Math.ceil(days / this.repeatConfig.interval);
-              break;
-            case 'weekly':
-              const weeks = Math.ceil(days / 7);
-              count = Math.ceil(weeks / this.repeatConfig.interval) * (this.repeatConfig.selectedDays?.length || 1);
-              break;
-            case 'monthly':
-              count = Math.ceil(days / 30 / this.repeatConfig.interval);
-              break;
-          }
-        }
-        break;
-      case 'never':
-        count = 52;
-        break;
-    }
-
-    return count > 0 ? `(circa ${count} appuntamenti)` : '';
-  }
-
-  private buildRepeatConfig(): RepeatConfig | undefined {
-    if (!this.repeatEnabled) return undefined;
-
-    return {
-      type: this.repeatConfig.type.toUpperCase() as RecurringType,
-      interval: this.repeatConfig.interval,
-      selectedDays: this.repeatConfig.type === 'weekly' ? this.repeatConfig.selectedDays : undefined,
-      endType: this.repeatConfig.endType.toUpperCase() as RecurringEndType,
-      occurrences: this.repeatConfig.endType === 'after' ? this.repeatConfig.occurrences : undefined,
-      untilDate: this.repeatConfig.endType === 'until' ? this.repeatConfig.untilDate : undefined
-    };
-  }
+  //
+  // L'editor della regola (tipo, intervallo, giorni, mensile per posizione,
+  // fine, anteprima) vive in shared/components/recurrence-editor ed è lo
+  // stesso del dialog palestra: qui resta solo la conversione verso il
+  // payload GraphQL, condivisa anch'essa.
 
   // ==================== BOOKING STATUS ====================
 
@@ -936,20 +886,35 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
   get canMarkAttended(): boolean {
     const today = new Date().toISOString().split('T')[0];
     const isToday = this.form.get('date')?.value === today;
-    // Da scheduled/confirmed (flusso normale) oppure da no_show di oggi
-    // (caso ritardatario: il paziente arriva tardi e viene fatto passare).
-    const fromStandard = this.canShowStatusActions;
-    const fromNoShow = this.bookingStatus === 'no_show';
-    return (fromStandard || fromNoShow) && isToday;
+    // Flusso normale (prenotato/confermato → presentato): solo su oggi, non
+    // ha senso "far entrare" un paziente per un giorno diverso.
+    if (this.canShowStatusActions) return isToday;
+    // Correzione di un'assenza: nessun vincolo di giornata. Un errore di
+    // marcatura si scopre spesso il mattino dopo, e l'utente deve poterlo
+    // rimettere a posto — il conteggio dei no-show segue la correzione
+    // (il log viene degradato a "arrivato in ritardo").
+    return this.bookingStatus === 'no_show';
   }
 
+  /**
+   * Il "Non presentato" vale anche su un appuntamento GIA' presentato.
+   *
+   * Col cron auto-attendance acceso ogni appuntamento diventa "presentato" al
+   * suo orario: e' proprio quello lo stato in cui la segreteria si accorge che
+   * il paziente non e' venuto. Vincolarlo a prenotato/confermato obbligava a
+   * passare prima da "Annulla presentato" — due giri, e nel frattempo il cron
+   * rimetteva "presentato". Il backend (`markAsNoShow`) accetta da sempre
+   * qualunque stato di partenza.
+   */
   get canMarkNoShow(): boolean {
     const now = new Date();
     const date = this.form.get('date')?.value;
     const startTime = this.form.get('startTime')?.value;
     if (!date || !startTime) return false;
+    const fromStatus =
+      this.canShowStatusActions || this.bookingStatus === 'attended';
     const appointmentStart = new Date(`${date}T${startTime}`);
-    return this.canShowStatusActions && appointmentStart < now;
+    return fromStatus && appointmentStart < now;
   }
 
   get canCancel(): boolean {
@@ -995,33 +960,59 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
     return labels[this.bookingStatus] || 'Prenotato';
   }
 
-  // Le azioni di stato chiudono il dialog ritornando l'azione richiesta.
-  // Il container che lo apre invoca la mutation corrispondente sul backend
-  // (markAppointmentAttended/NoShow/cancelAppointmentWithNotice/revertAttended).
-  // Non aggiorniamo lo stato locale prima del round-trip: in caso di errore
-  // backend la UI rimane coerente al server.
-  onMarkAttended(): void {
+  // Le azioni di stato NON chiudono piu' il dialog: emettono verso il
+  // container, che esegue la mutation
+  // (markAppointmentAttended/AsNoShow/cancelAppointmentWithNotice/revertAttended)
+  // e risponde con `applyBookingStatus()`. Lo stato locale non si tocca prima
+  // del round-trip: se il backend rifiuta, quello che si vede resta il vero
+  // stato del server.
+  private requestAttendanceAction(action: AttendanceAction): void {
     const appointmentId = String(this.data.appointment?.id ?? '');
-    if (!appointmentId) return;
-    this.dialogRef.close({ action: 'mark-attended', appointmentId });
+    if (!appointmentId || this.statusActionPending) return;
+    this.statusActionPending = true;
+    this.statusActionError = null;
+    this.attendanceAction.emit({ action, appointmentId });
+  }
+
+  onMarkAttended(): void {
+    this.requestAttendanceAction('mark-attended');
   }
 
   onMarkNoShow(): void {
-    const appointmentId = String(this.data.appointment?.id ?? '');
-    if (!appointmentId) return;
-    this.dialogRef.close({ action: 'mark-no-show', appointmentId });
+    this.requestAttendanceAction('mark-no-show');
   }
 
   onCancelWithNotice(): void {
-    const appointmentId = String(this.data.appointment?.id ?? '');
-    if (!appointmentId) return;
-    this.dialogRef.close({ action: 'cancel-with-notice', appointmentId });
+    this.requestAttendanceAction('cancel-with-notice');
   }
 
   onRevertAttended(): void {
-    const appointmentId = String(this.data.appointment?.id ?? '');
-    if (!appointmentId) return;
-    this.dialogRef.close({ action: 'revert-attended', appointmentId });
+    this.requestAttendanceAction('revert-attended');
+  }
+
+  /**
+   * Il container ha portato a termine la mutation: si aggiorna lo stato
+   * mostrato e si sbloccano i pulsanti. Aggiorna anche `data.appointment`
+   * cosi' una riapertura del dialog non riparte da un dato vecchio.
+   */
+  applyBookingStatus(status: BookingStatus): void {
+    this.bookingStatus = status;
+    if (this.data.appointment) {
+      this.data.appointment = {
+        ...this.data.appointment,
+        bookingStatus: status,
+      } as Appointment;
+    }
+    this.statusActionPending = false;
+    this.statusActionError = null;
+    this.cdr.markForCheck();
+  }
+
+  /** La mutation e' fallita: si mostra il motivo dentro al dialog. */
+  failStatusAction(message: string): void {
+    this.statusActionPending = false;
+    this.statusActionError = message;
+    this.cdr.markForCheck();
   }
 
   // ==================== VALIDATION ====================
@@ -1074,7 +1065,7 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
       // container chiama makeAppointmentRecurring dopo l'update.
       repeatConfig:
         this.repeatEnabled && (!this.isEditMode || this.canMakeRecurring)
-          ? this.buildRepeatConfig()
+          ? buildRepeatConfigPayload(this.repeatConfig)
           : undefined,
       nonRetribuito: f.nonRetribuito
     });
@@ -1101,6 +1092,143 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
   onCopy(): void {
     if (!this.isEditMode || !this.data.appointment) return;
     this.dialogRef.close({ action: 'copy', appointment: this.data.appointment });
+  }
+
+  // ==================== CONFLITTO DI DISPONIBILITÀ ====================
+
+  /**
+   * Conflitto ancora aperto su questo appuntamento.
+   *
+   * È uno stato locale e non una lettura diretta di `data.appointment`:
+   * "Accetta" risolve senza chiudere il dialog, e il banner deve sparire
+   * subito. Ricaricare l'appuntamento solo per far sparire un riquadro
+   * sarebbe un giro inutile, e chiudere il dialog per poi riaprirlo lo
+   * sarebbe ancora di più.
+   */
+  conflictCleared = false;
+  resolvingConflict = false;
+
+  get conflictInfo(): ConflictInfo {
+    const apt = this.data.appointment;
+    return {
+      hasConflict: !!apt?.hasConflict && !this.conflictCleared,
+      reason: apt?.conflictReason,
+      detectedAt: apt?.conflictDetectedAt,
+    };
+  }
+
+  onConflictAction(action: ConflictBannerAction): void {
+    switch (action) {
+      case 'accept':
+        this.acceptConflict();
+        break;
+      case 'move':
+        // Lo spostamento guidato vive nel container: solo lui sa dove
+        // cercare gli slot liberi.
+        this.dialogRef.close({
+          action: 'conflict-move',
+          appointment: this.data.appointment,
+        });
+        break;
+      case 'manage':
+        this.openConflictDialog();
+        break;
+    }
+  }
+
+  /** "Accetta": mantiene l'appuntamento dov'è e toglie la segnalazione. */
+  private acceptConflict(): void {
+    const apt = this.data.appointment;
+    if (!apt || this.resolvingConflict) return;
+
+    this.resolvingConflict = true;
+    this.cdr.markForCheck();
+
+    this.conflictService
+      .resolveConflict(String(apt.id), ConflictResolutionAction.Keep)
+      .subscribe({
+        next: () => {
+          this.resolvingConflict = false;
+          this.conflictCleared = true;
+          this.snackBar.open('Conflitto accettato: appuntamento confermato.', 'OK', {
+            duration: 3000,
+          });
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          this.resolvingConflict = false;
+          this.snackBar.open(
+            'Impossibile accettare il conflitto' + (err?.message ? `: ${err.message}` : '.'),
+            'OK',
+            { duration: 5000 },
+          );
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  /**
+   * Dialog completo di risoluzione, sopra questo. Se l'utente sceglie di
+   * spostare, entrambi si chiudono e il container prende il testimone.
+   */
+  private async openConflictDialog(): Promise<void> {
+    const apt = this.data.appointment;
+    if (!apt) return;
+
+    const m = await import(
+      '../../../features/conflicts/containers/conflict-resolve-dialog.container'
+    );
+
+    const operator = this.data.users.find(
+      (u) => String(u.operatorId ?? u.id) === String(apt.operatorId),
+    );
+
+    const conflicted: ConflictedAppointment = {
+      id: String(apt.id),
+      appointmentDate: apt.date,
+      startTime: apt.startTime,
+      endTime: apt.endTime,
+      clientName: apt.title,
+      clientPhone: apt.clientPhone,
+      patientId: apt.patientId,
+      operatorId: apt.operatorId,
+      operatorName: operator?.name,
+      operatorColor: operator?.color,
+      serviceName: apt.service?.name,
+      conflictReason: apt.conflictReason,
+      conflictDetectedAt: apt.conflictDetectedAt,
+      isRecurring: apt.isRecurring,
+      recurringGroupId: apt.recurringGroupId,
+    };
+
+    const ref = this.dialog.open(m.ConflictResolveDialogContainer, {
+      autoFocus: false,
+      data: {
+        appointment: conflicted,
+        origin: 'operators',
+        canMove: true,
+        moveTooltip: "Cerca uno slot libero dell'operatore e spostalo lì",
+      },
+    });
+
+    ref.afterClosed().subscribe((res: ConflictResolutionResult | undefined) => {
+      if (!res) return;
+      if (res.outcome === 'move') {
+        this.dialogRef.close({ action: 'conflict-move', appointment: apt });
+        return;
+      }
+      if (res.outcome === 'resolved') {
+        // Riprogrammazione e cancellazione cambiano l'appuntamento sotto ai
+        // campi del form: restare aperti mostrerebbe dati ormai vecchi.
+        // "Accetta" invece tocca solo il flag, quindi si può restare.
+        if (res.action === ConflictResolutionAction.Keep) {
+          this.conflictCleared = true;
+          this.cdr.markForCheck();
+        } else {
+          this.dialogRef.close({ action: 'conflict-resolved', appointment: apt });
+        }
+      }
+    });
   }
 
   // ==================== UTILITIES ====================
@@ -1170,33 +1298,57 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
       customDuration: item.customDuration,
     }));
 
-    try {
-      const result = await firstValueFrom(this.recurringAppointmentService.updateRecurringSeries({
-        appointmentId: String(apt.id),
-        scope: sel.scope,
-        startTime,
-        endTime,
-        newDate: f.date || undefined,
-        operatorId: f.operatorId || undefined,
-        patientId: f.patientId || undefined,
-        clientName: f.title || undefined,
-        notes: f.notes || undefined,
-        nonRetribuito: f.nonRetribuito,
-        instrumentOrderMatters: this.instrumentOrderMatters,
-        services: services.length > 0 ? services : undefined,
-        instruments: this.buildInstrumentData(),
-        rangeFrom: sel.rangeFrom,
-        rangeTo: sel.rangeTo,
-        includeCurrent: sel.includeCurrent,
-      }));
+    const baseInput = {
+      appointmentId: String(apt.id),
+      scope: sel.scope,
+      startTime,
+      endTime,
+      newDate: f.date || undefined,
+      operatorId: f.operatorId || undefined,
+      patientId: f.patientId || undefined,
+      clientName: f.title || undefined,
+      notes: f.notes || undefined,
+      nonRetribuito: f.nonRetribuito,
+      instrumentOrderMatters: this.instrumentOrderMatters,
+      services: services.length > 0 ? services : undefined,
+      instruments: this.buildInstrumentData(),
+      rangeFrom: sel.rangeFrom,
+      rangeTo: sel.rangeTo,
+      includeCurrent: sel.includeCurrent,
+    };
 
+    try {
+      let result = await firstValueFrom(
+        this.recurringAppointmentService.updateRecurringSeries(baseInput),
+      );
+
+      // Occorrenze in conflitto: invece di fermare tutta la modifica, si apre
+      // il riquadro dove l'utente decide una per una — spostarla altrove o
+      // lasciarla dov'è. Qui i conflitti sono sovrapposizioni (o slot palestra
+      // chiusi), che non si forzano: niente "conferma comunque".
       if (!result.applied && result.conflicts.length > 0) {
-        // Avvisa e blocca: mostra il riepilogo conflitti, niente modifiche.
-        this.dialog.open(RecurringConflictsDialogComponent, {
-          width: '520px', maxWidth: '95vw',
-          data: { title: 'Modifica serie bloccata', conflicts: result.conflicts },
-        });
-        return;
+        const resolution = await this.resolveSeriesConflicts(result.conflicts);
+        if (!resolution) return; // annullato: niente modifiche
+
+        result = await firstValueFrom(this.recurringAppointmentService.updateRecurringSeries({
+          ...baseInput,
+          skipAppointmentIds: resolution.skipAppointmentIds,
+          occurrenceOverrides: resolution.overrides,
+        }));
+
+        if (!result.applied && result.conflicts.length > 0) {
+          // Qualcosa è cambiato mentre l'utente decideva: si ricomincia dal
+          // riepilogo aggiornato invece di applicare a metà.
+          this.dialog.open(RecurringConflictsDialogComponent, {
+            width: '520px', maxWidth: '95vw',
+            data: {
+              title: 'Modifica serie bloccata',
+              intro: 'Nel frattempo la situazione è cambiata: rivedi i conflitti e riprova.',
+              conflicts: result.conflicts,
+            },
+          });
+          return;
+        }
       }
 
       // Applicata (eventuali occorrenze fallite sono segnalate a parte).
@@ -1207,5 +1359,61 @@ export class EventMatDialogComponent implements OnInit, OnDestroy {
     } catch {
       alert('Errore nella modifica della serie');
     }
+  }
+
+  /**
+   * Apre il riquadro di risoluzione sui conflitti di una modifica serie e
+   * traduce le decisioni in "quali lasciare stare" e "quali mandare altrove".
+   * Ritorna null se l'utente annulla.
+   */
+  private async resolveSeriesConflicts(
+    conflicts: RecurringOccurrenceConflict[],
+  ): Promise<{ skipAppointmentIds: string[]; overrides: ResolvedOccurrenceInput[] } | null> {
+    const m = await import(
+      '../../../features/calendar-v3/containers/recurring-resolution-dialog.container'
+    );
+
+    const operatorId = this.form.get('operatorId')?.value || this.data.appointment?.operatorId || '';
+    const ref = this.dialog.open(m.RecurringResolutionDialogContainer, {
+      width: '760px', maxWidth: '96vw', maxHeight: '88vh', autoFocus: false,
+      data: {
+        occurrences: conflicts.map(c => ({
+          appointmentId: c.appointmentId ?? undefined,
+          date: c.date,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          conflict: {
+            type: c.type === 'overlap' ? 'overlap' : 'unavailable',
+            reason: c.reason,
+            conflictingStartTime: c.conflictingStartTime ?? undefined,
+            conflictingEndTime: c.conflictingEndTime ?? undefined,
+          },
+        })),
+        operatorId,
+        operatorName: this.data.users?.find(u => u.operatorId === operatorId)?.name ?? 'Operatore',
+        operators: (this.data.users ?? []).map(u => ({
+          id: u.operatorId, name: u.name, macroCategory: '',
+        })),
+        allowConfirm: false,
+        title: 'Modifica serie: occorrenze da sistemare',
+        intro:
+          `${conflicts.length} ${conflicts.length === 1 ? 'occorrenza non può' : 'occorrenze non possono'} ` +
+          'essere spostata dove previsto. Scegli per ciascuna se mandarla altrove ' +
+          'o lasciarla dov\'è: il resto della serie viene aggiornato comunque.',
+      } as RecurringResolutionDialogData,
+    });
+
+    const outcome: RecurringResolutionDialogResult | undefined =
+      await firstValueFrom(ref.afterClosed());
+    if (!outcome || outcome.action === 'cancel') return null;
+
+    // Chi non è nel risultato è stato saltato: resta dov'è.
+    const movedIds = new Set(outcome.occurrences.map(o => o.appointmentId).filter(Boolean));
+    return {
+      skipAppointmentIds: conflicts
+        .map(c => c.appointmentId)
+        .filter((id): id is string => !!id && !movedIds.has(id)),
+      overrides: outcome.occurrences.filter(o => !!o.appointmentId),
+    };
   }
 }

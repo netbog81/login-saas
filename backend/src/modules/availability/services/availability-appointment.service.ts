@@ -7,7 +7,7 @@ import { AppointmentService as AppointmentServiceEntity } from '../entities/appo
 import { Instrument } from '../entities/instrument.entity';
 import { InstrumentCategory } from '../entities/instrument-category.entity';
 import { InstrumentStatus } from '../entities/instrument-status.enum';
-import { RecurringType, RecurringEndType, ServiceInputItem } from '../dto/create-availability-appointment.input';
+import { RecurringType, RecurringEndType, MonthlyMode, ServiceInputItem } from '../dto/create-availability-appointment.input';
 import { GymRoom } from '../entities/gym-room.entity';
 import { Site } from '../entities/site.entity';
 import { AppointmentType } from '../entities/appointment-type.enum';
@@ -18,11 +18,20 @@ import { EventsService } from '../../events/events.service';
 import { ConflictReason } from '../entities/availability-appointment.entity';
 import { AvailabilityException, ExceptionType } from '../entities/availability-exception.entity';
 import { findBlockingException } from '../utils/day-exception-semantics.util';
+import { toDateString } from '../utils/date-string.util';
+import {
+  RecurringOccurrenceConflict, RecurringOccurrencePreview,
+} from '../dto/recurring-series-conflict.output';
+import { RecurringOccurrenceInput } from '../dto/recurring-occurrence.input';
+import {
+  calculateRecurringDates,
+  RecurrenceConfig,
+} from '../utils/recurring-dates.util';
 import { CreateGymAppointmentInput } from '../dto/create-gym-appointment.input';
 import { ClinicalSubjectIndex } from '../../../patients/entities/clinical-subject-index.entity';
 import { ClinicalAttendanceService } from '../../../patients/services/clinical-attendance.service';
 import { AttendanceEventType } from '../../../patients/entities/clinical-attendance-log.entity';
-import { WhatsappGatewayService, WhatsappPatientContact } from '../../whatsapp/gateway/whatsapp-gateway.service';
+import { WhatsappGatewayService, WhatsappPatientContact, AppointmentSlot } from '../../whatsapp/gateway/whatsapp-gateway.service';
 import { WhatsappChatService } from '../../whatsapp/chat/services/whatsapp-chat.service';
 import { RegistryClient } from '../../registry/registry.client';
 import { RegistrySubjectResponse } from '../../registry/registry.types';
@@ -30,7 +39,13 @@ import { TenantContextService } from '@curandis/tenant-datasource';
 import { GeneralSettingsService } from '../../settings/services/general-settings.service';
 import { AvailabilityService } from './availability.service';
 import { RoomConflictService } from './room-conflict.service';
+import { GoogleCalendarSyncService } from './google-calendar-sync.service';
 
+/**
+ * Ricorrenza come la vede il service. Gemella del DTO GraphQL omonimo in
+ * `dto/create-availability-appointment.input.ts`, tenuta separata perche' il
+ * service e' chiamato anche da percorsi non-GraphQL.
+ */
 export interface RepeatConfigInput {
   type: RecurringType;
   interval: number;
@@ -38,6 +53,10 @@ export interface RepeatConfigInput {
   endType: RecurringEndType;
   occurrences?: number;
   untilDate?: string;
+  /** Solo per type=MONTHLY. Assente = per data del mese (comportamento storico). */
+  monthlyMode?: MonthlyMode;
+  /** Fasce mensili "il <ordinal> <weekday>" quando monthlyMode = DAY_OF_WEEK. */
+  monthlyRules?: { ordinal: number; weekday: number }[];
 }
 
 export interface CreateAppointmentInstrumentInput {
@@ -64,6 +83,11 @@ export interface CreateAvailabilityAppointmentInput {
   instrumentOrderMatters?: boolean;
   instruments?: CreateAppointmentInstrumentInput[];
   repeatConfig?: RepeatConfigInput;
+  /**
+   * Piano risolto dal riquadro conflitti: le occorrenze da creare davvero.
+   * Quando c'è, sostituisce la generazione dalle regole.
+   */
+  occurrences?: RecurringOccurrenceInput[];
   nonRetribuito?: boolean;
   forceOutsideAvailability?: boolean;
 }
@@ -75,6 +99,13 @@ export interface UpdateAvailabilityAppointmentInput {
   services?: ServiceInputItem[];
   /** Riassegna l'appuntamento a un altro operatore. */
   operatorId?: string;
+  /**
+   * Sposta una prenotazione palestra in un'altra sala. L'istruttore e la
+   * capienza NON si passano: li ricava `update()` dal template della sala di
+   * destinazione, perché in palestra sono una conseguenza della sala e non
+   * una scelta di chi sposta.
+   */
+  gymRoomId?: string;
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -115,6 +146,12 @@ export class AvailabilityAppointmentService {
     private whatsappGateway?: WhatsappGatewayService,
     @Optional() @Inject(forwardRef(() => WhatsappChatService))
     private whatsappChat?: WhatsappChatService,
+    /**
+     * Sincronizzazione Google Calendar: opzionale e sempre fire-and-forget.
+     * Un problema con Google non deve mai impedire di salvare un appuntamento.
+     */
+    @Optional() @Inject(forwardRef(() => GoogleCalendarSyncService))
+    private googleSync?: GoogleCalendarSyncService,
   ) {}
 
   /** DataSource del tenant corrente (AsyncLocalStorage). */
@@ -214,9 +251,13 @@ export class AvailabilityAppointmentService {
    * attiva, verifica che l'intervallo [startTime, endTime] sia interamente
    * coperto dalla disponibilita' dell'operatore in quella data.
    *
-   * - Salta il controllo se il flag globale e' off, se l'utente ha forzato
-   *   esplicitamente (forceOutsideAvailability), o per appuntamenti
-   *   nonRetribuito (pausa pranzo & co. sono legittimamente fuori orario).
+   * - Salta il controllo se il flag globale e' off o se l'utente ha forzato
+   *   esplicitamente (forceOutsideAvailability).
+   * - Vale anche per i nonRetribuito. Pausa pranzo & co. sono legittimamente
+   *   fuori orario, ma fino al 19/08/2026 venivano creati in silenzio: chi
+   *   sbagliava fascia non se ne accorgeva. Ora il frontend chiede conferma e
+   *   passa la forzatura, quindi il caso legittimo resta possibile ma
+   *   consapevole.
    * - In caso di violazione lancia ConflictException con un messaggio che
    *   inizia con OUTSIDE_AVAILABILITY_ERROR, cosi' il frontend puo'
    *   distinguere questo caso e offrire la forzatura.
@@ -227,13 +268,11 @@ export class AvailabilityAppointmentService {
     startTime: string;
     endTime: string;
     appointmentType?: AppointmentType;
-    nonRetribuito?: boolean;
     forceOutsideAvailability?: boolean;
     /** Appuntamento da escludere dal calcolo (in update: se stesso). */
     excludeAppointmentId?: string;
   }): Promise<void> {
     if (params.forceOutsideAvailability) return;
-    if (params.nonRetribuito) return;
     // La disponibilita' palestra ha regole proprie (eccezioni/coperture);
     // questo guard riguarda solo gli appuntamenti su operatore.
     if (params.appointmentType === AppointmentType.GYM) return;
@@ -305,25 +344,34 @@ export class AvailabilityAppointmentService {
    * Ritorna il primo appuntamento della serie (o l'unico se non ricorrente)
    */
   async create(input: CreateAvailabilityAppointmentInput): Promise<AvailabilityAppointment> {
-    const { instruments, repeatConfig, forceOutsideAvailability, ...appointmentData } = input;
+    const {
+      instruments, repeatConfig, forceOutsideAvailability, occurrences, ...appointmentData
+    } = input;
 
     // Guard disponibilita': blocca la creazione fuori orario operatore se
     // l'impostazione e' attiva e l'utente non ha forzato esplicitamente.
-    await this.assertWithinAvailability({
-      operatorId: appointmentData.operatorId,
-      appointmentDate: appointmentData.appointmentDate,
-      startTime: appointmentData.startTime,
-      endTime: appointmentData.endTime,
-      nonRetribuito: appointmentData.nonRetribuito,
-      forceOutsideAvailability,
-    });
+    //
+    // Col piano risolto il guard non serve: l'utente ha appena visto ogni
+    // singola occorrenza con il suo conflitto e ha deciso. Riproporgli qui
+    // una domanda sulla prima data sarebbe chiedere due volte la stessa cosa.
+    if (!occurrences?.length) {
+      await this.assertWithinAvailability({
+        operatorId: appointmentData.operatorId,
+        appointmentDate: appointmentData.appointmentDate,
+        startTime: appointmentData.startTime,
+        endTime: appointmentData.endTime,
+        forceOutsideAvailability,
+      });
+    }
 
     let savedAppointment: AvailabilityAppointment;
 
     // Se c'è una configurazione di ricorrenza, crea appuntamenti multipli
     if (repeatConfig) {
       // Il dispatch WhatsApp avviene dentro createRecurringAppointments per ogni appuntamento
-      savedAppointment = await this.createRecurringAppointments(appointmentData, instruments, repeatConfig);
+      savedAppointment = await this.createRecurringAppointments(
+        appointmentData, instruments, repeatConfig, occurrences,
+      );
     } else {
       // Crea singolo appuntamento
       savedAppointment = await this.createSingleAppointment(appointmentData, instruments);
@@ -417,18 +465,15 @@ export class AvailabilityAppointmentService {
         recurringGroupId,
         isMaster,
         masterAppointmentId,
-        // Normalizza case di type/endType (operator dialog manda UPPERCASE, gym lowercase)
-        repeatConfig: repeatConfig ? {
-          type: repeatConfig.type.toLowerCase() as any,
-          interval: repeatConfig.interval,
-          selectedDays: repeatConfig.selectedDays,
-          endType: repeatConfig.endType.toLowerCase() as any,
-          occurrences: repeatConfig.occurrences,
-          untilDate: repeatConfig.untilDate,
-        } : undefined,
+        repeatConfig: repeatConfig
+          ? this.normalizeRepeatConfigForStorage(repeatConfig)
+          : undefined,
       });
 
       const savedAppointment = await appointmentRepo.save(appointment);
+      // Push su Google: non attende, non blocca, e se fallisce ci pensa la
+      // riconciliazione periodica.
+      this.googleSync?.schedulePush(savedAppointment.id);
 
       // Se ci sono strumenti, assegnali all'interno della stessa transazione
       // Se fallisce, tutto viene annullato (rollback automatico)
@@ -497,37 +542,61 @@ export class AvailabilityAppointmentService {
     baseData: Omit<CreateAvailabilityAppointmentInput, 'instruments' | 'repeatConfig'>,
     instruments?: CreateAppointmentInstrumentInput[],
     repeatConfig?: RepeatConfigInput,
+    /**
+     * Piano risolto dall'utente nel riquadro conflitti. Quando c'è, comanda
+     * lui: queste sono le occorrenze da creare, con gli spostamenti già
+     * decisi (data, orario, perfino operatore diverso) e le occorrenze
+     * saltate semplicemente assenti. Quando manca, le date si generano dalla
+     * regola come sempre — è il caso della palestra e dei client che non
+     * passano dal riquadro.
+     */
+    plan?: RecurringOccurrenceInput[],
   ): Promise<AvailabilityAppointment> {
     if (!repeatConfig) {
       throw new BadRequestException('Configurazione ricorrenza mancante');
     }
 
-    // Calcola tutte le date della ricorrenza
-    const dates = this.calculateRecurringDates(baseData.appointmentDate, repeatConfig);
-
-    if (dates.length === 0) {
-      throw new BadRequestException('Nessuna data valida per la ricorrenza');
-    }
-
-    // Validazione preventiva (avvisa-e-blocca): se anche una sola occorrenza
-    // cade fuori disponibilità o si sovrappone ad un altro appuntamento, NON
-    // creiamo nulla e segnaliamo i conflitti. Saltata su appuntamenti GYM,
-    // nonRetribuito o quando l'utente forza esplicitamente.
-    const skipValidation =
-      (baseData as any).forceOutsideAvailability === true ||
-      (baseData as any).nonRetribuito === true ||
-      (baseData as any).appointmentType === AppointmentType.GYM ||
-      !(baseData as any).operatorId;
-
-    if (!skipValidation) {
-      const conflicts = await this.validateRecurringOccurrences(
-        dates.map(date => ({
-          operatorId: (baseData as any).operatorId,
+    const occurrences: RecurringOccurrenceInput[] = plan?.length
+      ? plan
+      : this.calculateRecurringDates(baseData.appointmentDate, repeatConfig).map(date => ({
           date,
           startTime: baseData.startTime,
           endTime: baseData.endTime,
-        })),
-      );
+        }));
+
+    if (occurrences.length === 0) {
+      throw new BadRequestException('Nessuna data valida per la ricorrenza');
+    }
+
+    // Senza piano risolto resta la validazione avvisa-e-blocca storica: se
+    // anche una sola occorrenza è in conflitto non si crea niente. Le serie
+    // palestra hanno regole proprie (slot condiviso) e restano fuori.
+    //
+    // Col piano risolto la validazione è già avvenuta nel riquadro; qui si
+    // ricontrollano solo le sovrapposizioni, perché sono l'unica cosa che
+    // può essere cambiata da qualcun altro nel frattempo.
+    const isGym = (baseData as any).appointmentType === AppointmentType.GYM;
+    const operatorId = (baseData as any).operatorId;
+
+    if (!isGym && operatorId) {
+      const conflicts = plan?.length
+        ? await this.recheckResolvedOccurrences(
+            occurrences.map(o => ({
+              operatorId: o.operatorId ?? operatorId,
+              date: o.date,
+              startTime: o.startTime,
+              endTime: o.endTime,
+            })),
+          )
+        : await this.validateRecurringOccurrences(
+            occurrences.map(o => ({
+              operatorId,
+              date: o.date,
+              startTime: o.startTime,
+              endTime: o.endTime,
+            })),
+          );
+
       if (conflicts.length > 0) {
         throw new ConflictException(
           `${AvailabilityAppointmentService.RECURRING_CONFLICT_ERROR}: ${JSON.stringify(conflicts)}`,
@@ -541,12 +610,17 @@ export class AvailabilityAppointmentService {
     // Crea tutti gli appuntamenti
     let firstAppointment: AvailabilityAppointment | null = null;
 
-    for (let i = 0; i < dates.length; i++) {
-      const date = dates[i];
+    for (const occ of occurrences) {
       try {
         const isFirst = firstAppointment === null;
         const appointment = await this.createSingleAppointment(
-          { ...baseData, appointmentDate: date },
+          {
+            ...baseData,
+            appointmentDate: occ.date,
+            startTime: occ.startTime,
+            endTime: occ.endTime,
+            ...(occ.operatorId ? { operatorId: occ.operatorId } : {}),
+          },
           instruments,
           true,
           recurringGroupId,
@@ -564,7 +638,7 @@ export class AvailabilityAppointmentService {
       } catch (error) {
         // Se fallisce l'assegnazione strumenti, continua con i prossimi
         // (l'appuntamento potrebbe essere in un giorno dove gli strumenti non sono disponibili)
-        console.warn(`Impossibile creare appuntamento ricorrente per ${date}:`, error.message);
+        console.warn(`Impossibile creare appuntamento ricorrente per ${occ.date}:`, error.message);
       }
     }
 
@@ -576,75 +650,49 @@ export class AvailabilityAppointmentService {
   }
 
   /**
-   * Calcola le date per una ricorrenza
+   * Config di ricorrenza nella forma in cui va persistita sul master della
+   * serie: enum in minuscolo (il dialog operatore li manda in maiuscolo, il
+   * flusso palestra in minuscolo) e fasce mensili incluse.
    */
-  private calculateRecurringDates(startDate: string, config: RepeatConfigInput): string[] {
-    const dates: string[] = [];
-    const start = new Date(startDate);
-    let current = new Date(start);
-    let count = 0;
-    const maxOccurrences = config.endType === RecurringEndType.AFTER ? (config.occurrences || 1) : 52;
-    const untilDate = config.endType === RecurringEndType.UNTIL && config.untilDate
-      ? new Date(config.untilDate)
-      : null;
-
-    // Limita a 52 occorrenze per sicurezza
-    while (count < maxOccurrences) {
-      // Verifica data limite
-      if (untilDate && current > untilDate) {
-        break;
-      }
-
-      // Per ricorrenza settimanale, verifica se il giorno è selezionato
-      if (config.type === RecurringType.WEEKLY && config.selectedDays && config.selectedDays.length > 0) {
-        const dayOfWeek = current.getDay();
-        if (config.selectedDays.includes(dayOfWeek)) {
-          dates.push(this.formatDate(current));
-          count++;
-        }
-      } else {
-        dates.push(this.formatDate(current));
-        count++;
-      }
-
-      // Avanza alla prossima data
-      switch (config.type) {
-        case RecurringType.DAILY:
-          current.setDate(current.getDate() + config.interval);
-          break;
-        case RecurringType.WEEKLY:
-          if (config.selectedDays && config.selectedDays.length > 0) {
-            // Avanza di 1 giorno alla volta per verificare i giorni selezionati
-            current.setDate(current.getDate() + 1);
-            // Ma se abbiamo completato una settimana, aggiungi l'intervallo extra
-            if (current.getDay() === start.getDay() && count > 0) {
-              current.setDate(current.getDate() + (config.interval - 1) * 7);
-            }
-          } else {
-            current.setDate(current.getDate() + config.interval * 7);
-          }
-          break;
-        case RecurringType.MONTHLY:
-          current.setMonth(current.getMonth() + config.interval);
-          break;
-      }
-
-      // Safety check: non andare oltre 2 anni
-      const twoYearsFromNow = new Date();
-      twoYearsFromNow.setFullYear(twoYearsFromNow.getFullYear() + 2);
-      if (current > twoYearsFromNow) {
-        break;
-      }
-    }
-
-    return dates;
+  private normalizeRepeatConfigForStorage(
+    repeatConfig: RepeatConfigInput,
+  ): AvailabilityAppointment['repeatConfig'] {
+    return {
+      type: String(repeatConfig.type).toLowerCase() as any,
+      interval: repeatConfig.interval,
+      selectedDays: repeatConfig.selectedDays,
+      endType: String(repeatConfig.endType).toLowerCase() as any,
+      occurrences: repeatConfig.occurrences,
+      untilDate: repeatConfig.untilDate,
+      monthlyMode: repeatConfig.monthlyMode
+        ? (String(repeatConfig.monthlyMode).toLowerCase() as any)
+        : undefined,
+      monthlyRules: repeatConfig.monthlyRules,
+    };
   }
 
   /**
-   * Formatta una data in YYYY-MM-DD
+   * Date di una serie ricorrente, con la data di partenza sempre inclusa
+   * come prima occorrenza.
+   *
+   * Il calcolo vive in `recurring-dates.util.ts`: e' pura aritmetica sulle
+   * date, senza repository ne' Nest, e come tale si puo' ragionare e provare
+   * da sola. Qui resta solo la normalizzazione degli enum GraphQL, che i
+   * client mandano indifferentemente in maiuscolo o minuscolo.
    */
-  private formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+  private calculateRecurringDates(startDate: string, config: RepeatConfigInput): string[] {
+    return calculateRecurringDates(startDate, {
+      type: String(config.type).toLowerCase() as RecurrenceConfig['type'],
+      interval: config.interval,
+      selectedDays: config.selectedDays,
+      endType: String(config.endType).toLowerCase() as RecurrenceConfig['endType'],
+      occurrences: config.occurrences,
+      untilDate: config.untilDate,
+      monthlyMode: config.monthlyMode
+        ? (String(config.monthlyMode).toLowerCase() as RecurrenceConfig['monthlyMode'])
+        : undefined,
+      monthlyRules: config.monthlyRules,
+    });
   }
 
   /**
@@ -1037,12 +1085,18 @@ export class AvailabilityAppointmentService {
   async findByOperatorAndDateRange(
     operatorId: string,
     startDate: string,
-    endDate: string,
+    endDate?: string,
   ): Promise<AvailabilityAppointment[]> {
     return this.appointmentRepo.find({
       where: {
         operatorId,
-        appointmentDate: Between(new Date(startDate), new Date(endDate)),
+        // Senza `endDate` l'intervallo è APERTO: "da questa data in poi",
+        // senza limite. Serve al filtro "Da oggi in poi", dove imporre una
+        // fine arbitraria taglierebbe fuori proprio gli appuntamenti lontani
+        // che si stanno cercando.
+        appointmentDate: endDate
+          ? Between(new Date(startDate), new Date(endDate))
+          : MoreThanOrEqual(new Date(startDate)),
         bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
       },
       relations: ['operator', 'service', 'gymRoom', 'instruments', 'instruments.instrument', 'instruments.instrument.category'],
@@ -1058,9 +1112,15 @@ export class AvailabilityAppointmentService {
     endDate: string,
     operatorIds?: string[],
   ): Promise<AvailabilityAppointment[]> {
+    // Il NO_SHOW resta in lista: l'assenza deve restare VISIBILE sul
+    // calendario (chip sbiadito con l'icona della persona barrata), non
+    // sparire come se l'appuntamento non fosse mai esistito. La segreteria
+    // deve poter ripescare la fascia per correggerla se il paziente arriva
+    // in ritardo. Lo slot resta comunque prenotabile: il calcolo delle
+    // disponibilita' (`availability.service`) esclude i no-show per conto suo.
     const whereCondition: any = {
       appointmentDate: Between(new Date(startDate), new Date(endDate)),
-      bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.NO_SHOW])),
+      bookingStatus: Not(In([BookingStatus.CANCELLED])),
     };
 
     if (operatorIds && operatorIds.length > 0) {
@@ -1107,6 +1167,26 @@ export class AvailabilityAppointmentService {
 
     const positionChanged = dayChanged || startChanged || endChanged;
 
+    // Da dove l'appuntamento si sposta. Va letto PRIMA del salvataggio: dopo
+    // l'entità porta i valori nuovi, e il messaggio al paziente direbbe
+    // "spostato dal 22 al 22". Con più spostamenti in un solo messaggio è
+    // l'unica cosa che gli fa riconoscere quale appuntamento si è mosso.
+    const previousSlot: AppointmentSlot = {
+      appointmentDate: appointment.appointmentDate,
+      startTime: appointment.startTime,
+    };
+
+    /**
+     * L'operatore di PARTENZA, letto anche lui prima del salvataggio.
+     *
+     * Se l'appuntamento viene riassegnato, `schedulePush` lo scrive sul
+     * calendario nuovo ma del vecchio non sa più niente: dopo il salvataggio
+     * l'`operatorId` è cambiato e non risulta da nessuna parte che l'evento
+     * fosse finito là. Senza questo, il collega si ritrovava sull'agenda un
+     * appuntamento che non era più suo, e nessuno lo toglieva mai.
+     */
+    const previousOperatorId = appointment.operatorId;
+
     /**
      * Cosa fa cambiare idea al PAZIENTE: il giorno e l'ora in cui deve
      * presentarsi. Un endTime diverso (un servizio aggiunto, una durata
@@ -1115,15 +1195,26 @@ export class AvailabilityAppointmentService {
      */
     const scheduleChangedForPatient = dayChanged || startChanged;
 
-    // I check vanno rieseguiti se cambia posizione (orario/data) O operatore:
-    // un appuntamento riassegnato va verificato sul nuovo operatore anche a
-    // parità di orario.
-    const needsPositionChecks = positionChanged || operatorChanged;
+    /**
+     * Cambio di SALA di una prenotazione palestra. Conta come spostamento
+     * quanto un cambio di orario: la sala nuova ha un proprio template (e
+     * quindi un proprio istruttore per quella fascia), proprie chiusure e
+     * una propria capienza. Senza questo, spostare la stessa fascia da una
+     * palestra all'altra passava tutti i controlli e lasciava la
+     * prenotazione intestata all'istruttore della sala di partenza.
+     */
+    const gymRoomChanged =
+      !!input.gymRoomId && input.gymRoomId !== appointment.gymRoomId;
+
+    // I check vanno rieseguiti se cambia posizione (orario/data/sala) O
+    // operatore: un appuntamento riassegnato va verificato sul nuovo
+    // operatore anche a parità di orario.
+    const needsPositionChecks = positionChanged || operatorChanged || gymRoomChanged;
 
     // Spostamento di un appuntamento PALESTRA: blocca se la nuova posizione
     // cade in uno slot chiuso (chiusura, slot isClosed, fuori orari modificati).
     if (needsPositionChecks && appointment.appointmentType === AppointmentType.GYM) {
-      const gymRoomId = (input as any).gymRoomId || appointment.gymRoomId;
+      const gymRoomId = input.gymRoomId || appointment.gymRoomId;
       if (gymRoomId) {
         const gymCheckDate = input.appointmentDate || appointment.appointmentDate;
         const closure = await this.gymExceptionService.getSlotClosure(
@@ -1136,6 +1227,69 @@ export class AvailabilityAppointmentService {
           throw new ConflictException(
             closure.reason || 'La palestra è chiusa in questa fascia oraria',
           );
+        }
+
+        // Capienza della sala di destinazione. In palestra non esiste la
+        // sovrapposizione per operatore — lo slot è condiviso — ma i posti
+        // sono finiti: senza questo check uno spostamento poteva far entrare
+        // un undicesimo paziente in una sala da dieci, cosa che la
+        // prenotazione diretta ha sempre impedito.
+        const capacity = input.gymRoomId
+          ? (await this.gymRoomRepo.findOne({ where: { id: gymRoomId } }))?.maxCapacity ?? null
+          : appointment.maxParticipants ?? null;
+        if (capacity !== null) {
+          const inSlot = await this.countAppointmentsInSlot(
+            gymRoomId,
+            // toDateString e non toISOString: la colonna è di tipo `date` e
+            // TypeORM la restituisce a mezzanotte LOCALE — convertirla in UTC
+            // in un fuso a est di Greenwich la manda al giorno prima, e il
+            // conteggio guarderebbe lo slot sbagliato.
+            toDateString(gymCheckDate as unknown as Date | string),
+            input.startTime || appointment.startTime,
+            input.endTime || appointment.endTime,
+            id,
+          );
+          if (inSlot >= capacity) {
+            throw new ConflictException(
+              `Capacità massima della sala raggiunta per questo slot (${inSlot}/${capacity})`,
+            );
+          }
+        }
+
+        // Istruttore e capienza della DESTINAZIONE. In palestra l'operatore
+        // non lo sceglie chi sposta: lo assegna il template della sala per
+        // quella fascia. Conservare quello di partenza intesterebbe la
+        // prenotazione (e quindi il trattamento, e quindi la fatturazione) a
+        // un istruttore che quel giorno in quella sala non c'è.
+        const destDate =
+          gymCheckDate instanceof Date ? gymCheckDate : new Date(gymCheckDate);
+        const destOperator = await this.gymPatternGroupService.getOperatorForTimeSlot(
+          gymRoomId,
+          destDate,
+          input.startTime || appointment.startTime,
+        );
+        if (!destOperator) {
+          throw new ConflictException(
+            'Nessun istruttore assegnato alla fascia di destinazione (verificare i template della palestra)',
+          );
+        }
+        const effective = await this.resolveEffectiveGymOperatorFields(
+          gymRoomId,
+          destOperator.id,
+          destDate,
+          input.startTime || appointment.startTime,
+        );
+        (input as any).operatorId = effective.operatorId ?? destOperator.id;
+        (input as any).originalOperatorId = effective.originalOperatorId ?? null;
+        (input as any).isSubstitution = effective.isSubstitution ?? false;
+        (input as any).reassignedByGymExceptionId =
+          effective.reassignedByGymExceptionId ?? null;
+
+        // Cambio sala: la capienza massima è un dato denormalizzato
+        // sull'appuntamento e va riallineata alla sala nuova.
+        if (input.gymRoomId) {
+          const destRoom = await this.gymRoomRepo.findOne({ where: { id: gymRoomId } });
+          if (destRoom) (input as any).maxParticipants = destRoom.maxCapacity;
         }
       }
     }
@@ -1175,7 +1329,6 @@ export class AvailabilityAppointmentService {
         startTime: checkStart,
         endTime: checkEnd,
         appointmentType: appointment.appointmentType,
-        nonRetribuito: appointment.nonRetribuito,
         forceOutsideAvailability: input.forceOutsideAvailability,
         excludeAppointmentId: id,
       });
@@ -1301,7 +1454,8 @@ export class AvailabilityAppointmentService {
     }
 
     // Check proattivo conflitti per appointment GYM dopo update di posizione
-    if (positionChanged && result.appointmentType === AppointmentType.GYM) {
+    // (sala compresa: la nuova sala può avere lo slot scoperto da un'eccezione)
+    if ((positionChanged || gymRoomChanged) && result.appointmentType === AppointmentType.GYM) {
       this.checkAndMarkConflictForGymAppointment(
         result.id,
         result.gymRoomId,
@@ -1327,7 +1481,20 @@ export class AvailabilityAppointmentService {
       BookingStatus.CANCELLED_LATE,
     ];
     if (scheduleChangedForPatient && !cancelledStatuses.includes(result.bookingStatus)) {
-      this.dispatchWhatsappUpdate(result);
+      this.dispatchWhatsappUpdate(result, previousSlot);
+    }
+
+    // Allinea l'evento su Google. `schedulePush` decide da sé se l'evento va
+    // aggiornato o rimosso, così anche un update che disdice l'appuntamento
+    // lo toglie dal calendario dell'operatore.
+    this.googleSync?.schedulePush(result.id);
+
+    // Riassegnato: va tolto anche dal calendario di chi lo aveva prima. Se
+    // questa dovesse perdersi — è fire-and-forget come il push — ci pensa la
+    // riversata integrale, che gli strascichi li scova confrontandosi con
+    // Google invece che ricordandoseli.
+    if (previousOperatorId && previousOperatorId !== result.operatorId) {
+      this.googleSync?.scheduleRemoval(result.id, previousOperatorId);
     }
 
     return result;
@@ -1397,6 +1564,8 @@ export class AvailabilityAppointmentService {
 
     // Fire-and-forget WhatsApp cancel
     this.cancelWhatsappBooking(appointment);
+    // Un appuntamento disdetto non deve restare sul calendario dell'operatore.
+    this.googleSync?.scheduleRemoval(appointment.id, appointment.operatorId);
 
     return this.findById(id);
   }
@@ -1409,6 +1578,7 @@ export class AvailabilityAppointmentService {
     const appointment = await this.appointmentRepo.findOne({ where: { id } });
     if (appointment) {
       this.cancelWhatsappBooking(appointment);
+      this.googleSync?.scheduleRemoval(appointment.id, appointment.operatorId);
     }
     // Le associazioni con gli strumenti vengono eliminate automaticamente (CASCADE)
     const result = await this.appointmentRepo.delete(id);
@@ -1443,12 +1613,17 @@ export class AvailabilityAppointmentService {
   async markAsNoShow(id: string): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
     appointment.bookingStatus = BookingStatus.NO_SHOW;
+    // Una decisione presa a mano batte l'automatismo: con il flag alzato il
+    // cron auto-attendance non ha piu' titolo per rimettere l'appuntamento a
+    // "presentato". E' la seconda rete di sicurezza dopo il fix delle
+    // parentesi nella query del cron (vedi `AutoAttendanceService`), che per
+    // mesi ha silenziosamente riportato ad ATTENDED ogni no-show del giorno.
+    appointment.autoStatusChanged = true;
     await this.appointmentRepo.save(appointment);
 
     if (appointment.patientId) {
-      await this.attendanceService.recordEventOnce({
+      await this.attendanceService.markNoShowForAppointment({
         subjectId: appointment.patientId,
-        eventType: AttendanceEventType.NO_SHOW,
         appointmentId: appointment.id,
         operatorId: appointment.operatorId,
       });
@@ -1478,7 +1653,12 @@ export class AvailabilityAppointmentService {
   async cancelAppointment(
     id: string,
     reason: string,
-    cancelledBy: string,
+    /**
+     * `AppUser.id` di chi disdice, risolto dal JWT nel resolver. Null se non
+     * risolvibile: la colonna è nullable e un valore inventato romperebbe il
+     * cast a uuid (era il caso dei client che mandavano 'secretary'/'system').
+     */
+    cancelledBy: string | null,
   ): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(id);
 
@@ -1507,7 +1687,7 @@ export class AvailabilityAppointmentService {
       : BookingStatus.CANCELLED_EARLY;
     appointment.cancellationReason = reason;
     appointment.cancelledAt = new Date();
-    appointment.cancelledBy = cancelledBy;
+    appointment.cancelledBy = cancelledBy ?? undefined;
     appointment.cancellationHoursNotice = hoursNotice;
 
     await this.appointmentRepo.save(appointment);
@@ -1662,8 +1842,13 @@ export class AvailabilityAppointmentService {
     }
 
     appointment.bookingStatus = BookingStatus.CONFIRMED;
-    // Reset del flag per permettere un nuovo cambio automatico se l'impostazione è attiva
-    appointment.autoStatusChanged = false;
+    // Il flag si azzera SOLO se l'appuntamento deve ancora iniziare: li' un
+    // nuovo passaggio automatico ha senso. Su un appuntamento gia' iniziato
+    // azzerarlo rendeva il gesto inutile — il cron rimetteva "presentato"
+    // entro un minuto e la segreteria si ritrovava al punto di partenza.
+    if (!this.hasAlreadyStarted(appointment)) {
+      appointment.autoStatusChanged = false;
+    }
     await this.appointmentRepo.save(appointment);
 
     // SSE: notifica le UI aperte del cambio stato.
@@ -1675,6 +1860,21 @@ export class AvailabilityAppointmentService {
     });
 
     return this.findById(id);
+  }
+
+  /**
+   * True se l'orario di inizio dell'appuntamento e' gia' passato.
+   * Serve a decidere se un automatismo (cron auto-attendance) abbia ancora
+   * titolo per intervenire dopo una correzione manuale.
+   */
+  private hasAlreadyStarted(appointment: AvailabilityAppointment): boolean {
+    const dateStr =
+      appointment.appointmentDate instanceof Date
+        ? appointment.appointmentDate.toISOString().split('T')[0]
+        : String(appointment.appointmentDate).split('T')[0];
+    const start = new Date(`${dateStr}T${appointment.startTime}`);
+    if (Number.isNaN(start.getTime())) return true; // in dubbio, non riarmare
+    return start.getTime() <= Date.now();
   }
 
   /**
@@ -1823,9 +2023,8 @@ export class AvailabilityAppointmentService {
     patientId: string,
     appointmentId: string,
   ): Promise<void> {
-    await this.attendanceService.recordEventOnce({
+    await this.attendanceService.markNoShowForAppointment({
       subjectId: patientId,
-      eventType: AttendanceEventType.NO_SHOW,
       appointmentId,
     });
   }
@@ -1889,7 +2088,10 @@ export class AvailabilityAppointmentService {
         gymRoomId,
         appointmentDate: new Date(date),
         appointmentType: AppointmentType.GYM,
-        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
+        // Il NO_SHOW resta in lista anche in palestra: l'assenza si vede
+        // sul calendario invece di sparire (lo slot resta prenotabile —
+        // `countAppointmentsInSlot` continua a non contarlo).
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE])),
       },
       relations: ['operator', 'gymRoom'],
       order: { startTime: 'ASC' },
@@ -1913,7 +2115,10 @@ export class AvailabilityAppointmentService {
         gymRoomId: In(gymRoomIds),
         appointmentDate: Between(new Date(startDate), new Date(endDate)),
         appointmentType: AppointmentType.GYM,
-        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
+        // Il NO_SHOW resta in lista anche in palestra: l'assenza si vede
+        // sul calendario invece di sparire (lo slot resta prenotabile —
+        // `countAppointmentsInSlot` continua a non contarlo).
+        bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE])),
       },
       relations: ['operator', 'gymRoom'],
       order: { appointmentDate: 'ASC', startTime: 'ASC' },
@@ -1928,6 +2133,13 @@ export class AvailabilityAppointmentService {
     date: string,
     startTime: string,
     endTime: string,
+    /**
+     * Appuntamento da NON contare: sé stesso, quando il conteggio serve a
+     * validare lo spostamento di una prenotazione già esistente. Senza
+     * questa esclusione una sala piena rifiuterebbe di spostare al suo
+     * interno una prenotazione che quel posto lo occupa già.
+     */
+    excludeAppointmentId?: string,
   ): Promise<number> {
     return this.appointmentRepo.count({
       where: {
@@ -1937,6 +2149,7 @@ export class AvailabilityAppointmentService {
         endTime,
         appointmentType: AppointmentType.GYM,
         bookingStatus: Not(In([BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW])),
+        ...(excludeAppointmentId ? { id: Not(excludeAppointmentId) } : {}),
       },
     });
   }
@@ -1968,7 +2181,7 @@ export class AvailabilityAppointmentService {
       type: string; reason: string;
     }[];
   }> {
-    const { repeatConfig, ...appointmentData } = input;
+    const { repeatConfig, occurrences, ...appointmentData } = input;
 
     // 1. Verifica che la GymRoom esista
     const gymRoom = await this.gymRoomRepo.findOne({
@@ -2048,6 +2261,7 @@ export class AvailabilityAppointmentService {
         { ...appointmentData, operatorId: operator.id },
         gymRoom,
         repeatConfig,
+        occurrences,
       );
     }
 
@@ -2123,14 +2337,9 @@ export class AvailabilityAppointmentService {
       recurringGroupId,
       isMaster,
       masterAppointmentId,
-      repeatConfig: repeatConfig ? {
-        type: repeatConfig.type.toLowerCase() as any,
-        interval: repeatConfig.interval,
-        selectedDays: repeatConfig.selectedDays,
-        endType: repeatConfig.endType.toLowerCase() as any,
-        occurrences: repeatConfig.occurrences,
-        untilDate: repeatConfig.untilDate,
-      } : undefined,
+      repeatConfig: repeatConfig
+        ? this.normalizeRepeatConfigForStorage(repeatConfig)
+        : undefined,
     });
 
     const savedAppointment = await this.appointmentRepo.save(appointment);
@@ -2171,19 +2380,32 @@ export class AvailabilityAppointmentService {
    * (stesso marker della modalità operatori → stesso dialog di riepilogo).
    */
   private async createRecurringGymAppointments(
-    baseData: Omit<CreateGymAppointmentInput, 'repeatConfig'> & { operatorId: string },
+    baseData: Omit<CreateGymAppointmentInput, 'repeatConfig' | 'occurrences'> & { operatorId: string },
     gymRoom: GymRoom,
     repeatConfig: RepeatConfigInput,
+    /**
+     * Piano risolto dall'utente nel riquadro conflitti. Quando c'è, SOSTITUISCE
+     * le date generate dalla regola: contiene già gli spostamenti decisi (anche
+     * di sala) e non contiene le occorrenze saltate.
+     */
+    plan?: RecurringOccurrenceInput[],
   ): Promise<{
     appointment: AvailabilityAppointment;
     createdCount: number;
     skippedCount: number;
     conflicts: { date: string; startTime: string; endTime: string; type: string; reason: string }[];
   }> {
-    // Calcola tutte le date della ricorrenza
-    const dates = this.calculateRecurringDates(baseData.appointmentDate, repeatConfig);
+    // Occorrenze da creare: il piano risolto se c'è, altrimenti le date
+    // generate dalla regola nella fascia oraria di partenza.
+    const planned: RecurringOccurrenceInput[] = plan?.length
+      ? plan
+      : this.calculateRecurringDates(baseData.appointmentDate, repeatConfig).map((date) => ({
+          date,
+          startTime: baseData.startTime,
+          endTime: baseData.endTime,
+        }));
 
-    if (dates.length === 0) {
+    if (planned.length === 0) {
       throw new BadRequestException('Nessuna data valida per la ricorrenza');
     }
 
@@ -2193,66 +2415,89 @@ export class AvailabilityAppointmentService {
     let firstAppointment: AvailabilityAppointment | null = null;
     let createdCount = 0;
     const conflicts: { date: string; startTime: string; endTime: string; type: string; reason: string }[] = [];
-    const asConflict = (date: string, type: string, reason: string) => ({
-      date, startTime: baseData.startTime, endTime: baseData.endTime, type, reason,
+    const asConflict = (
+      occ: RecurringOccurrenceInput, type: string, reason: string,
+    ) => ({
+      date: occ.date, startTime: occ.startTime, endTime: occ.endTime, type, reason,
     });
 
-    for (let i = 0; i < dates.length; i++) {
-      const date = dates[i];
+    for (const occ of planned) {
+      const date = occ.date;
+      // Ogni occorrenza porta la propria fascia e la propria sala: nel piano
+      // risolto possono essere diverse da quelle di partenza, perché l'utente
+      // ha spostato quella singola data.
+      const occStartTime = occ.startTime;
+      const occEndTime = occ.endTime;
+      const occRoomId = occ.gymRoomId ?? baseData.gymRoomId;
+      const occRoom =
+        occRoomId === gymRoom.id
+          ? gymRoom
+          : await this.gymRoomRepo.findOne({ where: { id: occRoomId, isActive: true } });
 
       try {
+        if (!occRoom) {
+          conflicts.push(asConflict(occ, 'error', 'Sala di destinazione non trovata o non attiva'));
+          continue;
+        }
         // Slot chiuso per eccezione in questa data → salta l'occorrenza
         const closure = await this.gymExceptionService.getSlotClosure(
-          baseData.gymRoomId,
+          occRoomId,
           new Date(date),
-          baseData.startTime,
-          baseData.endTime,
+          occStartTime,
+          occEndTime,
         );
         if (closure.closed) {
-          conflicts.push(asConflict(date, 'unavailable',
+          conflicts.push(asConflict(occ, 'unavailable',
             closure.reason || 'La palestra è chiusa in questa fascia oraria'));
           continue;
         }
 
         // Verifica capacità per questa data
         const currentCount = await this.countAppointmentsInSlot(
-          baseData.gymRoomId,
+          occRoomId,
           date,
-          baseData.startTime,
-          baseData.endTime,
+          occStartTime,
+          occEndTime,
         );
 
-        if (currentCount >= gymRoom.maxCapacity) {
-          conflicts.push(asConflict(date, 'overlap',
-            `Capacità massima della sala raggiunta (${currentCount}/${gymRoom.maxCapacity})`));
+        if (currentCount >= occRoom.maxCapacity) {
+          conflicts.push(asConflict(occ, 'overlap',
+            `Capacità massima della sala raggiunta (${currentCount}/${occRoom.maxCapacity})`));
           continue; // Salta questa data se pieno
         }
 
         // Verifica operatore per questa data
         const operator = await this.gymPatternGroupService.getOperatorForTimeSlot(
-          baseData.gymRoomId,
+          occRoomId,
           new Date(date),
-          baseData.startTime,
+          occStartTime,
         );
 
         if (!operator) {
-          conflicts.push(asConflict(date, 'unavailable',
+          conflicts.push(asConflict(occ, 'unavailable',
             'Nessun istruttore assegnato allo slot (verificare i template della palestra)'));
           continue; // Salta se non c'è operatore
         }
 
         // Applica l'eventuale sostituzione attiva per QUESTA data della serie
         const effectiveFields = await this.resolveEffectiveGymOperatorFields(
-          baseData.gymRoomId,
+          occRoomId,
           operator.id,
           new Date(date),
-          baseData.startTime,
+          occStartTime,
         );
 
         const isFirst = firstAppointment === null;
         const appointment = await this.createSingleGymAppointment(
-          { ...baseData, appointmentDate: date, ...effectiveFields },
-          gymRoom,
+          {
+            ...baseData,
+            gymRoomId: occRoomId,
+            appointmentDate: date,
+            startTime: occStartTime,
+            endTime: occEndTime,
+            ...effectiveFields,
+          },
+          occRoom,
           true,
           recurringGroupId,
           isFirst ? repeatConfig : undefined,
@@ -2269,7 +2514,7 @@ export class AvailabilityAppointmentService {
         }
       } catch (error) {
         console.warn(`Impossibile creare appuntamento palestra ricorrente per ${date}:`, error.message);
-        conflicts.push(asConflict(date, 'error',
+        conflicts.push(asConflict(occ, 'error',
           error?.message || 'Errore durante la creazione dell\'occorrenza'));
       }
     }
@@ -2398,6 +2643,24 @@ export class AvailabilityAppointmentService {
     return String(value).slice(0, 10);
   }
 
+  /**
+   * Il telefono scritto sull'appuntamento, ma solo se e' davvero un numero.
+   *
+   * Serve perche' quel campo e' testo libero e ci finisce di tutto — "349…
+   * moglie", un nome, un appunto. Prima bastava che fosse non vuoto per
+   * prendere la strada del walk-in, e da li' non si torna indietro: il
+   * messaggio moriva sul formato e l'anagrafica non veniva mai consultata,
+   * nemmeno per un paziente che nel registry ha un recapito perfetto.
+   *
+   * Chiedendolo al gateway si usa lo stesso identico giudizio che dara' lui
+   * al momento di spedire: un secondo controllo scritto qui divergerebbe al
+   * primo prefisso gestito diversamente.
+   */
+  private walkInPhone(appointment: AvailabilityAppointment): string | null {
+    if (!appointment.clientPhone) return null;
+    return this.whatsappGateway?.formatPhoneNumber(appointment.clientPhone) ?? null;
+  }
+
   private dispatchWhatsappBooking(appointment: AvailabilityAppointment): void {
     if (!this.whatsappGateway) return;
 
@@ -2405,7 +2668,9 @@ export class AvailabilityAppointmentService {
     // dell'appointment. NB: se c'è solo clientName ma non clientPhone, NON è
     // walk-in usabile (manca il telefono!) — e se c'è patientId andiamo al
     // registry a cercarlo. Se non c'è patientId nemmeno, niente notifica.
-    if (appointment.clientPhone) {
+    // Il numero sull'appuntamento vale solo se e' utilizzabile: altrimenti si
+    // prosegue verso l'anagrafica invece di fermarsi qui.
+    if (this.walkInPhone(appointment)) {
       this.whatsappGateway
         .dispatchBooking(appointment, this.walkInToContact(appointment))
         .catch((err) => this.logger.warn(`WhatsApp dispatch failed: ${err?.message}`));
@@ -2414,7 +2679,9 @@ export class AvailabilityAppointmentService {
 
     if (!appointment.patientId) {
       this.logger.warn(
-        `[WA-DISPATCH] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
+        appointment.clientPhone
+          ? `[WA-DISPATCH] SKIP appointmentId=${appointment.id}: telefono "${appointment.clientPhone}" non è un numero valido e non c'è anagrafica`
+          : `[WA-DISPATCH] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
       );
       return;
     }
@@ -2447,7 +2714,9 @@ export class AvailabilityAppointmentService {
   private cancelWhatsappBooking(appointment: AvailabilityAppointment): void {
     if (!this.whatsappGateway) return;
 
-    if (appointment.clientPhone) {
+    // Il numero sull'appuntamento vale solo se e' utilizzabile: altrimenti si
+    // prosegue verso l'anagrafica invece di fermarsi qui.
+    if (this.walkInPhone(appointment)) {
       this.whatsappGateway
         .cancelBooking(appointment, this.walkInToContact(appointment))
         .catch((err) => this.logger.warn(`WhatsApp cancel failed: ${err?.message}`));
@@ -2456,7 +2725,9 @@ export class AvailabilityAppointmentService {
 
     if (!appointment.patientId) {
       this.logger.warn(
-        `[WA-CANCEL] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
+        appointment.clientPhone
+          ? `[WA-CANCEL] SKIP appointmentId=${appointment.id}: telefono "${appointment.clientPhone}" non è un numero valido e non c'è anagrafica`
+          : `[WA-CANCEL] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
       );
       return;
     }
@@ -2488,19 +2759,26 @@ export class AvailabilityAppointmentService {
    * Il gateway, oltre a inviare il messaggio, rimuove il reminder programmato
    * sul vecchio orario e lo riprogramma sul nuovo.
    */
-  private dispatchWhatsappUpdate(appointment: AvailabilityAppointment): void {
+  private dispatchWhatsappUpdate(
+    appointment: AvailabilityAppointment,
+    previous?: AppointmentSlot,
+  ): void {
     if (!this.whatsappGateway) return;
 
-    if (appointment.clientPhone) {
+    // Il numero sull'appuntamento vale solo se e' utilizzabile: altrimenti si
+    // prosegue verso l'anagrafica invece di fermarsi qui.
+    if (this.walkInPhone(appointment)) {
       this.whatsappGateway
-        .updateBooking(appointment, this.walkInToContact(appointment))
+        .updateBooking(appointment, this.walkInToContact(appointment), previous)
         .catch((err) => this.logger.warn(`WhatsApp update failed: ${err?.message}`));
       return;
     }
 
     if (!appointment.patientId) {
       this.logger.warn(
-        `[WA-UPDATE] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
+        appointment.clientPhone
+          ? `[WA-UPDATE] SKIP appointmentId=${appointment.id}: telefono "${appointment.clientPhone}" non è un numero valido e non c'è anagrafica`
+          : `[WA-UPDATE] SKIP appointmentId=${appointment.id}: né clientPhone né patientId`,
       );
       return;
     }
@@ -2521,7 +2799,7 @@ export class AvailabilityAppointmentService {
           );
           return;
         }
-        return this.whatsappGateway!.updateBooking(appointment, contact);
+        return this.whatsappGateway!.updateBooking(appointment, contact, previous);
       })
       .catch((err) => this.logger.warn(`WhatsApp update failed: ${err?.message}`));
   }
@@ -2559,6 +2837,11 @@ export class AvailabilityAppointmentService {
         // dentro il gateway stesso)
         cellulare: this.primaryContactValue(subject, ['MOBILE']),
         telefono: this.primaryContactValue(subject, ['PHONE']),
+        // Serve al canale email delle notifiche. Senza, il gateway salta
+        // quel canale invece di fallire: un paziente senza email non e' un
+        // guasto.
+        email: this.primaryContactValue(subject, ['EMAIL']),
+        canalePreferito: (subject as any).notificationChannel ?? null,
       };
     } catch (err) {
       this.logger.warn(
@@ -2613,7 +2896,10 @@ export class AvailabilityAppointmentService {
    * Re-invia il messaggio WhatsApp di recap per un appuntamento esistente.
    * Usa il service-account Keycloak per fetchare le PII paziente dal registry.
    */
-  async sendRecap(appointmentId: string): Promise<boolean> {
+  async sendRecap(
+    appointmentId: string,
+    options?: { immediate?: boolean },
+  ): Promise<boolean> {
     const appointment = await this.findById(appointmentId);
     if (!appointment.patientId) {
       throw new BadRequestException("L'appuntamento non ha un paziente associato");
@@ -2634,12 +2920,63 @@ export class AvailabilityAppointmentService {
       );
     }
 
-    // Reinvio chiesto a mano: parte subito, senza la finestra di
-    // raggruppamento. Chi preme il pulsante si aspetta che il messaggio
-    // parta ora, non fra qualche minuto insieme ad altri appuntamenti.
+    // Reinvio chiesto a mano su UN appuntamento: parte subito, senza la
+    // finestra di raggruppamento. Chi preme il pulsante si aspetta che il
+    // messaggio parta ora, non fra qualche minuto insieme ad altri.
+    //
+    // Il recupero in blocco fa l'opposto (`immediate: false`): lì gli
+    // appuntamenti dello stesso paziente sono molti e devono ricomporsi in un
+    // riepilogo solo, che è precisamente il mestiere del buffer del gateway.
+    // Forzare l'invio immediato produrrebbe otto messaggi a chi ne aspetta uno.
     await this.whatsappGateway.dispatchBooking(appointment, contact, {
-      immediateRecap: true,
+      immediateRecap: options?.immediate ?? true,
     });
+    return true;
+  }
+
+  /**
+   * Comunica a posteriori una disdetta che non e' mai stata annunciata.
+   *
+   * Serve al recupero: un appuntamento annullato di cui il paziente non sa
+   * niente non si ripara con una conferma — quella direbbe l'opposto della
+   * verita' — ma con l'avviso di disdetta che allora non e' partito.
+   *
+   * La chiamata al gateway toglie anche il promemoria ancora in coda, che
+   * altrimenti arriverebbe il giorno prima per un appuntamento che non esiste.
+   * E' il motivo per cui passa da `cancelBooking` e non da un invio di testo
+   * qualunque.
+   */
+  async sendCancellationNotice(appointmentId: string): Promise<boolean> {
+    const appointment = await this.findById(appointmentId);
+    if (!this.whatsappGateway) {
+      throw new BadRequestException('Gateway WhatsApp non configurato');
+    }
+
+    if (appointment.clientPhone) {
+      await this.whatsappGateway.cancelBooking(
+        appointment,
+        this.walkInToContact(appointment),
+      );
+      return true;
+    }
+
+    if (!appointment.patientId) {
+      throw new BadRequestException("L'appuntamento non ha un paziente associato");
+    }
+
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      throw new BadRequestException('Tenant non risolto: impossibile contattare il registry');
+    }
+
+    const contact = await this.fetchPatientContactAsService(appointment.patientId, tenantAlias);
+    if (!contact) {
+      throw new NotFoundException(
+        `Paziente ${appointment.patientId} non trovato nel registry`,
+      );
+    }
+
+    await this.whatsappGateway.cancelBooking(appointment, contact);
     return true;
   }
 
@@ -2722,22 +3059,26 @@ export class AvailabilityAppointmentService {
    * Trasforma un appuntamento singolo esistente nel master di una nuova
    * serie ricorrente: l'appuntamento resta invariato (stessa data/ora) e le
    * occorrenze successive vengono create copiando servizi e strumenti.
-   * Stessa validazione avvisa-e-blocca della creazione serie: se anche una
-   * sola nuova occorrenza è in conflitto, non viene creato nulla.
+   *
+   * Con un piano risolto (`plan`) crea esattamente le occorrenze indicate,
+   * spostamenti compresi. Senza piano resta la validazione avvisa-e-blocca:
+   * se una sola nuova occorrenza è in conflitto, non viene creato nulla.
    */
   async makeRecurring(
     appointmentId: string,
     repeatConfig: RepeatConfigInput,
     force = false,
+    plan?: RecurringOccurrenceInput[],
   ): Promise<AvailabilityAppointment> {
     const appointment = await this.findById(appointmentId);
 
     if (appointment.recurringGroupId) {
       throw new BadRequestException("L'appuntamento fa già parte di una serie ricorrente");
     }
-    if (appointment.appointmentType === AppointmentType.GYM) {
+    const isGym = appointment.appointmentType === AppointmentType.GYM;
+    if (isGym && !appointment.gymRoomId) {
       throw new BadRequestException(
-        'Per gli appuntamenti palestra la ricorrenza si gestisce dal flusso palestra',
+        'Appuntamento palestra senza sala: impossibile renderlo ricorrente',
       );
     }
     if (![BookingStatus.SCHEDULED, BookingStatus.CONFIRMED].includes(appointment.bookingStatus)) {
@@ -2759,16 +3100,68 @@ export class AvailabilityAppointmentService {
       );
     }
 
-    const skipValidation = force || appointment.nonRetribuito || !appointment.operatorId;
-    if (!skipValidation) {
-      const conflicts = await this.validateRecurringOccurrences(
-        dates.map((date) => ({
-          operatorId: appointment.operatorId!,
+    // Occorrenze da creare: quelle risolte nel riquadro, oppure le date
+    // generate dalla regola. In entrambi i casi escludono la data di partenza,
+    // che è l'appuntamento già esistente promosso a master.
+    const newOccurrences: RecurringOccurrenceInput[] = plan?.length
+      ? plan.filter((o) => o.date !== baseDateStr)
+      : dates.map((date) => ({
           date,
           startTime: appointment.startTime,
           endTime: appointment.endTime,
-        })),
+        }));
+
+    if (newOccurrences.length === 0) {
+      throw new BadRequestException(
+        'La ricorrenza non genera nuove date oltre a quella esistente',
       );
+    }
+
+    // Validazione preventiva. In palestra i predicati sono altri (chiusura
+    // fascia, istruttore da template, capienza) e non c'è ricontrollo
+    // ristretto alle sole sovrapposizioni: la capienza è esattamente il dato
+    // che può cambiare fra anteprima e conferma, quindi il piano risolto va
+    // rivalidato per intero.
+    if (isGym) {
+      const conflicts = force
+        ? []
+        : await this.validateGymRecurringOccurrences(
+            newOccurrences.map((o) => ({
+              gymRoomId: o.gymRoomId ?? appointment.gymRoomId!,
+              date: o.date,
+              startTime: o.startTime,
+              endTime: o.endTime,
+            })),
+            appointment.patientId ?? undefined,
+          );
+
+      if (conflicts.length > 0) {
+        throw new ConflictException(
+          `${AvailabilityAppointmentService.RECURRING_CONFLICT_ERROR}: ${JSON.stringify(conflicts)}`,
+        );
+      }
+    } else if (appointment.operatorId) {
+      const conflicts = plan?.length
+        ? await this.recheckResolvedOccurrences(
+            newOccurrences.map((o) => ({
+              operatorId: o.operatorId ?? appointment.operatorId!,
+              date: o.date,
+              startTime: o.startTime,
+              endTime: o.endTime,
+            })),
+            [appointment.id],
+          )
+        : force
+          ? []
+          : await this.validateRecurringOccurrences(
+              newOccurrences.map((o) => ({
+                operatorId: appointment.operatorId!,
+                date: o.date,
+                startTime: o.startTime,
+                endTime: o.endTime,
+              })),
+            );
+
       if (conflicts.length > 0) {
         throw new ConflictException(
           `${AvailabilityAppointmentService.RECURRING_CONFLICT_ERROR}: ${JSON.stringify(conflicts)}`,
@@ -2776,21 +3169,13 @@ export class AvailabilityAppointmentService {
       }
     }
 
-    // Promuovi l'esistente a master della serie (config normalizzata come in
-    // createSingleAppointment: i client mandano type/endType UPPERCASE).
+    // Promuovi l'esistente a master della serie.
     const recurringGroupId = uuidv4();
     await this.appointmentRepo.update(appointment.id, {
       isRecurring: true,
       recurringGroupId,
       isMaster: true,
-      repeatConfig: {
-        type: repeatConfig.type.toLowerCase() as any,
-        interval: repeatConfig.interval,
-        selectedDays: repeatConfig.selectedDays,
-        endType: repeatConfig.endType.toLowerCase() as any,
-        occurrences: repeatConfig.occurrences,
-        untilDate: repeatConfig.untilDate,
-      } as any,
+      repeatConfig: this.normalizeRepeatConfigForStorage(repeatConfig) as any,
     });
 
     // Dati base per le nuove occorrenze: copia dell'appuntamento esistente,
@@ -2824,27 +3209,106 @@ export class AvailabilityAppointmentService {
       nonRetribuito: appointment.nonRetribuito,
     };
 
-    for (const date of dates) {
+    for (const occ of newOccurrences) {
       try {
-        const created = await this.createSingleAppointment(
-          { ...baseData, appointmentDate: date },
-          instruments.length > 0 ? instruments : undefined,
-          true,
-          recurringGroupId,
-          undefined,
-          false,
-          appointment.id,
-        );
+        const created = isGym
+          ? await this.createGymOccurrenceFrom(
+              appointment, occ, recurringGroupId,
+            )
+          : await this.createSingleAppointment(
+              {
+                ...baseData,
+                appointmentDate: occ.date,
+                startTime: occ.startTime,
+                endTime: occ.endTime,
+                ...(occ.operatorId ? { operatorId: occ.operatorId } : {}),
+              },
+              instruments.length > 0 ? instruments : undefined,
+              true,
+              recurringGroupId,
+              undefined,
+              false,
+              appointment.id,
+            );
         // Stesso comportamento della creazione serie: recap per ogni occorrenza
         this.dispatchWhatsappBooking(created);
       } catch (error) {
         // Occorrenza non creabile (es. strumenti non disponibili quel giorno):
         // si continua con le successive, come alla creazione serie.
-        console.warn(`Impossibile creare occorrenza ricorrente per ${date}:`, error.message);
+        console.warn(`Impossibile creare occorrenza ricorrente per ${occ.date}:`, error.message);
       }
     }
 
     return this.findById(appointment.id);
+  }
+
+  /**
+   * Crea una occorrenza palestra copiando un appuntamento esistente (il
+   * master appena promosso), per la data/orario/sala della singola occorrenza.
+   *
+   * L'istruttore NON viene copiato dal master: viene risolto dal template
+   * della sala per QUELLA data, e poi passato per l'eventuale sostituzione
+   * attiva. Copiarlo sarebbe sbagliato in due modi — una serie che attraversa
+   * un cambio di template resterebbe intestata all'istruttore vecchio, e una
+   * occorrenza spostata in un'altra sala erediterebbe l'istruttore della sala
+   * di partenza.
+   */
+  private async createGymOccurrenceFrom(
+    master: AvailabilityAppointment,
+    occ: RecurringOccurrenceInput,
+    recurringGroupId: string,
+  ): Promise<AvailabilityAppointment> {
+    const gymRoomId = occ.gymRoomId ?? master.gymRoomId!;
+    const gymRoom = await this.gymRoomRepo.findOne({
+      where: { id: gymRoomId, isActive: true },
+    });
+    if (!gymRoom) {
+      throw new NotFoundException(`GymRoom con ID ${gymRoomId} non trovata o non attiva`);
+    }
+
+    const occDate = new Date(occ.date);
+    const operator = await this.gymPatternGroupService.getOperatorForTimeSlot(
+      gymRoomId, occDate, occ.startTime,
+    );
+    if (!operator) {
+      throw new BadRequestException(
+        'Nessun istruttore assegnato allo slot (verificare i template della palestra)',
+      );
+    }
+
+    const effectiveFields = await this.resolveEffectiveGymOperatorFields(
+      gymRoomId, operator.id, occDate, occ.startTime,
+    );
+
+    const services: ServiceInputItem[] = (master.appointmentServices ?? []).map((sv) => ({
+      serviceId: sv.serviceId,
+      customDuration: sv.customDuration ?? undefined,
+      customPrice: sv.customPrice ?? undefined,
+      orderPosition: sv.orderPosition ?? undefined,
+    }));
+
+    return this.createSingleGymAppointment(
+      {
+        gymRoomId,
+        operatorId: operator.id,
+        ...effectiveFields,
+        clientName: master.clientName,
+        clientEmail: master.clientEmail ?? undefined,
+        clientPhone: master.clientPhone ?? undefined,
+        patientId: master.patientId ?? undefined,
+        appointmentDate: occ.date,
+        startTime: occ.startTime,
+        endTime: occ.endTime,
+        notes: master.notes ?? undefined,
+        services: services.length > 0 ? services : undefined,
+      },
+      gymRoom,
+      true,
+      recurringGroupId,
+      undefined,
+      false,
+      master.id,
+    );
   }
 
   // ==================== RECURRING SERIES MANAGEMENT ====================
@@ -2875,6 +3339,12 @@ export class AvailabilityAppointmentService {
       throw new BadRequestException('Appuntamento non trovato o non ricorrente');
     }
 
+    // Chi viene disdetto va letto PRIMA: dopo l'update lo stato è cambiato per
+    // tutti e non si distinguerebbe più chi era ancora attivo.
+    const affected = await this.selectSeriesOccurrences(
+      appointment.recurringGroupId, appointment.id, appointment.appointmentDate, scope,
+    );
+
     const qb = this.appointmentRepo
       .createQueryBuilder()
       .update(AvailabilityAppointment)
@@ -2892,7 +3362,130 @@ export class AvailabilityAppointmentService {
     this.applyScopeWhere(qb, scope, { appointmentId, fromDate });
 
     const result = await qb.execute();
+
+    // Senza questo il paziente non veniva avvisato di NIENTE, e soprattutto
+    // restava programmato il promemoria del giorno prima: si sarebbe visto
+    // arrivare "il suo appuntamento è domani" per una seduta disdetta.
+    // Il gateway raggruppa l'intera serie in un unico messaggio.
+    this.notifyWhatsappCancellations(affected);
+
     return result.affected || 0;
+  }
+
+  /**
+   * Notifica al gateway la disdetta di più appuntamenti insieme.
+   *
+   * Il messaggio unico lo compone il GATEWAY, dentro la finestra configurata
+   * dal tenant: qui non si accorpa niente, perché quella stessa finestra deve
+   * poter accogliere anche le disdette fatte a mano dalla segreteria negli
+   * stessi minuti. Si mandano quindi N notifiche, una per appuntamento.
+   *
+   * Quello che si evita è di chiedere N volte al registry la stessa
+   * anagrafica: una serie da 52 sedute è tutta dello stesso paziente.
+   */
+  /**
+   * Come `notifyWhatsappCancellations`, per gli spostamenti: stessa economia
+   * sulle letture dal registry e stesso invio in sequenza. Ogni voce porta con
+   * sé la posizione da cui l'appuntamento si è mosso, che è quello che nel
+   * messaggio permette al paziente di riconoscerlo.
+   */
+  private notifyWhatsappUpdates(
+    moves: { appointment: AvailabilityAppointment; previous: AppointmentSlot }[],
+  ): void {
+    if (!this.whatsappGateway || moves.length === 0) return;
+
+    for (const move of moves.filter((m) => m.appointment.clientPhone)) {
+      this.dispatchWhatsappUpdate(move.appointment, move.previous);
+    }
+
+    const fromRegistry = moves.filter(
+      (m) => !m.appointment.clientPhone && m.appointment.patientId,
+    );
+    if (fromRegistry.length === 0) return;
+
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      this.logger.warn('[WA-UPDATE] SKIP serie: tenantAlias non disponibile');
+      return;
+    }
+
+    const byPatient = new Map<string, typeof fromRegistry>();
+    for (const move of fromRegistry) {
+      const group = byPatient.get(move.appointment.patientId!) ?? [];
+      group.push(move);
+      byPatient.set(move.appointment.patientId!, group);
+    }
+
+    for (const [patientId, group] of byPatient) {
+      this.fetchPatientContactAsService(patientId, tenantAlias)
+        .then((contact) => {
+          if (!contact) {
+            this.logger.warn(
+              `[WA-UPDATE] SKIP serie: subject ${patientId} non trovato nel registry`,
+            );
+            return;
+          }
+          return group.reduce(
+            (chain, move) =>
+              chain.then(() =>
+                this.whatsappGateway!.updateBooking(move.appointment, contact, move.previous),
+              ),
+            Promise.resolve(),
+          );
+        })
+        .catch((err) =>
+          this.logger.warn(`WhatsApp update serie failed: ${err?.message}`),
+        );
+    }
+  }
+
+  private notifyWhatsappCancellations(appointments: AvailabilityAppointment[]): void {
+    if (!this.whatsappGateway || appointments.length === 0) return;
+
+    // I walk-in hanno il telefono addosso: nessuna anagrafica da risolvere.
+    for (const appointment of appointments.filter((a) => a.clientPhone)) {
+      this.cancelWhatsappBooking(appointment);
+    }
+
+    const fromRegistry = appointments.filter((a) => !a.clientPhone && a.patientId);
+    if (fromRegistry.length === 0) return;
+
+    const tenantAlias = this.tenantSchemaContext.getTenantAlias();
+    if (!tenantAlias) {
+      this.logger.warn('[WA-CANCEL] SKIP serie: tenantAlias non disponibile');
+      return;
+    }
+
+    const byPatient = new Map<string, AvailabilityAppointment[]>();
+    for (const appointment of fromRegistry) {
+      const group = byPatient.get(appointment.patientId!) ?? [];
+      group.push(appointment);
+      byPatient.set(appointment.patientId!, group);
+    }
+
+    for (const [patientId, group] of byPatient) {
+      this.fetchPatientContactAsService(patientId, tenantAlias)
+        .then((contact) => {
+          if (!contact) {
+            this.logger.warn(
+              `[WA-CANCEL] SKIP serie: subject ${patientId} non trovato nel registry`,
+            );
+            return;
+          }
+          // In sequenza e non in parallelo: il gateway riarma il timer del
+          // raggruppamento a ogni arrivo, e N richieste simultanee sullo
+          // stesso numero se lo contenderebbero. L'ordine delle righe lo
+          // decide comunque lui, per data.
+          return group.reduce(
+            (chain, appointment) =>
+              chain.then(() => this.whatsappGateway!.cancelBooking(appointment, contact)),
+            Promise.resolve(),
+          );
+        })
+        .catch((err) =>
+          this.logger.warn(`WhatsApp cancel serie failed: ${err?.message}`),
+        );
+    }
   }
 
   /**
@@ -2917,6 +3510,13 @@ export class AvailabilityAppointmentService {
       throw new BadRequestException('Appuntamento non trovato o non ricorrente');
     }
 
+    // Letti prima della delete: dopo non esistono più, e con loro sparirebbe
+    // anche il modo di sapere chi avvisare.
+    const affected = await this.selectSeriesOccurrences(
+      appointment.recurringGroupId, appointment.id, appointment.appointmentDate,
+      scope, rangeFrom, rangeTo, includeCurrent,
+    );
+
     const qb = this.appointmentRepo
       .createQueryBuilder()
       .delete()
@@ -2926,6 +3526,11 @@ export class AvailabilityAppointmentService {
     this.applyScopeWhere(qb, scope, { appointmentId, fromDate, rangeFrom, rangeTo, includeCurrent });
 
     const result = await qb.execute();
+
+    // Come per la disdetta della serie: senza questo restavano in piedi i
+    // promemoria di appuntamenti eliminati.
+    this.notifyWhatsappCancellations(affected);
+
     return result.affected || 0;
   }
 
@@ -3008,58 +3613,114 @@ export class AvailabilityAppointmentService {
    * Valida una lista di occorrenze (operatore/data/orario) verificando per
    * ciascuna disponibilità operatore e sovrapposizioni con altri appuntamenti.
    * NON lancia: ritorna l'elenco dei conflitti (vuoto se tutto ok). Riusata
-   * sia per la modifica serie sia per la creazione di una nuova serie.
+   * dalla creazione serie, dalla modifica serie e dall'anteprima.
+   *
+   * DUE QUERY IN TUTTO, non due per occorrenza. Una serie arriva a 52
+   * occorrenze: interrogare disponibilità e sovrapposizioni una data alla
+   * volta significava un centinaio di round-trip, che si sentono tutti
+   * quando il riquadro di anteprima deve aprirsi subito.
+   *
+   * TEMPLATE CHE CAMBIANO NEL PERIODO: la disponibilità viene chiesta per
+   * l'intero intervallo in una volta, ma `getOperatorsAvailabilityV3`
+   * risolve l'assegnazione template valida **giorno per giorno** (gli
+   * assignment sono una timeline con validFrom/validUntil). Quindi una serie
+   * agosto→ottobre che attraversa un cambio di template a metà settembre
+   * viene valutata con l'orario giusto in ogni sua parte.
    *
    * @param occurrences occorrenze da validare; `selfId` esclude un appuntamento
    *   esistente (sé stesso) dai controlli di overlap/availability.
    */
   async validateRecurringOccurrences(
     occurrences: { selfId?: string; operatorId: string; date: string; startTime: string; endTime: string }[],
-  ): Promise<{
-    appointmentId?: string; date: string; startTime: string; endTime: string;
-    type: string; reason: string; conflictingStartTime?: string; conflictingEndTime?: string;
-  }[]> {
-    const conflicts: {
-      appointmentId?: string; date: string; startTime: string; endTime: string;
-      type: string; reason: string; conflictingStartTime?: string; conflictingEndTime?: string;
-    }[] = [];
+  ): Promise<RecurringOccurrenceConflict[]> {
+    if (occurrences.length === 0) return [];
 
+    const conflicts: RecurringOccurrenceConflict[] = [];
     const blockEnabled = await this.generalSettingsService.isBlockOutsideAvailabilityEnabled();
 
-    for (const occ of occurrences) {
-      // 1) Sovrapposizione con altro appuntamento dello stesso operatore.
-      const overlapQb = this.appointmentRepo
-        .createQueryBuilder('a')
-        .where('a.operatorId = :operatorId', { operatorId: occ.operatorId })
-        .andWhere('a.appointmentDate = :date', { date: occ.date })
-        .andWhere('a.bookingStatus NOT IN (:...excluded)', {
-          excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
-        })
-        .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
-          startTime: occ.startTime, endTime: occ.endTime,
-        });
-      if (occ.selfId) {
-        overlapQb.andWhere('a.id <> :selfId', { selfId: occ.selfId });
+    const dates = occurrences.map(o => o.date).sort();
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+    const operatorIds = Array.from(new Set(occurrences.map(o => o.operatorId).filter(Boolean)));
+    // Tutte le occorrenze della serie si escludono a vicenda: durante uno
+    // spostamento si "scambiano" gli slot, e senza questo ognuna risulterebbe
+    // in conflitto con le sorelle che sta lasciando.
+    const selfIds = occurrences.map(o => o.selfId).filter((id): id is string => !!id);
+
+    // ── Sovrapposizioni: un solo giro sull'intero intervallo ──
+    const existing = await this.appointmentRepo.find({
+      where: {
+        operatorId: In(operatorIds),
+        appointmentDate: Between(new Date(minDate), new Date(maxDate)),
+        bookingStatus: Not(In([
+          BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY,
+          BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW,
+        ])),
+      },
+      select: ['id', 'operatorId', 'appointmentDate', 'startTime', 'endTime'],
+    });
+
+    const selfIdSet = new Set(selfIds);
+    const existingByOpDate = new Map<string, { id: string; startTime: string; endTime: string }[]>();
+    for (const apt of existing) {
+      if (selfIdSet.has(apt.id)) continue;
+      const key = `${apt.operatorId}|${toDateString(apt.appointmentDate as unknown as Date | string)}`;
+      const list = existingByOpDate.get(key) ?? [];
+      list.push({ id: apt.id, startTime: apt.startTime, endTime: apt.endTime });
+      existingByOpDate.set(key, list);
+    }
+
+    // ── Disponibilità: un solo giro sull'intero intervallo ──
+    const freeBlocksByOpDate = new Map<string, { startTime: string; endTime: string }[]>();
+    if (blockEnabled) {
+      const availability = await this.availabilityService.getOperatorsAvailabilityV3(
+        operatorIds, minDate, maxDate, selfIds,
+      );
+      for (const op of availability) {
+        for (const day of op.days) {
+          freeBlocksByOpDate.set(`${op.operatorId}|${day.date}`, day.freeBlocks);
+        }
       }
-      const overlapping = await overlapQb.getOne();
+    }
+
+    // Il confronto degli orari si fa in MINUTI, non fra stringhe: dal DB le
+    // colonne `time` arrivano come '14:15:00', dall'input come '14:15', e
+    // '14:15:00' > '14:15' è vero per l'ordinamento lessicografico. Con il
+    // confronto fra stringhe un appuntamento che finisce alle 14:15 risultava
+    // sovrapposto a quello che inizia alle 14:15. Finché il controllo stava
+    // in SQL il problema non si poneva (era Postgres a confrontare due `time`).
+    const toMinutes = (t: string): number => {
+      const [h, m] = String(t ?? '').split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+
+    for (const occ of occurrences) {
+      const key = `${occ.operatorId}|${occ.date}`;
+      const occStart = toMinutes(occ.startTime);
+      const occEnd = toMinutes(occ.endTime);
+
+      // 1) Sovrapposizione con un altro appuntamento dello stesso operatore.
+      //    Estremi esclusivi: appuntamenti adiacenti (fine == inizio) non si
+      //    sovrappongono.
+      const overlapping = (existingByOpDate.get(key) ?? []).find(
+        a => toMinutes(a.startTime) < occEnd && toMinutes(a.endTime) > occStart,
+      );
       if (overlapping) {
+        const hhmm = (t: string): string => String(t ?? '').slice(0, 5);
         conflicts.push({
           appointmentId: occ.selfId,
           date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
           type: 'overlap',
-          reason: `Sovrapposto ad un altro appuntamento (${overlapping.startTime}-${overlapping.endTime})`,
-          conflictingStartTime: overlapping.startTime,
-          conflictingEndTime: overlapping.endTime,
+          reason: `Sovrapposto ad un altro appuntamento (${hhmm(overlapping.startTime)}-${hhmm(overlapping.endTime)})`,
+          conflictingStartTime: hhmm(overlapping.startTime),
+          conflictingEndTime: hhmm(overlapping.endTime),
         });
         continue; // un conflitto per occorrenza è sufficiente per il riepilogo
       }
 
       // 2) Fuori disponibilità operatore (solo se il blocco è attivo).
       if (blockEnabled) {
-        const result = await this.availabilityService.getOperatorsAvailabilityV3(
-          [occ.operatorId], occ.date, occ.date, occ.selfId,
-        );
-        const freeBlocks = result[0]?.days.find(d => d.date === occ.date)?.freeBlocks ?? [];
+        const freeBlocks = freeBlocksByOpDate.get(key) ?? [];
         if (!this.isIntervalCovered(occ.startTime, occ.endTime, freeBlocks)) {
           conflicts.push({
             appointmentId: occ.selfId,
@@ -3072,6 +3733,237 @@ export class AvailabilityAppointmentService {
     }
 
     return conflicts;
+  }
+
+  /**
+   * Analogo palestra di `validateRecurringOccurrences`.
+   *
+   * PERCHÉ UN METODO SEPARATO E NON UN FLAG SUL PRIMO: in palestra i tre
+   * predicati sono altri. Non esiste la sovrapposizione per operatore — lo
+   * slot è condiviso per definizione, dieci pazienti nello stesso orario sono
+   * la normalità — e al suo posto contano la capienza della sala e la
+   * chiusura della fascia. L'operatore non è un vincolo ma una conseguenza:
+   * lo assegna il template della palestra, e se per quella fascia non ne
+   * assegna nessuno lo slot semplicemente non è prenotabile.
+   *
+   * NON lancia: ritorna l'elenco dei conflitti (vuoto se tutto ok).
+   *
+   * @param occurrences occorrenze da validare; `selfId` esclude un
+   *   appuntamento esistente (sé stesso) dal conteggio capienza.
+   */
+  async validateGymRecurringOccurrences(
+    occurrences: { selfId?: string; gymRoomId: string; date: string; startTime: string; endTime: string }[],
+    /** Paziente della serie: segnala le date in cui è già prenotato. */
+    patientId?: string,
+  ): Promise<RecurringOccurrenceConflict[]> {
+    if (occurrences.length === 0) return [];
+
+    const conflicts: RecurringOccurrenceConflict[] = [];
+    const dates = occurrences.map(o => o.date).sort();
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+    const roomIds = Array.from(new Set(occurrences.map(o => o.gymRoomId).filter(Boolean)));
+
+    // Capienza delle sale coinvolte, in un colpo solo.
+    const rooms = await this.gymRoomRepo.find({ where: { id: In(roomIds) } });
+    const capacityByRoom = new Map(rooms.map(r => [r.id, r.maxCapacity]));
+
+    // Le occorrenze della serie si escludono a vicenda dal conteggio: durante
+    // uno spostamento si scambiano gli slot, e senza questo ognuna vedrebbe le
+    // sorelle che sta lasciando come posti ancora occupati.
+    const selfIdSet = new Set(
+      occurrences.map(o => o.selfId).filter((id): id is string => !!id),
+    );
+
+    // ── Prenotazioni esistenti nelle sale coinvolte: un solo giro ──
+    const existing = await this.appointmentRepo.find({
+      where: {
+        gymRoomId: In(roomIds),
+        appointmentType: AppointmentType.GYM,
+        appointmentDate: Between(new Date(minDate), new Date(maxDate)),
+        bookingStatus: Not(In([
+          BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY,
+          BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW,
+        ])),
+      },
+      select: ['id', 'gymRoomId', 'patientId', 'appointmentDate', 'startTime', 'endTime'],
+    });
+
+    const existingByRoomDate = new Map<
+      string,
+      { id: string; patientId?: string; startTime: string; endTime: string }[]
+    >();
+    for (const apt of existing) {
+      if (selfIdSet.has(apt.id)) continue;
+      const key = `${apt.gymRoomId}|${toDateString(apt.appointmentDate as unknown as Date | string)}`;
+      const list = existingByRoomDate.get(key) ?? [];
+      list.push({
+        id: apt.id,
+        patientId: apt.patientId ?? undefined,
+        startTime: apt.startTime,
+        endTime: apt.endTime,
+      });
+      existingByRoomDate.set(key, list);
+    }
+
+    const hhmm = (t: string): string => t.slice(0, 5);
+
+    for (const occ of occurrences) {
+      const occDate = new Date(occ.date);
+
+      // 1) Fascia chiusa: chiusura palestra (giornata o fascia), slot chiuso
+      //    da un'assenza istruttore, o fuori dagli orari modificati.
+      const closure = await this.gymExceptionService.getSlotClosure(
+        occ.gymRoomId, occDate, occ.startTime, occ.endTime,
+      );
+      if (closure.closed) {
+        conflicts.push({
+          appointmentId: occ.selfId,
+          date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
+          type: 'unavailable',
+          reason: closure.reason || 'La palestra è chiusa in questa fascia oraria',
+        });
+        continue; // un conflitto per occorrenza basta al riepilogo
+      }
+
+      // 2) Nessun istruttore assegnato dal template per quella fascia: lo
+      //    slot non esiste proprio, non è "pieno".
+      const operator = await this.gymPatternGroupService.getOperatorForTimeSlot(
+        occ.gymRoomId, occDate, occ.startTime,
+      );
+      if (!operator) {
+        conflicts.push({
+          appointmentId: occ.selfId,
+          date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
+          type: 'unavailable',
+          reason: 'Nessun istruttore assegnato a questa fascia oraria',
+        });
+        continue;
+      }
+
+      const inSlot = (existingByRoomDate.get(`${occ.gymRoomId}|${occ.date}`) ?? []).filter(
+        a => hhmm(a.startTime) < hhmm(occ.endTime) && hhmm(a.endTime) > hhmm(occ.startTime),
+      );
+
+      // 3) Paziente già prenotato in quello slot: prenotarlo due volte non ha
+      //    senso, ed è l'errore tipico di una serie che si sovrappone a
+      //    prenotazioni singole fatte a mano.
+      if (patientId && inSlot.some(a => a.patientId === patientId)) {
+        conflicts.push({
+          appointmentId: occ.selfId,
+          date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
+          type: 'overlap',
+          reason: 'Il paziente è già prenotato in questo slot',
+        });
+        continue;
+      }
+
+      // 4) Capienza esaurita.
+      const capacity = capacityByRoom.get(occ.gymRoomId) ?? null;
+      if (capacity !== null && inSlot.length >= capacity) {
+        conflicts.push({
+          appointmentId: occ.selfId,
+          date: occ.date, startTime: occ.startTime, endTime: occ.endTime,
+          type: 'overlap',
+          reason: `Capacità massima della sala raggiunta per questo slot (${inSlot.length}/${capacity})`,
+        });
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
+   * Piano di una serie ricorrente PRIMA di crearla: le date che verrebbero
+   * generate, ciascuna con l'eventuale conflitto.
+   *
+   * Non scrive niente. Serve al riquadro di risoluzione, dove l'utente decide
+   * occorrenza per occorrenza se confermare, spostare o saltare. È il motivo
+   * per cui la creazione non ha più bisogno di un flag "forza": la forzatura
+   * era un sì/no unico per una decisione che riguarda N date diverse, ognuna
+   * con la propria storia (template cambiato a metà periodo, ferie, uno slot
+   * occupato da qualcun altro).
+   */
+  async previewRecurringSeries(input: {
+    operatorId?: string;
+    gymRoomId?: string;
+    patientId?: string;
+    startDate: string;
+    startTime: string;
+    endTime: string;
+    repeatConfig: RepeatConfigInput;
+    excludeAppointmentId?: string;
+  }): Promise<RecurringOccurrencePreview[]> {
+    const dates = this.calculateRecurringDates(input.startDate, input.repeatConfig);
+    if (dates.length === 0) {
+      throw new BadRequestException('La ricorrenza non genera nessuna data');
+    }
+
+    if (!input.gymRoomId && !input.operatorId) {
+      throw new BadRequestException(
+        "L'anteprima richiede un operatore (serie standard) o una sala (serie palestra)",
+      );
+    }
+
+    // La sala vince sull'operatore: una serie palestra va valutata con i
+    // predicati della palestra anche quando l'operatore è noto, perché lì
+    // l'istruttore non è un vincolo ma il risultato del template.
+    const conflicts = input.gymRoomId
+      ? await this.validateGymRecurringOccurrences(
+          dates.map(date => ({
+            selfId: input.excludeAppointmentId,
+            gymRoomId: input.gymRoomId!,
+            date,
+            startTime: input.startTime,
+            endTime: input.endTime,
+          })),
+          input.patientId,
+        )
+      : await this.validateRecurringOccurrences(
+          dates.map(date => ({
+            selfId: input.excludeAppointmentId,
+            operatorId: input.operatorId!,
+            date,
+            startTime: input.startTime,
+            endTime: input.endTime,
+          })),
+        );
+
+    const conflictByDate = new Map(conflicts.map(c => [c.date, c]));
+    return dates.map(date => ({
+      date,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      conflict: conflictByDate.get(date),
+    }));
+  }
+
+  /**
+   * Ricontrolla un piano risolto dall'utente subito prima di applicarlo.
+   *
+   * Fra l'anteprima e la conferma passano secondi, ma bastano perché qualcun
+   * altro prenoti uno di quegli slot. Qui si ricontrollano SOLO le
+   * sovrapposizioni: sono l'unica cosa che può cambiare sotto i piedi
+   * dell'utente in quel lasso di tempo, e sono anche l'unica che non gli è
+   * mai stato permesso di forzare. Le occorrenze fuori disponibilità invece
+   * le ha viste e confermate: non vanno rimesse in discussione.
+   *
+   * Ritorna i conflitti nuovi (vuoto = si può procedere).
+   */
+  private async recheckResolvedOccurrences(
+    occurrences: { appointmentId?: string; operatorId: string; date: string; startTime: string; endTime: string }[],
+    seriesAppointmentIds: string[] = [],
+  ): Promise<RecurringOccurrenceConflict[]> {
+    const found = await this.validateRecurringOccurrences(
+      occurrences.map(o => ({
+        selfId: o.appointmentId ?? seriesAppointmentIds[0],
+        operatorId: o.operatorId,
+        date: o.date,
+        startTime: o.startTime,
+        endTime: o.endTime,
+      })),
+    );
+    return found.filter(c => c.type === 'overlap');
   }
 
   /**
@@ -3140,6 +4032,24 @@ export class AvailabilityAppointmentService {
       });
     } catch { /* best-effort */ }
 
+    // Notifica WhatsApp di spostamento, una per occorrenza davvero mossa: il
+    // gateway le raggruppa in un unico messaggio e riprogramma i promemoria
+    // sul nuovo orario. Prima di questo passaggio la serie si spostava in
+    // silenzio e i promemoria restavano sul vecchio orario.
+    const hhmm = (t: string | null | undefined): string => String(t ?? '').slice(0, 5);
+    this.notifyWhatsappUpdates(
+      occurrences
+        .filter((occ) => hhmm(occ.startTime) !== hhmm(input.startTime))
+        .map((occ) => ({
+          appointment: {
+            ...occ,
+            startTime: input.startTime,
+            endTime: input.endTime,
+          } as AvailabilityAppointment,
+          previous: { appointmentDate: occ.appointmentDate, startTime: occ.startTime },
+        })),
+    );
+
     return { applied: true, affectedCount: ids.length, conflicts: [] };
   }
 
@@ -3189,6 +4099,8 @@ export class AvailabilityAppointmentService {
     startTime: string;
     endTime: string;
     operatorId?: string;
+    /** Sala di destinazione per le occorrenze palestra dello scope. */
+    gymRoomId?: string;
     patientId?: string;
     clientName?: string;
     clientPhone?: string;
@@ -3198,6 +4110,10 @@ export class AvailabilityAppointmentService {
     instrumentOrderMatters?: boolean;
     services?: ServiceInputItem[];
     instruments?: CreateAppointmentInstrumentInput[];
+    /** Occorrenze da lasciare intatte (decise nel riquadro conflitti). */
+    skipAppointmentIds?: string[];
+    /** Destinazioni decise a mano per singole occorrenze. */
+    occurrenceOverrides?: RecurringOccurrenceInput[];
   }): Promise<{ applied: boolean; affectedCount: number; conflicts: any[] }> {
     const current = await this.appointmentRepo.findOne({ where: { id: input.appointmentId } });
     if (!current || !current.recurringGroupId) {
@@ -3219,10 +4135,48 @@ export class AvailabilityAppointmentService {
     const baseStr = ds(current.appointmentDate);
     const deltaDays = input.newDate ? this.diffInDays(baseStr, input.newDate) : 0;
 
-    const targets = occurrences.map(o => ({
-      occ: o,
-      newDate: deltaDays === 0 ? ds(o.appointmentDate) : this.addDays(ds(o.appointmentDate), deltaDays),
-    }));
+    // Il riquadro conflitti può aver deciso di lasciare intatte alcune
+    // occorrenze e di mandarne altre a una destinazione tutta loro: qui le
+    // due decisioni diventano il piano da applicare. Senza riquadro il
+    // comportamento resta quello di sempre — stesso spostamento per tutte.
+    const skipIds = new Set(input.skipAppointmentIds ?? []);
+    const overrideById = new Map(
+      (input.occurrenceOverrides ?? [])
+        .filter(o => !!o.appointmentId)
+        .map(o => [o.appointmentId!, o]),
+    );
+
+    const targets = occurrences
+      .filter(o => !skipIds.has(o.id))
+      .map(o => {
+        const override = overrideById.get(o.id);
+        return {
+          occ: o,
+          newDate: override?.date
+            ?? (deltaDays === 0 ? ds(o.appointmentDate) : this.addDays(ds(o.appointmentDate), deltaDays)),
+          newStartTime: override?.startTime ?? input.startTime,
+          newEndTime: override?.endTime ?? input.endTime,
+          newOperatorId: override?.operatorId ?? input.operatorId,
+          // Sala di destinazione: quella decisa per la singola occorrenza,
+          // altrimenti quella dell'intera serie, altrimenti resta la sua.
+          //
+          // Solo per le occorrenze PALESTRA: su un appuntamento standard la
+          // sala non ha significato, e un `gymRoomId` passato per errore
+          // finirebbe scritto sulla riga senza che nessun controllo lo veda.
+          newGymRoomId:
+            o.appointmentType === AppointmentType.GYM
+              ? (override?.gymRoomId ?? input.gymRoomId ?? o.gymRoomId ?? undefined)
+              : undefined,
+        };
+      });
+
+    if (targets.length === 0) {
+      return { applied: false, affectedCount: 0, conflicts: [] };
+    }
+
+    // Le occorrenze saltate restano dove sono, quindi continuano a occupare
+    // il loro slot: NON vanno escluse dal controllo sovrapposizioni, o una
+    // occorrenza spostata potrebbe finirci sopra.
     const batchIds = targets.map(t => t.occ.id);
 
     // ── Validazione preventiva: solo sovrapposizioni con appuntamenti ESTERNI
@@ -3234,51 +4188,88 @@ export class AvailabilityAppointmentService {
     const conflicts: any[] = [];
     for (const t of targets) {
       if (t.occ.appointmentType === AppointmentType.GYM) {
+        const destRoomId = t.newGymRoomId ?? t.occ.gymRoomId;
+        const roomChanged = !!destRoomId && destRoomId !== t.occ.gymRoomId;
         const positionChanged =
-          deltaDays !== 0 ||
-          hhmm(input.startTime) !== hhmm(t.occ.startTime) ||
-          hhmm(input.endTime) !== hhmm(t.occ.endTime);
-        if (!positionChanged || !t.occ.gymRoomId) continue;
+          roomChanged ||
+          t.newDate !== ds(t.occ.appointmentDate) ||
+          hhmm(t.newStartTime) !== hhmm(t.occ.startTime) ||
+          hhmm(t.newEndTime) !== hhmm(t.occ.endTime);
+        if (!positionChanged || !destRoomId) continue;
+
+        const destRoom = await this.gymRoomRepo.findOne({
+          where: { id: destRoomId, isActive: true },
+        });
+        if (!destRoom) {
+          conflicts.push({
+            appointmentId: t.occ.id,
+            date: t.newDate, startTime: t.newStartTime, endTime: t.newEndTime,
+            type: 'unavailable',
+            reason: 'Sala di destinazione non trovata o non attiva',
+          });
+          continue;
+        }
 
         const closure = await this.gymExceptionService.getSlotClosure(
-          t.occ.gymRoomId, new Date(t.newDate), input.startTime, input.endTime,
+          destRoomId, new Date(t.newDate), t.newStartTime, t.newEndTime,
         );
         if (closure.closed) {
           conflicts.push({
             appointmentId: t.occ.id,
-            date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+            date: t.newDate, startTime: t.newStartTime, endTime: t.newEndTime,
             type: 'unavailable',
             reason: closure.reason || 'La palestra è chiusa in questa fascia oraria',
           });
           continue;
         }
 
+        // Istruttore assegnato dal template della sala di DESTINAZIONE per
+        // quella data e quella fascia. Va verificato qui e non solo
+        // occorrenza per occorrenza in fase di applicazione: se manca anche
+        // per una sola data, la serie non è spostabile e nulla deve partire.
+        const destOperator = await this.gymPatternGroupService.getOperatorForTimeSlot(
+          destRoomId, new Date(t.newDate), t.newStartTime,
+        );
+        if (!destOperator) {
+          conflicts.push({
+            appointmentId: t.occ.id,
+            date: t.newDate, startTime: t.newStartTime, endTime: t.newEndTime,
+            type: 'unavailable',
+            reason: `Nessun istruttore assegnato a questa fascia in ${destRoom.name}`,
+          });
+          continue;
+        }
+
         const inSlot = await this.appointmentRepo
           .createQueryBuilder('a')
-          .where('a.gymRoomId = :roomId', { roomId: t.occ.gymRoomId })
+          .where('a.gymRoomId = :roomId', { roomId: destRoomId })
           .andWhere('a.appointmentType = :gymType', { gymType: AppointmentType.GYM })
           .andWhere('a.appointmentDate = :date', { date: t.newDate })
           .andWhere('a.bookingStatus NOT IN (:...excluded)', {
             excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
           })
           .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
-            startTime: input.startTime, endTime: input.endTime,
+            startTime: t.newStartTime, endTime: t.newEndTime,
           })
           .andWhere('a.id NOT IN (:...batchIds)', { batchIds })
           .getCount();
-        const capacity = t.occ.maxParticipants ?? null;
+        // Capienza della sala di DESTINAZIONE, non `maxParticipants`
+        // dell'occorrenza: quello è un valore denormalizzato al momento della
+        // prenotazione e descrive la sala di partenza, che può essere più
+        // capiente di quella dove si sta andando.
+        const capacity = destRoom.maxCapacity ?? null;
         if (capacity !== null && inSlot >= capacity) {
           conflicts.push({
             appointmentId: t.occ.id,
-            date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+            date: t.newDate, startTime: t.newStartTime, endTime: t.newEndTime,
             type: 'overlap',
-            reason: `Capacità massima della sala raggiunta per questo slot (${inSlot}/${capacity})`,
+            reason: `Capacità massima di ${destRoom.name} raggiunta per questo slot (${inSlot}/${capacity})`,
           });
         }
         continue;
       }
 
-      const opId = input.operatorId ?? t.occ.operatorId;
+      const opId = t.newOperatorId ?? t.occ.operatorId;
       const overlap = await this.appointmentRepo
         .createQueryBuilder('a')
         .where('a.operatorId = :opId', { opId })
@@ -3287,14 +4278,14 @@ export class AvailabilityAppointmentService {
           excluded: [BookingStatus.CANCELLED, BookingStatus.CANCELLED_EARLY, BookingStatus.CANCELLED_LATE, BookingStatus.NO_SHOW],
         })
         .andWhere('a.startTime < :endTime AND a.endTime > :startTime', {
-          startTime: input.startTime, endTime: input.endTime,
+          startTime: t.newStartTime, endTime: t.newEndTime,
         })
         .andWhere('a.id NOT IN (:...batchIds)', { batchIds })
         .getOne();
       if (overlap) {
         conflicts.push({
           appointmentId: t.occ.id,
-          date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+          date: t.newDate, startTime: t.newStartTime, endTime: t.newEndTime,
           type: 'overlap',
           reason: `Sovrapposto ad un altro appuntamento (${overlap.startTime}-${overlap.endTime})`,
           conflictingStartTime: overlap.startTime,
@@ -3322,9 +4313,16 @@ export class AvailabilityAppointmentService {
       try {
         await this.update(t.occ.id, {
           appointmentDate: t.newDate,
-          startTime: input.startTime,
-          endTime: input.endTime,
-          operatorId: input.operatorId,
+          startTime: t.newStartTime,
+          endTime: t.newEndTime,
+          operatorId: t.newOperatorId,
+          // Solo se la sala cambia davvero: passarla identica farebbe
+          // scattare inutilmente il riallineamento di istruttore e capienza
+          // che `update()` esegue a ogni cambio di sala.
+          gymRoomId:
+            t.newGymRoomId && t.newGymRoomId !== t.occ.gymRoomId
+              ? t.newGymRoomId
+              : undefined,
           patientId: input.patientId,
           clientName: input.clientName,
           clientPhone: input.clientPhone,
@@ -3342,7 +4340,7 @@ export class AvailabilityAppointmentService {
       } catch (e: any) {
         failed.push({
           appointmentId: t.occ.id,
-          date: t.newDate, startTime: input.startTime, endTime: input.endTime,
+          date: t.newDate, startTime: t.newStartTime, endTime: t.newEndTime,
           type: 'error',
           reason: e?.message || 'Errore durante l\'aggiornamento dell\'occorrenza',
         });

@@ -1,9 +1,14 @@
 /**
- * Appuntamenti Dialog Container — Calendario V3
+ * Gestisci Appuntamenti Dialog Container — Calendario V3
  * Layer 2: Smart Component
  *
- * Coordinatore della finestra "Appuntamenti": ricerca paziente, lista
- * appuntamenti del paziente, riprenotazione con ricerca slot.
+ * Coordinatore della finestra "Gestisci Appuntamenti": ricerca del soggetto
+ * (paziente OPPURE operatore), lista dei suoi appuntamenti filtrabile per
+ * periodo, riprenotazione con ricerca slot.
+ *
+ * La ricerca per operatore non e' un doppione di quella per paziente: e'
+ * l'unico modo di raggiungere le fasce NON retribuite (pause, riunioni), che
+ * non avendo un paziente sono invisibili alla ricerca anagrafica.
  *
  * Tiene SOLO lo UI state; business logic e GraphQL nei service
  * (PatientService, AvailabilityAppointmentService, RebookingService),
@@ -29,16 +34,26 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { DragDropModule, CdkDrag } from '@angular/cdk/drag-drop';
+import { RememberedWindowDirective } from '../../../shared/directives/remembered-window.directive';
 import { Subject, firstValueFrom } from 'rxjs';
 import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
 
 import { V3PatientSearchComponent } from '../components/patient-search/patient-search.component';
-import { V3PatientAppointmentsListComponent } from '../components/patient-appointments-list/patient-appointments-list.component';
+import { V3OperatorSearchComponent, OperatorGroup } from '../components/operator-search/operator-search.component';
+import { V3AppointmentsListComponent } from '../components/appointments-list/appointments-list.component';
+import {
+  V3AppointmentsFilterBarComponent, PaymentFilter,
+} from '../components/appointments-filter-bar/appointments-filter-bar.component';
 import { V3RebookingPanelComponent } from '../components/rebooking-panel/rebooking-panel.component';
+import {
+  DateRange, DateRangePreset, resolveDateRangePreset, toIsoDate,
+} from '../../../shared/utils/date-range-presets';
+import { fuzzyMatchesAny } from '../../../shared/utils/text-match';
 
 import { PatientService } from '../../../services/patient.service';
 import { AvailabilityAppointmentService } from '../../../services/availability-appointment.service';
 import { RebookingService } from '../services/rebooking.service';
+import { AppointmentsExportService } from '../services/appointments-export.service';
 import { Patient, getPatientDisplayName } from '../../../models/patient.model';
 import { AvailabilityAppointment } from '../../../graphql/generated/types';
 import {
@@ -69,14 +84,23 @@ export interface AppuntamentiDialogData {
 type LayoutMode = 'panels' | 'wizard';
 type WizardStep = 'search' | 'appointments' | 'rebooking';
 
+/**
+ * Per chi si cerca. Il flusso a valle (lista → spostamento) è lo stesso: a
+ * cambiare è solo da dove arrivano gli appuntamenti. Cercare per operatore è
+ * l'unico modo di vedere le fasce NON retribuite, che non avendo paziente
+ * sono invisibili alla ricerca anagrafica.
+ */
+type SearchMode = 'patient' | 'operator';
+
 @Component({
   selector: 'app-appuntamenti-dialog-container',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, MatDialogModule, MatButtonModule, MatButtonToggleModule,
-    MatIconModule, MatTooltipModule, DragDropModule,
-    V3PatientSearchComponent, V3PatientAppointmentsListComponent,
+    MatIconModule, MatTooltipModule, DragDropModule, RememberedWindowDirective,
+    V3PatientSearchComponent, V3OperatorSearchComponent,
+    V3AppointmentsListComponent, V3AppointmentsFilterBarComponent,
     V3RebookingPanelComponent,
   ],
   template: `
@@ -88,18 +112,20 @@ type WizardStep = 'search' | 'appointments' | 'rebooking';
            cdkDrag
            #titleDrag="cdkDrag"
            cdkDragRootElement=".appuntamenti-dialog-pane"
+           appRememberedWindow="gestisci-appuntamenti"
+           rememberedWindowPane=".appuntamenti-dialog-pane"
            cdkDragBoundary=".cdk-overlay-container"
            (dblclick)="toggleMinimized()">
         <div class="title-left">
           <mat-icon>drag_indicator</mat-icon>
-          <span class="title-text">Appuntamenti</span>
+          <span class="title-text">Gestisci Appuntamenti</span>
         </div>
 
         <!-- Nome paziente selezionato, centrato -->
         <div class="title-center">
-          @if (selectedPatient) {
-            <mat-icon class="pat-ic">person</mat-icon>
-            <span class="pat-name">{{ patientName(selectedPatient) }}</span>
+          @if (subjectName) {
+            <mat-icon class="pat-ic">{{ searchMode === 'operator' ? 'badge' : 'person' }}</mat-icon>
+            <span class="pat-name">{{ subjectName }}</span>
           }
         </div>
 
@@ -135,25 +161,12 @@ type WizardStep = 'search' | 'appointments' | 'rebooking';
         @if (layout === 'panels') {
           <div class="dialog-body panels">
             <div class="panel panel-search">
-              <app-v3-patient-search
-                [patients]="patients"
-                [loading]="patientsLoading"
-                [searched]="patientsSearched"
-                [selectedPatientId]="selectedPatient?.id ?? null"
-                (termChange)="onSearchTerm($event)"
-                (selectPatient)="onSelectPatient($event)">
-              </app-v3-patient-search>
+              <ng-container *ngTemplateOutlet="modeToggleTpl"></ng-container>
+              <ng-container *ngTemplateOutlet="subjectSearchTpl"></ng-container>
             </div>
             <div class="panel panel-appts">
-              <app-v3-patient-appointments-list
-                [appointments]="appointments"
-                [loading]="appointmentsLoading"
-                [patientSelected]="!!selectedPatient"
-                [selectedAppointmentId]="rebookingAppointment?.id ?? null"
-                (goToCalendar)="onGoToCalendar($event)"
-                (editAppointment)="onEditAppointment($event)"
-                (moveAppointment)="onMoveAppointment($event)">
-              </app-v3-patient-appointments-list>
+              <ng-container *ngTemplateOutlet="filterBarTpl"></ng-container>
+              <ng-container *ngTemplateOutlet="appointmentsListTpl"></ng-container>
             </div>
             <div class="panel panel-rebooking"
                  [class.expanded]="rebookingExpanded"
@@ -168,9 +181,11 @@ type WizardStep = 'search' | 'appointments' | 'rebooking';
           <div class="dialog-body wizard">
             <div class="wizard-steps">
               <button class="step" [class.active]="wizardStep === 'search'"
-                      (click)="wizardStep = 'search'">1. Paziente</button>
+                      (click)="wizardStep = 'search'">
+                1. {{ searchMode === 'operator' ? 'Operatore' : 'Paziente' }}
+              </button>
               <button class="step" [class.active]="wizardStep === 'appointments'"
-                      [disabled]="!selectedPatient"
+                      [disabled]="!subjectSelected"
                       (click)="wizardStep = 'appointments'">2. Appuntamenti</button>
               <button class="step" [class.active]="wizardStep === 'rebooking'"
                       [disabled]="!rebookingAppointment"
@@ -178,25 +193,12 @@ type WizardStep = 'search' | 'appointments' | 'rebooking';
             </div>
             <div class="wizard-content">
               @if (wizardStep === 'search') {
-                <app-v3-patient-search
-                  [patients]="patients"
-                  [loading]="patientsLoading"
-                  [searched]="patientsSearched"
-                  [selectedPatientId]="selectedPatient?.id ?? null"
-                  (termChange)="onSearchTerm($event)"
-                  (selectPatient)="onSelectPatient($event)">
-                </app-v3-patient-search>
+                <ng-container *ngTemplateOutlet="modeToggleTpl"></ng-container>
+                <ng-container *ngTemplateOutlet="subjectSearchTpl"></ng-container>
               }
               @if (wizardStep === 'appointments') {
-                <app-v3-patient-appointments-list
-                  [appointments]="appointments"
-                  [loading]="appointmentsLoading"
-                  [patientSelected]="!!selectedPatient"
-                  [selectedAppointmentId]="rebookingAppointment?.id ?? null"
-                  (goToCalendar)="onGoToCalendar($event)"
-                  (editAppointment)="onEditAppointment($event)"
-                  (moveAppointment)="onMoveAppointment($event)">
-                </app-v3-patient-appointments-list>
+                <ng-container *ngTemplateOutlet="filterBarTpl"></ng-container>
+                <ng-container *ngTemplateOutlet="appointmentsListTpl"></ng-container>
               }
               @if (wizardStep === 'rebooking') {
                 <ng-container *ngTemplateOutlet="rebookingTpl"></ng-container>
@@ -206,6 +208,78 @@ type WizardStep = 'search' | 'appointments' | 'rebooking';
         }
       }
     </div>
+
+    <!-- ===== Blocchi condivisi tra layout a pannelli e vista guidata =====
+         Definiti una volta sola: la scelta paziente/operatore, i filtri e la
+         lista devono comportarsi in modo identico nelle due viste, e l'unico
+         modo per esserne certi e' che siano lo stesso markup. -->
+
+    <ng-template #modeToggleTpl>
+      <div class="mode-toggle">
+        <mat-button-toggle-group [value]="searchMode"
+                                 (change)="onSearchModeChange($event.value)"
+                                 hideSingleSelectionIndicator>
+          <mat-button-toggle value="patient" matTooltip="Cerca gli appuntamenti di un paziente">
+            <mat-icon>person</mat-icon>
+            Paziente
+          </mat-button-toggle>
+          <mat-button-toggle value="operator"
+                             matTooltip="Cerca gli appuntamenti di un operatore, comprese le fasce non retribuite">
+            <mat-icon>badge</mat-icon>
+            Operatore
+          </mat-button-toggle>
+        </mat-button-toggle-group>
+      </div>
+    </ng-template>
+
+    <ng-template #subjectSearchTpl>
+      @if (searchMode === 'patient') {
+        <app-v3-patient-search
+          [patients]="patients"
+          [loading]="patientsLoading"
+          [searched]="patientsSearched"
+          [selectedPatientId]="selectedPatient?.id ?? null"
+          (termChange)="onSearchTerm($event)"
+          (selectPatient)="onSelectPatient($event)">
+        </app-v3-patient-search>
+      } @else {
+        <app-v3-operator-search
+          [groups]="operatorGroups"
+          [selectedOperatorId]="selectedOperator?.id ?? null"
+          (termChange)="onOperatorTerm($event)"
+          (selectOperator)="onSelectOperator($event)">
+        </app-v3-operator-search>
+      }
+    </ng-template>
+
+    <ng-template #filterBarTpl>
+      <app-v3-appointments-filter-bar
+        [mode]="searchMode"
+        [range]="range"
+        [paymentFilter]="paymentFilter"
+        [patientFilter]="patientFilter"
+        [canExport]="appointments.length > 0"
+        (rangeChange)="onRangeChange($event)"
+        (presetSelected)="onPresetSelected($event)"
+        (paymentFilterChange)="onPaymentFilterChange($event)"
+        (patientFilterChange)="onPatientFilterChange($event)"
+        (print)="onPrint()"
+        (exportCsv)="onExportCsv()">
+      </app-v3-appointments-filter-bar>
+    </ng-template>
+
+    <ng-template #appointmentsListTpl>
+      <app-v3-appointments-list
+        [appointments]="appointments"
+        [loading]="appointmentsLoading"
+        [mode]="searchMode"
+        [subjectSelected]="subjectSelected"
+        [selectedAppointmentId]="rebookingAppointment?.id ?? null"
+        (goToCalendar)="onGoToCalendar($event)"
+        (editAppointment)="onEditAppointment($event)"
+        (moveAppointment)="onMoveAppointment($event)">
+      </app-v3-appointments-list>
+    </ng-template>
 
     <!-- Pannello riprenotazione: condiviso tra i due layout -->
     <ng-template #rebookingTpl>
@@ -325,8 +399,38 @@ type WizardStep = 'search' | 'appointments' | 'rebooking';
     .panel-search {
       flex: 0 0 250px;
     }
+    /* Il toggle sta in cima, la ricerca prende il resto dell'altezza. */
+    .mode-toggle {
+      flex: 0 0 auto;
+      margin-bottom: 8px;
+    }
+    .mode-toggle mat-button-toggle-group { width: 100%; }
+    .mode-toggle mat-button-toggle { flex: 1; }
+    ::ng-deep .mode-toggle .mat-button-toggle-label-content {
+      line-height: 30px;
+      font-size: 0.76rem;
+      padding: 0 8px;
+    }
+    ::ng-deep .mode-toggle .mat-button-toggle-label-content .mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      margin-right: 3px;
+      vertical-align: middle;
+    }
+    .panel-search app-v3-patient-search,
+    .panel-search app-v3-operator-search,
+    .panel-appts app-v3-appointments-list,
+    .wizard-content app-v3-patient-search,
+    .wizard-content app-v3-operator-search,
+    .wizard-content app-v3-appointments-list {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
     .panel-appts {
-      flex: 0 0 340px;
+      /* Un filo piu' largo del paziente: qui ci stanno anche i filtri di
+         periodo, che sotto i ~360px iniziano ad andare a capo. */
+      flex: 0 0 366px;
     }
     .panel-rebooking {
       flex: 1 1 auto;
@@ -391,6 +495,7 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
   private patientService = inject(PatientService);
   private appointmentService = inject(AvailabilityAppointmentService);
   private rebookingService = inject(RebookingService);
+  private exportService = inject(AppointmentsExportService);
 
   /** Quante settimane copre una "pagina" di navigazione slot. */
   private static readonly PAGE_WEEKS = 2;
@@ -402,15 +507,32 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
   rebookingExpanded = false;
   minimized = false;
 
+  // ── UI state: modalita' di ricerca ──
+  searchMode: SearchMode = 'patient';
+
   // ── UI state: ricerca paziente ──
   patients: Patient[] = [];
   patientsLoading = false;
   patientsSearched = false;
   selectedPatient: Patient | null = null;
 
-  // ── UI state: appuntamenti del paziente ──
+  // ── UI state: ricerca operatore ──
+  /** Operatori raggruppati per categoria, gia' filtrati dal termine cercato. */
+  operatorGroups: OperatorGroup[] = [];
+  selectedOperator: RebookingOperatorInput | null = null;
+  private operatorTerm = '';
+
+  // ── UI state: appuntamenti del soggetto scelto ──
+  /** Risultato grezzo della query, prima dei filtri lato client. */
+  private loadedAppointments: AvailabilityAppointment[] = [];
   appointments: AvailabilityAppointment[] = [];
   appointmentsLoading = false;
+
+  // ── UI state: filtri della lista ──
+  /** `to` vuoto = nessun limite superiore (default della ricerca paziente). */
+  range: DateRange = { from: '', to: '' };
+  paymentFilter: PaymentFilter = 'all';
+  patientFilter = '';
 
   // ── UI state: riprenotazione ──
   rebookingAppointment: AvailabilityAppointment | null = null;
@@ -444,6 +566,8 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
   private pendingMoveAppointmentId: string | null = null;
 
   ngOnInit(): void {
+    this.range = this.defaultRange();
+
     this.searchTerm$.pipe(
       debounceTime(300),
       distinctUntilChanged(),
@@ -528,6 +652,17 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
 
   // ==================== RICERCA PAZIENTE ====================
 
+  /** Un soggetto è stato scelto: la lista appuntamenti ha senso. */
+  get subjectSelected(): boolean {
+    return this.searchMode === 'operator' ? !!this.selectedOperator : !!this.selectedPatient;
+  }
+
+  /** Nome mostrato al centro della barra del titolo. */
+  get subjectName(): string {
+    if (this.searchMode === 'operator') return this.selectedOperator?.name ?? '';
+    return this.selectedPatient ? this.patientName(this.selectedPatient) : '';
+  }
+
   onSearchTerm(term: string): void {
     const trimmed = term.trim();
     if (trimmed.length < 2) {
@@ -561,44 +696,279 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
 
   onSelectPatient(patient: Patient): void {
     this.selectedPatient = patient;
+    this.selectedOperator = null;
+    this.resetSelection();
+    this.reloadAppointments();
+    if (this.layout === 'wizard') this.wizardStep = 'appointments';
+  }
+
+  // ==================== RICERCA OPERATORE ====================
+
+  /**
+   * Cambio fra ricerca per paziente e per operatore. Azzera cio' che
+   * apparteneva alla modalita' precedente (soggetto, lista, spostamento in
+   * corso) e riporta il periodo al default della nuova: la ricerca paziente
+   * guarda avanti senza limite, quella per operatore ha bisogno di un
+   * intervallo chiuso perche' l'agenda di un operatore e' fitta.
+   */
+  onSearchModeChange(mode: SearchMode): void {
+    if (mode === this.searchMode) return;
+    this.searchMode = mode;
+    this.selectedPatient = null;
+    this.selectedOperator = null;
+    this.patients = [];
+    this.patientsSearched = false;
+    this.loadedAppointments = [];
+    this.appointments = [];
+    this.paymentFilter = 'all';
+    this.patientFilter = '';
+    this.range = this.defaultRange();
+    this.resetSelection();
+    if (mode === 'operator') this.rebuildOperatorGroups();
+    if (this.layout === 'wizard') this.wizardStep = 'search';
+    this.cdr.markForCheck();
+  }
+
+  onOperatorTerm(term: string): void {
+    this.operatorTerm = term.toLowerCase();
+    this.rebuildOperatorGroups();
+    this.cdr.markForCheck();
+  }
+
+  onSelectOperator(operator: RebookingOperatorInput): void {
+    this.selectedOperator = operator;
+    this.selectedPatient = null;
+    this.resetSelection();
+    this.reloadAppointments();
+    if (this.layout === 'wizard') this.wizardStep = 'appointments';
+  }
+
+  /**
+   * Raggruppa gli operatori del calendario per categoria, applicando il
+   * termine cercato. Campo STABILE invece di getter: un getter che ricostruisce
+   * l'array a ogni giro, legato a un @Input OnPush, causa re-render continui.
+   */
+  private rebuildOperatorGroups(): void {
+    const term = this.operatorTerm;
+    const matching = (this.data.operators ?? [])
+      .filter(o => !term || o.name.toLowerCase().includes(term));
+
+    const byCategory = new Map<string, RebookingOperatorInput[]>();
+    for (const op of matching) {
+      const key = op.macroCategory || 'other';
+      const list = byCategory.get(key) ?? [];
+      list.push(op);
+      byCategory.set(key, list);
+    }
+
+    this.operatorGroups = Array.from(byCategory.entries())
+      .map(([category, operators]) => ({
+        category,
+        label: this.categoryLabel(category),
+        operators: [...operators].sort((a, b) => a.name.localeCompare(b.name, 'it')),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'it'));
+  }
+
+  private categoryLabel(category: string): string {
+    const labels: Record<string, string> = {
+      doctor: 'Medici',
+      physiotherapist: 'Fisioterapisti',
+      gym_instructor: 'Istruttori palestra',
+      other: 'Altro',
+    };
+    return labels[String(category).toLowerCase()] || category;
+  }
+
+  // ==================== FILTRI DELLA LISTA ====================
+
+  onRangeChange(range: DateRange): void {
+    this.range = range;
+    this.reloadAppointments();
+  }
+
+  onPresetSelected(preset: DateRangePreset): void {
+    this.range = resolveDateRangePreset(preset);
+    this.reloadAppointments();
+  }
+
+  onPaymentFilterChange(filter: PaymentFilter): void {
+    this.paymentFilter = filter;
+    this.applyFilters();
+    this.cdr.markForCheck();
+  }
+
+  onPatientFilterChange(term: string): void {
+    this.patientFilter = term;
+    this.applyFilters();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Periodo iniziale, uguale per entrambe le modalita': da oggi in avanti,
+   * senza data di fine.
+   *
+   * Per l'operatore era la settimana in corso, cioe' un intervallo chiuso: si
+   * apriva la ricerca e compariva una data di fine che nessuno aveva scelto,
+   * tagliando fuori tutto il resto dell'agenda. Chi cerca gli appuntamenti di
+   * qualcuno vuole vedere quello che ha davanti, non fino a domenica — e per
+   * restringere ci sono gia' i periodi rapidi, "Questa settimana" compreso.
+   */
+  private defaultRange(): DateRange {
+    return resolveDateRangePreset('fromToday');
+  }
+
+  // ==================== APPUNTAMENTI ====================
+
+  /** Ricarica dal backend secondo modalita' e periodo correnti. */
+  private reloadAppointments(): void {
+    if (this.searchMode === 'patient') {
+      if (!this.selectedPatient) return;
+      this.loadAppointments(this.selectedPatient.id);
+    } else {
+      if (!this.selectedOperator) return;
+      this.loadOperatorAppointments(this.selectedOperator.id);
+    }
+  }
+
+  private loadAppointments(patientId: string): void {
+    this.appointmentsLoading = true;
+    this.cdr.markForCheck();
+    const from = this.range.from || toIsoDate(new Date());
+    this.appointmentService.getAppointmentsByPatient(patientId, from)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (appts) => this.onAppointmentsLoaded(appts),
+        error: () => this.onAppointmentsLoaded([]),
+      });
+  }
+
+  /**
+   * Appuntamenti di un operatore nel periodo scelto. Include le fasce non
+   * retribuite: sono proprio quelle che la ricerca per paziente non puo'
+   * mostrare, non avendo un paziente a cui agganciarsi.
+   */
+  private loadOperatorAppointments(operatorId: string): void {
+    this.appointmentsLoading = true;
+    this.cdr.markForCheck();
+    const from = this.range.from || toIsoDate(new Date());
+    // `to` vuoto significa intervallo APERTO, non "un giorno solo": si omette
+    // e il backend legge da `from` in poi. Prima veniva fatto collassare su
+    // `from`, e il filtro "Da oggi in poi" avrebbe mostrato solo oggi.
+    const to = this.range.to || undefined;
+    this.appointmentService.getAppointmentsByOperator(operatorId, from, to)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (appts) => this.onAppointmentsLoaded(appts),
+        error: () => this.onAppointmentsLoaded([]),
+      });
+  }
+
+  private onAppointmentsLoaded(appts: AvailabilityAppointment[]): void {
+    this.loadedAppointments = appts;
+    this.appointmentsLoading = false;
+    this.applyFilters();
+    this.refreshRebookingAppointmentFromList();
+    // Preload: apri lo spostamento sull'appuntamento richiesto.
+    if (this.pendingMoveAppointmentId) {
+      const target = this.appointments.find(
+        a => a.id === this.pendingMoveAppointmentId,
+      );
+      this.pendingMoveAppointmentId = null;
+      if (target) this.onMoveAppointment(target);
+    }
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Filtri lato client sul risultato gia' caricato: il periodo restringe
+   * gia' il volume, e cosi' cambiare tipo fascia o nome paziente e' immediato
+   * invece di costare un giro di rete.
+   */
+  private applyFilters(): void {
+    let result = this.loadedAppointments;
+
+    // Limite superiore del periodo: la query per paziente non lo prevede.
+    if (this.range.to) {
+      result = result.filter(a => String(a.appointmentDate).slice(0, 10) <= this.range.to);
+    }
+
+    if (this.searchMode === 'operator') {
+      if (this.paymentFilter === 'paid') {
+        result = result.filter(a => !a.nonRetribuito);
+      } else if (this.paymentFilter === 'unpaid') {
+        result = result.filter(a => !!a.nonRetribuito);
+      }
+
+      // Ricerca tollerante su tutto ciò che identifica l'appuntamento: il
+      // titolo (che per le fasce non retribuite È il motivo — "pausa pranzo",
+      // "riunione"), il paziente, le note e i servizi. "riun" trova
+      // "Riunione", "pausa pra" trova "Pausa pranzo", un refuso non azzera
+      // i risultati.
+      if (this.patientFilter.trim()) {
+        result = result.filter(a => fuzzyMatchesAny(
+          [
+            a.clientName,
+            a.notes,
+            ...(a.appointmentServices ?? []).map(s => s.service?.name),
+          ],
+          this.patientFilter,
+        ));
+      }
+    }
+
+    this.appointments = result;
+  }
+
+  // ==================== STAMPA / EXPORT ====================
+
+  onPrint(): void {
+    this.exportService.print(this.exportTitle(), this.exportSubtitle(), this.appointments);
+  }
+
+  onExportCsv(): void {
+    const slug = this.exportTitle()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    this.exportService.exportCsv(slug || 'appuntamenti', this.appointments);
+  }
+
+  /** Intestazione del documento: di chi è l'elenco che si sta portando via. */
+  private exportTitle(): string {
+    const who = this.subjectName || (this.searchMode === 'operator' ? 'Operatore' : 'Paziente');
+    return this.searchMode === 'operator'
+      ? `Agenda di ${who}`
+      : `Appuntamenti di ${who}`;
+  }
+
+  /** Sottotitolo: il periodo e i filtri attivi, altrimenti il foglio mente. */
+  private exportSubtitle(): string {
+    const parts: string[] = [];
+    if (this.range.from && this.range.to) {
+      parts.push(`dal ${this.formatItalianDate(this.range.from)} al ${this.formatItalianDate(this.range.to)}`);
+    } else if (this.range.from) {
+      parts.push(`dal ${this.formatItalianDate(this.range.from)}`);
+    }
+    if (this.searchMode === 'operator') {
+      if (this.paymentFilter === 'paid') parts.push('solo retribuiti');
+      if (this.paymentFilter === 'unpaid') parts.push('solo non retribuiti');
+      if (this.patientFilter.trim()) parts.push(`paziente: ${this.patientFilter.trim()}`);
+    }
+    return parts.join(' · ');
+  }
+
+  private formatItalianDate(date: string): string {
+    return new Date(date + 'T00:00:00').toLocaleDateString('it-IT');
+  }
+
+  /** Azzera lo spostamento in corso (cambio soggetto o modalita'). */
+  private resetSelection(): void {
     this.rebookingAppointment = null;
     this.selectedSlot = null;
     this.slotsByDay = [];
     this.slotsSearched = false;
     this.rebookingExpanded = false;
-    this.loadAppointments(patient.id);
-    if (this.layout === 'wizard') this.wizardStep = 'appointments';
-  }
-
-  // ==================== APPUNTAMENTI PAZIENTE ====================
-
-  private loadAppointments(patientId: string): void {
-    this.appointmentsLoading = true;
-    this.cdr.markForCheck();
-    const today = new Date().toISOString().split('T')[0];
-    this.appointmentService.getAppointmentsByPatient(patientId, today)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (appts) => {
-          this.appointments = appts;
-          this.appointmentsLoading = false;
-          this.refreshRebookingAppointmentFromList();
-          // Preload: apri lo spostamento sull'appuntamento richiesto.
-          if (this.pendingMoveAppointmentId) {
-            const target = this.appointments.find(
-              a => a.id === this.pendingMoveAppointmentId,
-            );
-            this.pendingMoveAppointmentId = null;
-            if (target) this.onMoveAppointment(target);
-          }
-          this.cdr.markForCheck();
-        },
-        error: () => {
-          this.appointments = [];
-          this.appointmentsLoading = false;
-          this.cdr.markForCheck();
-        },
-      });
   }
 
   /** Riallinea rebookingAppointment con la versione fresca dalla lista. */
@@ -615,9 +985,7 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
   /** Apre il form standard di modifica appuntamento (dalla lista). */
   async onEditAppointment(appointment: AvailabilityAppointment): Promise<void> {
     const changed = await this.data.editAppointment?.(appointment);
-    if (changed && this.selectedPatient) {
-      this.loadAppointments(this.selectedPatient.id);
-    }
+    if (changed) this.reloadAppointments();
   }
 
   // ==================== RIPRENOTAZIONE ====================
@@ -715,13 +1083,13 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
   async onEditRebookingAppointment(): Promise<void> {
     if (!this.rebookingAppointment) return;
     const changed = await this.data.editAppointment?.(this.rebookingAppointment);
-    if (changed && this.selectedPatient) {
-      // loadAppointments riallinea rebookingAppointment con i dati freschi;
+    if (changed) {
+      // Il ricaricamento riallinea rebookingAppointment con i dati freschi;
       // la ricerca slot va rilanciata dall'utente coi nuovi dati.
       this.slotsByDay = [];
       this.slotsSearched = false;
       this.selectedSlot = null;
-      this.loadAppointments(this.selectedPatient.id);
+      this.reloadAppointments();
     }
   }
 
@@ -801,7 +1169,7 @@ export class AppuntamentiDialogContainer implements OnInit, OnDestroy {
         endTime: slot.endTime,
         operatorId: slot.operatorId !== appt.operatorId ? slot.operatorId : undefined,
       }));
-      if (this.selectedPatient) this.loadAppointments(this.selectedPatient.id);
+      this.reloadAppointments();
       this.rebookingAppointment = null;
       this.selectedSlot = null;
       this.slotsByDay = [];

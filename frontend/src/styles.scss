@@ -289,6 +289,46 @@ body {
   }
 }
 
+/* Dialog Nuovo/Modifica Appuntamento - draggable & resizable.
+   Stesso pattern delle altre finestre: resize nativo del browser sul pane,
+   propagato al contenuto interno. La larghezza di apertura la decide chi apre
+   il dialog (calendar v3: 520px); qui restano solo i limiti entro cui
+   l'utente puo' ridimensionare. */
+.event-mat-dialog-pane {
+  resize: both;
+  overflow: auto;
+  min-width: 440px;
+  min-height: 320px;
+  max-width: 95vw;
+  max-height: 92vh;
+
+  .mat-mdc-dialog-container {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+
+    .mdc-dialog__surface {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+  }
+
+  /* Il contenuto scrolla dentro la finestra ridimensionata, non oltre. */
+  .mat-mdc-dialog-content {
+    flex: 1 1 auto;
+    max-height: none;
+  }
+
+  /* Campi piu' bassi solo dentro questa finestra: al 100% di zoom il modulo
+     appuntamento risultava troppo ingombrante. Densita' -2 = campi da 48px
+     invece di 56px, senza toccare il resto dell'applicazione. Il mixin emette
+     custom properties sul pane, ereditate da tutti i campi dentro la finestra. */
+  @include mat.form-field-density(-2);
+}
+
 /* Scheda Paziente (workspace istruttori) - riquadro non modale, draggable
    & resizable. Stesso pattern di appuntamenti-dialog-pane: resize nativo
    del browser propagato al contenuto interno (title-bar + body in flex). */

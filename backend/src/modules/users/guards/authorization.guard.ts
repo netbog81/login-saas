@@ -5,6 +5,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { AppUserService } from '../services/app-user.service';
+import { PermissionDenialService } from '../services/permission-denial.service';
 
 export const REQUIRED_PERMISSIONS_KEY = 'requiredPermissions';
 export const RequirePermissions = (...permissions: string[]) =>
@@ -30,6 +31,7 @@ export class AuthorizationGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly appUserService: AppUserService,
+    private readonly denials: PermissionDenialService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -54,11 +56,30 @@ export class AuthorizationGuard implements CanActivate {
       throw new ForbiddenException('No tenant context');
     }
 
+    const operation = this.describeOperation(context);
+
     if (this.useOpa) {
-      return this.evaluateWithOpa(tenantContext, requiredPermissions, request);
+      return this.evaluateWithOpa(tenantContext, requiredPermissions, request, operation);
     }
 
-    return this.evaluateLocally(tenantContext, requiredPermissions);
+    return this.evaluateLocally(tenantContext, requiredPermissions, operation);
+  }
+
+  /**
+   * Cosa stava chiedendo l'utente, per lo storico dei rifiuti: il nome del
+   * campo GraphQL, oppure metodo e path per le rotte REST. Serve a dire DOVE
+   * nella UI ha trovato il muro, che è la prima cosa che si vuole sapere.
+   */
+  private describeOperation(context: ExecutionContext): string | undefined {
+    try {
+      if (context.getType<'http' | 'graphql'>() === 'graphql') {
+        return GqlExecutionContext.create(context).getInfo()?.fieldName;
+      }
+      const req = context.switchToHttp().getRequest();
+      return req ? `${req.method} ${req.route?.path ?? req.url}` : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -68,22 +89,41 @@ export class AuthorizationGuard implements CanActivate {
   private async evaluateLocally(
     tenantContext: any,
     requiredPermissions: string[],
+    operation?: string,
   ): Promise<boolean> {
     // Cerca l'appUser tramite keycloak_id (dal JWT)
     const appUser = await this.appUserService.findByKeycloakId(tenantContext.userId);
     if (!appUser) {
       this.logger.warn(`No app_user found for keycloak_id ${tenantContext.userId}`);
-      throw new ForbiddenException('User not found in app');
+      await this.denials.record({
+        keycloakId: tenantContext.userId,
+        email: tenantContext.email,
+        permissions: requiredPermissions,
+        operation,
+        reason: 'user_not_found',
+      });
+      throw new ForbiddenException('Utente non presente in questo studio');
     }
 
     const userPermissions = await this.appUserService.getUserPermissions(appUser.id);
-    const hasAll = requiredPermissions.every((p) => userPermissions.includes(p));
+    const missing = requiredPermissions.filter((p) => !userPermissions.includes(p));
 
-    if (!hasAll) {
-      this.logger.warn(
-        `User ${appUser.email} missing permissions: ${requiredPermissions.filter((p) => !userPermissions.includes(p)).join(', ')}`,
+    if (missing.length > 0) {
+      this.logger.warn(`User ${appUser.email} missing permissions: ${missing.join(', ')}`);
+      await this.denials.record({
+        appUserId: appUser.id,
+        keycloakId: appUser.keycloakId,
+        email: appUser.email,
+        permissions: missing,
+        operation,
+        reason: 'missing_permission',
+      });
+      // Il messaggio nomina il permesso: da quando gli errori GraphQL non sono
+      // più mascherati arriva fino allo schermo, e «non hai i permessi» senza
+      // dire quale costringe a cercare nei log ciò che sappiamo già.
+      throw new ForbiddenException(
+        `Permesso mancante: ${missing.join(', ')}`,
       );
-      throw new ForbiddenException('Insufficient permissions');
     }
 
     return true;
@@ -97,6 +137,7 @@ export class AuthorizationGuard implements CanActivate {
     tenantContext: any,
     requiredPermissions: string[],
     request: any,
+    operation?: string,
   ): Promise<boolean> {
     // TODO: Implementare chiamata a OPA quando il sidecar sara' attivo
     // const opaInput = {
@@ -123,6 +164,6 @@ export class AuthorizationGuard implements CanActivate {
 
     // Fallback: valutazione locale finche' OPA non e' attivo
     this.logger.warn('OPA mode enabled but sidecar not implemented yet, falling back to local evaluation');
-    return this.evaluateLocally(tenantContext, requiredPermissions);
+    return this.evaluateLocally(tenantContext, requiredPermissions, operation);
   }
 }

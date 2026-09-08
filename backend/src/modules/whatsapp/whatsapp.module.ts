@@ -22,6 +22,8 @@ import { WhatsappUnreadSyncJob } from './chat/services/whatsapp-unread-sync.job'
 
 // Resolvers
 import { WhatsappConfigResolver } from './config/resolvers/whatsapp-config.resolver';
+import { NotificationChannelService } from './notifications/services/notification-channel.service';
+import { NotificationChannelResolver } from './notifications/resolvers/notification-channel.resolver';
 import { WhatsappTemplateResolver } from './template/resolvers/whatsapp-template.resolver';
 import { WhatsappLogResolver } from './log/resolvers/whatsapp-log.resolver';
 import { WhatsappLogManagementResolver } from './log/resolvers/whatsapp-log-management.resolver';
@@ -33,6 +35,8 @@ import { WhatsappWebhookController } from './webhook/webhook.controller';
 
 // Availability module for circular dependency
 import { AvailabilityModule } from '../availability/availability.module';
+import { WhatsappDiagnosticsService } from './diagnostics/services/whatsapp-diagnostics.service';
+import { WhatsappDiagnosticsResolver } from './diagnostics/resolvers/whatsapp-diagnostics.resolver';
 // Task Message module for webhook routing
 import { TaskMessageModule } from '../task-message/task-message.module';
 
@@ -45,6 +49,9 @@ import { TaskMessageModule } from '../task-message/task-message.module';
   providers: [
     CryptoService,
     WhatsappConfigService,
+    NotificationChannelService,
+    WhatsappDiagnosticsService,
+    WhatsappDiagnosticsResolver,
     WhatsappTemplateService,
     WhatsappLogService,
     WhatsappWebhookService,
@@ -53,6 +60,7 @@ import { TaskMessageModule } from '../task-message/task-message.module';
     WhatsappChatService,
     WhatsappUnreadSyncJob,
     WhatsappConfigResolver,
+    NotificationChannelResolver,
     WhatsappTemplateResolver,
     WhatsappLogResolver,
     WhatsappLogManagementResolver,
@@ -61,7 +69,12 @@ import { TaskMessageModule } from '../task-message/task-message.module';
   exports: [
     WhatsappGatewayService,
     WhatsappConfigService,
-    WhatsappChatService],
+    NotificationChannelService,
+    WhatsappDiagnosticsService,
+    WhatsappChatService,
+    // Serve al calendario dei pazienti (modulo availability), che compone da
+    // sé il testo dell'email con i template del tenant.
+    WhatsappTemplateService],
 })
 export class WhatsappModule {
   // NOTA containerization-2026-06-11: rimosso `onModuleInit` che chiamava

@@ -15,6 +15,8 @@ export const TREATMENT_BILLING_FIELDS = gql`
     amendmentRevision
     accountingBillableEventId
     accountingDocumentId
+    accountingExternalRefNumber
+    accountingExternalRefDate
     accountingInvoiceUrl
     accountingInvoiceIssuedAt
     accountingDocumentType
@@ -64,12 +66,15 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
     scontoFE
     price
     accountingTotalAmount
+    accountingAdvanceCoveredAmount
     accountingTreatmentLinesAmount
     accountingDocumentTreatmentCount
     isPaid
     paymentMethod
+    paymentMethodLabel
     paidAt
     collectedBy
+    collectedByName
     readyForBilling
     readyForBillingAt
     isInvoicedToPatient
@@ -85,6 +90,12 @@ export const TREATMENT_DETAILS_FRAGMENT = gql`
     painLevel
     painBefore
     painAfter
+    rescheduleRequested
+    reschedulingType
+    suggestInDays
+    suggestDateRangeStart
+    suggestDateRangeEnd
+    reschedulingNotes
     startedAt
     completedAt
     closedAt
@@ -172,6 +183,7 @@ export const TREATMENTS_FOR_SECRETARY = gql`
     $readyForBilling: Boolean
     $isInvoicedToPatient: Boolean
     $scontoFE: Boolean
+    $withoutAppointment: Boolean
     $limit: Int
     $offset: Int
   ) {
@@ -184,6 +196,7 @@ export const TREATMENTS_FOR_SECRETARY = gql`
       readyForBilling: $readyForBilling
       isInvoicedToPatient: $isInvoicedToPatient
       scontoFE: $scontoFE
+      withoutAppointment: $withoutAppointment
       limit: $limit
       offset: $offset
     ) {
@@ -203,6 +216,7 @@ export const TREATMENTS_FOR_SECRETARY_COUNT = gql`
     $readyForBilling: Boolean
     $isInvoicedToPatient: Boolean
     $scontoFE: Boolean
+    $withoutAppointment: Boolean
   ) {
     treatmentsForSecretaryCount(
       patientId: $patientId
@@ -213,6 +227,7 @@ export const TREATMENTS_FOR_SECRETARY_COUNT = gql`
       readyForBilling: $readyForBilling
       isInvoicedToPatient: $isInvoicedToPatient
       scontoFE: $scontoFE
+      withoutAppointment: $withoutAppointment
     )
   }
 `;
@@ -463,6 +478,31 @@ export const UPDATE_TREATMENT_INVOICE_LINE = gql`
 export const DELETE_TREATMENT_INVOICE_LINE = gql`
   mutation DeleteTreatmentInvoiceLine($id: ID!) {
     deleteTreatmentInvoiceLine(id: $id)
+  }
+`;
+
+/**
+ * Cestina un trattamento ORFANO (appuntamento cancellato dal calendario).
+ * Il backend, se il trattamento era già stato inviato ad accounting,
+ * annulla PRIMA l'invio e cestina POI, nella stessa transazione.
+ */
+export const DELETE_ORPHAN_TREATMENT = gql`
+  mutation DeleteOrphanTreatment($id: ID!) {
+    deleteOrphanTreatment(id: $id)
+  }
+`;
+
+/**
+ * Pulizia in blocco degli orfani selezionati. Non atomica per scelta: torna
+ * l'esito riga per riga, con il motivo del blocco già formulato per l'utente.
+ */
+export const DELETE_ORPHAN_TREATMENTS = gql`
+  mutation DeleteOrphanTreatments($ids: [ID!]!) {
+    deleteOrphanTreatments(ids: $ids) {
+      treatmentId
+      deleted
+      reason
+    }
   }
 `;
 

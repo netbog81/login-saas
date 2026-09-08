@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID, Int, Float, ResolveField, Parent, registerEnumType } from '@nestjs/graphql';
-import { ForbiddenException, UseGuards } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UseGuards } from '@nestjs/common';
 import { Treatment, TreatmentStatus } from '../entities/treatment.entity';
 import { TreatmentService as TreatmentServiceEntity } from '../entities/treatment-service.entity';
 import { TreatmentInvoiceLine } from '../entities/treatment-invoice-line.entity';
@@ -25,8 +25,11 @@ import {
   CurrentUser,
   CurrentUserContext,
 } from '../../users/decorators/current-user.decorator';
+import { OrphanDeletionResult } from '../dto/orphan-deletion-result.output';
 import { OwnershipGuard, RequireOwnership } from '../guards/ownership.guard';
-import { BillingWriteGuard } from '../guards/billing-write.guard';
+import { BillingWriteGuard, BILLING_SECRETARY_ROLES } from '../guards/billing-write.guard';
+import { AppUser } from '../../users/entities/app-user.entity';
+import { Operator as OperatorEntity } from '../entities/operator.entity';
 import { TenantContextService } from '@curandis/tenant-datasource';
 
 /**
@@ -49,12 +52,16 @@ registerEnumType(TreatmentCallerRole, { name: 'TreatmentCallerRole' });
  * Ruoli Keycloak che operano "da segreteria" sulle azioni di pagamento
  * (stessa lista di BillingWriteGuard.BILLING_ROLES).
  */
-const PAYMENT_SECRETARY_ROLES = [
-  'segreteria',
-  'admin',
-  'amministratore',
-  'superadmin',
-];
+const PAYMENT_SECRETARY_ROLES = BILLING_SECRETARY_ROLES;
+
+/**
+ * Tetto alla pulizia in blocco dei trattamenti orfani. Ogni id apre la sua
+ * transazione e può accodare un `treatment.cancelled` verso accounting:
+ * senza un limite una selezione grande terrebbe occupata la richiesta per
+ * minuti. La pagina lista al massimo 100 righe, quindi il tetto non si tocca
+ * in uso normale.
+ */
+const MAX_ORPHAN_BATCH = 100;
 
 @Resolver(() => Treatment)
 export class TreatmentResolver {
@@ -117,6 +124,42 @@ export class TreatmentResolver {
       relations: ['service'],
       order: { orderPosition: 'ASC' },
     });
+  }
+
+  /**
+   * ResolveField: nome di chi ha registrato l'incasso.
+   *
+   * `collectedBy` è un `AppUser.id` (normalizzato da
+   * TreatmentService.resolveCollectedByAppUserId), ma le righe storiche
+   * possono contenere un `Operator.id` o un `sub` Keycloak: proviamo tutte e
+   * tre le chiavi prima di arrendersi, così anche gli incassi vecchi hanno un
+   * nome invece di un uuid muto.
+   */
+  @ResolveField(() => String, { nullable: true })
+  async collectedByName(@Parent() treatment: Treatment): Promise<string | null> {
+    const id = treatment.collectedBy;
+    if (!id) return null;
+
+    // Una sola query per le due chiavi possibili (AppUser.id o sub Keycloak):
+    // questo campo si risolve per riga di lista, non vale spenderne due.
+    const appUser = await this.dataSource
+      .getRepository(AppUser)
+      .createQueryBuilder('u')
+      .where('u.id = :id', { id })
+      .orWhere('u.keycloakId = :raw', { raw: id })
+      .getOne();
+    if (appUser) {
+      return [appUser.name, appUser.surname].filter(Boolean).join(' ').trim() || null;
+    }
+
+    const operator = await this.dataSource
+      .getRepository(OperatorEntity)
+      .findOne({ where: { id } });
+    if (operator) {
+      return [operator.name, operator.surname].filter(Boolean).join(' ').trim() || null;
+    }
+
+    return null;
   }
 
   /**
@@ -407,7 +450,16 @@ export class TreatmentResolver {
     @Args('callerRole', { type: () => TreatmentCallerRole, nullable: true }) _callerRole?: TreatmentCallerRole,
     @CurrentUser() user?: CurrentUserContext,
   ): Promise<Treatment> {
-    return this.treatmentService.recordPayment(id, input, this.derivePaymentRole(user));
+    // L'AppUser del chiamante è la chiave sia dell'autorizzazione sconto FE
+    // (trattamento proprio vs impostazione "tutti possono incassare") sia
+    // dell'attribuzione dell'incasso: il client non può dichiararla.
+    const actorUserId = await this.resolveAppUserId(user);
+    return this.treatmentService.recordPayment(
+      id,
+      input,
+      this.derivePaymentRole(user),
+      actorUserId ?? null,
+    );
   }
 
   /**
@@ -499,6 +551,64 @@ export class TreatmentResolver {
   ): Promise<boolean> {
     const deletedByUserId = await this.resolveAppUserId(user);
     return this.treatmentService.delete(id, deletedByUserId);
+  }
+
+  /**
+   * Mutation: cestina un trattamento ORFANO — un trattamento il cui
+   * appuntamento è stato cancellato dal calendario, che in lista compare
+   * senza ora di riferimento.
+   *
+   * Riservata a segreteria/admin (BillingWriteGuard) e non ai permessi
+   * `treatment_delete_own/any`: la segreteria non li ha (li hanno solo gli
+   * operatori sui propri trattamenti e gli admin), ma è proprio lei a fare
+   * la pulizia della lista. I vincoli veri stanno nel service, che rifiuta
+   * un trattamento non orfano, già fatturato, pagato con voucher FE o già
+   * incluso in un conguaglio operatore.
+   *
+   * Se il trattamento era già stato inviato ad accounting (SENT/PENDING),
+   * il service annulla PRIMA l'invio (evento `treatment.cancelled`) e
+   * cestina POI, nella stessa transazione: altrimenti resterebbe un
+   * billable appeso in "Da fatturare" senza più un trattamento dietro.
+   */
+  @Mutation(() => Boolean, { name: 'deleteOrphanTreatment' })
+  @UseGuards(BillingWriteGuard)
+  async deleteOrphanTreatment(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<boolean> {
+    const deletedByUserId = await this.resolveAppUserId(user);
+    if (!deletedByUserId) {
+      throw new ForbiddenException(
+        'deleteOrphanTreatment: utente applicativo non risolto da CurrentUser',
+      );
+    }
+    return this.treatmentService.deleteOrphanTreatment(id, deletedByUserId);
+  }
+
+  /**
+   * Mutation: pulizia in blocco dei trattamenti orfani selezionati in lista.
+   *
+   * Non atomica per scelta: ogni id ha la sua transazione, così i bloccati
+   * non fanno fallire i cancellabili. Ritorna l'esito riga per riga.
+   */
+  @Mutation(() => [OrphanDeletionResult], { name: 'deleteOrphanTreatments' })
+  @UseGuards(BillingWriteGuard)
+  async deleteOrphanTreatments(
+    @Args('ids', { type: () => [ID] }) ids: string[],
+    @CurrentUser() user?: CurrentUserContext,
+  ): Promise<OrphanDeletionResult[]> {
+    const deletedByUserId = await this.resolveAppUserId(user);
+    if (!deletedByUserId) {
+      throw new ForbiddenException(
+        'deleteOrphanTreatments: utente applicativo non risolto da CurrentUser',
+      );
+    }
+    if (ids.length > MAX_ORPHAN_BATCH) {
+      throw new BadRequestException(
+        `Troppi trattamenti selezionati (${ids.length}): massimo ${MAX_ORPHAN_BATCH} per volta.`,
+      );
+    }
+    return this.treatmentService.deleteOrphanTreatments(ids, deletedByUserId);
   }
 
   /**
@@ -790,6 +900,7 @@ export class TreatmentResolver {
     @Args('readyForBilling', { nullable: true }) readyForBilling?: boolean,
     @Args('isInvoicedToPatient', { nullable: true }) isInvoicedToPatient?: boolean,
     @Args('scontoFE', { nullable: true }) scontoFE?: boolean,
+    @Args('withoutAppointment', { nullable: true }) withoutAppointment?: boolean,
     @Args('limit', { type: () => Int, nullable: true }) limit?: number,
     @Args('offset', { type: () => Int, nullable: true }) offset?: number,
   ): Promise<Treatment[]> {
@@ -802,6 +913,7 @@ export class TreatmentResolver {
       readyForBilling,
       isInvoicedToPatient,
       scontoFE,
+      withoutAppointment,
       limit,
       offset,
     });
@@ -821,6 +933,7 @@ export class TreatmentResolver {
     @Args('readyForBilling', { nullable: true }) readyForBilling?: boolean,
     @Args('isInvoicedToPatient', { nullable: true }) isInvoicedToPatient?: boolean,
     @Args('scontoFE', { nullable: true }) scontoFE?: boolean,
+    @Args('withoutAppointment', { nullable: true }) withoutAppointment?: boolean,
   ): Promise<number> {
     return this.treatmentService.countForListing({
       patientId,
@@ -831,6 +944,7 @@ export class TreatmentResolver {
       readyForBilling,
       isInvoicedToPatient,
       scontoFE,
+      withoutAppointment,
     });
   }
 

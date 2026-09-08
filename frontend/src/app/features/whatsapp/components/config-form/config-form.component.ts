@@ -170,6 +170,20 @@ const REMINDER_MIN_SPACING_SECONDS = 10;
         </div>
       </div>
 
+      <div class="toggle-row">
+        <mat-slide-toggle [(ngModel)]="patientCalendarFeedEnabled" color="primary">
+          Manda al paziente il calendario da sottoscrivere
+        </mat-slide-toggle>
+        <div class="toggle-hint">
+          Insieme al recap della prenotazione parte <strong>una email sola</strong> col link
+          per aggiungere i propri appuntamenti al calendario del telefono. Da lì in poi si
+          aggiorna da solo a ogni spostamento o disdetta, senza altra posta.
+          <br>Serve un indirizzo email in anagrafica e il testo del template
+          <em>Email Calendario</em>. Chi usa Google deve completare la sottoscrizione una
+          volta da computer.
+        </div>
+      </div>
+
       <div class="form-actions">
         <button mat-stroked-button
                 (click)="onTestConnection()"
@@ -305,6 +319,7 @@ export class ConfigFormComponent {
   sendCancelNotification = false;
   sendUpdateNotification = true;
   recapBufferSeconds = 60;
+  patientCalendarFeedEnabled = false;
   reminderWindowEnabled = false;
   reminderWindowStart = '08:30';
   reminderWindowEnd = '09:00';
@@ -328,6 +343,7 @@ export class ConfigFormComponent {
       this.sendCancelNotification = this.config.sendCancelNotification || false;
       this.sendUpdateNotification = this.config.sendUpdateNotification ?? true;
       this.recapBufferSeconds = this.config.recapBufferSeconds ?? 60;
+      this.patientCalendarFeedEnabled = this.config.patientCalendarFeedEnabled || false;
       this.reminderWindowEnabled = this.config.reminderWindowEnabled ?? false;
       this.reminderWindowStart = this.config.reminderWindowStart || '08:30';
       this.reminderWindowEnd = this.config.reminderWindowEnd || '09:00';
@@ -461,6 +477,7 @@ export class ConfigFormComponent {
       tenantApiId: this.tenantApiId,
       isActive: this.isActive,
       sendCancelNotification: this.sendCancelNotification,
+      patientCalendarFeedEnabled: this.patientCalendarFeedEnabled,
       sendUpdateNotification: this.sendUpdateNotification,
       recapBufferSeconds: this.recapBufferSeconds,
       reminderWindowEnabled: this.reminderWindowEnabled,

@@ -317,7 +317,13 @@ export class AvailabilityAppointment {
 
   /**
    * Configurazione della ricorrenza (solo per il primo appuntamento della serie)
-   * JSON: { type, interval, selectedDays, endType, occurrences, untilDate }
+   * JSON: { type, interval, selectedDays, endType, occurrences, untilDate,
+   *         monthlyMode, monthlyRules }
+   *
+   * `monthlyMode`/`monthlyRules` sono opzionali e riguardano solo le serie
+   * mensili "per giorno della settimana" (il primo mercoledì del mese): le
+   * serie create prima non li hanno e continuano a valere come DAY_OF_MONTH.
+   * Colonna jsonb: nessuna migration necessaria per aggiungerli.
    */
   @Field(() => GraphQLJSON, { nullable: true })
   @Column('jsonb', { nullable: true })
@@ -328,6 +334,8 @@ export class AvailabilityAppointment {
     endType: 'never' | 'after' | 'until';
     occurrences?: number;
     untilDate?: string;
+    monthlyMode?: 'day_of_month' | 'day_of_week';
+    monthlyRules?: { ordinal: number; weekday: number }[];
   };
 
   /**

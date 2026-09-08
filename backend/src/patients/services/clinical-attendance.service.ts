@@ -68,6 +68,66 @@ export class ClinicalAttendanceService {
   }
 
   /**
+   * Segna il no-show di un appuntamento in modo che il conteggio regga i
+   * ripensamenti: "non presentato" e "presentato" si possono alternare quante
+   * volte serve e il paziente resta con UNA sola riga per appuntamento.
+   *
+   * Senza questo metodo il giro di andata e ritorno duplicava le righe:
+   * `recordEventOnce` cerca un log NO_SHOW, ma dopo una correzione a
+   * "presentato" quella riga e' diventata LATE_ARRIVAL — non la trovava piu' e
+   * ne creava una seconda. Due giri = due ritardi fantasma sullo stesso
+   * appuntamento.
+   *
+   * Le uniche righe LATE_ARRIVAL in tabella nascono da
+   * `demoteNoShowToLateArrival`, quindi promuoverle di nuovo a NO_SHOW e'
+   * sempre il ripristino di un'assenza, mai la perdita di un dato diverso.
+   */
+  async markNoShowForAppointment(input: {
+    subjectId: string;
+    appointmentId: string;
+    operatorId?: string;
+    occurredAt?: Date;
+    reason?: string;
+  }): Promise<ClinicalAttendanceLog | null> {
+    const existing = await this.logRepo.find({
+      where: [
+        { appointmentId: input.appointmentId, eventType: AttendanceEventType.NO_SHOW },
+        { appointmentId: input.appointmentId, eventType: AttendanceEventType.LATE_ARRIVAL },
+      ],
+      order: { createdAt: 'ASC' },
+    });
+
+    // Gia' contato come assenza: non si tocca nulla (idempotenza).
+    if (existing.some((row) => row.eventType === AttendanceEventType.NO_SHOW)) {
+      return null;
+    }
+
+    // Assenza gia' registrata in passato e poi corretta: si riporta la STESSA
+    // riga a NO_SHOW invece di aggiungerne una nuova.
+    const demoted = existing.find(
+      (row) => row.eventType === AttendanceEventType.LATE_ARRIVAL,
+    );
+    if (demoted) {
+      // `save()` ignora le proprieta' undefined: per riportare `revoked_at`
+      // a NULL serve un update esplicito (stesso motivo di `clearLateArrival`).
+      await this.logRepo.update(demoted.id, {
+        eventType: AttendanceEventType.NO_SHOW,
+        revokedAt: null,
+      } as any);
+      return this.logRepo.findOne({ where: { id: demoted.id } });
+    }
+
+    return this.recordEvent({
+      subjectId: input.subjectId,
+      eventType: AttendanceEventType.NO_SHOW,
+      occurredAt: input.occurredAt,
+      reason: input.reason,
+      operatorId: input.operatorId,
+      appointmentId: input.appointmentId,
+    });
+  }
+
+  /**
    * Degrada i log NO_SHOW di un appuntamento a LATE_ARRIVAL. Usato quando un
    * "non presentato" viene corretto in "presentato": il paziente NON è stato
    * assente, è arrivato in ritardo.

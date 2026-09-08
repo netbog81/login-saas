@@ -1,7 +1,9 @@
 import { Resolver, Query, Mutation, Args, ID, Context, ObjectType, Field } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
 import { AppUser } from '../entities/app-user.entity';
 import { AppUserType } from '../enums/app-user-type.enum';
 import { AppUserService } from '../services/app-user.service';
+import { AuthorizationGuard, RequirePermissions } from '../guards/authorization.guard';
 import { UserLinkingService } from '../services/user-linking.service';
 import { KeycloakAdminService } from '../services/keycloak-admin.service';
 import { Operator } from '../../availability/entities/operator.entity';
@@ -169,11 +171,15 @@ export class AppUserResolver {
 
   // ─── Existing Mutations ────────────────────────────────────────
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => AppUser)
   async createAppUser(@Args('input') input: CreateAppUserInput): Promise<AppUser> {
     return this.appUserService.create(input);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => AppUser)
   async updateAppUser(
     @Args('id', { type: () => ID }) id: string,
@@ -182,6 +188,8 @@ export class AppUserResolver {
     return this.appUserService.update(id, input);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => AppUser)
   async linkKeycloakUser(@Args('input') input: LinkKeycloakUserInput): Promise<AppUser> {
     return this.userLinkingService.linkToKeycloak(
@@ -192,6 +200,8 @@ export class AppUserResolver {
 
   // ─── Keycloak Mutations ────────────────────────────────────────
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => KeycloakOrgMember)
   async createKeycloakUser(
     @Args('input') input: CreateKeycloakUserInput,
@@ -228,6 +238,8 @@ export class AppUserResolver {
     };
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async assignKeycloakRealmRole(
     @Args('keycloakUserId', { type: () => ID }) keycloakUserId: string,
@@ -237,6 +249,8 @@ export class AppUserResolver {
     return true;
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async revokeKeycloakRealmRole(
     @Args('keycloakUserId', { type: () => ID }) keycloakUserId: string,
@@ -248,6 +262,8 @@ export class AppUserResolver {
 
   // ─── Update Keycloak User ───────────────────────────────────────
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async updateKeycloakUser(
     @Args('input') input: UpdateKeycloakUserInput,
@@ -266,6 +282,8 @@ export class AppUserResolver {
 
   // ─── Reset Keycloak Password ──────────────────────────────────
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async resetKeycloakPassword(
     @Args('input') input: ResetKeycloakPasswordInput,
@@ -280,6 +298,8 @@ export class AppUserResolver {
 
   // ─── Verify Email ──────────────────────────────────────────────
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async verifyKeycloakEmail(
     @Args('keycloakUserId', { type: () => ID }) keycloakUserId: string,
@@ -290,6 +310,8 @@ export class AppUserResolver {
 
   // ─── Delete & Unlink Mutations ──────────────────────────────────
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async deleteAppUser(
     @Args('id', { type: () => ID }) id: string,
@@ -297,6 +319,8 @@ export class AppUserResolver {
     return this.appUserService.delete(id);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => AppUser)
   async unlinkKeycloakUser(
     @Args('appUserId', { type: () => ID }) appUserId: string,
@@ -304,6 +328,8 @@ export class AppUserResolver {
     return this.appUserService.unlinkKeycloak(appUserId);
   }
 
+  @UseGuards(AuthorizationGuard)
+  @RequirePermissions('user_manage')
   @Mutation(() => Boolean)
   async deleteKeycloakUser(
     @Args('keycloakUserId', { type: () => ID }) keycloakUserId: string,

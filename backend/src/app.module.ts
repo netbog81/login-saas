@@ -93,6 +93,8 @@ import { ClinicalRelationshipExtension } from './patients/entities/clinical-rela
 import { ProcessedRegistryEvent } from './modules/registry-events/processed-event.entity';
 // Billing integration step 1 (sessione 6) — entity nuove + idempotency consumer accounting
 import { Site } from './modules/availability/entities/site.entity';
+import { EventOutbox } from './modules/clinical-events/entities/event-outbox.entity';
+import { TransactionOutboxSubscriber } from './modules/clinical-events/transaction-outbox.subscriber';
 import { Product } from './modules/availability/entities/product.entity';
 import { ProcessedClinicalEvent } from './modules/clinical-events/processed-clinical-event.entity';
 // App Users module (multi-type user management + RBAC)
@@ -102,6 +104,7 @@ import { Role } from './modules/users/entities/role.entity';
 import { Permission } from './modules/users/entities/permission.entity';
 import { UserRole } from './modules/users/entities/user-role.entity';
 import { RolePermission } from './modules/users/entities/role-permission.entity';
+import { PermissionDenial } from './modules/users/entities/permission-denial.entity';
 import { Secretary } from './modules/users/entities/secretary.entity';
 import { PrivacyOfficer } from './modules/users/entities/privacy-officer.entity';
 import { ItManager } from './modules/users/entities/it-manager.entity';
@@ -140,9 +143,22 @@ import { OpenbaoTokenProvider } from './infrastructure/openbao/openbao-token.pro
 import { readS3ConfigFromKv } from './infrastructure/openbao/s3-kv-config';
 import { PatientDocumentsModule } from './modules/patient-documents/patient-documents.module';
 import { PatientDocument } from './modules/patient-documents/entities/patient-document.entity';
+import { GoogleCalendarConnection } from './modules/availability/entities/google-calendar-connection.entity';
+import { CalendarFeedSetupLink } from './modules/availability/entities/calendar-feed-setup-link.entity';
+import { PatientCalendarFeed } from './modules/availability/entities/patient-calendar-feed.entity';
+import { CalendarSyncSetting } from './modules/availability/entities/calendar-sync-setting.entity';
+import {
+  NotificationChannelSetting,
+} from './modules/whatsapp/notifications/entities/notification-channel-setting.entity';
 
 /** All entities registered in the application */
 const ALL_ENTITIES = [
+  EventOutbox,
+  GoogleCalendarConnection,
+  CalendarFeedSetupLink,
+  PatientCalendarFeed,
+  CalendarSyncSetting,
+  NotificationChannelSetting,
   User,
   Appointment,
   Availability,
@@ -203,6 +219,7 @@ const ALL_ENTITIES = [
   Permission,
   UserRole,
   RolePermission,
+  PermissionDenial,
   Secretary,
   PrivacyOfficer,
   ItManager,
@@ -277,6 +294,14 @@ export class AppModule implements NestModule {
           idleTimeoutMs: 10 * 60 * 1000,
           tenantInfoTtlMs: 5 * 60 * 1000,
           extraTypeOrmOptions: {
+            // 2026-09-02 — Rende TRANSAZIONALE l'outbox degli eventi su OGNI
+            // DataSource di tenant, senza che il codice di business debba
+            // saperne nulla: il subscriber intercetta l'inizio e il commit di
+            // qualunque transazione, anche di quelle che verranno scritte in
+            // futuro. Vedi transaction-outbox.subscriber.ts.
+            // La classe, non un'istanza: la costruisce TypeORM (nessuna
+            // dipendenza da iniettare — usa lo scope condiviso di event-scope.ts).
+            subscribers: [TransactionOutboxSubscriber],
             synchronize: false,
             // migrationsRun: false — il restore 2026-06-10 ha già popolato
             // public.migrations con tutte le 79 entry. Le migrazioni nuove
@@ -395,7 +420,7 @@ export class AppModule implements NestModule {
     // eventBuffer.add() senza preoccuparsi di setup ALS.
     consumer
       .apply(ClinicalEventBufferMiddleware)
-      .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)')
+      .exclude('health/status', 'health/live', 'events/(.*)', 'api/webhooks/(.*)', 'calendar-feed/(.*)', 'integrations/google-calendar/(.*)')
       .forRoutes('*');
 
     // CurandisTenantContextMiddleware (auth-core): valida JWT, risolve
@@ -414,6 +439,15 @@ export class AppModule implements NestModule {
         { path: 'health/status', method: RequestMethod.ALL },
         { path: 'health/live', method: RequestMethod.ALL },
         { path: 'api/webhooks/(.*)', method: RequestMethod.ALL },
+        // Feed ICS dell'agenda operatore: lo scarica l'app di calendario
+        // dell'operatore (iOS, Google, Outlook), che non sa fare OAuth né
+        // mandare un Bearer. L'unica credenziale è il token nell'URL, e il
+        // controller si costruisce il contesto tenant a mano dal sottodominio.
+        { path: 'calendar-feed/(.*)', method: RequestMethod.ALL },
+        // Ritorno del consenso Google: ci arriva il browser dell'utente per
+        // redirect, senza Authorization header. Il tenant viene dallo state
+        // firmato in HMAC, e il controller costruisce il contesto a mano.
+        { path: 'integrations/google-calendar/callback', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

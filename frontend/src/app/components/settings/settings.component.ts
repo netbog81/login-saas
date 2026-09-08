@@ -86,6 +86,19 @@ export class SettingsComponent implements OnInit, OnDestroy {
   };
   originalNavigationSettings: NavigationSettings = { ...this.navigationSettings };
 
+  // Incassi sconto FE: se true qualsiasi operatore abilitato all'incasso può
+  // registrare l'incasso degli sconto FE dei colleghi (la VISIBILITÀ degli
+  // scoperti è sempre completa, il flag governa solo chi può incassare).
+  scontoFeCollectAnyOperator = false;
+  originalScontoFeCollectAnyOperator = false;
+
+  // Gestione assenze: se true anche gli operatori (medici, fisioterapisti,
+  // istruttori) possono segnare "non presentato" e correggerlo. Default true:
+  // e' cio' che gli istruttori di palestra hanno gia' oggi dalla propria
+  // pagina, e la chiave e' assente sui tenant non ri-seedati.
+  noShowOperatorsCanMark = true;
+  originalNoShowOperatorsCanMark = true;
+
   // Auto-start trattamento: apre automaticamente il trattamento quando il
   // paziente è segnato presentato (solo se ha un unico percorso attivo).
   autoStartTreatmentEnabled = false;
@@ -141,6 +154,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       calendarSettings: this.settingsService.getCalendarSettings(),
       autoAttendanceEnabled: this.settingsService.getSetting('autoAttendance.enabled'),
       autoAttendanceOffset: this.settingsService.getSetting('autoAttendance.offsetMinutes'),
+      scontoFeCollectAnyOperator: this.settingsService.getSetting('payments.scontoFeCollectAnyOperator'),
+      noShowOperatorsCanMark: this.settingsService.getSetting('noShow.operatorsCanMark'),
       autoStartTreatment: this.settingsService.getSetting('autoStartTreatment.onAttended'),
       autoStartTreatmentOnlyToday: this.settingsService.getSetting('autoStartTreatment.onlyToday'),
       navShowRegistry: this.settingsService.getSetting(NAV_SHOW_REGISTRY_KEY),
@@ -172,6 +187,22 @@ export class SettingsComponent implements OnInit, OnDestroy {
             this.autoAttendanceSettings.offsetMinutes = results.autoAttendanceOffset.value as number;
           }
           this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
+
+          // Incassi sconto FE (chiave assente sui tenant non ri-seedati = false)
+          if (results.scontoFeCollectAnyOperator) {
+            this.scontoFeCollectAnyOperator =
+              results.scontoFeCollectAnyOperator.value === true;
+          }
+          this.originalScontoFeCollectAnyOperator = this.scontoFeCollectAnyOperator;
+
+          // Assenze: chiave assente = true (default backend), non false —
+          // altrimenti l'aggiornamento toglierebbe di soppiatto agli
+          // istruttori un pulsante che avevano gia'.
+          this.noShowOperatorsCanMark =
+            results.noShowOperatorsCanMark
+              ? results.noShowOperatorsCanMark.value === true
+              : true;
+          this.originalNoShowOperatorsCanMark = this.noShowOperatorsCanMark;
 
           // Auto-start trattamento
           if (results.autoStartTreatment) {
@@ -283,6 +314,19 @@ export class SettingsComponent implements OnInit, OnDestroy {
         'autoAttendance.offsetMinutes',
         this.autoAttendanceSettings.offsetMinutes
       ),
+      // Incassi sconto FE (upsert: chiave introdotta il 27/08/2026, assente
+      // sui tenant creati prima).
+      scontoFeCollectAnyOperator: this.settingsService.upsertSetting(
+        'payments.scontoFeCollectAnyOperator',
+        this.scontoFeCollectAnyOperator,
+        { valueType: 'boolean', category: 'payments' }
+      ),
+      // Assenze: chi può segnare i no show (upsert: chiave nuova).
+      noShowOperatorsCanMark: this.settingsService.upsertSetting(
+        'noShow.operatorsCanMark',
+        this.noShowOperatorsCanMark,
+        { valueType: 'boolean', category: 'noShow' }
+      ),
       // Auto-start trattamento (upsert: chiave può non esistere su tenant
       // non ri-seedati).
       autoStartTreatment: this.settingsService.upsertSetting(
@@ -315,6 +359,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
           this.originalAutoAttendanceSettings = { ...this.autoAttendanceSettings };
           this.originalAutoStartTreatmentEnabled = this.autoStartTreatmentEnabled;
           this.originalAutoStartTreatmentOnlyToday = this.autoStartTreatmentOnlyToday;
+          this.originalScontoFeCollectAnyOperator = this.scontoFeCollectAnyOperator;
+          this.originalNoShowOperatorsCanMark = this.noShowOperatorsCanMark;
           this.originalNavigationSettings = { ...this.navigationSettings };
           // Il menu principale si aggiorna subito, senza reload.
           this.navigationSettingsService.apply(
@@ -340,6 +386,10 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.appointmentSettings = { ...this.originalSettings };
       this.calendarSettings = { ...this.originalCalendarSettings };
       this.autoAttendanceSettings = { ...this.originalAutoAttendanceSettings };
+      this.autoStartTreatmentEnabled = this.originalAutoStartTreatmentEnabled;
+      this.autoStartTreatmentOnlyToday = this.originalAutoStartTreatmentOnlyToday;
+      this.scontoFeCollectAnyOperator = this.originalScontoFeCollectAnyOperator;
+      this.noShowOperatorsCanMark = this.originalNoShowOperatorsCanMark;
       this.navigationSettings = { ...this.originalNavigationSettings };
       this.error = null;
       this.successMessage = null;
@@ -377,7 +427,14 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.navigationSettings.showRegistryLink !== this.originalNavigationSettings.showRegistryLink ||
       this.navigationSettings.showAccountingLink !== this.originalNavigationSettings.showAccountingLink;
 
-    return appointmentChanged || calendarChanged || autoAttendanceChanged || autoStartTreatmentChanged || navigationChanged;
+    const scontoFeChanged =
+      this.scontoFeCollectAnyOperator !== this.originalScontoFeCollectAnyOperator;
+
+    const noShowChanged =
+      this.noShowOperatorsCanMark !== this.originalNoShowOperatorsCanMark;
+
+    return appointmentChanged || calendarChanged || autoAttendanceChanged
+      || autoStartTreatmentChanged || scontoFeChanged || noShowChanged || navigationChanged;
   }
 
   // Force change detection when settings change

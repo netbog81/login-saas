@@ -15,6 +15,9 @@ import { ObjectType, Field, ID } from '@nestjs/graphql';
  *
  * Usato come `siteId` nei payload `treatment.closed` / `treatment.amended` /
  * `sale.completed` verso accounting (numerazione fattura per sede).
+ *
+ * Il clinico è il MASTER delle sedi: accounting ne tiene una replica con lo
+ * stesso UUID, allineata dall'evento `site.upserted`.
  */
 @ObjectType('Site')
 @Entity('sites')
@@ -34,6 +37,17 @@ export class Site {
   @Field()
   @Column({ default: true })
   isActive: boolean;
+
+  /**
+   * Sede principale del tenant. Una sola: l'indice parziale
+   * `UQ_sites_single_default` lo garantisce a livello di DB.
+   *
+   * Lato contabile è la sede che usa la numerazione GENERALE, invece di una
+   * serie propria. Con una sede sola è predefinita d'ufficio.
+   */
+  @Field()
+  @Column({ default: false })
+  isDefault: boolean;
 
   @Field()
   @CreateDateColumn()

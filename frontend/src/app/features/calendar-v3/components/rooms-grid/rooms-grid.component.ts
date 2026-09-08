@@ -23,6 +23,8 @@ interface RoomBlock {
   timeLabel: string;
   color: string;
   tooltip: string;
+  /** Solo per gli appuntamenti: paziente non presentato (blocco marcato). */
+  isNoShow?: boolean;
 }
 
 /** Colonna di uno studio in un giorno. */
@@ -48,11 +50,12 @@ interface WeekVM {
   days: DayGroupVM[];
 }
 
+// Stati che tolgono l'appuntamento dalla vista Studi. Il NO_SHOW NON c'e':
+// l'assenza resta visibile e marcata, come nelle altre viste del calendario.
 const CANCELLED_STATUSES = new Set([
   'cancelled',
   'cancelled_early',
   'cancelled_late',
-  'no_show',
 ]);
 
 /**
@@ -130,6 +133,7 @@ const CANCELLED_STATUSES = new Set([
                     </div>
 
                     <div class="appointment-block"
+                         [class.no-show]="apt.isNoShow"
                          *ngFor="let apt of col.appointments"
                          [style.top.px]="apt.topPx"
                          [style.height.px]="apt.heightPx"
@@ -369,6 +373,14 @@ const CANCELLED_STATUSES = new Set([
       overflow: hidden;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 
+      // Assenza: blocco sbiadito e barrato, coerente con la griglia operatori.
+      &.no-show {
+        opacity: 0.55;
+        border: 1px dashed rgba(255, 255, 255, 0.85);
+
+        .apt-label { text-decoration: line-through; }
+      }
+
       .apt-label {
         display: block;
         font-size: 10px;
@@ -560,6 +572,7 @@ export class RoomsGridComponent implements OnChanges {
             timeLabel: `${start} - ${end}`,
             color: a.operator?.color || colorFor(a.operatorId || a.id),
             tooltip: `${opName} ${start}-${end}`,
+            isNoShow: String(a.bookingStatus ?? '').toLowerCase() === 'no_show',
           };
           return { start: toMin(start), end: toMin(end), block };
         });

@@ -20,6 +20,15 @@ export const ATTENDANCE_MERGE_FIELDS: MergeFieldDef[] = [
   { key: 'visita.oraInizio', label: 'Ora inizio', group: 'Visita', example: '09:00' },
   { key: 'visita.oraFine', label: 'Ora fine', group: 'Visita', example: '10:00' },
   { key: 'visita.prestazioni', label: 'Prestazioni erogate', group: 'Visita', example: 'Seduta fisioterapica' },
+  // Descrizione estesa del servizio a catalogo (Impostazioni → Servizi),
+  // accanto al nome: sul certificato serve la dicitura per esteso
+  // ("Prestazione sanitaria di Tecarterapia") dove il nome è una sigla.
+  {
+    key: 'visita.prestazioniDescrizione',
+    label: 'Descrizione prestazioni erogate',
+    group: 'Visita',
+    example: 'Prestazione sanitaria di massoterapia',
+  },
 
   // Professionista
   { key: 'professionista.nomeCompleto', label: 'Nome professionista', group: 'Professionista', example: 'Dott.ssa Anna Bianchi' },

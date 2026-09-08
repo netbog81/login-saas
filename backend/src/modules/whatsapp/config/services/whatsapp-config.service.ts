@@ -66,6 +66,10 @@ export class WhatsappConfigService {
       config.sendUpdateNotification = input.sendUpdateNotification;
     }
 
+    if (input.patientCalendarFeedEnabled !== undefined) {
+      config.patientCalendarFeedEnabled = input.patientCalendarFeedEnabled;
+    }
+
     if (input.recapBufferSeconds !== undefined) {
       // Stessi limiti applicati dal gateway: meglio rifiutare qui che vedersi
       // normalizzare il valore in silenzio dall'altra parte.

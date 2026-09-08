@@ -55,6 +55,16 @@ export class TreatmentPdfController {
       throw new NotFoundException(`Trattamento ${id} non trovato`);
     }
     if (!treatment.accountingDocumentId) {
+      // 2026-09-03 — Il trattamento può essere FATTURATO e comunque non avere
+      // un PDF: succede quando è stato scalato da un anticipo che fa capo a
+      // una fattura del gestionale precedente. Il messaggio deve dirlo, o
+      // sembra un guasto.
+      if (treatment.accountingExternalRefNumber) {
+        throw new BadRequestException(
+          `Questa prestazione è fatturata sul documento ${treatment.accountingExternalRefNumber}, ` +
+            'emesso con il gestionale precedente: il PDF non è in Curandis.',
+        );
+      }
       throw new BadRequestException(
         'Nessuna fattura disponibile per questo trattamento: ' +
           'il documento fiscale non è ancora stato emesso da accounting.',

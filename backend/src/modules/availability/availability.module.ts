@@ -3,6 +3,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AppUsersModule } from '../users/app-users.module';
 import { OwnershipGuard } from './guards/ownership.guard';
+import { AttendanceMarkGuard } from './guards/attendance-mark.guard';
 import { AvailabilityChangedInterceptor, AppointmentChangedInterceptor } from './mutation-event.interceptors';
 
 // Entities
@@ -65,6 +66,7 @@ import { GymRoomService } from './services/gym-room.service';
 import { GymScheduleService } from './services/gym-schedule.service';
 import { RoomService } from './services/room.service';
 import { ChairService } from './services/chair.service';
+import { SiteService } from './services/site.service';
 import { RoomConflictService } from './services/room-conflict.service';
 import { TemplateAssignmentService } from './services/template-assignment.service';
 import { PatternGroupService } from './services/pattern-group.service';
@@ -100,6 +102,7 @@ import { GymRoomResolver } from './resolvers/gym-room.resolver';
 import { GymScheduleResolver } from './resolvers/gym-schedule.resolver';
 import { RoomResolver } from './resolvers/room.resolver';
 import { ChairResolver } from './resolvers/chair.resolver';
+import { SiteResolver } from './resolvers/site.resolver';
 import { TemplateAssignmentResolver } from './resolvers/template-assignment.resolver';
 import { PatternGroupResolver } from './resolvers/pattern-group.resolver';
 import { AvailabilityExceptionResolver } from './resolvers/availability-exception.resolver';
@@ -120,8 +123,27 @@ import { TreatmentServiceResolver } from './resolvers/treatment-service.resolver
 import { PazientiModule } from '../../patients/patients.module';
 import { AccountingApiModule } from '../accounting-api/accounting-api.module';
 import { TreatmentPdfController } from './controllers/treatment-pdf.controller';
+import { CalendarFeedController } from './controllers/calendar-feed.controller';
+import { PatientCalendarFeedController } from './controllers/patient-calendar-feed.controller';
+import { GoogleCalendarOAuthController } from './controllers/google-calendar-oauth.controller';
+import { GoogleCalendarApiService } from './services/google-calendar-api.service';
+import { GoogleCalendarOAuthService } from './services/google-calendar-oauth.service';
+import { GoogleCalendarResolver } from './resolvers/google-calendar.resolver';
+import { GoogleCalendarSyncService } from './services/google-calendar-sync.service';
+import { GoogleCalendarReconcileJob } from './services/google-calendar-reconcile.job';
+import { GoogleTokenAlertService } from './services/google-token-alert.service';
+import { GoogleTokenAlertJob } from './services/google-token-alert.job';
+import { CalendarSyncSettingService } from './services/calendar-sync-setting.service';
+import { CalendarSyncSettingResolver } from './resolvers/calendar-sync-setting.resolver';
+import { OperatorCalendarFeedService } from './services/operator-calendar-feed.service';
+import { PatientCalendarFeedService } from './services/patient-calendar-feed.service';
+import { GoogleCalendarConnectionService } from './services/google-calendar-connection.service';
+import { OperatorCalendarFeedResolver } from './resolvers/operator-calendar-feed.resolver';
+import { PatientCalendarFeedResolver } from './resolvers/patient-calendar-feed.resolver';
 import { VoucherFeService } from './services/voucher-fe.service';
 import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
+import { PendingFeCollectionsService } from './services/pending-fe-collections.service';
+import { PendingFeCollectionsResolver } from './resolvers/pending-fe-collections.resolver';
 
 @Module({
   imports: [
@@ -130,7 +152,12 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     forwardRef(() => WhatsappModule),
     PazientiModule,
     AccountingApiModule],
-  controllers: [TreatmentPdfController],
+  controllers: [
+    TreatmentPdfController,
+    CalendarFeedController,
+    PatientCalendarFeedController,
+    GoogleCalendarOAuthController,
+  ],
   providers: [
     // Interceptor SSE availability_changed (class-level sui resolver orari)
     AvailabilityChangedInterceptor,
@@ -138,6 +165,20 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
 
     // Services
     AvailabilityService,
+    OperatorCalendarFeedService,
+    OperatorCalendarFeedResolver,
+    PatientCalendarFeedService,
+    PatientCalendarFeedResolver,
+    GoogleCalendarConnectionService,
+    GoogleCalendarApiService,
+    GoogleCalendarOAuthService,
+    GoogleCalendarResolver,
+    GoogleCalendarSyncService,
+    GoogleCalendarReconcileJob,
+    GoogleTokenAlertService,
+    GoogleTokenAlertJob,
+    CalendarSyncSettingService,
+    CalendarSyncSettingResolver,
     TreatmentRecallCleanupJob,
     OperatorBusinessService,
     OperatorServiceService,
@@ -148,6 +189,7 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     GymScheduleService,
     RoomService,
     ChairService,
+    SiteService,
     RoomConflictService,
     TemplateAssignmentService,
     PatternGroupService,
@@ -169,8 +211,10 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     WaitingListService,
     ServiceInvoicePrefixService,
     VoucherFeService,
+    PendingFeCollectionsService,
     // Guards
     OwnershipGuard,
+    AttendanceMarkGuard,
     // Resolvers
     AvailabilityResolver,
     OperatorResolver,
@@ -184,6 +228,7 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     GymScheduleResolver,
     RoomResolver,
     ChairResolver,
+    SiteResolver,
     TemplateAssignmentResolver,
     PatternGroupResolver,
     AvailabilityExceptionResolver,
@@ -200,7 +245,8 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     WaitingListResolver,
     ServiceInvoicePrefixResolver,
     TreatmentServiceResolver,
-    VoucherFeResolver],
+    VoucherFeResolver,
+    PendingFeCollectionsResolver],
   exports: [
     AvailabilityService,
     OperatorBusinessService,
@@ -212,6 +258,7 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     GymScheduleService,
     RoomService,
     ChairService,
+    SiteService,
     RoomConflictService,
     TemplateAssignmentService,
     PatternGroupService,
@@ -231,6 +278,9 @@ import { VoucherFeResolver } from './resolvers/voucher-fe.resolver';
     PatientEvaluationService,
     PatientAnamnesisService,
     WaitingListService,
+    // Il webhook del recap lo usa per mandare il link del calendario insieme
+    // alla conferma di prenotazione.
+    PatientCalendarFeedService,
   ],
 })
 export class AvailabilityModule {}

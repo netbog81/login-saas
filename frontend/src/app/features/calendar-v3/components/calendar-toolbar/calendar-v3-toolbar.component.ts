@@ -144,8 +144,8 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
         </mat-button-toggle>
       </mat-button-toggle-group>
 
-      <!-- Azioni gestionali (Trattamenti / Appuntamenti / Copia): nascoste in
-           sola lettura. -->
+      <!-- Azioni gestionali (Trattamenti / Gestisci Appuntamenti / Copia):
+           nascoste in sola lettura. -->
       @if (!readOnly) {
         <!-- Apri dialog Trattamenti -->
         <button mat-stroked-button class="action-btn" (click)="openTreatments.emit()"
@@ -154,11 +154,11 @@ import { CalendarV2ViewMode, CalendarV2ViewType } from '../../../calendar-v2/mod
           Trattamenti
         </button>
 
-        <!-- Apri dialog Appuntamenti (ricerca paziente + riprenotazione) -->
+        <!-- Apri dialog Gestisci Appuntamenti (ricerca paziente/operatore + riprenotazione) -->
         <button mat-stroked-button class="action-btn" (click)="openAppuntamenti.emit()"
-                matTooltip="Cerca paziente e gestisci appuntamenti — apri/chiudi (Alt+A)">
+                matTooltip="Cerca per paziente o operatore e gestisci gli appuntamenti — apri/chiudi (Alt+A)">
           <mat-icon>event_note</mat-icon>
-          Appuntamenti
+          Gestisci Appuntamenti
         </button>
 
         <!-- Copia appuntamento: avvia il flusso copia/incolla. Quando attivo
@@ -350,7 +350,7 @@ export class CalendarV3ToolbarComponent {
    * Sola lettura: lascia solo navigazione date e cambio vista
    * (giorno/settimana, slot, zoom, orario/weekend, compatta). Nasconde le
    * azioni di modifica: toggle Operatori/Palestre, Lista d'attesa, Trattamenti,
-   * Appuntamenti, Copia appuntamento.
+   * Gestisci Appuntamenti, Copia appuntamento.
    */
   @Input() readOnly = false;
 

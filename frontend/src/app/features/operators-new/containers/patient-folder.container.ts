@@ -23,6 +23,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { Subject } from 'rxjs';
 import { takeUntil, tap } from 'rxjs/operators';
 
@@ -35,6 +36,12 @@ import {
   TreatmentOption,
 } from '../../patient-documents/components/patient-documents-tab/patient-documents-tab.component';
 import { PatientDocumentsService } from '../../patient-documents/services/patient-documents.service';
+import { PendingFeService } from '../services/pending-fe.service';
+import {
+  PendingFeDialogContainer,
+  PendingFeDialogData,
+  PendingFeDialogResult,
+} from './pending-fe-dialog.container';
 import { PatientDocumentsTransferService } from '../../patient-documents/services/patient-documents-transfer.service';
 import { PatientDocumentsUploadDialogContainer } from '../../patient-documents/containers/patient-documents-upload-dialog.container';
 import { TherapeuticPathService } from '../../../services/therapeutic-path.service';
@@ -108,10 +115,13 @@ import {
         [totalTreatmentsCount]="getTotalTreatmentsCount()"
         [anamnesisExists]="!!patientAnamnesis"
         [documentsCount]="patientDocuments.length"
+        [feAlertCount]="pendingFeCount"
+        [feAlertTotalAmount]="pendingFeTotalAmount"
         (viewDetails)="onViewPatientDetails()"
         (createPath)="onCreatePath()"
         (viewAnamnesis)="onExpandPatientAnamnesis()"
-        (viewDocuments)="onViewDocumentsTab()">
+        (viewDocuments)="onViewDocumentsTab()"
+        (viewFeAlert)="onOpenPendingFeDialog()">
       </app-patient-header>
 
       @if (patient) {
@@ -742,6 +752,11 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   patientDocuments: PatientDocument[] = [];
   showDocumentUploadDialog = false;
 
+  // Allarme sconto FE non incassati (fisioterapia + palestra). Il conteggio
+  // accende il riquadro rosso "FE" nell'header; il riquadro apre l'elenco.
+  pendingFeCount = 0;
+  pendingFeTotalAmount = 0;
+
   constructor(
     private pathService: TherapeuticPathService,
     private treatmentService: TreatmentService,
@@ -750,6 +765,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     private patientAnamnesisService: SimplePatientAnamnesisService,
     private documentsService: PatientDocumentsService,
     private documentsTransfer: PatientDocumentsTransferService,
+    private pendingFeService: PendingFeService,
+    private dialog: MatDialog,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -762,6 +779,8 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       this.treatments = [];
       this.patientAnamnesis = null;
       this.patientDocuments = [];
+      this.pendingFeCount = 0;
+      this.pendingFeTotalAmount = 0;
       this.uiState = { ...this.uiState, selectedPathId: null, selectedTreatmentId: null };
       this.cdr.markForCheck();
 
@@ -770,12 +789,15 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
       this.loadTreatments();
       this.loadPatientAnamnesis();
       this.loadPatientDocuments();
+      this.loadPendingFe();
     } else if (changes['patient'] && !this.patient) {
       this.paths = [];
       this.selectedPath = null;
       this.treatments = [];
       this.patientAnamnesis = null;
       this.patientDocuments = [];
+      this.pendingFeCount = 0;
+      this.pendingFeTotalAmount = 0;
       this.uiState = createInitialPatientFolderUIState();
       this.cdr.markForCheck();
     }
@@ -854,6 +876,63 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
           this.uiState = { ...this.uiState, loadingTreatments: false };
           this.cdr.markForCheck();
         }
+      });
+  }
+
+  /**
+   * Carica gli sconto FE non incassati del paziente: alimenta il badge rosso
+   * "FE" dell'header. Errori silenziosi (badge spento): l'allarme è
+   * informativo, non deve rompere la cartella.
+   */
+  private loadPendingFe(): void {
+    if (!this.patient?.id) return;
+
+    this.pendingFeService.getForPatient(this.patient.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (collections) => {
+          this.pendingFeCount = collections.count;
+          this.pendingFeTotalAmount = collections.totalAmount;
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('[PatientFolderContainer] Error loading pending FE:', err);
+          this.pendingFeCount = 0;
+          this.pendingFeTotalAmount = 0;
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  /**
+   * Riquadro "FE": elenco degli sconto FE scoperti con l'azione "Incassa".
+   * Alla chiusura il dialog restituisce quanti ne restano, così il badge si
+   * spegne senza un giro extra in rete; ricarichiamo comunque i trattamenti
+   * perché l'incasso ne cambia lo stato.
+   */
+  onOpenPendingFeDialog(): void {
+    if (!this.patient) return;
+
+    const ref = this.dialog.open<
+      PendingFeDialogContainer,
+      PendingFeDialogData,
+      PendingFeDialogResult
+    >(PendingFeDialogContainer, {
+      width: '860px',
+      maxWidth: '95vw',
+      data: {
+        patientId: this.patient.id,
+        patientName: `${this.patient.nome ?? ''} ${this.patient.cognome ?? ''}`.trim(),
+      },
+    });
+
+    ref.afterClosed()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((result) => {
+        if (result && result.remainingCount !== this.pendingFeCount) {
+          this.loadTreatments();
+        }
+        this.loadPendingFe();
       });
   }
 
@@ -1051,6 +1130,9 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
     this.treatments = this.treatments.map(t =>
       t.id === updated.id ? { ...t, ...updated } : t
     );
+    // L'incasso (o il suo annullo) su un trattamento sconto FE cambia il
+    // numero di scoperti: riallinea il badge rosso "FE".
+    this.loadPendingFe();
     this.cdr.markForCheck();
   }
 
@@ -1718,10 +1800,16 @@ export class PatientFolderContainer implements OnChanges, OnDestroy {
   }
 
   /**
-   * Ricarica i trattamenti del paziente - metodo pubblico per refresh esterno
+   * Ricarica i trattamenti del paziente - metodo pubblico per refresh esterno.
+   *
+   * Ricarica anche gli scoperti sconto FE: le stesse azioni che invalidano la
+   * lista (modifica trattamento, chiusura, incasso dal workspace) possono
+   * accendere o spegnere il badge — p.es. spuntando o togliendo lo sconto FE
+   * su un trattamento in corso.
    */
   reloadTreatments(): void {
     this.loadTreatments();
+    this.loadPendingFe();
   }
 
   /**

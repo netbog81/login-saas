@@ -54,6 +54,16 @@ services:
       DOCS_BUCKET_PREFIX: ${DOCS_BUCKET_PREFIX:-curandis-clinico-docs}
       DOCS_TRANSIT_KEY_PREFIX: ${DOCS_TRANSIT_KEY_PREFIX:-clinico-docs}
       DOCS_MAX_FILE_MB: ${DOCS_MAX_FILE_MB:-500}
+      # Stato dell'app Curandis presso Google, a livello di SaaS.
+      # Finche' e' "true" i permessi Google scadono ogni 7 giorni (regola delle
+      # app in Testing) e la UI mostra il conto alla rovescia con gli avvisi di
+      # rinnovo. A VERIFICA OTTENUTA metterlo a "false": la scadenza fissa non
+      # esiste piu' e il conto alla rovescia direbbe il falso.
+      # Non sta in OpenBao perche' non e' un segreto — e li' dentro nessuno lo
+      # troverebbe. Quando esistera' l'amministrazione SaaS si sposta la'.
+      GOOGLE_OAUTH_TESTING_MODE: ${GOOGLE_OAUTH_TESTING_MODE:-true}
+      GOOGLE_OAUTH_TOKEN_DAYS: ${GOOGLE_OAUTH_TOKEN_DAYS:-7}
+      GOOGLE_OAUTH_ALERT_DAYS_BEFORE: ${GOOGLE_OAUTH_ALERT_DAYS_BEFORE:-2}
       # Keycloak OIDC
       KEYCLOAK_URL: ${KEYCLOAK_URL}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-curandis}

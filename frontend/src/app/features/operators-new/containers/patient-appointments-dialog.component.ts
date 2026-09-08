@@ -31,6 +31,9 @@ import { OidcAuthService } from '../../../core/auth/oidc-auth.service';
 import { Patient } from '../../../models/patient.model';
 import { AvailabilityAppointment } from '../../../graphql/generated/types';
 import { PatientAppointmentsListComponent } from '../components/patient-appointments-list/patient-appointments-list.component';
+import { PatientCalendarFeedPanelComponent } from '../../patient-calendar-feed/components/patient-calendar-feed-panel/patient-calendar-feed-panel.component';
+import { PatientCalendarFeedService } from '../../patient-calendar-feed/services/patient-calendar-feed.service';
+import { PatientCalendarFeedStatus } from '../../patient-calendar-feed/models/patient-calendar-feed.model';
 
 export interface PatientAppointmentsDialogData {
   patient: Patient;
@@ -47,6 +50,7 @@ export interface PatientAppointmentsDialogData {
     MatSnackBarModule,
     DragDropModule,
     PatientAppointmentsListComponent,
+    PatientCalendarFeedPanelComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -82,6 +86,19 @@ export interface PatientAppointmentsDialogData {
           (sendRecap)="onSendRecap($event)"
           (sendRecapBatch)="onSendRecapBatch($event)">
         </app-patient-appointments-list>
+
+        <!-- Sta qui e non in una scheda a parte perché è la stessa domanda:
+             "questo paziente sa quando deve venire?". Il recap è il messaggio
+             di adesso, il calendario è quello che lo tiene aggiornato da solo. -->
+        <app-patient-calendar-feed-panel
+          class="cal-feed"
+          [status]="feedStatus"
+          [loading]="feedLoading"
+          [sending]="feedSending"
+          [error]="feedError"
+          (sendLink)="onSendFeedLink($event)"
+          (revoke)="onRevokeFeed()">
+        </app-patient-calendar-feed-panel>
       </div>
     </div>
   `,
@@ -96,6 +113,8 @@ export interface PatientAppointmentsDialogData {
       min-width: 400px;
       min-height: 300px;
     }
+
+    .cal-feed { display: block; margin-top: 16px; }
 
     .dialog-header {
       display: flex;
@@ -154,7 +173,9 @@ export interface PatientAppointmentsDialogData {
         min-width: 280px;
       }
 
-      .dialog-header {
+      .cal-feed { display: block; margin-top: 16px; }
+
+    .dialog-header {
         padding: 8px 12px;
       }
 
@@ -172,6 +193,7 @@ export class PatientAppointmentsDialogComponent implements OnInit, OnDestroy {
   private readonly ngZone = inject(NgZone);
   readonly cdr = inject(ChangeDetectorRef);
   private readonly auth = inject(OidcAuthService);
+  private readonly feedService = inject(PatientCalendarFeedService);
 
   /**
    * Solo segreteria/admin possono cancellare appuntamenti (coerente con il
@@ -187,8 +209,15 @@ export class PatientAppointmentsDialogComponent implements OnInit, OnDestroy {
   sendingBatch = false;
   error: string | null = null;
 
+  /** Stato della sottoscrizione del paziente al proprio calendario. */
+  feedStatus: PatientCalendarFeedStatus | null = null;
+  feedLoading = false;
+  feedSending = false;
+  feedError: string | null = null;
+
   ngOnInit(): void {
     this.loadAppointments();
+    this.loadFeedStatus();
   }
 
   ngOnDestroy(): void {
@@ -273,6 +302,92 @@ export class PatientAppointmentsDialogComponent implements OnInit, OnDestroy {
             this.sendingBatch = false;
             const msg = err?.graphQLErrors?.[0]?.message || 'Errore nell\'invio del recap';
             this.snackBar.open(msg, 'OK', { duration: 5000 });
+            this.cdr.markForCheck();
+          });
+        },
+      });
+  }
+
+  // ==================== CALENDARIO DEL PAZIENTE ====================
+
+  /**
+   * Manda al paziente il link per aggiungere i suoi appuntamenti al calendario
+   * del telefono. Una mail sola: da lì in poi si aggiorna da sé.
+   */
+  onSendFeedLink(email?: string): void {
+    if (this.feedSending) return;
+    this.feedSending = true;
+    this.cdr.markForCheck();
+
+    this.feedService.sendLink(this.patient.id, email)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.ngZone.run(() => {
+            this.feedSending = false;
+            this.snackBar.open('Link del calendario inviato', 'OK', { duration: 3000 });
+            this.loadFeedStatus();
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            this.feedSending = false;
+            // Il messaggio del backend è parlante ("manca l'email in
+            // anagrafica"): mostrarlo invece di un generico errore è la
+            // differenza fra sapere cosa fare e non saperlo.
+            const msg = err?.graphQLErrors?.[0]?.message || "Errore nell'invio del link";
+            this.snackBar.open(msg, 'OK', { duration: 6000 });
+            this.cdr.markForCheck();
+          });
+        },
+      });
+  }
+
+  onRevokeFeed(): void {
+    if (this.feedSending) return;
+    this.feedSending = true;
+    this.cdr.markForCheck();
+
+    this.feedService.revoke(this.patient.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.ngZone.run(() => {
+            this.feedSending = false;
+            this.snackBar.open('Calendario del paziente revocato', 'OK', { duration: 3000 });
+            this.loadFeedStatus();
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            this.feedSending = false;
+            const msg = err?.graphQLErrors?.[0]?.message || 'Errore nella revoca';
+            this.snackBar.open(msg, 'OK', { duration: 5000 });
+            this.cdr.markForCheck();
+          });
+        },
+      });
+  }
+
+  private loadFeedStatus(): void {
+    this.feedLoading = true;
+    this.feedError = null;
+    this.cdr.markForCheck();
+
+    this.feedService.getStatus(this.patient.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (status) => {
+          this.ngZone.run(() => {
+            this.feedStatus = status;
+            this.feedLoading = false;
+            this.cdr.markForCheck();
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            this.feedLoading = false;
+            this.feedError = err?.graphQLErrors?.[0]?.message || 'Stato non disponibile';
             this.cdr.markForCheck();
           });
         },

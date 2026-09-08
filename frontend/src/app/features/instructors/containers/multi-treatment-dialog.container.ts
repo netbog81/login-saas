@@ -92,6 +92,7 @@ import {
                 (save)="onSave($event)"
                 (completeTreatment)="onComplete($event)"
                 (markAttended)="onMarkAttended($event)"
+                [canMarkAttendance]="canMarkAttendance"
                 (markNoShow)="onMarkNoShow($event)"
                 (openPatientFolder)="onOpenPatientFolder($event)"
                 (createTreatment)="onCreateTreatment($event)">
@@ -199,6 +200,9 @@ export class MultiTreatmentDialogContainer implements OnInit, OnDestroy {
   loading = true;
   columns: TreatmentColumnState[] = [];
 
+  /** Vedi `InstructorInProgressContainer.canMarkAttendance`. */
+  canMarkAttendance = false;
+
   constructor(
     @Inject(MAT_DIALOG_DATA) public data: MultiTreatmentDialogData,
     private dialogRef: MatDialogRef<MultiTreatmentDialogContainer>,
@@ -211,6 +215,19 @@ export class MultiTreatmentDialogContainer implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.appointmentService
+      .canMarkAttendance()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (allowed) => {
+          this.canMarkAttendance = allowed;
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.canMarkAttendance = false;
+          this.cdr.markForCheck();
+        },
+      });
     this.loadColumnsData();
   }
 
@@ -317,9 +334,15 @@ export class MultiTreatmentDialogContainer implements OnInit, OnDestroy {
       });
   }
 
+  /**
+   * Vedi la nota gemella in `instructor-in-progress.container`: qui girava
+   * `revertAttended`, che riporta a "confermato" senza registrare nessuna
+   * assenza — il no-show non arrivava mai nelle statistiche e il cron
+   * rimetteva "presentato" al giro dopo.
+   */
   onMarkNoShow(appointmentId: string): void {
     this.appointmentService
-      .revertAttended(appointmentId)
+      .markAsNoShow(appointmentId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {

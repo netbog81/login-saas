@@ -162,6 +162,17 @@
           Stampa fattura
         </button>
       </dd>
+
+      <!-- 2026-09-03 — Fatturata su un documento del gestionale precedente:
+           il PDF non è in Curandis. Va detto, o l'assenza del bottone
+           "Stampa fattura" sembra un guasto. -->
+      <ng-container *ngIf="isExternallyInvoiced">
+        <dt>Documento</dt>
+        <dd class="external-ref">
+          Emesso con il gestionale precedente<span *ngIf="externalRefDateLabel">
+            ({{ externalRefDateLabel }})</span>: il PDF non è disponibile qui.
+        </dd>
+      </ng-container>
     </dl>
   </div>
 

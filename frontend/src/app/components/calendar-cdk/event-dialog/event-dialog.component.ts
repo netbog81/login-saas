@@ -1211,7 +1211,6 @@ export class EventDialogComponent extends BaseComponent implements OnInit, OnCha
         this.appointmentService.cancelWithNotice(
           String(this.data.appointment.id),
           reason,
-          'system' // TODO: sostituire con ID utente corrente
         )
       );
       this.emit(this.result, { action: 'delete' });

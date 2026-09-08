@@ -203,6 +203,7 @@ import { Treatment } from '../../../../models/treatment.model';
                   <p class="payment-method">
                     <mat-icon>schedule</mat-icon>
                     Incassato il {{ formatDate(treatment.paidAt) }}
+                    @if (treatment.collectedByName) { da <strong>{{ treatment.collectedByName }}</strong> }
                   </p>
                 }
                 <p class="payment-source-hint">

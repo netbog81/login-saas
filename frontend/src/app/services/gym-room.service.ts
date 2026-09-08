@@ -22,6 +22,7 @@ import {
   UPDATE_GYM_ROOM,
   DELETE_GYM_ROOM,
 } from '../graphql/operations/gym-room.mutations';
+import { RepeatConfig } from '../models/appointment.model';
 
 /**
  * Rappresentazione di una GymRoom
@@ -100,6 +101,10 @@ export interface GymAppointment {
   endTime: string;
   bookingStatus: string;
   treatmentStatus?: string;
+  /** Conflitto rilevato dal backend (slot scoperto da un'eccezione palestra). */
+  hasConflict?: boolean;
+  conflictReason?: string;
+  conflictDetectedAt?: string;
   notes?: string;
   participantCount?: number;
   maxParticipants?: number;
@@ -167,14 +172,25 @@ export interface CreateGymAppointmentInput {
   services?: ServiceInputItem[];
   notes?: string;
   isRecurring?: boolean;
-  repeatConfig?: {
-    type: 'daily' | 'weekly' | 'monthly';
-    interval: number;
-    selectedDays?: number[];
-    endType: 'after' | 'until';
-    occurrences?: number;
-    untilDate?: string;
-  };
+  /**
+   * Regola di ripetizione, nella stessa forma usata dagli appuntamenti
+   * standard: il DTO backend (`RepeatConfigInput`) è unico per i due flussi,
+   * e la palestra ne usava un sottoinsieme ristretto che tagliava fuori la
+   * mensile per posizione ("il primo mercoledì"). I valori viaggiano con i
+   * nomi degli enum GraphQL, non con quelli della UI.
+   */
+  repeatConfig?: RepeatConfig;
+  /**
+   * Piano risolto nel riquadro conflitti: le occorrenze da creare davvero,
+   * con gli spostamenti (anche di sala) già decisi. Quando presente
+   * sostituisce lato backend la generazione dalle regole.
+   */
+  occurrences?: {
+    date: string;
+    startTime: string;
+    endTime: string;
+    gymRoomId?: string;
+  }[];
 }
 
 /**

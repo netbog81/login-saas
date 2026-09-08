@@ -6,13 +6,16 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
 import { AdminDatabaseComponent } from './components/admin-database/admin-database.component';
+import { AdminSitesComponent } from './components/admin-sites/admin-sites.component';
 import { AdminUsersComponent } from './components/admin-users/admin-users.component';
+import { AdminPermissionsComponent } from './components/admin-permissions/admin-permissions.component';
 import { AdminBackupComponent } from './components/admin-backup/admin-backup.component';
 import { AdminRecycleBinComponent } from './components/admin-recycle-bin/admin-recycle-bin.component';
 import { AdminSystemHealthComponent } from './components/admin-system-health/admin-system-health.component';
+import { AdminPatientCalendarsComponent } from './components/admin-patient-calendars/admin-patient-calendars.component';
 import { OidcAuthService } from '../../core/auth/oidc-auth.service';
 
-const TAB_NAMES = ['database', 'utenti', 'backup', 'cestino', 'sistema'] as const;
+const TAB_NAMES = ['database', 'utenti', 'permessi', 'backup', 'cestino', 'calendari', 'sedi', 'sistema'] as const;
 type TabName = typeof TAB_NAMES[number];
 
 @Component({
@@ -25,10 +28,13 @@ type TabName = typeof TAB_NAMES[number];
     MatToolbarModule,
     MatButtonModule,
     AdminDatabaseComponent,
+    AdminSitesComponent,
     AdminUsersComponent,
+    AdminPermissionsComponent,
     AdminBackupComponent,
     AdminRecycleBinComponent,
     AdminSystemHealthComponent,
+    AdminPatientCalendarsComponent,
   ],
   template: `
     <div class="admin-container">
@@ -70,6 +76,16 @@ type TabName = typeof TAB_NAMES[number];
 
         <mat-tab>
           <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">key</mat-icon>
+            Permessi
+          </ng-template>
+          <div class="tab-content-wide">
+            <app-admin-permissions></app-admin-permissions>
+          </div>
+        </mat-tab>
+
+        <mat-tab>
+          <ng-template mat-tab-label>
             <mat-icon class="tab-icon">backup</mat-icon>
             Backup
           </ng-template>
@@ -85,6 +101,26 @@ type TabName = typeof TAB_NAMES[number];
           </ng-template>
           <div class="tab-content-wide">
             <app-admin-recycle-bin></app-admin-recycle-bin>
+          </div>
+        </mat-tab>
+
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">event_available</mat-icon>
+            Calendari
+          </ng-template>
+          <div class="tab-content-wide">
+            <app-admin-patient-calendars></app-admin-patient-calendars>
+          </div>
+        </mat-tab>
+
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon class="tab-icon">apartment</mat-icon>
+            Sedi
+          </ng-template>
+          <div class="tab-content-wide">
+            <app-admin-sites></app-admin-sites>
           </div>
         </mat-tab>
 

@@ -10,6 +10,7 @@ import * as amqp from 'amqp-connection-manager';
 import type { ConfirmChannel } from 'amqplib';
 
 import { ClinicalEventsConfig } from './clinical-events.config';
+import { EventOutboxService } from './event-outbox.service';
 import { TenantContextService } from '@curandis/tenant-datasource';
 import {
   ClinicalOutboundEventType,
@@ -70,9 +71,14 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
   constructor(
     private readonly config: ClinicalEventsConfig,
     private readonly tenantContext: TenantContextService,
+    private readonly outbox: EventOutboxService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    // Il worker dell'outbox pubblica passando da qui: glielo diamo sempre,
+    // anche a broker disabilitato, così alla riaccensione riparte da solo.
+    this.outbox.registerDeliveryHandler((row) => this.deliverFromOutbox(row));
+
     if (!this.config.enabled) {
       this.logger.warn('ClinicalEventPublisher disabilitato (RABBITMQ_ENABLED=false)');
       return;
@@ -102,6 +108,23 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
       // accettabile per MVP, log `[OUTBOX-MISSING]` cattura il caso).
       publishTimeout: 10_000,
       setup: async (channel: ConfirmChannel) => {
+        // 2026-09-02 — Rete di sicurezza: il broker restituisce i messaggi
+        // che non è riuscito a instradare (pubblicati con `mandatory`).
+        //
+        // In condizioni normali questo listener NON scatta: sull'exchange
+        // c'è la policy `ae-clinical`, che dirotta il non instradabile su
+        // `ex.clinical.unrouted` → `q.clinical.unrouted`, e un messaggio
+        // assorbito dall'alternate exchange non è più "non instradabile".
+        // Se scatta, vuol dire che anche l'AE è saltato: è l'ultimo avviso
+        // prima che l'evento si perda davvero.
+        channel.on('return', (msg) => {
+          this.logger.error(
+            `[UNROUTABLE] Nessuna coda per routingKey="${msg.fields.routingKey}" `
+              + `eventId="${msg.properties.messageId ?? 'n/d'}" — verifica i binding del `
+              + "consumer e la policy alternate-exchange.",
+          );
+        });
+
         // L'exchange `ex.clinical.events` è dichiarato come "owned" dal
         // clinico (configure permission). Lo asseriamo idempotentemente
         // con i parametri standard; se già esiste con altri parametri,
@@ -277,17 +300,70 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
     const treatmentId =
       (event.payload as { treatmentId?: string } | null)?.treatmentId ?? '-';
 
+    // 2026-09-02 — Prima si persiste, poi si pubblica: se il broker è giù (o
+    // il backend si riavvia in quel momento) la riga resta `pending` e la
+    // riprende il worker dell'outbox.
+    //
+    // Se l'evento è nato dentro una transazione, la riga l'ha già scritta il
+    // `TransactionOutboxSubscriber` PRIMA del commit — atomica con i dati di
+    // business. Qui resta solo da pubblicare e marcare `sent`.
+    const ds = this.tenantContext.getDataSource();
+    let row = event.persisted
+      ? await this.outbox.findByEventId(eventId)
+      : await this.outbox.enqueue(eventId, event);
+
+    if (!event.persisted) {
+      // Evento generato fuori da una transazione: durevole ma non atomico.
+      // Lo diciamo, così il caso resta distinguibile invece di sembrare
+      // identico all'altro.
+      this.logger.debug(
+        `[OUTBOX] ${event.eventType} (${eventId}) generato fuori transazione: `
+          + 'riga scritta dopo il fatto, non atomica con i dati di business.',
+      );
+    }
+
     try {
       await this.publishWithEventId(eventId, event);
+      if (row && ds) await this.outbox.markSent(ds, row.id);
     } catch (err) {
-      this.logger.error(
-        `[OUTBOX-MISSING] eventType=${event.eventType} eventId=${eventId} ` +
-          `correlationId=${event.correlationId ?? '-'} treatmentId=${treatmentId} ` +
-          `tenant=${event.tenantAlias} err="${(err as Error).message}"`,
-      );
+      if (row && ds) {
+        await this.outbox.markFailed(ds, row, (err as Error).message);
+        this.logger.warn(
+          `[OUTBOX] Publish fallito per eventType=${event.eventType} eventId=${eventId} `
+            + `tenant=${event.tenantAlias}: in coda per il retry automatico. `
+            + `err="${(err as Error).message}"`,
+        );
+      } else {
+        // Nessuna riga in outbox: qui l'evento si perde davvero.
+        this.logger.error(
+          `[OUTBOX-MISSING] eventType=${event.eventType} eventId=${eventId} ` +
+            `correlationId=${event.correlationId ?? '-'} treatmentId=${treatmentId} ` +
+            `tenant=${event.tenantAlias} err="${(err as Error).message}"`,
+        );
+      }
       // NON re-throw: il flusso di business (es. closeTreatment) è già
-      // committato. Outbox manuale: ops.
+      // committato.
     }
+  }
+
+  /**
+   * Consegna una riga di outbox ripescata dal worker. Ricostruisce
+   * l'envelope dai campi salvati, così l'`eventId` (e quindi l'idempotenza
+   * lato consumer) resta quello del primo tentativo.
+   */
+  private async deliverFromOutbox(row: {
+    eventId: string;
+    eventType: string;
+    tenantAlias: string;
+    correlationId?: string;
+    payload: unknown;
+  }): Promise<void> {
+    await this.publishWithEventId(row.eventId, {
+      eventType: row.eventType as ClinicalOutboundEventType,
+      payload: row.payload,
+      tenantAlias: row.tenantAlias,
+      correlationId: row.correlationId,
+    });
   }
 
   /**
@@ -343,6 +419,10 @@ export class ClinicalEventPublisher implements OnApplicationBootstrap, OnModuleD
         persistent: true,
         contentType: 'application/json',
         messageId: eventId,
+        // Con `mandatory` il broker non scarta in silenzio ciò che non sa
+        // instradare: o lo assorbe l'alternate exchange, o torna indietro e
+        // il listener `return` qui sopra lo denuncia.
+        mandatory: true,
         timestamp: Math.floor(Date.now() / 1000),
         headers: {
           'x-correlation-id': event.correlationId ?? eventId,

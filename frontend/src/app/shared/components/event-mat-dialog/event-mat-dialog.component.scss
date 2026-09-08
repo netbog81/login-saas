@@ -8,17 +8,44 @@
   }
 }
 
+// La finestra e' ridimensionabile (.event-mat-dialog-pane in styles.scss):
+// il contenuto deve seguirne la larghezza, non imporne una propria.
 mat-dialog-content {
-  min-width: 420px;
-  max-width: 600px;
+  min-width: 0;
+  max-width: none;
   // NOTA: padding-top su mat-dialog-content NON funziona con Angular Material MDC
   // perché Material usa margini negativi internamente. Usare margin-top su .form-row:first-child
 }
 
+// Barra del titolo trascinabile.
+.dialog-title-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: move;
+  user-select: none;
+
+  .drag-handle-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: #94a3b8;
+    flex: 0 0 auto;
+  }
+
+  .dialog-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  // Due colonne finche' c'e' spazio: sotto i ~200px per campo la coppia
+  // data/operatore diventa illeggibile, quindi si impila.
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
   margin-bottom: 4px;
 
   &:first-child {
@@ -232,6 +259,40 @@ mat-form-field {
       max-width: 150px;
     }
 
+    // Ricorrenza mensile: modalita' + elenco fasce
+    .monthly-selector {
+      margin-bottom: 12px;
+
+      .monthly-mode-options {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .monthly-rules {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .monthly-rule {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .ordinal-field { flex: 0 0 42%; }
+        .weekday-field { flex: 1 1 auto; }
+        .remove-rule { flex: 0 0 auto; }
+      }
+
+      .add-rule {
+        align-self: flex-start;
+        font-size: 0.8rem;
+      }
+    }
+
     .weekday-selector {
       margin-bottom: 16px;
 
@@ -368,12 +429,31 @@ mat-form-field {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    align-items: center;
     margin-bottom: 12px;
 
     button {
       mat-icon {
         margin-right: 4px;
       }
+    }
+  }
+
+  // Errore di una marcatura presenza/assenza: resta nel dialog, che ora non
+  // si chiude piu' dopo l'azione, invece di finire in un alert che porta via
+  // il contesto.
+  .status-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #c62828;
+    margin: 0 0 12px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
     }
   }
 
@@ -472,3 +552,19 @@ mat-radio-group {
 .recurring-section .recurring-preview { margin-top: 6px; }
 .instruments-section .instruments-config mat-form-field { margin-bottom: 4px; }
 .instruments-section .instruments-summary { padding: 8px 10px; margin-top: 8px; }
+
+// ===== COMPATTAZIONE 19/08/2026 =====
+// Il cliente vede la finestra troppo grande al 100% di zoom. Oltre alla
+// larghezza di apertura ridotta (520px, lato container), qui si stringono
+// spaziature e controlli senza toccare la struttura del form.
+.dialog-title-bar { padding-bottom: 4px !important; font-size: 1.05rem; }
+mat-dialog-actions { padding: 8px 16px !important; }
+.recurring-section .end-config .end-options-inline { gap: 10px; flex-wrap: wrap; }
+.recurring-section .end-config .end-options-inline .end-option .until-field { width: 132px; }
+.recurring-section .recurring-config .interval-field { max-width: 130px; }
+.instruments-section .instrument-2-row { flex-wrap: wrap; gap: 8px; }
+.status-section { padding: 8px 10px; }
+.status-section .section-label { margin-bottom: 6px; }
+.status-section .status-badge { margin-bottom: 8px; }
+.status-section .status-buttons { margin-bottom: 8px; }
+.recurring-series-section { margin: 0 16px 8px; padding: 8px 12px; }

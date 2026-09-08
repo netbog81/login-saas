@@ -1,7 +1,7 @@
 import { Injectable, NgZone } from '@angular/core';
 import { Apollo } from 'apollo-angular';
 import { Observable } from 'rxjs';
-import { filter, map, tap } from 'rxjs/operators';
+import { filter, map } from 'rxjs/operators';
 import type { OperationVariables } from '@apollo/client/core';
 
 /**
@@ -48,41 +48,22 @@ export class ApolloZoneService {
    * Esegue una query GraphQL one-time con integrazione NgZone.
    * Restituisce direttamente i dati (non il wrapper QueryResult).
    *
-   * IMPORTANTE: Filtriamo emissioni con data undefined/null per evitare
-   * errori nei consumatori quando la query fallisce o restituisce dati vuoti.
-   *
    * @param options - Opzioni della query Apollo
    * @returns Observable<TData> - I dati della query
    */
   query<TData, TVariables extends OperationVariables = OperationVariables>(
     options: Apollo.QueryOptions<TData, TVariables>
   ): Observable<TData> {
-    console.log('[ApolloZoneService] query called');
     return this.wrapInZone(
       this.apollo.query<TData, TVariables>(options)
     ).pipe(
-      tap({
-        next: (result) => console.log('[ApolloZoneService] query result:', { data: result?.data, error: result?.error }),
-        error: (err) => console.error('[ApolloZoneService] query error:', err),
-        complete: () => console.log('[ApolloZoneService] query completed')
-      }),
-      // Non filtrare - lascia passare tutto e gestisci nel map
-      map(result => {
-        if (result.error) {
-          console.error('[ApolloZoneService] GraphQL error:', result.error);
-        }
-        // Ritorna data anche se undefined/null - il consumatore gestirà
-        return result.data as TData;
-      })
+      map(result => this.unwrap<TData>(result))
     );
   }
 
   /**
    * Esegue una mutation GraphQL con integrazione NgZone.
    * Restituisce direttamente i dati (non il wrapper MutationResult).
-   *
-   * IMPORTANTE: Filtriamo emissioni con data undefined/null per evitare
-   * errori nei consumatori quando la mutation fallisce o restituisce dati vuoti.
    *
    * @param options - Opzioni della mutation Apollo
    * @returns Observable<TData> - I dati della mutation
@@ -93,9 +74,7 @@ export class ApolloZoneService {
     return this.wrapInZone(
       this.apollo.mutate<TData, TVariables>(options)
     ).pipe(
-      // Filtra emissioni con data undefined/null per evitare errori nei consumatori
-      filter(result => result.data !== undefined && result.data !== null),
-      map(result => result.data as TData)
+      map(result => this.unwrap<TData>(result))
     );
   }
 
@@ -108,10 +87,6 @@ export class ApolloZoneService {
    * quando si vuole sfruttare la cache con aggiornamenti automatici.
    * Per query one-time, preferire query().
    *
-   * IMPORTANTE: Con fetchPolicy 'cache-and-network', la prima emissione
-   * dalla cache vuota può avere result.data = undefined. Filtriamo queste
-   * emissioni per evitare errori nei consumatori.
-   *
    * @param options - Opzioni della watch query Apollo
    * @returns Observable<TData> - Stream di dati che si aggiorna
    */
@@ -121,10 +96,38 @@ export class ApolloZoneService {
     // watchQuery() di apollo-angular ha già integrazione NgZone
     // tramite wrapWithZone() in QueryRef
     return this.apollo.watchQuery<TData, TVariables>(options).valueChanges.pipe(
-      // Filtra emissioni con data undefined/null (cache vuota con cache-and-network)
-      filter(result => result.data !== undefined && result.data !== null),
-      map(result => result.data as TData)
+      // Con fetchPolicy 'cache-and-network' la prima emissione da cache vuota
+      // non ha né dati né errore: non è niente da riferire, si aspetta la rete.
+      // Un'emissione con errore invece passa, e unwrap() decide.
+      filter(result => !!result.error || (result.data !== undefined && result.data !== null)),
+      map(result => this.unwrap<TData>(result))
     );
+  }
+
+  /**
+   * Estrae i dati da un risultato Apollo, facendo fallire l'observable
+   * quando dati non ce ne sono.
+   *
+   * Serve perché le query girano con `errorPolicy: 'all'` (graphql.module.ts):
+   * un errore del server NON fa fallire l'observable, arriva come emissione
+   * normale con `data` a null — il null risale fino alla radice quando il
+   * campo chiesto non è nullable — e l'errore vero dentro `result.error`.
+   * Inoltrando quel null, il `map(r => r.campo)` dei servizi scoppiava con un
+   * TypeError, e l'utente leggeva «Cannot read properties of null» al posto di
+   * «Insufficient permissions»: il motivo vero restava in `result.error`, che
+   * non guardava nessuno.
+   *
+   * Risposta PARZIALE (dati presenti e insieme errori su campi nullable) non
+   * fa fallire niente: quei dati sono utili e le schermate li mostrano già.
+   */
+  private unwrap<TData>(result: { data?: unknown; error?: unknown }): TData {
+    if (result.data !== undefined && result.data !== null) {
+      if (result.error) {
+        console.warn('[ApolloZoneService] risposta parziale con errori:', result.error);
+      }
+      return result.data as TData;
+    }
+    throw result.error ?? new Error('Il server ha risposto senza dati');
   }
 
   /**

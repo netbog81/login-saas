@@ -203,6 +203,11 @@ export class TrattamentiStateService {
       delete parsed.readyForBilling;
       delete parsed.isInvoicedToPatient;
       delete parsed.scontoFE;
+      // Stessa ragione per il filtro orfani: è una modalità di pulizia
+      // puntuale, non uno stato di lavoro. Se restasse acceso tra sessioni
+      // la lista mostrerebbe solo i trattamenti senza appuntamento senza
+      // che si capisca perché.
+      delete parsed.withoutAppointment;
       // Idem per patientId: l'autocomplete paziente NON ripristina il testo
       // (patientSearchText riparte vuoto), quindi un patientId persistito
       // diventa un filtro fantasma invisibile che svuota la lista.

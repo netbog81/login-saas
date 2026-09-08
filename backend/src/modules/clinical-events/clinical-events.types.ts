@@ -33,6 +33,7 @@ export type ClinicalOutboundEventType =
   | 'product.upserted'
   | 'product.deleted'
   | 'operator.upserted'
+  | 'site.upserted'
   | 'treatment.closed'
   | 'treatment.amended'
   | 'treatment.cancelled'
@@ -41,6 +42,22 @@ export type ClinicalOutboundEventType =
   | 'treatment.payment-recorded'
   | 'treatment.payment-cancelled'
   | 'sale.completed';
+
+// ----- site.* -----
+
+/**
+ * Replica delle sedi verso accounting. Il clinico è il master: accounting
+ * tiene una copia con lo STESSO UUID, usata come sotto-ambito di
+ * numerazione e reportistica. `isDefault` marca la sede che, lato
+ * contabile, usa la serie di numerazione generale.
+ */
+export interface SiteUpsertedPayload {
+  siteId: string;
+  name: string;
+  address: string | null;
+  isActive: boolean;
+  isDefault: boolean;
+}
 
 // ----- service.* -----
 
@@ -179,6 +196,14 @@ export interface TreatmentPayment {
   paymentMethod?: string | null;
   amount: string;
   collectedByUserId: string | null;     // Keycloak sub
+  /**
+   * 2026-09-03 — Come è composto l'incasso. `paymentMethod` è una stringa
+   * sola e non dice quale buono è stato usato: senza queste righe la
+   * contabilità non può scalare un voucher incassato PRIMA dell'invio a
+   * fatturazione (caso in cui `treatment.payment-recorded` non parte affatto).
+   * Assente sugli eventi dei producer precedenti.
+   */
+  tenderLines?: TreatmentTenderLine[];
 }
 
 export interface TreatmentNotes {
@@ -246,7 +271,13 @@ export interface TreatmentTenderLine {
 export interface TreatmentPaymentRecordedPayload {
   treatmentId: string;
   paymentId: string;                 // UUID, chiave first-write-wins
-  isPaid: true;
+  /**
+   * 2026-09-04 — false = incasso PARZIALE (voucher di anticipo che copre solo
+   * una quota): la contabilità scala il credito e lascia il residuo da
+   * fatturare, senza registrare un incasso a saldo. Il trattamento risulterà
+   * pagato solo quando sarà incassata la fattura del residuo.
+   */
+  isPaid: boolean;
   paidAt: string;                    // ISO 8601
   totalAmount: string;               // decimal string, importo totale incassato
   tenderLines: TreatmentTenderLine[];
@@ -381,11 +412,26 @@ export interface BillableReceivedPayload {
   receivedAt: string;
 }
 
+/**
+ * 2026-09-03 — Documento che in Curandis NON esiste: la fattura emessa con
+ * il gestionale precedente a cui fa capo un voucher "anticipo fattura".
+ * Arriva al posto di `documentId` quando una prestazione viene scalata da
+ * quel credito: è fatturata davvero, ma non c'è un PDF da scaricare.
+ */
+export interface ExternalDocumentRef {
+  number: string;
+  date?: string;
+  type?: 'INVOICE' | 'RECEIPT';
+}
+
 export interface BillableInvoicedPayload {
   billableEventId: string;
   treatmentId?: string;
   saleId?: string;
-  documentId: string;
+  /** Assente SOLO con `externalDocumentRef`: uno dei due c'è sempre. */
+  documentId?: string;
+  /** Vedi `ExternalDocumentRef`. Presente solo se `documentId` è assente. */
+  externalDocumentRef?: ExternalDocumentRef;
   // RECEIPT: pazienti privati (senza P.IVA) → accounting emette ricevuta, non
   // fattura INVOICE/SDI. Allineato al type accounting BillableInvoicedPayload.
   documentType: 'INVOICE' | 'PROFORMA' | 'CREDIT_NOTE' | 'RECEIPT';
@@ -406,6 +452,11 @@ export interface BillableInvoicedPayload {
   documentTreatmentCount?: number;
   /** Tutti i billableEventId del documento riferiti a questo treatment (anti-stale a membership). */
   billableEventIds?: string[];
+  /**
+   * 2026-09-04 — Quota già coperta da un voucher "anticipo fattura": è fuori
+   * dal documento corrente. Valore della prestazione = totalAmount + questa.
+   */
+  advanceCoveredAmount?: string;
 }
 
 /**
@@ -419,7 +470,8 @@ export interface BillableUninvoicedPayload {
   billableEventId: string;
   treatmentId?: string;            // valorizzato se sourceSystem === 'clinico-treatment'
   saleId?: string;                 // valorizzato se sourceSystem === 'clinico-sale'
-  cancelledDocumentId: string;
+  /** Assente se la fatturazione veniva da un anticipo con riferimento esterno. */
+  cancelledDocumentId?: string;
   cancelledDocumentNumber: string; // es. "I2026-00001"
   cancelledDocumentType: 'INVOICE' | 'RECEIPT';
   uninvoicedAt: string;            // ISO 8601
@@ -532,6 +584,12 @@ export interface BillablePaymentRecordedPayload {
   amount: string;                    // decimal string
   recordedByUserId?: string;
   recordedByEmail?: string;
+  /**
+   * 2026-09-04 — Buono che ha pagato, quando l'incasso è una copertura da
+   * voucher "anticipo fattura". Serve a non mostrare "altro" come metodo.
+   */
+  voucherId?: string;
+  voucherCode?: string;
   recordedAt: string;                // ISO 8601
 }
 

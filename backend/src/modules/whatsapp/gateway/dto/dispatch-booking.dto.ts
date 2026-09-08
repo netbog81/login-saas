@@ -75,8 +75,37 @@ export interface DispatchUpdatePayload {
     /** REMINDER_48H già renderizzato: usato se il promemoria parte 2 giorni prima. */
     reminderMessageEarly?: string;
     sendUpdateNotification?: boolean;
+    /** UPDATE_MULTI grezzo: il gateway sostituisce {name} e {appointments}. */
+    updateMultiTemplate?: string;
+    /** Riga di questo spostamento nell'elenco multiplo: da dove a dove. */
+    updateLine?: string;
+    /** Data/ora di partenza, per la riga di ripiego del gateway. */
+    previousDate?: string;
+    /** Finestra di raggruppamento in secondi (30-600): la stessa dei recap. */
+    recapDelaySeconds?: number;
+    /**
+     * RECAP_SINGLE e riga di elenco già renderizzati sul NUOVO orario.
+     *
+     * Servono al caso in cui l'appuntamento venga spostato mentre la conferma
+     * è ancora nel buffer del gateway: lì non parte nessun "spostato", si
+     * corregge la conferma. Senza questi campi il paziente riceverebbe la
+     * conferma con l'orario vecchio.
+     */
+    recapMessage?: string;
+    recapLine?: string;
+    recapMultiTemplate?: string;
   } & ReminderWindowFields;
   correlationId: string;
+}
+
+/** Esito di un APPOINTMENT_UPDATE, per la parte che interessa i log. */
+export interface DispatchUpdateResponse {
+  /**
+   * true quando il gateway ha corretto la conferma ancora in buffer invece di
+   * mandare un messaggio di spostamento: il log di UPDATE appena creato non
+   * corrisponde a nulla che il paziente riceverà.
+   */
+  bookingRewritten?: boolean;
 }
 
 export interface DispatchCancelPayload {
@@ -88,6 +117,12 @@ export interface DispatchCancelPayload {
     cancelNotificationMessage?: string;
     name: string;
     date: string;
+    /** CANCELLATION_MULTI grezzo: il gateway sostituisce {name} e {appointments}. */
+    cancelMultiTemplate?: string;
+    /** Riga di questa disdetta nell'elenco multiplo. */
+    cancelLine?: string;
+    /** Finestra di raggruppamento in secondi (30-600): la stessa dei recap. */
+    recapDelaySeconds?: number;
   };
   correlationId: string;
 }

@@ -15,7 +15,7 @@ import { OpenbaoTokenProvider } from './openbao-token.provider';
  *   endpoint    es. "http://10.x.x.x:80" (VM MicroCeph, rete privata)
  *   access_key  access key RGW
  *   secret_key  secret key RGW
- *   region      opzionale (default us-east-1, RGW la ignora)
+ *   region      opzionale; su MicroCeph vale "default" (è anche il fallback)
  *
  * Chiamata lazy da storage-core alla prima operazione S3 del tenant e
  * ri-chiamata alla scadenza della cache client (rotazione credenziali).
@@ -47,7 +47,11 @@ export async function readS3ConfigFromKv(
     endpoint: data['endpoint'],
     accessKeyId: data['access_key'],
     secretAccessKey: data['secret_key'],
-    region: data['region'] || 'us-east-1',
+    // MicroCeph (RGW) usa "default", non una region AWS. Il fallback conta
+    // solo per un tenant che non la imposta nel secret: con 'us-east-1' la
+    // firma SigV4 verrebbe calcolata su una region che il gateway non
+    // conosce, e l'errore comparirebbe al primo upload di un documento.
+    region: data['region'] || 'default',
     forcePathStyle: true,
   };
 }

@@ -167,43 +167,69 @@ export class CalendarV2GridService {
       this.normalizeTime(a.startTime).localeCompare(this.normalizeTime(b.startTime))
     );
 
-    // Calcola overlap groups per larghezza
-    const groups = this.computeOverlapGroups(sorted);
+    const isNoShow = (apt: Appointment) =>
+      (apt.bookingStatus || '').toLowerCase() === 'no_show';
 
     const events: PositionedEvent[] = [];
+
+    const noShowRanges = sorted.filter(isNoShow).map((apt) => ({
+      start: this.timeToMinutes(this.normalizeTime(apt.startTime)),
+      end: this.timeToMinutes(this.normalizeTime(apt.endTime)),
+    }));
+
+    const buildEvent = (
+      apt: Appointment,
+      leftPct: number,
+      widthPct: number,
+    ): PositionedEvent => {
+      const normalizedStart = this.normalizeTime(apt.startTime);
+      const normalizedEnd = this.normalizeTime(apt.endTime);
+      const startMin = this.timeToMinutes(normalizedStart);
+      const endMin = this.timeToMinutes(normalizedEnd);
+
+      return {
+        appointment: apt,
+        operatorId,
+        date,
+        topPx: (startMin - gridStartMinutes) * pxPerMinute,
+        heightPx: Math.max((endMin - startMin) * pxPerMinute, slotHeightPx * 0.5),
+        leftPct,
+        widthPct,
+        color: defaultColor,
+        title: apt.title || 'Appuntamento',
+        timeLabel: `${normalizedStart} - ${normalizedEnd}`,
+        isRecurring: apt.isRecurring || false,
+        hasConflict: apt.hasConflict || false,
+        isNoShow: isNoShow(apt),
+        overlapsNoShow:
+          !isNoShow(apt) &&
+          noShowRanges.some((r) => r.start < endMin && r.end > startMin),
+        conflictReason: apt.conflictReason,
+        conflictDetectedAt: apt.conflictDetectedAt,
+        originalStartTime: normalizedStart,
+        originalEndTime: normalizedEnd,
+      };
+    };
+
+    // I no-show restano FUORI dal calcolo delle sovrapposizioni: la loro
+    // fascia e' di nuovo libera, e la griglia li disegna come una striscia
+    // stretta a lato (vedi `operator-grid-v3`). Se entrassero nei gruppi,
+    // l'appuntamento vero prenotato al loro posto nascerebbe a meta'
+    // larghezza per far spazio a un'assenza che non occupa nulla.
+    const groups = this.computeOverlapGroups(sorted.filter((a) => !isNoShow(a)));
 
     for (const group of groups) {
       const groupSize = group.length;
       group.forEach((apt, idx) => {
-        const normalizedStart = this.normalizeTime(apt.startTime);
-        const normalizedEnd = this.normalizeTime(apt.endTime);
-        const startMin = this.timeToMinutes(normalizedStart);
-        const endMin = this.timeToMinutes(normalizedEnd);
-        const topPx = (startMin - gridStartMinutes) * pxPerMinute;
-        const heightPx = Math.max((endMin - startMin) * pxPerMinute, slotHeightPx * 0.5);
-
         const widthPct = 100 / groupSize;
-        const leftPct = widthPct * idx;
-
-        const title = apt.title || 'Appuntamento';
-        const timeLabel = `${normalizedStart} - ${normalizedEnd}`;
-
-        events.push({
-          appointment: apt,
-          operatorId,
-          date,
-          topPx,
-          heightPx,
-          leftPct,
-          widthPct,
-          color: defaultColor,
-          title,
-          timeLabel,
-          isRecurring: apt.isRecurring || false,
-          originalStartTime: normalizedStart,
-          originalEndTime: normalizedEnd,
-        });
+        events.push(buildEvent(apt, widthPct * idx, widthPct));
       });
+    }
+
+    // Striscia sempre a sinistra e a tutta altezza: la larghezza reale la
+    // impone la griglia in pixel, questi valori sono solo il fallback.
+    for (const apt of sorted.filter(isNoShow)) {
+      events.push(buildEvent(apt, 0, 100));
     }
 
     return events;

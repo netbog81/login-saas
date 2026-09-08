@@ -8,6 +8,8 @@ import {
   GET_AVAILABILITY_APPOINTMENTS_BY_PATIENT,
   GET_RECURRING_SERIES,
   IS_INSTRUMENT_AVAILABLE,
+  RECURRING_SERIES_PREVIEW,
+  CAN_MARK_ATTENDANCE,
 } from '../graphql/operations/availability-appointment.queries';
 import {
   CREATE_AVAILABILITY_APPOINTMENT,
@@ -30,6 +32,9 @@ import {
   UPDATE_RECURRING_SERIES,
 } from '../graphql/operations/availability-appointment.mutations';
 import { BaseGraphQLService } from '../core/services/base-graphql.service';
+import {
+  RecurringOccurrencePreview, ResolvedOccurrenceInput,
+} from '../features/calendar-v3/models/recurring-resolution.model';
 
 export interface AppointmentInstrumentInput {
   instrumentCategoryId: string;
@@ -55,6 +60,10 @@ export interface RepeatConfigInput {
   endType: 'never' | 'after' | 'until';
   occurrences?: number;
   untilDate?: string;
+  /** Enum GraphQL: va inviato come nome ('DAY_OF_MONTH' | 'DAY_OF_WEEK'). */
+  monthlyMode?: string;
+  /** Fasce mensili "il <ordinal> <weekday>" per monthlyMode = DAY_OF_WEEK. */
+  monthlyRules?: { ordinal: number; weekday: number }[];
 }
 
 export interface CreateAvailabilityAppointmentInput {
@@ -74,6 +83,11 @@ export interface CreateAvailabilityAppointmentInput {
   instrumentOrderMatters?: boolean;
   instruments?: AppointmentInstrumentInput[];
   repeatConfig?: RepeatConfigInput;
+  /**
+   * Piano risolto nel riquadro conflitti: le occorrenze da creare davvero,
+   * spostamenti compresi. Quando c'è, il backend non rigenera le date.
+   */
+  occurrences?: ResolvedOccurrenceInput[];
   nonRetribuito?: boolean;
   /** Forza il salvataggio anche fuori dalla disponibilità dell'operatore. */
   forceOutsideAvailability?: boolean;
@@ -126,11 +140,12 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
   getAppointmentsByOperator(
     operatorId: string,
     startDate: string,
-    endDate: string
+    /** Omesso = intervallo aperto: da `startDate` in poi, senza limite. */
+    endDate?: string
   ): Observable<AvailabilityAppointment[]> {
     return this.query<{ availabilityAppointmentsByOperator: AvailabilityAppointment[] }>(
       GET_AVAILABILITY_APPOINTMENTS_BY_OPERATOR,
-      { operatorId, startDate, endDate }
+      { operatorId, startDate, endDate: endDate ?? null }
     ).pipe(map((result) => result.availabilityAppointmentsByOperator || []));
   }
 
@@ -247,14 +262,19 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
    * - >24h → cancelled_early
    * - <24h → cancelled_late (incrementa contatore paziente)
    */
+  /**
+   * Chi ha disdetto NON si manda dal client: lo ricava il backend dal JWT.
+   * I chiamanti passavano etichette di ruolo ('secretary', 'system') su una
+   * colonna `uuid`, e ogni disdetta finiva in "invalid input syntax for type
+   * uuid".
+   */
   cancelWithNotice(
     id: string,
     reason: string,
-    cancelledBy: string
   ): Observable<AvailabilityAppointment> {
     return this.mutate<{ cancelAppointmentWithNotice: AvailabilityAppointment }>(
       CANCEL_APPOINTMENT_WITH_NOTICE,
-      { id, reason, cancelledBy }
+      { id, reason }
     ).pipe(map((result) => result.cancelAppointmentWithNotice));
   }
 
@@ -277,6 +297,43 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
       REVERT_APPOINTMENT_ATTENDED,
       { id }
     ).pipe(map((result) => result.revertAppointmentAttended));
+  }
+
+  /**
+   * Esegue l'azione di presenza chiesta dal dialog appuntamento.
+   *
+   * Sta qui e non nei container perche' e' la stessa identica mappatura per
+   * tutti e tre i calendari (v3, v2, cdk): duplicarla significava — ed e'
+   * successo — che uno dei tre si dimenticasse di gestire un'azione e i
+   * pulsanti restassero muti senza dare errore.
+   */
+  runAttendanceAction(
+    action: 'mark-attended' | 'mark-no-show' | 'cancel-with-notice' | 'revert-attended',
+    appointmentId: string,
+  ): Observable<AvailabilityAppointment> {
+    switch (action) {
+      case 'mark-attended':
+        return this.markAsAttended(appointmentId);
+      case 'mark-no-show':
+        return this.markAsNoShow(appointmentId);
+      case 'revert-attended':
+        return this.revertAttended(appointmentId);
+      case 'cancel-with-notice':
+        return this.cancelWithNotice(appointmentId, 'Annullato da segreteria');
+    }
+  }
+
+  /**
+   * L'utente collegato puo' marcare presenze e assenze?
+   * Regola decisa dal backend (ruolo + impostazione `noShow.operatorsCanMark`),
+   * cosi' la UI non la duplica e non puo' andare fuori sincrono.
+   */
+  canMarkAttendance(): Observable<boolean> {
+    return this.query<{ canMarkAttendance: boolean }>(
+      CAN_MARK_ATTENDANCE,
+      {},
+      'network-only',
+    ).pipe(map((result) => result.canMarkAttendance === true));
   }
 
   /**
@@ -346,11 +403,45 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
     appointmentId: string,
     repeatConfig: unknown,
     force?: boolean,
+    /**
+     * Piano risolto. Le occorrenze palestra possono portare anche `gymRoomId`
+     * quando lo spostamento cambia sala: è l'asse alternativo della palestra,
+     * come `operatorId` lo è per gli appuntamenti standard.
+     */
+    occurrences?: (ResolvedOccurrenceInput & { gymRoomId?: string })[],
   ): Observable<AvailabilityAppointment> {
     return this.mutate<{ makeAppointmentRecurring: AvailabilityAppointment }>(
       MAKE_APPOINTMENT_RECURRING,
-      { appointmentId, repeatConfig, force }
+      { appointmentId, repeatConfig, force, occurrences: occurrences ?? null }
     ).pipe(map((result) => result.makeAppointmentRecurring));
+  }
+
+  /**
+   * Piano di una serie ricorrente prima di crearla: date generate e conflitti,
+   * senza scrivere niente. Alimenta il riquadro di risoluzione.
+   */
+  previewRecurringSeries(input: {
+    /** Serie standard: l'operatore su cui validare disponibilità e sovrapposizioni. */
+    operatorId?: string;
+    /**
+     * Serie palestra: la sala. Se valorizzata, il backend valuta le occorrenze
+     * con i predicati della palestra (fascia chiusa, istruttore assegnato dal
+     * template, capienza) invece che con quelli dell'operatore.
+     */
+    gymRoomId?: string;
+    /** Paziente della serie: segnala le date in cui è già prenotato. */
+    patientId?: string;
+    startDate: string;
+    startTime: string;
+    endTime: string;
+    repeatConfig: RepeatConfigInput;
+    excludeAppointmentId?: string;
+  }): Observable<RecurringOccurrencePreview[]> {
+    return this.query<{ recurringSeriesPreview: RecurringOccurrencePreview[] }>(
+      RECURRING_SERIES_PREVIEW,
+      { input },
+      'no-cache',
+    ).pipe(map((result) => result.recurringSeriesPreview ?? []));
   }
 
   // ==================== RECURRING SERIES ====================
@@ -415,6 +506,8 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
     rangeFrom?: string;
     rangeTo?: string;
     includeCurrent?: boolean;
+    /** Piano risolto nel riquadro conflitti; assente = comportamento storico. */
+    occurrences?: ResolvedOccurrenceInput[];
   }): Observable<RecurringSeriesOperationResult> {
     return this.mutate<{ updateRecurringSeriesTime: RecurringSeriesOperationResult }>(
       UPDATE_RECURRING_SERIES_TIME,
@@ -435,6 +528,12 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
     endTime: string;
     newDate?: string;
     operatorId?: string;
+    /**
+     * Sala di destinazione per una serie palestra. È l'asse alternativo della
+     * palestra, come `operatorId` lo è per le serie standard: ogni occorrenza
+     * viene validata contro chiusure, istruttore e capienza della sala nuova.
+     */
+    gymRoomId?: string;
     patientId?: string;
     clientName?: string;
     clientPhone?: string;
@@ -447,6 +546,13 @@ export class AvailabilityAppointmentService extends BaseGraphQLService {
     rangeFrom?: string;
     rangeTo?: string;
     includeCurrent?: boolean;
+    /** Occorrenze lasciate intatte, decise nel riquadro conflitti. */
+    skipAppointmentIds?: string[];
+    /**
+     * Destinazioni decise a mano per singole occorrenze. In palestra possono
+     * portare anche `gymRoomId`, quando una singola data va in un'altra sala.
+     */
+    occurrenceOverrides?: (ResolvedOccurrenceInput & { gymRoomId?: string })[];
   }): Observable<RecurringSeriesOperationResult> {
     return this.mutate<{ updateRecurringSeries: RecurringSeriesOperationResult }>(
       UPDATE_RECURRING_SERIES,
