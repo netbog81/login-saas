@@ -8,9 +8,15 @@ import { ConfigService } from '@nestjs/config';
  *   RABBITMQ_URL=amqp://curandis-clinico-svc:clinico_dev_2024@localhost:5676/curandis
  *   RABBITMQ_REGISTRY_EXCHANGE=ex.registry.events
  *   RABBITMQ_QUEUE_SUBJECTS=q.clinico.subjects
- *   RABBITMQ_BINDING_PATTERN=subject.*.*
+ *   RABBITMQ_BINDING_PATTERN=subject.#
  *   RABBITMQ_PREFETCH=10
  *   RABBITMQ_ENABLED=true   # se false, il consumer non parte (utile per test/CI)
+ *
+ * Il pattern di bind vuole `#` (zero o più parole), non `*.*`. La routing key
+ * del registry è `<eventType>.<tenantAlias>` e alcuni eventType contengono già
+ * un punto: `subject.role.added` diventa `subject.role.added.bdq`, quattro
+ * segmenti. `*.*` ne pretende esattamente tre, quindi quegli eventi non
+ * venivano consegnati e finivano fra i non instradati (corretto il 07/09/2026).
  */
 @Injectable()
 export class RegistryEventsConfig {
@@ -30,7 +36,7 @@ export class RegistryEventsConfig {
     );
     this.exchange = config.get<string>('RABBITMQ_REGISTRY_EXCHANGE', 'ex.registry.events');
     this.queue = config.get<string>('RABBITMQ_QUEUE_SUBJECTS', 'q.clinico.subjects');
-    this.bindingPattern = config.get<string>('RABBITMQ_BINDING_PATTERN', 'subject.*.*');
+    this.bindingPattern = config.get<string>('RABBITMQ_BINDING_PATTERN', 'subject.#');
     this.prefetch = parseInt(config.get<string>('RABBITMQ_PREFETCH', '10'), 10);
     this.logger.log(
       `RegistryEvents config: enabled=${this.enabled}, queue="${this.queue}", binding="${this.bindingPattern}", prefetch=${this.prefetch}`,

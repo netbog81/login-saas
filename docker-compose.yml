@@ -84,7 +84,7 @@ services:
       RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
       RABBITMQ_REGISTRY_EXCHANGE: ${RABBITMQ_REGISTRY_EXCHANGE:-ex.registry.events}
       RABBITMQ_QUEUE_SUBJECTS: ${RABBITMQ_QUEUE_SUBJECTS:-q.clinico.subjects}
-      RABBITMQ_BINDING_PATTERN: ${RABBITMQ_BINDING_PATTERN:-subject.*.*}
+      RABBITMQ_BINDING_PATTERN: "${RABBITMQ_BINDING_PATTERN:-subject.#}"
       RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
       # DLQ monitor — utente dedicato SOLO management API read-only (tag
       # monitoring, permessi AMQP nulli). Senza queste vars il monitor

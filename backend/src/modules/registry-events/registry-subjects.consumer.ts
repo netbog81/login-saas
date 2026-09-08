@@ -18,7 +18,7 @@ import { ClinicalSubjectIndexService } from '../../patients/services/clinical-su
 
 /**
  * Consumer RabbitMQ del registry. Si connette al broker condiviso, ascolta
- * gli eventi `subject.*.*` (tutti i tenant) e mantiene aggiornata la cache
+ * gli eventi `subject.#` (tutti i tenant) e mantiene aggiornata la cache
  * locale `clinical_subject_index`:
  *
  * - subject.updated.<tenant>     → marca stale=true (refresh al prossimo accesso utente)
@@ -29,8 +29,15 @@ import { ClinicalSubjectIndexService } from '../../patients/services/clinical-su
  * Idempotency: ogni eventId è tracciato in processed_registry_events.
  * Il duplicato viene skippato all'INSERT (ON CONFLICT DO NOTHING).
  *
- * Per gli eventi relationship.* nessuna logica per ora; vengono solo loggati
- * (binding `subject.*.*` non li cattura, sono qui per estensione futura).
+ * Il bind è `subject.#` e non `subject.*.*`: la routing key è
+ * `<eventType>.<tenantAlias>` e gli eventType con un punto dentro
+ * (`subject.role.added` → `subject.role.added.bdq`) fanno quattro segmenti,
+ * mentre `*.*` ne accetta esattamente tre. Con il vecchio pattern quegli
+ * eventi non arrivavano e finivano fra i non instradati (corretto il
+ * 07/09/2026). `#` copre sia i tre segmenti sia i quattro.
+ *
+ * Per gli eventi relationship.* nessuna logica per ora: il binding `subject.#`
+ * non li cattura, i case sono qui per estensione futura.
  */
 @Injectable()
 export class RegistrySubjectsConsumer implements OnApplicationBootstrap, OnModuleDestroy {
@@ -201,6 +208,18 @@ export class RegistrySubjectsConsumer implements OnApplicationBootstrap, OnModul
       case 'subject.role.removed':
         // Le role del registry non influenzano la cache locale clinica.
         this.logger.debug(`Role event ${event.eventType} ${subjectId} (no-op)`);
+        return;
+
+      case 'subject.consent.updated':
+        // I consensi vivono nel registry e il clinico li rilegge a ogni
+        // accesso (RegistryClient.getPrivacyConsents): non ne tiene copia,
+        // clinical_subject_index ha solo display_name/is_active. Quindi qui
+        // non c'è niente da invalidare. Oggi poi il registry emette questo
+        // evento solo per `ts_opposition`, che riguarda l'accounting (file
+        // Sistema TS) e non il clinico.
+        // Il case esiste per non far cadere l'evento nel `default:`, dove
+        // sporcherebbe i log con un warn a ogni cambio di opposizione.
+        this.logger.debug(`${event.eventType} ${subjectId} (no-op: consensi non in cache)`);
         return;
 
       default:
